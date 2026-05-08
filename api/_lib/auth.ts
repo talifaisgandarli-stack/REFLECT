@@ -18,6 +18,22 @@ export function admin() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
+/**
+ * Supabase client that forwards the caller's JWT, so PostgREST applies RLS
+ * as the authenticated user. Use for any read/write that should respect the
+ * user's permissions (e.g. /api/search).
+ */
+export function userClient(req: Request) {
+  const url = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? '';
+  const anon = process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? '';
+  const auth = req.headers.get('authorization') ?? '';
+  if (!url || !anon) throw new Error('Supabase server env missing');
+  return createClient(url, anon, {
+    auth: { persistSession: false },
+    global: { headers: auth ? { Authorization: auth } : {} },
+  });
+}
+
 export async function requireUser(req: Request): Promise<AuthedUser> {
   const auth = req.headers.get('authorization') ?? '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
