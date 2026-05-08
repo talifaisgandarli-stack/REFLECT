@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import { isOpenChildrenError, useTasks, useUpdateTaskStatus } from '@/lib/hooks';
@@ -11,8 +12,27 @@ import { CancelTaskModal } from '@/components/CancelTaskModal';
 
 export function TasksPage() {
   const { profile } = useAuth();
+  const { hash } = useLocation();
   const [view, setView] = useState<'board' | 'table'>('board');
   const [mineOnly, setMineOnly] = useState(false);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const m = hash.match(/^#task-([0-9a-f-]+)/i);
+    if (!m) return;
+    const id = m[1];
+    setHighlightId(id);
+    // Defer until cards render
+    const t = setTimeout(() => {
+      const el = document.getElementById(`task-${id}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 200);
+    const clear = setTimeout(() => setHighlightId(null), 4000);
+    return () => {
+      clearTimeout(t);
+      clearTimeout(clear);
+    };
+  }, [hash]);
   const { data: tasks = [], isLoading } = useTasks(
     mineOnly && profile?.id ? { assigneeId: profile.id } : undefined,
   );
@@ -131,6 +151,7 @@ export function TasksPage() {
                   {grouped[s].map((t) => (
                     <article
                       key={t.id}
+                      id={`task-${t.id}`}
                       draggable
                       onDragStart={(e) =>
                         e.dataTransfer.setData(
@@ -141,7 +162,15 @@ export function TasksPage() {
                       className="rounded-card p-3 text-body"
                       style={{
                         background: isToday ? '#1F2925' : 'var(--surface)',
-                        border: `1px solid ${isToday ? '#2D3833' : 'var(--line)'}`,
+                        border:
+                          highlightId === t.id
+                            ? '2px solid var(--brand-action)'
+                            : `1px solid ${isToday ? '#2D3833' : 'var(--line)'}`,
+                        boxShadow:
+                          highlightId === t.id
+                            ? '0 0 0 4px rgba(173,251,73,0.18)'
+                            : undefined,
+                        transition: 'border-color var(--dur-base), box-shadow var(--dur-base)',
                       }}
                     >
                       <div className="font-medium">{t.title}</div>

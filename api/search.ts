@@ -85,7 +85,9 @@ export default async function handler(req: Request) {
         id: t.id,
         title: t.title,
         subtitle: [t.status, t.deadline ?? null].filter(Boolean).join(' · '),
-        href: '/tapşırıqlar',
+        // Deep-link to the kanban with a hash; the Tasks page reads
+        // `location.hash` and scrolls to / highlights the row.
+        href: `/tapşırıqlar#task-${t.id}`,
       });
     }
     for (const p of (projects.data ?? []) as Array<{
@@ -113,7 +115,7 @@ export default async function handler(req: Request) {
         id: c.id,
         title: c.name,
         subtitle: [c.company ?? null, c.pipeline_stage].filter(Boolean).join(' · '),
-        href: '/müştərilər',
+        href: `/müştərilər#client-${c.id}`,
       });
     }
     for (const a of (announcements.data ?? []) as Array<{
