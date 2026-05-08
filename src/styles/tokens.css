@@ -1,0 +1,48 @@
+/* designstyle4 tokens — Appendix A. Source of truth: docs/designstyle4.md */
+:root {
+  /* Brand */
+  --brand-action: #ADFB49;
+  --brand-action-hover: #9BE83E;
+  --brand-action-soft: #ECFFB6;
+  --brand-text: #1A5140;
+  --brand-deep: #0E3838;
+  --brand-mid: #5CA87C;
+  --brand-soft: #B7E5BA;
+  --brand-mist: #DCFCE7;
+
+  /* Neutrals */
+  --canvas: #FAFAF7;
+  --canvas-dots: #D8D6CD;
+  --canvas-warm: #F4F2EC;
+  --surface: #FFFFFF;
+  --surface-mist: #F0EFE9;
+  --line: #E8E6DD;
+  --line-soft: #EFEEE8;
+
+  /* Text */
+  --ink: #0E1611;
+  --text: #1F2925;
+  --text-soft: #4F5A55;
+  --text-muted: #7A857F;
+  --text-faint: #A8B0AB;
+
+  /* MIRAI */
+  --mirai-surface: #0E1611;
+  --mirai-particle: #FAFAF7;
+  --mirai-glow: rgba(173, 251, 73, 0.08);
+
+  /* Mascot */
+  --mascot-body: #0E1611;
+  --mascot-eye: #ADFB49;
+
+  /* Focus */
+  --focus-ring: 0 0 0 3px rgba(173, 251, 73, 0.33);
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
+  --ease-spring: cubic-bezier(0.5, 1.5, 0.5, 1);
+  --dur-fast: 120ms;
+  --dur-base: 220ms;
+  --dur-slow: 420ms;
+}

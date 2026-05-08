@@ -1,0 +1,196 @@
+@import './tokens.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'Satoshi', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    color: var(--text);
+  }
+  body {
+    background-color: var(--canvas);
+    background-image: radial-gradient(circle, var(--canvas-dots) 1px, transparent 1px);
+    background-size: 20px 20px;
+    min-height: 100vh;
+  }
+  @media (max-width: 640px) {
+    body { background-size: 14px 14px; }
+  }
+  *:focus-visible {
+    outline: 0;
+    box-shadow: var(--focus-ring);
+  }
+  ::selection {
+    background: var(--brand-action-soft);
+    color: var(--ink);
+  }
+}
+
+@layer components {
+  /* Buttons — designstyle4 §4.1 */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 h-10 px-[18px] rounded-btn text-ui;
+    background: var(--brand-action);
+    color: var(--ink);
+    transition: background var(--dur-fast) var(--ease-out),
+      transform var(--dur-fast) var(--ease-out),
+      box-shadow var(--dur-fast) var(--ease-out);
+  }
+  .btn-primary:hover {
+    background: var(--brand-action-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(173, 251, 73, 0.25);
+  }
+  .btn-primary:active {
+    transform: translateY(0);
+    background: var(--brand-action-soft);
+  }
+  .btn-primary:disabled {
+    background: var(--surface-mist);
+    color: var(--text-faint);
+    box-shadow: none;
+    cursor: not-allowed;
+  }
+
+  .btn-outline {
+    @apply inline-flex items-center justify-center gap-2 h-10 px-[18px] rounded-btn text-ui;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--line);
+    transition: background var(--dur-fast) var(--ease-out),
+      border-color var(--dur-fast) var(--ease-out);
+  }
+  .btn-outline:hover {
+    background: var(--surface-mist);
+    border-color: var(--brand-text);
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 h-10 px-3 rounded-btn text-ui;
+    background: transparent;
+    color: var(--text-soft);
+    transition: background var(--dur-fast) var(--ease-out);
+  }
+  .btn-ghost:hover { background: var(--surface-mist); }
+
+  /* Chip — §4.2 */
+  .chip {
+    @apply inline-flex items-center gap-1.5 h-[26px] px-2.5 rounded-chip text-meta font-medium;
+    background: var(--surface-mist);
+    color: var(--text-soft);
+  }
+  .chip-brand { background: var(--brand-mist); color: var(--brand-text); }
+
+  /* Input — §4.3 */
+  .input {
+    @apply h-10 px-3.5 rounded-btn text-body w-full;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    color: var(--text);
+    transition: border-color var(--dur-fast) var(--ease-out),
+      box-shadow var(--dur-fast) var(--ease-out);
+  }
+  .input::placeholder { color: var(--text-muted); }
+  .input:hover { border-color: var(--text-muted); }
+  .input:focus { border-color: var(--brand-text); box-shadow: var(--focus-ring); outline: 0; }
+
+  /* Card — §4.4 */
+  .card {
+    @apply rounded-card p-5;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    box-shadow: 0 1px 2px rgba(14, 22, 17, 0.04);
+  }
+  .card-interactive {
+    transition: transform var(--dur-base) var(--ease-out),
+      border-color var(--dur-base) var(--ease-out),
+      box-shadow var(--dur-base) var(--ease-out);
+    cursor: pointer;
+  }
+  .card-interactive:hover {
+    transform: translateY(-2px);
+    border-color: var(--brand-mid);
+    box-shadow: 0 4px 16px rgba(14, 22, 17, 0.06);
+  }
+  .card-feature {
+    @apply rounded-card p-6;
+    background: radial-gradient(70% 30% at 30% 30%, #ADFB49 0%, #B7E5BA 60%, #5CA87C 100%);
+    color: var(--ink);
+  }
+
+  /* Sidebar item — §4.5 */
+  .sb-item {
+    @apply flex items-center gap-3 h-10 px-4 rounded-lg text-ui relative;
+    color: var(--text-faint);
+    transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+  }
+  .sb-item:hover { background: rgba(255, 255, 255, 0.04); color: var(--canvas); }
+  .sb-item.active {
+    color: var(--canvas);
+    background: rgba(173, 251, 73, 0.08);
+  }
+  .sb-item.active::before {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 4px;
+    bottom: 4px;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--brand-action);
+  }
+  .sb-section {
+    @apply px-4 pt-4 pb-2 text-tiny;
+    color: var(--brand-mid);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  /* Mascot blink — §5.3 */
+  .mascot-eye {
+    transform-origin: center;
+    transform-box: fill-box;
+    animation: mascot-blink 8s ease-in-out infinite;
+  }
+  @keyframes mascot-blink {
+    0%, 96%, 100% { transform: scaleY(1); }
+    98% { transform: scaleY(0.1); }
+  }
+
+  /* MIRAI drift — §7.3 */
+  .mirai-sphere { animation: mirai-drift 12s ease-in-out infinite; }
+  @keyframes mirai-drift {
+    0%, 100% { transform: translate(0, 0) rotate(0deg); }
+    33% { transform: translate(2px, -3px) rotate(0.4deg); }
+    66% { transform: translate(-1px, 2px) rotate(-0.3deg); }
+  }
+
+  /* Page head — §4.6 */
+  .page-head { @apply mb-6; }
+  .page-head-meta { @apply text-meta; color: var(--text-muted); margin-bottom: 4px; }
+  .page-head-actions { @apply flex flex-wrap items-center gap-2 mt-4; }
+
+  /* Presence dot — §2.5 */
+  .presence-dot {
+    @apply absolute bottom-0 right-0 rounded-full;
+    width: 10px; height: 10px;
+    box-shadow: 0 0 0 2px var(--surface);
+  }
+
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

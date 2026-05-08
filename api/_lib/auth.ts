@@ -1,0 +1,71 @@
+/**
+ * Server-side request auth: every /api/* endpoint MUST call requireUser()
+ * to verify the JWT and resolve role from DB (never trust headers — PRD §3.3).
+ */
+import { createClient } from '@supabase/supabase-js';
+
+export type AuthedUser = {
+  id: string;
+  email: string;
+  isAdmin: boolean;
+  roleKey: string | null;
+};
+
+export function admin() {
+  const url = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? '';
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+  if (!url || !key) throw new Error('Supabase server env missing');
+  return createClient(url, key, { auth: { persistSession: false } });
+}
+
+export async function requireUser(req: Request): Promise<AuthedUser> {
+  const auth = req.headers.get('authorization') ?? '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  if (!token) throw new HttpError(401, 'Missing bearer token');
+
+  const sb = admin();
+  const { data, error } = await sb.auth.getUser(token);
+  if (error || !data?.user) throw new HttpError(401, 'Invalid token');
+
+  const { data: prof } = await sb
+    .from('profiles')
+    .select('id, email, is_creator, role_id')
+    .eq('id', data.user.id)
+    .maybeSingle();
+  if (!prof) throw new HttpError(403, 'No profile');
+
+  let roleKey: string | null = null;
+  let roleAdmin = false;
+  if (prof.role_id) {
+    const { data: role } = await sb.from('roles').select('key, is_admin').eq('id', prof.role_id).maybeSingle();
+    roleKey = role?.key ?? null;
+    roleAdmin = !!role?.is_admin;
+  }
+
+  return {
+    id: prof.id,
+    email: prof.email,
+    isAdmin: prof.is_creator || roleAdmin,
+    roleKey,
+  };
+}
+
+export class HttpError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
+
+export function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+export function errorResponse(e: unknown) {
+  if (e instanceof HttpError) return jsonResponse({ error: e.message }, e.status);
+  // eslint-disable-next-line no-console
+  console.error('[api]', e);
+  return jsonResponse({ error: 'Internal error' }, 500);
+}

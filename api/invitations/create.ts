@@ -1,0 +1,53 @@
+/**
+ * Admin-only invite. Issues a 48h token, sends magic-link email via Resend.
+ * REQ-AUTH-02.
+ */
+import { admin, errorResponse, HttpError, jsonResponse, requireUser } from '../_lib/auth';
+
+export const config = { runtime: 'edge' };
+
+export default async function handler(req: Request) {
+  try {
+    if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed');
+    const user = await requireUser(req);
+    if (!user.isAdmin) throw new HttpError(403, 'Admin only');
+
+    const { email, role_key } = (await req.json()) as { email?: string; role_key?: string };
+    if (!email || !role_key) throw new HttpError(400, 'email + role_key required');
+
+    const sb = admin();
+    const { data: role } = await sb.from('roles').select('id').eq('key', role_key).maybeSingle();
+    if (!role) throw new HttpError(400, 'Unknown role');
+
+    const token = crypto.randomUUID();
+    const expires = new Date(Date.now() + 48 * 3600_000).toISOString();
+
+    await sb
+      .from('invitations')
+      .upsert(
+        { email, role_id: role.id, invited_by: user.id, token, expires_at: expires, accepted_at: null },
+        { onConflict: 'email' },
+      );
+
+    const resendKey = process.env.RESEND_API_KEY;
+    if (resendKey) {
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${resendKey}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: 'Reflect <noreply@reflect.az>',
+          to: email,
+          subject: 'Reflect-ə dəvətnamə',
+          html: `<p>Salam,</p><p>Reflect-ə qoşulmaq üçün <a href="${process.env.PUBLIC_APP_URL ?? ''}/login?invite=${token}">linki aç</a>. Müddət: 48 saat.</p>`,
+        }),
+      }).catch(() => null);
+    }
+
+    return jsonResponse({ ok: true, token });
+  } catch (e) {
+    return errorResponse(e);
+  }
+}
