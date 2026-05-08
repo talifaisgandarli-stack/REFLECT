@@ -43,6 +43,7 @@ export async function embed(input: string | string[]): Promise<number[][]> {
  */
 export function chunkText(text: string, target = 1000, overlap = 150): string[] {
   const clean = text.replace(/\r\n/g, '\n').trim();
+  if (clean.length === 0) return [];
   if (clean.length <= target) return [clean];
 
   const out: string[] = [];

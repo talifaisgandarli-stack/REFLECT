@@ -104,6 +104,7 @@ Vector DB:  pgvector extension on Supabase (RAG)
 Jobs:       Vercel Cron + Supabase pg_cron for scheduled work
 Email:      Resend (transactional) — magic links via Supabase Auth
 Telegram:   Bot API (one Reflect bot, per-user chat_id linking)
+Testing:    Vitest (unit + parity harness; runs in CI per §9.3 / §11.3)
 ```
 
 ### 3.2 Database — Core Tables (canonical list)

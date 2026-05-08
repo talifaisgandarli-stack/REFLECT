@@ -1,0 +1,38 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  # Parity harness gate (PRD §9.3). Skipped today — runs only when a shadow
+  # Postgres URL is present in repo secrets. Wire DATABASE_URL when CI gets
+  # a shadow project; the test itself already self-skips without it.
+  parity:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.SHADOW_DATABASE_URL != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm i -D pg @types/pg
+      - run: npm run test:parity
+        env:
+          DATABASE_URL: ${{ secrets.SHADOW_DATABASE_URL }}

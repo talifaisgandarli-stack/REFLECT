@@ -107,6 +107,7 @@ or the design doc instead.
 - [x] Maliyyə Mərkəzi: P&L, Outsource, Xərclər tabs (REQ-FIN-05, REQ-FIN-06, REQ-FIN-07)
 - [x] MIRAI streaming + handoff: SSE over /api/mirai/chat, mirai_conversations + mirai_messages persistence, Realtime mirai_messages:conversation_id subscription (PRD §3.4, §7.1, US-MIRAI-01)
 - [x] Outsource user-side status updates via update_outsource_status RPC (REQ-FIN-07) + recurring_expenses → expenses materializer with daily Vercel cron (REQ-FIN-05)
+- [x] Test infrastructure: Vitest + migration-pairing tests + parity harness skeleton + GitHub Actions CI (PRD §9.3, §11.3)
 - [ ] Realtime channels (tasks/activity/announcements) — wired in v1.5
 - [ ] Calendar Month/Week/Day full grids — placeholder list view shipped
 - [ ] Knowledge Base PDF upload + RAG embeddings pipeline
