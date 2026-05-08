@@ -365,6 +365,21 @@ export function isOverpaymentError(e: unknown): boolean {
   return msg.includes('overpayment_blocked') || msg.includes('chk_paid_lte_amount');
 }
 
+// ---------------- Retrospective survey (REQ-CRM-07 / US-CRM-06) ----------------
+export function useCreateRetrospective() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (projectId: string): Promise<{ share_token: string }> => {
+      const { data, error } = await supabase.rpc('create_retrospective', {
+        p_project_id: projectId,
+      });
+      if (error) throw error;
+      return data as { share_token: string };
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['activity'] }),
+  });
+}
+
 // ---------------- Career levels (US-CAREER-01) ----------------
 export function useCareerLevels() {
   return useQuery({

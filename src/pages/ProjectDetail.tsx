@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
-import { useProject, useTasks } from '@/lib/hooks';
+import { useCreateRetrospective, useProject, useTasks } from '@/lib/hooks';
 import { StatusChip } from '@/components/StatusChip';
 import { useState } from 'react';
 import { useAuth } from '@/lib/store';
@@ -100,12 +100,83 @@ export function ProjectDetailPage() {
         </div>
       ) : null}
 
-      {tab === 'Documents' || tab === 'Finance' || tab === 'Closeout' || tab === 'History' ? (
+      {tab === 'Closeout' ? <CloseoutPanel projectId={project.id} isAdmin={isAdmin} /> : null}
+
+      {tab === 'Documents' || tab === 'Finance' || tab === 'History' ? (
         <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
           {tab} bölməsi v1.5-də.
         </div>
       ) : null}
     </>
+  );
+}
+
+function CloseoutPanel({ projectId, isAdmin }: { projectId: string; isAdmin: boolean }) {
+  const create = useCreateRetrospective();
+  const [link, setLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  if (!isAdmin) {
+    return (
+      <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
+        Closeout proseduru admin tərəfindən aparılır.
+      </div>
+    );
+  }
+
+  function generate() {
+    create.mutate(projectId, {
+      onSuccess: (row) => {
+        setLink(`${window.location.origin}/r/${row.share_token}`);
+        setCopied(false);
+      },
+    });
+  }
+
+  async function copy() {
+    if (!link) return;
+    await navigator.clipboard.writeText(link);
+    setCopied(true);
+  }
+
+  return (
+    <div className="card">
+      <h3 className="text-h3 mb-2">Müştəri rəyi sorğusu</h3>
+      <p className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
+        Sorğu yarat, link müştəriyə göndər. Cavab gəldikdə avtomatik qeyd olunacaq.
+      </p>
+      <button
+        className="btn-primary"
+        disabled={create.isPending}
+        onClick={generate}
+      >
+        {create.isPending ? 'Yaradılır…' : 'Sorğu yarat'}
+      </button>
+      {link ? (
+        <div
+          className="mt-4 rounded-card p-3"
+          style={{ background: 'var(--surface-mist)' }}
+        >
+          <div
+            className="text-tiny uppercase tracking-wider mb-2"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            Paylaşım linki
+          </div>
+          <div className="flex gap-2">
+            <input className="input flex-1" value={link} readOnly onFocus={(e) => e.currentTarget.select()} />
+            <button className="btn-outline" onClick={copy}>
+              {copied ? 'Kopyalandı' : 'Kopyala'}
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {create.isError ? (
+        <div className="text-meta mt-3" style={{ color: 'var(--danger, #B91C1C)' }}>
+          {(create.error as Error).message}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
