@@ -237,6 +237,27 @@ export interface CareerLevel {
   created_at: string;
 }
 
+export interface Equipment {
+  id: string;
+  name: string;
+  kind: string | null;
+  serial: string | null;
+  assigned_to: string | null;
+  condition: string | null;
+  purchased_at: string | null;
+  notes: string | null;
+}
+
+export interface EquipmentTransfer {
+  id: string;
+  equipment_id: string;
+  from_user_id: string | null;
+  to_user_id: string | null;
+  transferred_by: string | null;
+  transferred_at: string;
+  note: string | null;
+}
+
 export type ContentStatus = 'idea' | 'draft' | 'review' | 'published';
 
 export interface ContentPlan {

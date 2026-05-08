@@ -15,6 +15,8 @@ import type {
   CareerLevel,
   ContentPlan,
   ContentStatus,
+  Equipment,
+  EquipmentTransfer,
   CloseoutChecklist,
   CloseoutItem,
   PortfolioApplicationItem,
@@ -534,6 +536,80 @@ export function useSubmitPerformanceReview() {
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['perf'] }),
+  });
+}
+
+// ---------------- Equipment (US-EQUIP-01) ----------------
+export function useEquipment() {
+  return useQuery({
+    queryKey: ['equipment'],
+    queryFn: async (): Promise<Equipment[]> => {
+      const { data, error } = await supabase
+        .from('equipment')
+        .select('*')
+        .order('name', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as unknown as Equipment[];
+    },
+  });
+}
+
+export function useEquipmentTransfers(equipmentId: string | undefined) {
+  return useQuery({
+    queryKey: ['equipment-transfers', equipmentId],
+    enabled: !!equipmentId,
+    queryFn: async (): Promise<EquipmentTransfer[]> => {
+      const { data, error } = await supabase
+        .from('equipment_transfers')
+        .select('*')
+        .eq('equipment_id', equipmentId!)
+        .order('transferred_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as unknown as EquipmentTransfer[];
+    },
+  });
+}
+
+export function useCreateEquipment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      name: string;
+      kind?: string | null;
+      serial?: string | null;
+      condition?: string | null;
+      purchased_at?: string | null;
+      notes?: string | null;
+    }) => {
+      const { error } = await supabase.from('equipment').insert({
+        name: input.name,
+        kind: input.kind ?? null,
+        serial: input.serial ?? null,
+        condition: input.condition ?? null,
+        purchased_at: input.purchased_at ?? null,
+        notes: input.notes ?? null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['equipment'] }),
+  });
+}
+
+export function useAssignEquipment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; toUserId: string | null; note?: string }) => {
+      const { error } = await supabase.rpc('assign_equipment', {
+        p_equipment_id: input.id,
+        p_to_user_id: input.toUserId,
+        p_note: input.note ?? null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ['equipment'] });
+      qc.invalidateQueries({ queryKey: ['equipment-transfers', vars.id] });
+    },
   });
 }
 
