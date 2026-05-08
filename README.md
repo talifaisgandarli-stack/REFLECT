@@ -101,6 +101,7 @@ or the design doc instead.
 - [x] CRM: Client create modal (REQ-CRM-01) + inline-create wired into ProjectModal
 - [x] Quick interaction log inside Müştəri drawer (REQ-CRM-03)
 - [x] Retrospective survey: admin trigger + public /survey/:token form (REQ-CRM-07)
+- [x] Calendar Month/Week/Day grids + EventModal + .ics email invite + meet.new (PRD §8.2 / US-CAL-01..03)
 - [ ] Realtime channels (tasks/activity/announcements) — wired in v1.5
 - [ ] Calendar Month/Week/Day full grids — placeholder list view shipped
 - [ ] Knowledge Base PDF upload + RAG embeddings pipeline
