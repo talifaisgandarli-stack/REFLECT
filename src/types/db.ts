@@ -133,6 +133,69 @@ export interface ClientStageHistory {
   lost_reason: string | null;
 }
 
+export type ReceivableStatus = 'open' | 'partial' | 'paid' | 'overdue';
+export type OutsourceStatus = 'order' | 'in_progress' | 'delivered' | 'paid';
+export type RecurringPeriod = 'weekly' | 'monthly' | 'quarterly' | 'yearly';
+
+export interface Income {
+  id: string;
+  project_id: string | null;
+  client_id: string | null;
+  amount: number;
+  payment_method: string | null;
+  occurred_at: string;
+  invoice_number: string | null;
+  note: string | null;
+  created_by: string | null;
+}
+
+export interface Expense {
+  id: string;
+  project_id: string | null;
+  category: string | null;
+  amount: number;
+  vendor: string | null;
+  occurred_at: string;
+  note: string | null;
+  created_by: string | null;
+  recurring_rule_id: string | null;
+}
+
+export interface Receivable {
+  id: string;
+  client_id: string | null;
+  project_id: string | null;
+  amount: number;
+  due_at: string | null;
+  paid_amount: number;
+  status: ReceivableStatus;
+  created_at: string;
+}
+
+export interface OutsourceItem {
+  id: string;
+  project_id: string | null;
+  work_title: string;
+  contact_person: string | null;
+  contact_company: string | null;
+  amount: number | null;
+  paid_at: string | null;
+  payment_method: string | null;
+  responsible_user_id: string | null;
+  deadline: string | null;
+  status: OutsourceStatus;
+  created_at: string;
+}
+
+export interface CashForecastRow {
+  id: string;
+  generated_at: string;
+  horizon_days: 30 | 60 | 90;
+  projected_balance: number;
+  confidence_low: number | null;
+  confidence_high: number | null;
+}
+
 export interface UserPresence {
   user_id: string;
   status: PresenceStatus;
@@ -161,6 +224,18 @@ export interface Database {
       roles: { Row: Role; Insert: Partial<Role>; Update: Partial<Role> };
       projects: { Row: Project; Insert: Partial<Project>; Update: Partial<Project> };
       tasks: { Row: Task; Insert: Partial<Task>; Update: Partial<Task> };
+      incomes: { Row: Income; Insert: Partial<Income>; Update: Partial<Income> };
+      expenses: { Row: Expense; Insert: Partial<Expense>; Update: Partial<Expense> };
+      receivables: {
+        Row: Receivable;
+        Insert: Partial<Receivable>;
+        Update: Partial<Receivable>;
+      };
+      outsource_items: {
+        Row: OutsourceItem;
+        Insert: Partial<OutsourceItem>;
+        Update: Partial<OutsourceItem>;
+      };
       clients: { Row: Client; Insert: Partial<Client>; Update: Partial<Client> };
       client_interactions: {
         Row: ClientInteraction;
@@ -197,6 +272,10 @@ export interface Database {
       set_client_stage: {
         Args: { p_client_id: string; p_to_stage: ClientPipelineStage; p_lost_reason?: string | null };
         Returns: void;
+      };
+      mark_receivable_paid: {
+        Args: { p_receivable_id: string; p_delta: number };
+        Returns: Receivable;
       };
     };
     Enums: {

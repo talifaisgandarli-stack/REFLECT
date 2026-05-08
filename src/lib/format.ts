@@ -36,6 +36,25 @@ export function relativeTime(iso: string | null | undefined): string {
   return formatDate(iso);
 }
 
+/**
+ * REQ-FIN-09: month boundaries computed in Asia/Baku, not UTC.
+ * Returns ISO timestamps marking [start, end) of the Baku-local month containing `ref`.
+ */
+export function bakuMonthRange(ref: Date = new Date()): { start: string; end: string } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(ref);
+  const y = Number(parts.find((p) => p.type === 'year')!.value);
+  const m = Number(parts.find((p) => p.type === 'month')!.value);
+  // Baku is UTC+4 year-round (no DST since 2016).
+  const startUtc = Date.UTC(y, m - 1, 1, -4, 0, 0);
+  const endUtc = Date.UTC(m === 12 ? y + 1 : y, m === 12 ? 0 : m, 1, -4, 0, 0);
+  return { start: new Date(startUtc).toISOString(), end: new Date(endUtc).toISOString() };
+}
+
 /** Task health color per REQ-DASH-04. */
 export function taskHealth(deadlineISO: string | null | undefined): 'red' | 'amber' | 'green' | 'none' {
   if (!deadlineISO) return 'none';

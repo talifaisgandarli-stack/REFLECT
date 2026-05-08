@@ -5,8 +5,12 @@ import type {
   ClientInteraction,
   ClientPipelineStage,
   ClientStageHistory,
+  Expense,
+  Income,
   InteractionType,
+  OutsourceItem,
   Project,
+  Receivable,
   Task,
   TaskStatus,
   ActivityLogEntry,
@@ -176,6 +180,143 @@ export function useClientStageHistory(clientId: string | undefined) {
       return data ?? [];
     },
   });
+}
+
+// ---------------- Finance (admin only — RLS enforced) ----------------
+export function useIncomes(range?: { start: string; end: string }) {
+  return useQuery({
+    queryKey: ['fin', 'incomes', range],
+    queryFn: async (): Promise<Income[]> => {
+      let q = supabase.from('incomes').select('*').order('occurred_at', { ascending: false });
+      if (range) q = q.gte('occurred_at', range.start).lt('occurred_at', range.end);
+      const { data, error } = await q.limit(500);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
+export function useExpenses(range?: { start: string; end: string }) {
+  return useQuery({
+    queryKey: ['fin', 'expenses', range],
+    queryFn: async (): Promise<Expense[]> => {
+      let q = supabase.from('expenses').select('*').order('occurred_at', { ascending: false });
+      if (range) q = q.gte('occurred_at', range.start).lt('occurred_at', range.end);
+      const { data, error } = await q.limit(500);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
+export function useReceivables() {
+  return useQuery({
+    queryKey: ['fin', 'receivables'],
+    queryFn: async (): Promise<Receivable[]> => {
+      const { data, error } = await supabase
+        .from('receivables')
+        .select('*')
+        .order('due_at', { ascending: true, nullsFirst: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
+export function useOutsourceItems() {
+  return useQuery({
+    queryKey: ['fin', 'outsource'],
+    queryFn: async (): Promise<OutsourceItem[]> => {
+      const { data, error } = await supabase
+        .from('outsource_items')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
+export function useCreateIncome() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      amount: number;
+      project_id?: string | null;
+      client_id?: string | null;
+      payment_method?: string | null;
+      occurred_at?: string;
+      invoice_number?: string | null;
+      note?: string | null;
+    }) => {
+      if (!(input.amount > 0)) throw new Error('amount_must_be_positive');
+      const { error } = await supabase.from('incomes').insert({
+        amount: input.amount,
+        project_id: input.project_id ?? null,
+        client_id: input.client_id ?? null,
+        payment_method: input.payment_method ?? null,
+        occurred_at: input.occurred_at ?? new Date().toISOString(),
+        invoice_number: input.invoice_number ?? null,
+        note: input.note ?? null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fin', 'incomes'] });
+      qc.invalidateQueries({ queryKey: ['activity'] });
+    },
+  });
+}
+
+export function useCreateExpense() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      amount: number;
+      category?: string | null;
+      vendor?: string | null;
+      project_id?: string | null;
+      occurred_at?: string;
+      note?: string | null;
+    }) => {
+      if (!(input.amount > 0)) throw new Error('amount_must_be_positive');
+      const { error } = await supabase.from('expenses').insert({
+        amount: input.amount,
+        category: input.category ?? null,
+        vendor: input.vendor ?? null,
+        project_id: input.project_id ?? null,
+        occurred_at: input.occurred_at ?? new Date().toISOString(),
+        note: input.note ?? null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fin', 'expenses'] });
+      qc.invalidateQueries({ queryKey: ['activity'] });
+    },
+  });
+}
+
+export function useMarkReceivablePaid() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; delta: number }) => {
+      if (!(input.delta > 0)) throw new Error('delta_must_be_positive');
+      const { data, error } = await supabase.rpc('mark_receivable_paid', {
+        p_receivable_id: input.id,
+        p_delta: input.delta,
+      });
+      if (error) throw error;
+      return data as Receivable | null;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['fin', 'receivables'] }),
+  });
+}
+
+export function isOverpaymentError(e: unknown): boolean {
+  if (!e || typeof e !== 'object') return false;
+  const msg = (e as { message?: string }).message ?? '';
+  return msg.includes('overpayment_blocked') || msg.includes('chk_paid_lte_amount');
 }
 
 // ---------------- Activity log (Realtime in v1.5) ----------------
