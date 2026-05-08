@@ -1,7 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MiraiSphere } from '@/components/MiraiSphere';
 import { Mascot } from '@/components/Mascot';
 import { supabase } from '@/lib/supabase';
+
+type Usage = {
+  cap_usd: number;
+  spent_usd: number;
+  ratio: number;
+  level: 'none' | 'warning' | 'blocked';
+};
 
 const SUGGESTIONS = [
   'Bu həftəki tapşırıqları yığ',
@@ -17,9 +24,29 @@ export function MiraiPage() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [q, setQ] = useState('');
   const [streaming, setStreaming] = useState(false);
+  const [usage, setUsage] = useState<Usage | null>(null);
+
+  async function refreshUsage() {
+    const { data: sess } = await supabase.auth.getSession();
+    const token = sess.session?.access_token;
+    if (!token) return;
+    try {
+      const res = await fetch('/api/mirai/usage', {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      if (res.ok) setUsage((await res.json()) as Usage);
+    } catch {
+      // non-fatal
+    }
+  }
+
+  useEffect(() => {
+    refreshUsage();
+  }, []);
 
   async function ask(text: string) {
     if (!text.trim() || streaming) return;
+    if (usage?.level === 'blocked') return;
     setMsgs((m) => [...m, { role: 'user', content: text }, { role: 'assistant', content: '' }]);
     setQ('');
     setStreaming(true);
@@ -80,6 +107,7 @@ export function MiraiPage() {
       appendLast('Bunu mənbədən təsdiqləyə bilmirəm — əlaqə xətası.');
     } finally {
       setStreaming(false);
+      refreshUsage();
     }
   }
 
@@ -119,6 +147,37 @@ export function MiraiPage() {
       </p>
 
       <div className="w-full max-w-[720px] mt-10">
+        {usage && usage.level !== 'none' ? (
+          <div
+            className="rounded-card p-3 mb-3 text-body"
+            style={{
+              background:
+                usage.level === 'blocked'
+                  ? 'rgba(185,28,28,0.18)'
+                  : 'rgba(217,119,6,0.18)',
+              border:
+                usage.level === 'blocked'
+                  ? '1px solid rgba(185,28,28,0.35)'
+                  : '1px solid rgba(217,119,6,0.35)',
+              color: 'var(--canvas)',
+            }}
+          >
+            {usage.level === 'blocked' ? (
+              <>
+                Aylıq MIRAI limitiniz dolub
+                ({usage.spent_usd.toFixed(2)} / {usage.cap_usd.toFixed(2)} USD).
+                Növbəti təqvim ayında yenidən aktivləşəcək.
+              </>
+            ) : (
+              <>
+                Diqqət: aylıq MIRAI büdcənizin {Math.round(usage.ratio * 100)}%-i
+                istifadə olunub ({usage.spent_usd.toFixed(2)} /{' '}
+                {usage.cap_usd.toFixed(2)} USD).
+              </>
+            )}
+          </div>
+        ) : null}
+
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -129,15 +188,27 @@ export function MiraiPage() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="MIRAI-dən soruş…"
+            placeholder={
+              usage?.level === 'blocked'
+                ? 'Limit dolub — növbəti ayı gözləyin…'
+                : 'MIRAI-dən soruş…'
+            }
+            disabled={usage?.level === 'blocked'}
             className="flex-1 h-12 rounded-btn px-4 text-body"
             style={{
               background: 'rgba(255,255,255,0.04)',
               border: '1px solid rgba(255,255,255,0.08)',
               color: 'var(--canvas)',
+              opacity: usage?.level === 'blocked' ? 0.5 : 1,
             }}
           />
-          <button type="submit" className="btn-primary">Göndər</button>
+          <button
+            type="submit"
+            className="btn-primary"
+            disabled={usage?.level === 'blocked' || streaming}
+          >
+            Göndər
+          </button>
         </form>
 
         <div className="flex flex-wrap gap-2 mt-3">
