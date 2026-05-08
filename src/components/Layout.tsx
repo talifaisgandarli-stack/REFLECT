@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { MiraiDrawer } from './MiraiDrawer';
 import { CmdK } from './CmdK';
+import { NotificationsBell } from './NotificationsBell';
 import { useEffect } from 'react';
 import { useUI } from '@/lib/store';
 import {
@@ -33,6 +34,7 @@ export function Layout() {
       <main className="flex-1 px-6 lg:px-10 py-6 max-w-[1600px] mx-auto w-full">
         <Outlet />
       </main>
+      <NotificationsBell />
       <MiraiDrawer />
       <CmdK />
     </div>

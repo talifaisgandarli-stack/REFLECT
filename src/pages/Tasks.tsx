@@ -7,6 +7,7 @@ import type { Task, TaskStatus } from '@/types/db';
 import { useAuth } from '@/lib/store';
 import { SubtaskBlockingModal } from '@/components/SubtaskBlockingModal';
 import { TaskModal } from '@/components/TaskModal';
+import { TaskCommentsPanel } from '@/components/TaskCommentsPanel';
 import { TaskQuickCreate } from '@/components/TaskQuickCreate';
 import { CancelTaskModal } from '@/components/CancelTaskModal';
 import { useRealtimeTasks } from '@/lib/realtime';
@@ -23,6 +24,7 @@ export function TasksPage() {
   const [blocker, setBlocker] = useState<{ id: string; from?: TaskStatus } | null>(null);
   const [openCreate, setOpenCreate] = useState(false);
   const [cancelling, setCancelling] = useState<string | null>(null);
+  const [activeTask, setActiveTask] = useState<{ id: string; title: string } | null>(null);
 
   function moveTask(id: string, status: TaskStatus, from?: TaskStatus) {
     if (status === 'cancelled' && from !== 'cancelled') {
@@ -139,6 +141,18 @@ export function TasksPage() {
                       {t.deadline ? (
                         <div className="text-meta opacity-70 mt-1">{t.deadline}</div>
                       ) : null}
+                      <button
+                        type="button"
+                        onClick={() => setActiveTask({ id: t.id, title: t.title })}
+                        className="text-tiny mt-2 opacity-70 hover:opacity-100"
+                        style={{
+                          color: isToday ? 'var(--canvas)' : 'var(--text-muted)',
+                          textDecoration: 'underline',
+                          textUnderlineOffset: 2,
+                        }}
+                      >
+                        Şərhlər
+                      </button>
                       {t.status !== 'done' && t.status !== 'cancelled' ? (
                         <button
                           type="button"
@@ -215,6 +229,13 @@ export function TasksPage() {
       {openCreate ? <TaskModal onClose={() => setOpenCreate(false)} /> : null}
       {cancelling ? (
         <CancelTaskModal taskId={cancelling} onClose={() => setCancelling(null)} />
+      ) : null}
+      {activeTask ? (
+        <TaskCommentsPanel
+          taskId={activeTask.id}
+          taskTitle={activeTask.title}
+          onClose={() => setActiveTask(null)}
+        />
       ) : null}
     </>
   );

@@ -115,6 +115,7 @@ or the design doc instead.
 - [x] Module 9 OKR core: Şirkət/Şəxsi scopes (admin-gated), objective + KR creation, inline KR progress with computed health bands ≥70/40-69/<40 (PRD §9.1)
 - [x] OKR weekly nudge: Monday 06:00 Asia/Baku cron, batched per-owner Telegram message via MIRAI Strateq persona, honors notification_preferences (PRD §9.1)
 - [x] Module 9 closed: Karyera Strukturu (career_levels CRUD, admin write / authenticated read) + Məzmun Planlaması kanban (idea/draft/review/published, admin only) — PRD §9.2/§9.3, completes the schema gap missed in 0001
+- [x] Task comments + @mentions: TaskCommentsPanel with Realtime, server-side mention parser (DB trigger) populates mentions[] + writes notifications, top-right NotificationsBell with unread badge — REQ-TASK-07 (Telegram fan-out for mentions deferred)
 - [ ] Realtime channels (tasks/activity/announcements) — wired in v1.5
 - [ ] Calendar Month/Week/Day full grids — placeholder list view shipped
 - [ ] Knowledge Base PDF upload + RAG embeddings pipeline
