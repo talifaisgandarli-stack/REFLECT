@@ -237,6 +237,24 @@ export interface CareerLevel {
   created_at: string;
 }
 
+export type LeaveKind = 'annual' | 'sick' | 'unpaid' | 'parental' | 'other';
+export type LeaveStatus = 'pending' | 'approved' | 'denied' | 'cancelled';
+
+export interface LeaveRequest {
+  id: string;
+  employee_id: string;
+  kind: LeaveKind;
+  starts_at: string;
+  ends_at: string;
+  days: number;
+  status: LeaveStatus;
+  approver_id: string | null;
+  approved_at: string | null;
+  calendar_event_id: string | null;
+  note: string | null;
+  created_at: string;
+}
+
 export type OkrScope = 'company' | 'personal';
 
 export interface Okr {

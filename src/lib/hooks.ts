@@ -18,6 +18,8 @@ import type {
   PortfolioWorkflow,
   SystemAward,
   KeyResult,
+  LeaveKind,
+  LeaveRequest,
   Okr,
   OkrScope,
   PerformanceReview,
@@ -513,6 +515,79 @@ export function useSubmitPerformanceReview() {
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['perf'] }),
+  });
+}
+
+// ---------------- Leave (US-LEAVE-01..02) ----------------
+export function useLeaveRequests(employeeId?: string) {
+  return useQuery({
+    queryKey: ['leave', employeeId ?? 'all'],
+    queryFn: async (): Promise<LeaveRequest[]> => {
+      let q = supabase
+        .from('leave_requests')
+        .select('*')
+        .order('starts_at', { ascending: false });
+      if (employeeId) q = q.eq('employee_id', employeeId);
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data ?? []) as unknown as LeaveRequest[];
+    },
+  });
+}
+
+export function useCreateLeaveRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      employee_id: string;
+      kind: LeaveKind;
+      starts_at: string;
+      ends_at: string;
+      days: number;
+      note?: string | null;
+    }) => {
+      const { error } = await supabase.from('leave_requests').insert({
+        employee_id: input.employee_id,
+        kind: input.kind,
+        starts_at: input.starts_at,
+        ends_at: input.ends_at,
+        days: input.days,
+        note: input.note ?? null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['leave'] }),
+  });
+}
+
+export function useDecideLeave() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; decision: 'approved' | 'denied' }) => {
+      const { error } = await supabase.rpc('decide_leave', {
+        p_request_id: input.id,
+        p_decision: input.decision,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['leave'] });
+      qc.invalidateQueries({ queryKey: ['calendar-events'] });
+    },
+  });
+}
+
+export function useCancelLeave() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('leave_requests')
+        .update({ status: 'cancelled' })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['leave'] }),
   });
 }
 
