@@ -401,6 +401,21 @@ export function useCloseoutChecklist(projectId: string | undefined) {
   });
 }
 
+export function useReopenProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (projectId: string) => {
+      const { error } = await supabase.rpc('reopen_project', { p_project_id: projectId });
+      if (error) throw error;
+    },
+    onSuccess: (_d, projectId) => {
+      qc.invalidateQueries({ queryKey: ['project', projectId] });
+      qc.invalidateQueries({ queryKey: ['projects'] });
+      qc.invalidateQueries({ queryKey: ['activity'] });
+    },
+  });
+}
+
 export function useCloseProject() {
   const qc = useQueryClient();
   return useMutation({

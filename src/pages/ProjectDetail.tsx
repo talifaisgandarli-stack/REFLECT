@@ -6,6 +6,7 @@ import {
   useCloseoutChecklist,
   useCreateRetrospective,
   useProject,
+  useReopenProject,
   useTasks,
 } from '@/lib/hooks';
 import type { CloseoutItem } from '@/types/db';
@@ -149,6 +150,7 @@ function CloseoutPanel({
 }) {
   const survey = useCreateRetrospective();
   const close = useCloseProject();
+  const reopen = useReopenProject();
   const { data: existing } = useCloseoutChecklist(projectId);
 
   const [items, setItems] = useState<CloseoutItem[]>(DEFAULT_CLOSEOUT_ITEMS);
@@ -220,10 +222,22 @@ function CloseoutPanel({
         ) : null}
         {isClosed ? (
           <div
-            className="text-meta mb-3 rounded-card p-2"
-            style={{ background: 'var(--surface-mist)', color: 'var(--text-muted)' }}
+            className="mb-3 rounded-card p-3 flex items-center justify-between gap-3"
+            style={{ background: 'var(--surface-mist)' }}
           >
-            Layihə artıq bağlanıb. Yenidən açma yalnız admin tərəfindən mümkündür.
+            <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+              Layihə bağlanıb. Səhv olduğu halda admin yenidən aça bilər.
+            </span>
+            <button
+              className="btn-outline"
+              disabled={reopen.isPending}
+              onClick={() => {
+                if (!confirm('Layihəni yenidən açmaq istəyirsən?')) return;
+                reopen.mutate(projectId);
+              }}
+            >
+              {reopen.isPending ? 'Açılır…' : 'Yenidən aç'}
+            </button>
           </div>
         ) : null}
         <ul className="space-y-2 mb-4">
