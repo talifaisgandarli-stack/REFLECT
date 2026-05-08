@@ -15,8 +15,10 @@ import type {
   CareerLevel,
   ContentPlan,
   ContentStatus,
+  DocumentSource,
   Equipment,
   EquipmentTransfer,
+  ProjectDocument,
   CloseoutChecklist,
   CloseoutItem,
   PortfolioApplicationItem,
@@ -536,6 +538,76 @@ export function useSubmitPerformanceReview() {
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['perf'] }),
+  });
+}
+
+// ---------------- Project documents (PRD §3.2 / REQ-PROJ-03) ----------------
+export const DOCUMENT_CATEGORIES = [
+  'Müqavilə',
+  'Akt',
+  'Faktura',
+  'Çertyoj',
+  'Spesifikasiya',
+  'Foto',
+  'Sorğu',
+  'price_protocol',
+  'Digər',
+] as const;
+
+export function useProjectDocuments(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ['project-documents', projectId],
+    enabled: !!projectId,
+    queryFn: async (): Promise<ProjectDocument[]> => {
+      const { data, error } = await supabase
+        .from('project_documents')
+        .select('*')
+        .eq('project_id', projectId!)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as unknown as ProjectDocument[];
+    },
+  });
+}
+
+export function useCreateProjectDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      project_id?: string | null;
+      client_id?: string | null;
+      category: string;
+      title: string;
+      source: DocumentSource;
+      external_link?: string | null;
+      storage_path?: string | null;
+    }) => {
+      const { error } = await supabase.from('project_documents').insert({
+        project_id: input.project_id ?? null,
+        client_id: input.client_id ?? null,
+        category: input.category,
+        title: input.title,
+        source: input.source,
+        external_link: input.external_link ?? null,
+        storage_path: input.storage_path ?? null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ['project-documents', vars.project_id ?? null] });
+    },
+  });
+}
+
+export function useDeleteProjectDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; projectId?: string | null }) => {
+      const { error } = await supabase.from('project_documents').delete().eq('id', input.id);
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) =>
+      qc.invalidateQueries({ queryKey: ['project-documents', vars.projectId ?? null] }),
   });
 }
 

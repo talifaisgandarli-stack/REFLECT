@@ -237,6 +237,23 @@ export interface CareerLevel {
   created_at: string;
 }
 
+export type DocumentSource = 'drive_link' | 'auto_generated' | 'upload';
+
+export interface ProjectDocument {
+  id: string;
+  project_id: string | null;
+  client_id: string | null;
+  category: string | null;
+  title: string;
+  source: DocumentSource;
+  external_link: string | null;
+  storage_path: string | null;
+  share_token: string | null;
+  shared_with: string[];
+  created_by: string | null;
+  created_at: string;
+}
+
 export interface Equipment {
   id: string;
   name: string;

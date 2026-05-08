@@ -2,10 +2,14 @@ import { useParams, Link } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
 import {
   DEFAULT_CLOSEOUT_ITEMS,
+  DOCUMENT_CATEGORIES,
   useCloseProject,
   useCloseoutChecklist,
+  useCreateProjectDocument,
   useCreateRetrospective,
+  useDeleteProjectDocument,
   useProject,
+  useProjectDocuments,
   useReopenProject,
   useTasks,
 } from '@/lib/hooks';
@@ -128,12 +132,175 @@ export function ProjectDetailPage() {
         />
       ) : null}
 
-      {tab === 'Documents' || tab === 'Finance' || tab === 'History' ? (
+      {tab === 'Documents' ? (
+        <DocumentsPanel projectId={project.id} clientId={project.client_id} isAdmin={isAdmin} />
+      ) : null}
+
+      {tab === 'Finance' || tab === 'History' ? (
         <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
           {tab} bölməsi v1.5-də.
         </div>
       ) : null}
     </>
+  );
+}
+
+function DocumentsPanel({
+  projectId,
+  clientId,
+  isAdmin,
+}: {
+  projectId: string;
+  clientId: string | null;
+  isAdmin: boolean;
+}) {
+  const { data: docs = [], isLoading } = useProjectDocuments(projectId);
+  const create = useCreateProjectDocument();
+  const del = useDeleteProjectDocument();
+  const [adding, setAdding] = useState(false);
+  const [title, setTitle] = useState('');
+  const [link, setLink] = useState('');
+  const [category, setCategory] = useState<string>(DOCUMENT_CATEGORIES[0]);
+  const [err, setErr] = useState<string | null>(null);
+
+  function submit() {
+    setErr(null);
+    if (!title.trim()) return setErr('Başlıq lazımdır.');
+    if (!link.trim()) return setErr('Link lazımdır.');
+    create.mutate(
+      {
+        project_id: projectId,
+        client_id: clientId,
+        category,
+        title: title.trim(),
+        source: 'drive_link',
+        external_link: link.trim(),
+      },
+      {
+        onSuccess: () => {
+          setAdding(false);
+          setTitle('');
+          setLink('');
+        },
+        onError: (e) => setErr((e as Error).message),
+      },
+    );
+  }
+
+  return (
+    <div className="card">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-h3">Sənədlər</h3>
+        {isAdmin && !adding ? (
+          <button className="btn-primary" onClick={() => setAdding(true)}>
+            + Link əlavə et
+          </button>
+        ) : null}
+      </div>
+
+      {adding ? (
+        <div
+          className="rounded-card p-3 mb-3"
+          style={{ background: 'var(--surface-mist)' }}
+        >
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
+            <input
+              className="input"
+              placeholder="Başlıq"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              autoFocus
+            />
+            <select
+              className="input"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+            >
+              {DOCUMENT_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+            <input
+              className="input"
+              placeholder="https://drive.google.com/…"
+              value={link}
+              onChange={(e) => setLink(e.target.value)}
+            />
+          </div>
+          {err ? (
+            <div className="text-meta mb-2" style={{ color: 'var(--danger, #B91C1C)' }}>
+              {err}
+            </div>
+          ) : null}
+          <div className="flex justify-end gap-2">
+            <button className="btn-outline" onClick={() => setAdding(false)}>
+              Ləğv et
+            </button>
+            <button className="btn-primary" disabled={create.isPending} onClick={submit}>
+              {create.isPending ? 'Yazılır…' : 'Əlavə et'}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {isLoading ? (
+        <div className="text-meta">Yüklənir…</div>
+      ) : docs.length === 0 ? (
+        <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+          Sənəd yoxdur.
+        </p>
+      ) : (
+        <ul className="divide-y divide-line-soft">
+          {docs.map((d) => (
+            <li
+              key={d.id}
+              className="py-3 flex items-center justify-between gap-3"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="text-body font-medium truncate">{d.title}</div>
+                <div
+                  className="text-meta truncate"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  {d.category ?? '—'} ·{' '}
+                  {d.source === 'drive_link'
+                    ? 'Link'
+                    : d.source === 'auto_generated'
+                      ? 'Avto'
+                      : 'Yüklənmiş'}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {d.external_link ? (
+                  <a
+                    className="btn-outline"
+                    href={d.external_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Aç
+                  </a>
+                ) : null}
+                {isAdmin ? (
+                  <button
+                    className="btn-outline"
+                    style={{ color: 'var(--danger, #B91C1C)' }}
+                    onClick={() => {
+                      if (!confirm('Sənədi silmək istəyirsən?')) return;
+                      del.mutate({ id: d.id, projectId });
+                    }}
+                  >
+                    Sil
+                  </button>
+                ) : null}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
