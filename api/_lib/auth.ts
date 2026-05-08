@@ -8,6 +8,7 @@ export type AuthedUser = {
   id: string;
   email: string;
   isAdmin: boolean;
+  isCreator: boolean;
   roleKey: string | null;
 };
 
@@ -62,6 +63,7 @@ export async function requireUser(req: Request): Promise<AuthedUser> {
     id: prof.id,
     email: prof.email,
     isAdmin: prof.is_creator || roleAdmin,
+    isCreator: !!prof.is_creator,
     roleKey,
   };
 }

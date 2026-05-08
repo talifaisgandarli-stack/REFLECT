@@ -28,6 +28,22 @@ export default async function handler(req: Request) {
       .maybeSingle();
 
     const spent = Number(data?.cost_usd ?? 0);
+
+    // PRD §7.6: creator is exempt from the cap. Surface infinite cap so the
+    // UI never shows a warning/blocked banner for them.
+    if (user.isCreator) {
+      return jsonResponse({
+        cap_usd: 0,
+        spent_usd: spent,
+        ratio: 0,
+        level: 'none',
+        creator_exempt: true,
+        tokens_in: data?.tokens_in ?? 0,
+        tokens_out: data?.tokens_out ?? 0,
+        period_yyyymm: yyyymm,
+      });
+    }
+
     const ratio = MONTHLY_CAP > 0 ? spent / MONTHLY_CAP : 0;
     let level: 'none' | 'warning' | 'blocked' = 'none';
     if (ratio >= 1) level = 'blocked';
@@ -38,6 +54,7 @@ export default async function handler(req: Request) {
       spent_usd: spent,
       ratio,
       level,
+      creator_exempt: false,
       tokens_in: data?.tokens_in ?? 0,
       tokens_out: data?.tokens_out ?? 0,
       period_yyyymm: yyyymm,

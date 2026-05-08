@@ -74,7 +74,11 @@ export default async function handler(req: Request) {
       .eq('user_id', user.id)
       .eq('period_yyyymm', yyyymm)
       .maybeSingle();
-    if ((usage?.cost_usd ?? 0) > Number(process.env.MIRAI_MONTHLY_CAP_USD ?? '20')) {
+    // PRD §7.6: creator exempt from monthly cap.
+    if (
+      !user.isCreator &&
+      (usage?.cost_usd ?? 0) > Number(process.env.MIRAI_MONTHLY_CAP_USD ?? '20')
+    ) {
       throw new HttpError(429, 'Aylıq MIRAI limit dolub. Admin ilə əlaqə saxla.');
     }
 
