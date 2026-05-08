@@ -26,6 +26,7 @@ import { SettingsPage } from '@/pages/Settings';
 import { MiraiPage } from '@/pages/Mirai';
 import { TelegramLinkPage } from '@/pages/TelegramLink';
 import { RetrospectivePage } from '@/pages/Retrospective';
+import { PublicDocumentPage } from '@/pages/PublicDocument';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { session, hydrated } = useAuth();
@@ -47,6 +48,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/r/:token" element={<RetrospectivePage />} />
+      <Route path="/d/:token" element={<PublicDocumentPage />} />
       <Route
         element={
           <RequireAuth>
