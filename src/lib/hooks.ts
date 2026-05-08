@@ -198,6 +198,64 @@ export function useActivityFeed(limit = 50) {
   });
 }
 
+// ---------------- Notifications (PRD §6.4) ----------------
+export type NotificationKind =
+  | 'mention'
+  | 'task_assigned'
+  | 'task_status_changed'
+  | 'task_done'
+  | 'task_cancelled'
+  | 'deadline_reminder'
+  | 'finance_alert';
+
+export interface NotificationRow {
+  id: string;
+  user_id: string;
+  kind: NotificationKind | string;
+  payload: Record<string, unknown>;
+  read_at: string | null;
+  created_at: string;
+}
+
+export function useNotifications(limit = 20) {
+  return useQuery({
+    queryKey: ['notifications', limit],
+    refetchInterval: 30_000,
+    queryFn: async (): Promise<NotificationRow[]> => {
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      return (data ?? []) as NotificationRow[];
+    },
+  });
+}
+
+export function useMarkNotificationRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id?: string; all?: boolean }) => {
+      if (input.all) {
+        const { error } = await supabase
+          .from('notifications')
+          .update({ read_at: new Date().toISOString() })
+          .is('read_at', null);
+        if (error) throw error;
+        return;
+      }
+      if (!input.id) return;
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read_at: new Date().toISOString() })
+        .eq('id', input.id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+}
+
 // ---------------- Presence ----------------
 export function useTeamPresence() {
   return useQuery({
