@@ -14,6 +14,7 @@ import {
   extractVariables,
   renderTemplate,
 } from '@/lib/templates';
+import { downloadCsv, printSection } from '@/lib/export';
 
 type TemplateRow = {
   id: string;
@@ -94,15 +95,33 @@ export function TemplatesManager() {
       <aside>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-h3">Şablonlar</h3>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => create.mutate()}
-            disabled={create.isPending}
-            style={{ height: 32, padding: '0 12px' }}
-          >
-            +
-          </button>
+          <span className="flex gap-1">
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => {
+                const rows = (list.data ?? []).map((t) => [
+                  t.name,
+                  t.category,
+                  (t.body ?? '').replace(/\s+/g, ' ').slice(0, 200),
+                ]);
+                downloadCsv('reflect-sablonlar', ['Ad', 'Kateqoriya', 'Mətn (qısa)'], rows);
+              }}
+              style={{ height: 32, padding: '0 10px' }}
+              title="Şablon siyahısını CSV/Excel kimi yüklə"
+            >
+              CSV
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => create.mutate()}
+              disabled={create.isPending}
+              style={{ height: 32, padding: '0 12px' }}
+            >
+              +
+            </button>
+          </span>
         </div>
         {list.isLoading ? (
           <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
@@ -241,6 +260,7 @@ function TemplateEditor({
             Önbaxış (nümunə kontekst)
           </span>
           <div
+            data-print-root
             className="rounded-btn p-3 text-body"
             style={{
               background: 'var(--surface-mist)',
@@ -288,7 +308,7 @@ function TemplateEditor({
         </p>
       ) : null}
 
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center gap-2 flex-wrap">
         <button
           type="button"
           className="btn-ghost"
@@ -298,14 +318,24 @@ function TemplateEditor({
         >
           Sil
         </button>
-        <button
-          type="button"
-          className="btn-primary"
-          onClick={() => save.mutate()}
-          disabled={save.isPending}
-        >
-          {save.isPending ? 'Yadda saxlanılır…' : 'Yadda saxla'}
-        </button>
+        <span className="flex gap-2">
+          <button
+            type="button"
+            className="btn-outline"
+            onClick={() => printSection()}
+            title="Önbaxış nümunə kontekstlə çap olunur"
+          >
+            PDF (çap)
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => save.mutate()}
+            disabled={save.isPending}
+          >
+            {save.isPending ? 'Yadda saxlanılır…' : 'Yadda saxla'}
+          </button>
+        </span>
       </div>
       {save.error ? (
         <p className="text-meta" style={{ color: '#B91C1C' }}>

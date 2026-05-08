@@ -186,6 +186,23 @@
   }
 }
 
+/* Print mode — body.print-active hides everything except an element marked
+   data-print-root. Drives "PDF" export via the browser's native Save-as-PDF
+   dialog without needing a heavy renderer. */
+@media print {
+  body.print-active * { visibility: hidden !important; }
+  body.print-active [data-print-root],
+  body.print-active [data-print-root] * { visibility: visible !important; }
+  body.print-active [data-print-root] {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    background: var(--surface) !important;
+    padding: 24px !important;
+  }
+  body.print-active [data-print-root] .recharts-tooltip-wrapper { display: none !important; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

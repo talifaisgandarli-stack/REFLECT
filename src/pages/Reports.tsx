@@ -25,6 +25,7 @@ import { supabase } from '@/lib/supabase';
 import { PageHead } from '@/components/PageHead';
 import { formatAZN } from '@/lib/format';
 import { PROJECT_PHASES } from '@/lib/labels';
+import { downloadCsv, printSection } from '@/lib/export';
 
 const PHASE_COLOR = ['#ADFB49', '#5CA87C', '#1A5140', '#84A6FF', '#A78BFA', '#D97706'];
 
@@ -183,10 +184,41 @@ export function ReportsPage() {
   );
   const activeCount = (projects.data ?? []).filter((p) => p.status === 'active').length;
 
+  function exportCsv() {
+    const headers = ['Bölmə', 'Açar', 'Dəyər'];
+    const rows: Array<Array<unknown>> = [];
+    rows.push(['KPI', 'Aktiv layihələr', activeCount]);
+    rows.push(['KPI', 'Cari ay gəliri (AZN)', monthRevenueTotal]);
+    rows.push(['KPI', 'Komanda yükü (saat)', Math.round(teamLoadTotal)]);
+    for (const d of phaseDist) rows.push(['Faza paylanması', d.name, d.value]);
+    for (const m of monthlyRevenue) rows.push(['Aylıq gəlir', m.m, m.revenue]);
+    for (const r of heatmap.rows) {
+      for (const w of heatmap.weeks) {
+        const v = r.cells[w] ?? 0;
+        if (v > 0) rows.push([`Heatmap · ${r.name}`, w, Math.round(v)]);
+      }
+    }
+    downloadCsv(`reflect-hesabat-${new Date().toISOString().slice(0, 10)}`, headers, rows);
+  }
+
   return (
     <>
-      <PageHead meta="Admin yalnız" title="Hesabatlar" />
+      <PageHead
+        meta="Admin yalnız"
+        title="Hesabatlar"
+        actions={
+          <>
+            <button className="btn-outline" onClick={exportCsv}>
+              CSV / Excel
+            </button>
+            <button className="btn-outline" onClick={() => printSection()}>
+              PDF (çap)
+            </button>
+          </>
+        }
+      />
 
+      <div data-print-root>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
         <Kpi label="Aktiv layihələr" value={activeCount.toString()} />
         <Kpi label="Cari ay gəliri" value={formatAZN(monthRevenueTotal)} accent />
@@ -322,6 +354,7 @@ export function ReportsPage() {
           Hər xanada həmin işçinin o həftəsinə düşən tapşırıqların ümumi iş yükü (saat) göstərilir.
         </p>
       </section>
+      </div>
     </>
   );
 }
