@@ -48,6 +48,33 @@ const PERSONAS: Record<PersonaKey, { system: string; adminOnly?: boolean }> = {
 
 const NON_ADMIN_GUARD_RAIL = `\n\nÖZƏL QAYDA: Bu istifadəçi admin deyil. Aşağıdakılar haqqında suallara "Bu məlumat sizin üçün açıq deyil" cavabı ver:\n- Hər hansı maaş və ya əmək haqqı məbləği\n- Şirkət gəlir/xərc/forecast rəqəmləri\n- Başqa istifadəçilərin şəxsi məlumatı\n- Müştəri kontrakt məbləğləri`;
 
+const KB_GUIDANCE = `\n\nRAG QAYDASI: Hüquqi və ya texniki normativlərə dair sual gələrsə, əvvəlcə bilik bazasını axtar. Cavabını yalnız tapılan parçalara əsaslandır və hər iddiadan sonra mənbəni göstər (Mənbə: <pdf_name>, chunk:<index>). Heç bir parça tapılmasa "Bu məsələ üzrə dəqiq məlumatım yoxdur." de.`;
+
+const EMBED_DIM = 1536;
+function placeholderEmbed(text: string): number[] {
+  // Mirror of api/knowledge/ingest.ts so query-side and ingest-side
+  // embeddings live in the same vector space.
+  const v = new Float32Array(EMBED_DIM);
+  const lower = text.toLowerCase().normalize('NFKD');
+  for (let i = 0; i + 4 <= lower.length; i++) {
+    const gram = lower.slice(i, i + 4);
+    let h = 2166136261;
+    for (let j = 0; j < gram.length; j++) {
+      h ^= gram.charCodeAt(j);
+      h = Math.imul(h, 16777619);
+    }
+    const idx = Math.abs(h) % EMBED_DIM;
+    v[idx] += 1;
+  }
+  let norm = 0;
+  for (const x of v) norm += x * x;
+  norm = Math.sqrt(norm) || 1;
+  return Array.from(v, (x) => x / norm);
+}
+
+const KB_TRIGGER_RE =
+  /(qanun|maddə|normativ|azdnt|şəhərsalma|tikinti norma|təlim)/i;
+
 function bakuToday(): string {
   return new Intl.DateTimeFormat('az-AZ', {
     timeZone: 'Asia/Baku',
@@ -146,11 +173,47 @@ export default async function handler(req: Request) {
       .filter(Boolean)
       .join(' ');
 
+    // RAG: when the message looks like a normative/legal question, pre-fetch
+    // top-5 KB chunks via the search_knowledge_base RPC (admin-gated) and
+    // splice them into the system prompt. Citations are emitted alongside
+    // so the persona's answer can name its sources directly.
+    let ragSnippets: Array<{ source: string; chunk: number; text: string }> = [];
+    if (user.isAdmin && KB_TRIGGER_RE.test(message)) {
+      const embedding = placeholderEmbed(message);
+      const { data: hits, error: ragErr } = await sb.rpc('search_knowledge_base', {
+        p_embedding: embedding,
+        p_limit: 5,
+      });
+      if (!ragErr && Array.isArray(hits)) {
+        ragSnippets = (
+          hits as Array<{
+            source_pdf: string;
+            chunk_index: number;
+            content: string;
+            similarity: number;
+          }>
+        ).map((h) => ({ source: h.source_pdf, chunk: h.chunk_index, text: h.content }));
+      }
+    }
+
+    const ragBlock =
+      ragSnippets.length > 0
+        ? '\n\nBİLİK BAZASI PARÇALARI:\n' +
+          ragSnippets
+            .map(
+              (s, i) =>
+                `[#${i + 1}] Mənbə: ${s.source}, chunk:${s.chunk}\n${s.text.slice(0, 1200)}`,
+            )
+            .join('\n\n')
+        : '';
+
     const systemPrompt =
       contextPrefix +
       '\n\n' +
       persona.system +
-      (user.isAdmin ? '' : NON_ADMIN_GUARD_RAIL);
+      (user.isAdmin ? '' : NON_ADMIN_GUARD_RAIL) +
+      (ragSnippets.length > 0 ? KB_GUIDANCE : '') +
+      ragBlock;
 
     // --- Anthropic call -----------------------------------------------------
     const client = new Anthropic({ apiKey });
@@ -231,7 +294,7 @@ export default async function handler(req: Request) {
       reply,
       persona: personaKey,
       conversation_id: conversationId,
-      sources: [],
+      sources: ragSnippets.map((s) => ({ name: s.source, page: s.chunk })),
       usage: {
         spent_usd: Number(newSpent.toFixed(4)),
         cap_usd: MONTHLY_CAP_USD,
