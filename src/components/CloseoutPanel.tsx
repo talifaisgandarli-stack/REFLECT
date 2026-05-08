@@ -126,6 +126,29 @@ export function CloseoutPanel({ projectId, projectStatus }: Props) {
   const allDone = items.length > 0 && items.every((it) => it.done);
   const closed = projectStatus === 'closed';
 
+  const sendSurvey = useMutation({
+    mutationFn: async (): Promise<string> => {
+      const { data, error } = await supabase.rpc('retrospective_send', {
+        p_project_id: projectId,
+      });
+      if (error) throw error;
+      return (data as string) ?? '';
+    },
+    onSuccess: (token) => {
+      if (!token) return;
+      const url = `${window.location.origin}/survey/${token}`;
+      navigator.clipboard?.writeText(url);
+      // Surface as a checked retro item too for symmetry
+      const next = items.map((it) =>
+        it.id === 'retro_sent'
+          ? { ...it, done: true, by: profile?.id ?? null, at: new Date().toISOString() }
+          : it,
+      );
+      setItems(next);
+      upsert.mutate(next);
+    },
+  });
+
   return (
     <div className="space-y-4">
       <div className="card">
@@ -184,24 +207,49 @@ export function CloseoutPanel({ projectId, projectStatus }: Props) {
           ) : null}
         </div>
       ) : (
-        <div className="card flex items-center justify-between">
-          <div>
-            <h4 className="text-h4">Hazırsan?</h4>
-            <p className="text-meta" style={{ color: 'var(--text-soft)' }}>
-              {allDone
-                ? 'Bütün addımlar tamamlandı — Layihəni bağla.'
-                : 'Yaxşı vərdişdir hamısını işarələmək, amma bağlama hər zaman mümkündür.'}
-            </p>
+        <>
+          <div className="card flex items-center justify-between">
+            <div>
+              <h4 className="text-h4">Retrospektiv sorğu</h4>
+              <p className="text-meta" style={{ color: 'var(--text-soft)' }}>
+                Müştəri üçün anonim NPS sorğusu yarat — paylaşım linki kopyalanır.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={() => sendSurvey.mutate()}
+              disabled={sendSurvey.isPending}
+            >
+              {sendSurvey.isPending ? 'Yaradılır…' : 'Sorğu yarat + linki kopyala'}
+            </button>
           </div>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => close.mutate()}
-            disabled={close.isPending}
-          >
-            {close.isPending ? 'Bağlanır…' : 'Layihəni bağla'}
-          </button>
-        </div>
+
+          <div className="card flex items-center justify-between">
+            <div>
+              <h4 className="text-h4">Hazırsan?</h4>
+              <p className="text-meta" style={{ color: 'var(--text-soft)' }}>
+                {allDone
+                  ? 'Bütün addımlar tamamlandı — Layihəni bağla.'
+                  : 'Yaxşı vərdişdir hamısını işarələmək, amma bağlama hər zaman mümkündür.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => close.mutate()}
+              disabled={close.isPending}
+            >
+              {close.isPending ? 'Bağlanır…' : 'Layihəni bağla'}
+            </button>
+          </div>
+
+          {sendSurvey.error ? (
+            <p className="text-meta" style={{ color: '#B91C1C' }}>
+              {(sendSurvey.error as Error).message}
+            </p>
+          ) : null}
+        </>
       )}
 
       {close.error ? (
