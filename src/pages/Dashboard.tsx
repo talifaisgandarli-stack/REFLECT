@@ -6,8 +6,11 @@ import { useActivityFeed, useTasks, useTeamPresence } from '@/lib/hooks';
 import { useAuth } from '@/lib/store';
 import { relativeTime, taskHealth } from '@/lib/format';
 import { FocusWidget } from '@/components/FocusWidget';
+import { useRealtimeActivityLog, useRealtimeTasks } from '@/lib/realtime';
 
 export function DashboardPage() {
+  useRealtimeActivityLog();
+  useRealtimeTasks();
   const { profile, isAdmin } = useAuth();
   const { data: tasks = [] } = useTasks(profile?.id ? { assigneeId: profile.id } : undefined);
   const { data: presence = [] } = useTeamPresence();

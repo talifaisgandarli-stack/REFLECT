@@ -95,6 +95,8 @@ or the design doc instead.
 - [x] Project create modal with backward-planned timeline (REQ-PROJ-01, REQ-PROJ-02)
 - [x] Task quick + full create with live workload preview (REQ-TASK-01, REQ-TASK-06)
 - [x] Task cancellation with reason from fixed list (REQ-TASK-04)
+- [x] Realtime channels: tasks, activity_log, announcements, user_presence (PRD §3.4)
+- [x] Presence heartbeat from frontend (REQ-PRESENCE-02)
 - [ ] Realtime channels (tasks/activity/announcements) — wired in v1.5
 - [ ] Calendar Month/Week/Day full grids — placeholder list view shipped
 - [ ] Knowledge Base PDF upload + RAG embeddings pipeline

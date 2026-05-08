@@ -4,9 +4,18 @@ import { MiraiDrawer } from './MiraiDrawer';
 import { CmdK } from './CmdK';
 import { useEffect } from 'react';
 import { useUI } from '@/lib/store';
+import {
+  usePresenceHeartbeat,
+  useRealtimeAnnouncements,
+  useRealtimePresence,
+} from '@/lib/realtime';
 
 export function Layout() {
   const { setCmdK } = useUI();
+  // App-wide channels — owned by Layout so they live for the whole session.
+  usePresenceHeartbeat();
+  useRealtimePresence();
+  useRealtimeAnnouncements();
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {

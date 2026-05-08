@@ -9,8 +9,10 @@ import { SubtaskBlockingModal } from '@/components/SubtaskBlockingModal';
 import { TaskModal } from '@/components/TaskModal';
 import { TaskQuickCreate } from '@/components/TaskQuickCreate';
 import { CancelTaskModal } from '@/components/CancelTaskModal';
+import { useRealtimeTasks } from '@/lib/realtime';
 
 export function TasksPage() {
+  useRealtimeTasks();
   const { profile } = useAuth();
   const [view, setView] = useState<'board' | 'table'>('board');
   const [mineOnly, setMineOnly] = useState(false);
