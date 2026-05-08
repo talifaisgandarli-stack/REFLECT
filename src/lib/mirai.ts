@@ -9,8 +9,9 @@
  *   data: {"type":"error","message":"..."}  // mutually exclusive with done
  */
 import { useEffect } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from './supabase';
+import { useAuth } from './store';
 
 export type MiraiSource = { source_pdf: string; chunk_index: number; similarity?: number };
 
@@ -139,4 +140,87 @@ export function useMiraiHandoff(conversationId: string | null) {
       supabase.removeChannel(channel);
     };
   }, [conversationId, qc]);
+}
+
+// ----------------------------------------------------------------------------
+// Persona registry (PRD §7.2) + conversation history hooks.
+// ----------------------------------------------------------------------------
+
+export type MiraiPersonaKey =
+  | 'general'
+  | 'ops_director'
+  | 'project_manager'
+  | 'finance_analyst'
+  | 'cmo'
+  | 'hr_partner'
+  | 'legal'
+  | 'strategist';
+
+/** PRD §7.2 — Admin (6) + User (1). hr_partner kept as legacy per the
+ *  decision logged in migration 0007. */
+export const MIRAI_PERSONAS: { key: MiraiPersonaKey; label: string; admin: boolean }[] = [
+  { key: 'general',         label: 'Komanda Köməkçisi',     admin: false },
+  { key: 'ops_director',    label: 'Əməliyyat Direktoru',   admin: true  },
+  { key: 'project_manager', label: 'Layihə Mühəndisi',      admin: true  },
+  { key: 'legal',           label: 'Hüquqşünas',            admin: true  },
+  { key: 'cmo',             label: 'CMO',                   admin: true  },
+  { key: 'finance_analyst', label: 'Maliyyə Analitiki',     admin: true  },
+  { key: 'strategist',      label: 'Strateq',               admin: true  },
+  { key: 'hr_partner',      label: 'HR (legacy)',           admin: true  },
+];
+
+export const MIRAI_PERSONA_LABEL: Record<MiraiPersonaKey, string> = Object.fromEntries(
+  MIRAI_PERSONAS.map((p) => [p.key, p.label]),
+) as Record<MiraiPersonaKey, string>;
+
+export type MiraiConversationRow = {
+  id: string;
+  user_id: string;
+  persona: MiraiPersonaKey;
+  started_at: string;
+  last_message_at: string | null;
+  archived_at: string | null;
+};
+
+export function useMiraiConversations() {
+  const { profile } = useAuth();
+  return useQuery({
+    queryKey: ['mirai', 'conversations', profile?.id],
+    enabled: !!profile?.id,
+    queryFn: async (): Promise<MiraiConversationRow[]> => {
+      const { data, error } = await supabase
+        .from('mirai_conversations')
+        .select('id, user_id, persona, started_at, last_message_at, archived_at')
+        .is('archived_at', null)
+        .order('last_message_at', { ascending: false, nullsFirst: false })
+        .order('started_at', { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      return (data ?? []) as MiraiConversationRow[];
+    },
+  });
+}
+
+export type MiraiMessageRow = {
+  id: string;
+  conversation_id: string;
+  role: 'user' | 'assistant' | 'system' | 'tool';
+  content: string;
+  created_at: string;
+};
+
+export function useMiraiMessages(conversationId: string | null) {
+  return useQuery({
+    queryKey: ['mirai', 'messages', conversationId],
+    enabled: !!conversationId,
+    queryFn: async (): Promise<MiraiMessageRow[]> => {
+      const { data, error } = await supabase
+        .from('mirai_messages')
+        .select('id, conversation_id, role, content, created_at')
+        .eq('conversation_id', conversationId!)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as MiraiMessageRow[];
+    },
+  });
 }

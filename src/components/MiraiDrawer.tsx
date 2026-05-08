@@ -1,22 +1,36 @@
-import { useRef, useState } from 'react';
-import { useUI } from '@/lib/store';
+import { useMemo, useRef, useState } from 'react';
+import { useAuth, useUI } from '@/lib/store';
 import { MiraiSphere } from './MiraiSphere';
 import { Mascot } from './Mascot';
-import { streamMiraiChat, useMiraiHandoff, type MiraiSource } from '@/lib/mirai';
+import {
+  MIRAI_PERSONAS,
+  MIRAI_PERSONA_LABEL,
+  streamMiraiChat,
+  useMiraiHandoff,
+  type MiraiPersonaKey,
+  type MiraiSource,
+} from '@/lib/mirai';
 
 type Msg = { role: 'user' | 'assistant'; content: string; sources?: MiraiSource[] };
 
 export function MiraiDrawer() {
   const { miraiPanelOpen, toggleMirai } = useUI();
+  const { isAdmin } = useAuth();
   const [q, setQ] = useState('');
   const [thinking, setThinking] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [persona, setPersona] = useState<MiraiPersonaKey>('general');
   const abortRef = useRef<AbortController | null>(null);
 
   // PRD §3.4 cross-device handoff. Hook is safe to call when conversationId
   // is null — it no-ops until the first reply arrives.
   useMiraiHandoff(conversationId);
+
+  const visiblePersonas = useMemo(
+    () => MIRAI_PERSONAS.filter((p) => !p.admin || isAdmin),
+    [isAdmin],
+  );
 
   if (!miraiPanelOpen) {
     return (
@@ -49,7 +63,7 @@ export function MiraiDrawer() {
     abortRef.current = new AbortController();
 
     await streamMiraiChat(
-      { message: text, persona: 'general', conversation_id: conversationId },
+      { message: text, persona, conversation_id: conversationId },
       {
         onMeta: (meta) => {
           setConversationId(meta.conversation_id);
@@ -78,14 +92,58 @@ export function MiraiDrawer() {
       className="fixed top-0 right-0 bottom-0 w-[420px] z-40 flex flex-col"
       style={{ background: 'var(--mirai-surface)', color: 'var(--canvas)' }}
     >
-      <div className="flex items-center justify-between p-4 border-b border-white/5">
-        <div className="flex items-center gap-3">
-          <MiraiSphere size={32} particles={80} />
-          <span className="text-h4">MIRAI</span>
+      <div className="p-4 border-b border-white/5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <MiraiSphere size={32} particles={80} />
+            <span className="text-h4">MIRAI</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="text-meta opacity-70 hover:opacity-100"
+              onClick={() => {
+                abortRef.current?.abort();
+                setMsgs([]);
+                setConversationId(null);
+                setThinking(false);
+              }}
+            >
+              Yeni
+            </button>
+            <button onClick={toggleMirai} className="text-meta opacity-70 hover:opacity-100">
+              Bağla
+            </button>
+          </div>
         </div>
-        <button onClick={toggleMirai} className="text-meta opacity-70 hover:opacity-100">
-          Bağla
-        </button>
+        {/* Persona chips — PRD §7.2 */}
+        <div className="flex flex-wrap gap-1 mt-3">
+          {visiblePersonas.map((p) => {
+            const active = p.key === persona;
+            return (
+              <button
+                key={p.key}
+                type="button"
+                onClick={() => {
+                  if (p.key === persona) return;
+                  abortRef.current?.abort();
+                  setPersona(p.key);
+                  setMsgs([]);
+                  setConversationId(null);
+                  setThinking(false);
+                }}
+                className="text-tiny px-2 h-[22px] leading-[22px] rounded-chip"
+                style={{
+                  background: active ? 'var(--brand-action)' : 'rgba(255,255,255,0.04)',
+                  color: active ? 'var(--brand-text)' : 'var(--canvas)',
+                }}
+              >
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="text-meta opacity-60 mt-2">{MIRAI_PERSONA_LABEL[persona]}</div>
       </div>
       <div className="flex-1 p-4 overflow-y-auto text-body space-y-3">
         {msgs.length === 0 ? (
