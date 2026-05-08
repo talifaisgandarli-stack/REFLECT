@@ -717,6 +717,46 @@ export function useAssignEquipment() {
   });
 }
 
+// ---------------- MIRAI firm-wide usage (admin, PRD §7.6 / §7.9) ----------------
+export interface MiraiUsageRow {
+  user_id: string;
+  full_name: string | null;
+  email: string;
+  cost_usd: number;
+  tokens_in: number;
+  tokens_out: number;
+}
+
+export function useMiraiUsageThisMonth() {
+  return useQuery({
+    queryKey: ['mirai-usage-firm'],
+    queryFn: async (): Promise<MiraiUsageRow[]> => {
+      const now = new Date();
+      const yyyymm = now.getUTCFullYear() * 100 + (now.getUTCMonth() + 1);
+      const { data, error } = await supabase
+        .from('mirai_usage_log')
+        .select('user_id, cost_usd, tokens_in, tokens_out, profiles!inner(full_name, email)')
+        .eq('period_yyyymm', yyyymm);
+      if (error) throw error;
+      type Row = {
+        user_id: string;
+        cost_usd: number;
+        tokens_in: number;
+        tokens_out: number;
+        profiles: { full_name: string | null; email: string };
+      };
+      return (data ?? []).map((r) => ({
+        user_id: (r as Row).user_id,
+        full_name: (r as Row).profiles.full_name,
+        email: (r as Row).profiles.email,
+        cost_usd: Number((r as Row).cost_usd),
+        tokens_in: (r as Row).tokens_in,
+        tokens_out: (r as Row).tokens_out,
+      }));
+    },
+  });
+}
+
 // ---------------- Notification preferences (US-SYS-03 / §6.4) ----------------
 export const NOTIFICATION_EVENTS = [
   { key: 'deadline', label: 'Tapşırıq deadline' },

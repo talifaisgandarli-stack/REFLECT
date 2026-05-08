@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { MiraiSphere } from '@/components/MiraiSphere';
 import { Mascot } from '@/components/Mascot';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/store';
+import { useMiraiUsageThisMonth } from '@/lib/hooks';
 
 type Usage = {
   cap_usd: number;
@@ -21,10 +23,12 @@ type Source = { source_pdf: string; chunk_index: number; similarity: number };
 type Msg = { role: 'user' | 'assistant'; content: string; sources?: Source[] };
 
 export function MiraiPage() {
+  const { isAdmin } = useAuth();
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [q, setQ] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [usage, setUsage] = useState<Usage | null>(null);
+  const [showFirm, setShowFirm] = useState(false);
 
   async function refreshUsage() {
     const { data: sess } = await supabase.auth.getSession();
@@ -147,6 +151,20 @@ export function MiraiPage() {
       </p>
 
       <div className="w-full max-w-[720px] mt-10">
+        {isAdmin ? (
+          <div className="mb-3">
+            <button
+              type="button"
+              className="chip"
+              style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--canvas)' }}
+              onClick={() => setShowFirm((v) => !v)}
+            >
+              {showFirm ? 'Firma istifadəsini gizlət' : 'Firma istifadəsini göstər'}
+            </button>
+            {showFirm ? <FirmUsage /> : null}
+          </div>
+        ) : null}
+
         {usage && usage.level !== 'none' ? (
           <div
             className="rounded-card p-3 mb-3 text-body"
@@ -271,6 +289,63 @@ export function MiraiPage() {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+function FirmUsage() {
+  const { data: rows = [], isLoading } = useMiraiUsageThisMonth();
+  const total = useMemo(
+    () => rows.reduce((s, r) => s + Number(r.cost_usd), 0),
+    [rows],
+  );
+  const sorted = useMemo(
+    () => [...rows].sort((a, b) => b.cost_usd - a.cost_usd),
+    [rows],
+  );
+
+  return (
+    <div
+      className="mt-3 rounded-card p-4"
+      style={{
+        background: 'rgba(255,255,255,0.04)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        color: 'var(--canvas)',
+      }}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-h3">Firma istifadəsi (cari ay)</h3>
+        <div
+          className="text-h3"
+          style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--brand-action)' }}
+        >
+          ${total.toFixed(2)}
+        </div>
+      </div>
+      {isLoading ? (
+        <div className="text-meta opacity-70">Yüklənir…</div>
+      ) : sorted.length === 0 ? (
+        <div className="text-meta opacity-70">Bu ay heç kim sorğu göndərməyib.</div>
+      ) : (
+        <ul className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+          {sorted.map((r) => (
+            <li key={r.user_id} className="py-2 flex items-center justify-between">
+              <div className="min-w-0">
+                <div className="text-body truncate">{r.full_name ?? r.email}</div>
+                <div className="text-meta opacity-70">
+                  {r.tokens_in.toLocaleString()} in · {r.tokens_out.toLocaleString()} out
+                </div>
+              </div>
+              <div
+                className="text-body"
+                style={{ fontVariantNumeric: 'tabular-nums' }}
+              >
+                ${r.cost_usd.toFixed(2)}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
