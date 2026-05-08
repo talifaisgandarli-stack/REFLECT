@@ -113,6 +113,7 @@ or the design doc instead.
 - [x] Cmd+K universal search: /api/search across tasks/projects/clients/documents/announcements/profiles + grouped results UI with Up/Down navigation (PRD §6.2)
 - [x] CRM AI ICP enrichment via MIRAI Strateq persona, 24h cache, score chip on kanban + admin refresh button (REQ-CRM-04)
 - [x] Module 9 OKR core: Şirkət/Şəxsi scopes (admin-gated), objective + KR creation, inline KR progress with computed health bands ≥70/40-69/<40 (PRD §9.1)
+- [x] OKR weekly nudge: Monday 06:00 Asia/Baku cron, batched per-owner Telegram message via MIRAI Strateq persona, honors notification_preferences (PRD §9.1)
 - [ ] Realtime channels (tasks/activity/announcements) — wired in v1.5
 - [ ] Calendar Month/Week/Day full grids — placeholder list view shipped
 - [ ] Knowledge Base PDF upload + RAG embeddings pipeline

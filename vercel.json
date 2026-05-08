@@ -9,6 +9,7 @@
     { "path": "/api/cron/cmo", "schedule": "0 7 * * 1" },
     { "path": "/api/cron/recurring-expenses", "schedule": "0 6 * * *" },
     { "path": "/api/cron/telegram-reminders", "schedule": "0 5 * * *" },
-    { "path": "/api/cron/telegram-alerts", "schedule": "*/5 * * * *" }
+    { "path": "/api/cron/telegram-alerts", "schedule": "*/5 * * * *" },
+    { "path": "/api/cron/okr-nudge", "schedule": "0 2 * * 1" }
   ]
 }
