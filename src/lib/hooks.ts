@@ -68,7 +68,11 @@ export function useUpdateTaskStatus() {
       // task_status_history is also written by the DB trigger (0004); keeping
       // this insert as a no-op fallback when triggers are not yet deployed.
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['done-list'] });
+      qc.invalidateQueries({ queryKey: ['archive', 'tasks'] });
+    },
   });
 }
 
