@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { useAuth } from '@/lib/store';
 import { PROJECT_PHASES } from '@/lib/labels';
 import { ProjectPnL } from '@/components/ProjectPnL';
+import { CloseoutPanel } from '@/components/CloseoutPanel';
 
 const TABS = ['Overview', 'Tasks', 'Documents', 'Closeout', 'History'] as const;
 
@@ -103,7 +104,11 @@ export function ProjectDetailPage() {
 
       {tab === 'Finance' && id ? <ProjectPnL projectId={id} /> : null}
 
-      {tab === 'Documents' || tab === 'Closeout' || tab === 'History' ? (
+      {tab === 'Closeout' && id ? (
+        <CloseoutPanel projectId={id} projectStatus={project.status} />
+      ) : null}
+
+      {tab === 'Documents' || tab === 'History' ? (
         <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
           {tab} bölməsi v1.5-də.
         </div>
