@@ -8,8 +8,9 @@ import { PROJECT_PHASES } from '@/lib/labels';
 import { ProjectPnL } from '@/components/ProjectPnL';
 import { CloseoutPanel } from '@/components/CloseoutPanel';
 import { ProjectDocuments } from '@/components/ProjectDocuments';
+import { PortfolioPanel } from '@/components/PortfolioPanel';
 
-const TABS = ['Overview', 'Tasks', 'Documents', 'Closeout', 'History'] as const;
+const TABS = ['Overview', 'Tasks', 'Documents', 'Closeout', 'Portfolio', 'History'] as const;
 
 export function ProjectDetailPage() {
   const { id } = useParams();
@@ -110,6 +111,8 @@ export function ProjectDetailPage() {
       ) : null}
 
       {tab === 'Documents' && id ? <ProjectDocuments projectId={id} /> : null}
+
+      {tab === 'Portfolio' && id ? <PortfolioPanel projectId={id} /> : null}
 
       {tab === 'History' ? (
         <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
