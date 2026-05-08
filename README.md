@@ -86,6 +86,10 @@ or the design doc instead.
 - [x] Maliyyə Mərkəzi with Cash Cockpit + Forecast
 - [x] MIRAI page with particle sphere + chat bridge to /api/mirai/chat
 - [x] Presence panel + Focus Mode mascot timer
+- [x] Universal activity log (PRD §6.1) — DB triggers on tasks/projects/clients
+- [x] `@<uuid>` mention parser + notifications fan-out (REQ-TASK-07)
+- [x] Subtask → Done blocking modal + DB guard (REQ-TASK-05)
+- [x] `up()`/`down()` migration pairs for every migration (PRD §10.1)
 - [ ] Realtime channels (tasks/activity/announcements) — wired in v1.5
 - [ ] Calendar Month/Week/Day full grids — placeholder list view shipped
 - [ ] Knowledge Base PDF upload + RAG embeddings pipeline
