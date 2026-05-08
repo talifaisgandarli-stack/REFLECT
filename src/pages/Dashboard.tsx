@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/store';
 import { relativeTime, taskHealth } from '@/lib/format';
 import { FocusWidget } from '@/components/FocusWidget';
 import { WorkloadWidget } from '@/components/WorkloadWidget';
+import { PersonalOkrWidget } from '@/components/PersonalOkrWidget';
 
 export function DashboardPage() {
   const { profile, isAdmin } = useAuth();
@@ -130,6 +131,9 @@ export function DashboardPage() {
 
         {/* Team workload — US-DASH-05 (admin only) */}
         {isAdmin ? <WorkloadWidget className="lg:col-span-5" /> : null}
+
+        {/* Personal OKR — REQ-DASH-02 (user only) */}
+        {!isAdmin ? <PersonalOkrWidget className="lg:col-span-5" /> : null}
 
         {/* Presence — REQ-PRESENCE-* */}
         <section className="lg:col-span-3 card">

@@ -10,6 +10,9 @@ import type {
   InteractionType,
   OutsourceItem,
   OutsourceStatus,
+  KeyResult,
+  Okr,
+  OkrScope,
   PerformanceReview,
   ProjectPnl,
   Salary,
@@ -359,6 +362,97 @@ export function isOverpaymentError(e: unknown): boolean {
   if (!e || typeof e !== 'object') return false;
   const msg = (e as { message?: string }).message ?? '';
   return msg.includes('overpayment_blocked') || msg.includes('chk_paid_lte_amount');
+}
+
+// ---------------- OKR (REQ-DASH-02 / US-OKR-01..03) ----------------
+export function useOkrs(filter?: { scope?: OkrScope; employeeId?: string }) {
+  return useQuery({
+    queryKey: ['okrs', filter],
+    queryFn: async (): Promise<Okr[]> => {
+      let q = supabase.from('okrs').select('*').order('created_at', { ascending: false });
+      if (filter?.scope) q = q.eq('scope', filter.scope);
+      if (filter?.employeeId) q = q.eq('employee_id', filter.employeeId);
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data ?? []) as unknown as Okr[];
+    },
+  });
+}
+
+export function useKeyResultsForOkrs(okrIds: string[]) {
+  return useQuery({
+    queryKey: ['key-results', okrIds.sort().join(',')],
+    enabled: okrIds.length > 0,
+    queryFn: async (): Promise<KeyResult[]> => {
+      const { data, error } = await supabase
+        .from('key_results')
+        .select('*')
+        .in('okr_id', okrIds);
+      if (error) throw error;
+      return (data ?? []) as unknown as KeyResult[];
+    },
+  });
+}
+
+export function useUpdateKeyResult() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; current_value: number }) => {
+      const { error } = await supabase
+        .from('key_results')
+        .update({ current_value: input.current_value, updated_at: new Date().toISOString() })
+        .eq('id', input.id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['key-results'] }),
+  });
+}
+
+export function useCreateOkr() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      scope: OkrScope;
+      objective: string;
+      period: string;
+      employee_id?: string | null;
+    }): Promise<string> => {
+      const { data, error } = await supabase
+        .from('okrs')
+        .insert({
+          scope: input.scope,
+          objective: input.objective,
+          period: input.period,
+          employee_id: input.employee_id ?? null,
+        })
+        .select('id')
+        .single();
+      if (error) throw error;
+      return (data as { id: string }).id;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['okrs'] }),
+  });
+}
+
+export function useCreateKeyResult() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      okr_id: string;
+      title: string;
+      target_value: number;
+      unit?: string | null;
+    }) => {
+      const { error } = await supabase.from('key_results').insert({
+        okr_id: input.okr_id,
+        title: input.title,
+        target_value: input.target_value,
+        unit: input.unit ?? null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['key-results'] }),
+  });
 }
 
 // ---------------- Salary (US-SAL-01) ----------------

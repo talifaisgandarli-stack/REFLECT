@@ -187,6 +187,29 @@ export interface OutsourceItem {
   created_at: string;
 }
 
+export type OkrScope = 'company' | 'personal';
+
+export interface Okr {
+  id: string;
+  scope: OkrScope;
+  employee_id: string | null;
+  period: string;
+  objective: string;
+  owner_id: string | null;
+  created_at: string;
+}
+
+export interface KeyResult {
+  id: string;
+  okr_id: string;
+  title: string;
+  metric_type: string | null;
+  current_value: number;
+  target_value: number;
+  unit: string | null;
+  updated_at: string;
+}
+
 export interface Salary {
   id: string;
   employee_id: string;
