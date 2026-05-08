@@ -61,13 +61,18 @@ export function useUpdateTaskStatus() {
         .update({ status: input.status })
         .eq('id', input.id);
       if (error) throw error;
-      // Best-effort history insert; trigger version is preferred (TODO).
-      await supabase
-        .from('task_status_history')
-        .insert({ task_id: input.id, from_status: input.from, to_status: input.status });
+      // task_status_history is also written by the DB trigger (0004); keeping
+      // this insert as a no-op fallback when triggers are not yet deployed.
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
   });
+}
+
+/** Detect the parent-with-open-children rejection from the DB trigger. */
+export function isOpenChildrenError(e: unknown): boolean {
+  if (!e || typeof e !== 'object') return false;
+  const msg = (e as { message?: string }).message ?? '';
+  return msg.includes('task_has_open_children');
 }
 
 // ---------------- Clients ----------------

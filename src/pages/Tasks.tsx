@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
-import { useTasks, useUpdateTaskStatus } from '@/lib/hooks';
+import { isOpenChildrenError, useTasks, useUpdateTaskStatus } from '@/lib/hooks';
 import { TASK_STATUS_LABEL, TASK_STATUS_ORDER, TASK_STATUS_TONE } from '@/lib/labels';
 import type { Task, TaskStatus } from '@/types/db';
 import { useAuth } from '@/lib/store';
+import { SubtaskBlockingModal } from '@/components/SubtaskBlockingModal';
 
 export function TasksPage() {
   const { profile } = useAuth();
@@ -14,6 +15,20 @@ export function TasksPage() {
     mineOnly && profile?.id ? { assigneeId: profile.id } : undefined,
   );
   const update = useUpdateTaskStatus();
+  const [blocker, setBlocker] = useState<{ id: string; from?: TaskStatus } | null>(null);
+
+  function moveTask(id: string, status: TaskStatus, from?: TaskStatus) {
+    update.mutate(
+      { id, status, from },
+      {
+        onError: (e) => {
+          if (status === 'done' && isOpenChildrenError(e)) {
+            setBlocker({ id, from });
+          }
+        },
+      },
+    );
+  }
 
   const grouped = useMemo(() => {
     const map: Record<TaskStatus, Task[]> = {
@@ -115,7 +130,7 @@ export function TasksPage() {
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => {
                     const { id, from } = JSON.parse(e.dataTransfer.getData('text/plain'));
-                    if (from !== s) update.mutate({ id, status: s, from });
+                    if (from !== s) moveTask(id, s, from);
                   }}
                   style={{ minHeight: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
@@ -156,6 +171,18 @@ export function TasksPage() {
           </tbody>
         </table>
       )}
+
+      {blocker ? (
+        <SubtaskBlockingModal
+          parentTaskId={blocker.id}
+          onCancel={() => setBlocker(null)}
+          onResolved={() => {
+            const b = blocker;
+            setBlocker(null);
+            if (b) moveTask(b.id, 'done', b.from);
+          }}
+        />
+      ) : null}
     </>
   );
 }
