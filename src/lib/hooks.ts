@@ -10,6 +10,7 @@ import type {
   InteractionType,
   OutsourceItem,
   OutsourceStatus,
+  ProjectPnl,
   Project,
   Receivable,
   Task,
@@ -220,6 +221,20 @@ export function useReceivables() {
         .order('due_at', { ascending: true, nullsFirst: false });
       if (error) throw error;
       return data ?? [];
+    },
+  });
+}
+
+export function useProjectPnl() {
+  return useQuery({
+    queryKey: ['fin', 'pnl'],
+    queryFn: async (): Promise<ProjectPnl[]> => {
+      const { data, error } = await supabase
+        .from('project_pnl' as 'projects')
+        .select('*')
+        .order('net', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as unknown as ProjectPnl[];
     },
   });
 }

@@ -187,6 +187,15 @@ export interface OutsourceItem {
   created_at: string;
 }
 
+export interface ProjectPnl {
+  project_id: string;
+  project_name: string;
+  income: number;
+  expenses: number;
+  outsource: number;
+  net: number;
+}
+
 export interface CashForecastRow {
   id: string;
   generated_at: string;

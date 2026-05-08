@@ -13,6 +13,7 @@ import {
   useIncomes,
   useMarkReceivablePaid,
   useOutsourceItems,
+  useProjectPnl,
   useReceivables,
   useUpdateOutsourceStatus,
 } from '@/lib/hooks';
@@ -127,11 +128,7 @@ export function FinancePage() {
 
       {tab === 'Outsource' ? <OutsourceTab /> : null}
 
-      {tab === 'P&L' ? (
-        <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
-          P&L cədvəli — növbəti increment-də (REQ-FIN-06).
-        </div>
-      ) : null}
+      {tab === 'P&L' ? <PnlTab /> : null}
 
       {modal === 'income' ? (
         <IncomeModal onClose={() => setModal(null)} />
@@ -540,6 +537,67 @@ function ExpensesTable({ rows, loading }: { rows: Expense[]; loading: boolean })
         ))}
       </tbody>
     </table>
+  );
+}
+
+function PnlTab() {
+  const { data: rows = [], isLoading } = useProjectPnl();
+  if (isLoading) return <div className="card text-meta">Yüklənir…</div>;
+  if (rows.length === 0) {
+    return (
+      <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
+        Aktiv layihə yoxdur — P&L hesablanmır.
+      </div>
+    );
+  }
+  return (
+    <div className="card overflow-x-auto">
+      <table className="w-full text-body">
+        <thead>
+          <tr style={{ borderBottom: '1px solid var(--line)' }}>
+            {['Layihə', 'Gəlir', 'Xərc', 'Outsource', 'Net'].map((h) => (
+              <th
+                key={h}
+                className="text-left py-3 px-3 text-meta"
+                style={{
+                  color: 'var(--text-muted)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                }}
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.project_id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+              <td className="py-3 px-3">{r.project_name}</td>
+              <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                {formatAZN(r.income)}
+              </td>
+              <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                {formatAZN(r.expenses)}
+              </td>
+              <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                {formatAZN(r.outsource)}
+              </td>
+              <td
+                className="py-3 px-3"
+                style={{
+                  fontVariantNumeric: 'tabular-nums',
+                  color: r.net >= 0 ? 'var(--brand-text)' : 'var(--danger, #B91C1C)',
+                  fontWeight: 600,
+                }}
+              >
+                {formatAZN(r.net)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
