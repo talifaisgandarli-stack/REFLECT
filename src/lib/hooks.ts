@@ -13,6 +13,10 @@ import type {
   CareerLevel,
   CloseoutChecklist,
   CloseoutItem,
+  PortfolioApplicationItem,
+  PortfolioApplications,
+  PortfolioWorkflow,
+  SystemAward,
   KeyResult,
   Okr,
   OkrScope,
@@ -409,6 +413,68 @@ export function useCloseProject() {
       qc.invalidateQueries({ queryKey: ['closeout', vars.projectId] });
       qc.invalidateQueries({ queryKey: ['activity'] });
     },
+  });
+}
+
+// ---------------- Portfolio / awards (REQ-PROJ-05 / US-PROJ-04) ----------------
+// Default per-award checklist (decision logged in commit message — PRD doesn't
+// specify the items, only that one exists per award).
+export const DEFAULT_AWARD_CHECKLIST: PortfolioApplicationItem[] = [
+  { key: 'desc_en', label: 'İngilis dilində təsvir', checked: false },
+  { key: 'photos', label: 'Foto sessiyası', checked: false },
+  { key: 'author_form', label: 'Müəllif anketi', checked: false },
+  { key: 'fee', label: 'Ödəniş tamamlandı', checked: false },
+];
+
+export function useSystemAwards() {
+  return useQuery({
+    queryKey: ['system-awards'],
+    queryFn: async (): Promise<SystemAward[]> => {
+      const { data, error } = await supabase
+        .from('system_awards')
+        .select('*')
+        .order('deadline_month', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as unknown as SystemAward[];
+    },
+  });
+}
+
+export function usePortfolio(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ['portfolio', projectId],
+    enabled: !!projectId,
+    queryFn: async (): Promise<PortfolioWorkflow | null> => {
+      const { data, error } = await supabase
+        .from('portfolio_workflows')
+        .select('*')
+        .eq('project_id', projectId!)
+        .maybeSingle();
+      if (error) throw error;
+      return (data ?? null) as unknown as PortfolioWorkflow | null;
+    },
+  });
+}
+
+export function useUpdatePortfolio() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      projectId: string;
+      selected_awards: string[];
+      applications: PortfolioApplications;
+    }) => {
+      const { error } = await supabase
+        .from('portfolio_workflows')
+        .update({
+          selected_awards: input.selected_awards,
+          applications: input.applications,
+        })
+        .eq('project_id', input.projectId);
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) =>
+      qc.invalidateQueries({ queryKey: ['portfolio', vars.projectId] }),
   });
 }
 

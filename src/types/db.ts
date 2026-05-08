@@ -188,6 +188,34 @@ export interface OutsourceItem {
   created_at: string;
 }
 
+export interface SystemAward {
+  id: string;
+  name: string;
+  organizer: string | null;
+  deadline_month: number | null;
+  url: string | null;
+  criteria: string | null;
+}
+
+export interface PortfolioApplicationItem {
+  key: string;
+  label: string;
+  checked: boolean;
+}
+
+export interface PortfolioApplications {
+  [awardId: string]: { items: PortfolioApplicationItem[] };
+}
+
+export interface PortfolioWorkflow {
+  id: string;
+  project_id: string;
+  selected_awards: string[];
+  website_published_at: string | null;
+  press_release_sent: boolean;
+  applications: PortfolioApplications;
+}
+
 export interface CloseoutItem {
   key: string;
   label: string;

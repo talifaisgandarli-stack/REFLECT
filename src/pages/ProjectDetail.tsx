@@ -10,12 +10,13 @@ import {
 } from '@/lib/hooks';
 import type { CloseoutItem } from '@/types/db';
 import { useEffect } from 'react';
+import { PortfolioPanel } from '@/components/PortfolioPanel';
 import { StatusChip } from '@/components/StatusChip';
 import { useState } from 'react';
 import { useAuth } from '@/lib/store';
 import { PROJECT_PHASES } from '@/lib/labels';
 
-const TABS = ['Overview', 'Tasks', 'Documents', 'Closeout', 'History'] as const;
+const TABS = ['Overview', 'Tasks', 'Documents', 'Closeout', 'Portfolio', 'History'] as const;
 
 export function ProjectDetailPage() {
   const { id } = useParams();
@@ -115,6 +116,14 @@ export function ProjectDetailPage() {
           isAdmin={isAdmin}
           status={project.status}
           taskCount={tasks.length}
+        />
+      ) : null}
+
+      {tab === 'Portfolio' ? (
+        <PortfolioPanel
+          projectId={project.id}
+          isAdmin={isAdmin}
+          status={project.status}
         />
       ) : null}
 
