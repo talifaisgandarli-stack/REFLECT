@@ -270,7 +270,7 @@ export interface EquipmentTransfer {
   equipment_id: string;
   from_user_id: string | null;
   to_user_id: string | null;
-  transferred_by: string | null;
+  changed_by: string | null;
   transferred_at: string;
   note: string | null;
 }
