@@ -237,6 +237,22 @@ export interface CareerLevel {
   created_at: string;
 }
 
+export interface Announcement {
+  id: string;
+  title: string;
+  body: string | null;
+  category: string | null;
+  cover_url: string | null;
+  is_featured: boolean;
+  mirai_generated: boolean;
+  approved: boolean;
+  approved_by: string | null;
+  created_by: string | null;
+  published_at: string | null;
+  read_by: Record<string, boolean>;
+  created_at: string;
+}
+
 export interface CalendarEvent {
   id: string;
   title: string;

@@ -10,6 +10,7 @@ import type {
   InteractionType,
   OutsourceItem,
   OutsourceStatus,
+  Announcement,
   CalendarEvent,
   CareerLevel,
   CloseoutChecklist,
@@ -516,6 +517,75 @@ export function useSubmitPerformanceReview() {
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['perf'] }),
+  });
+}
+
+// ---------------- Announcements (US-ELAN-01..03) ----------------
+export const ANNOUNCEMENT_CATEGORIES = [
+  'Xəbər',
+  'Hadisə',
+  'Trend',
+  'Opportunity',
+  'Siyasət',
+  'Layihə',
+] as const;
+export type AnnouncementCategory = (typeof ANNOUNCEMENT_CATEGORIES)[number];
+
+export function useAnnouncements() {
+  return useQuery({
+    queryKey: ['announcements'],
+    queryFn: async (): Promise<Announcement[]> => {
+      const { data, error } = await supabase
+        .from('announcements')
+        .select('*')
+        .eq('approved', true)
+        .order('published_at', { ascending: false, nullsFirst: false })
+        .limit(100);
+      if (error) throw error;
+      return (data ?? []) as unknown as Announcement[];
+    },
+  });
+}
+
+export function useCreateAnnouncement() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      title: string;
+      body: string;
+      category: AnnouncementCategory;
+      cover_url?: string | null;
+      is_featured?: boolean;
+    }) => {
+      const { error } = await supabase.from('announcements').insert({
+        title: input.title,
+        body: input.body,
+        category: input.category,
+        cover_url: input.cover_url ?? null,
+        is_featured: input.is_featured ?? false,
+        mirai_generated: false,
+        approved: true,
+        published_at: new Date().toISOString(),
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['announcements'] }),
+  });
+}
+
+export function useMarkAnnouncementRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; userId: string; readBy: Record<string, boolean> }) => {
+      if (input.readBy[input.userId]) return;
+      const next = { ...input.readBy, [input.userId]: true };
+      const { error } = await supabase
+        .from('announcements')
+        .update({ read_by: next })
+        .eq('id', input.id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['announcements'] }),
   });
 }
 
