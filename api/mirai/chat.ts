@@ -9,6 +9,8 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { admin, errorResponse, HttpError, jsonResponse, requireUser, userClient } from '../_lib/auth';
+import { rateLimit, rateLimitHeaders } from '../_lib/rate-limit';
+import { clientIp, logAudit } from '../_lib/audit';
 
 export const config = { runtime: 'edge' };
 
@@ -98,6 +100,21 @@ export default async function handler(req: Request) {
   try {
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed');
     const user = await requireUser(req);
+
+    const rl = await rateLimit({
+      tier: user.isAdmin ? 'admin' : 'user',
+      identifier: user.id,
+    });
+    if (!rl.allowed) {
+      return new Response(
+        JSON.stringify({ error: 'Çox tez göndərilir — bir az gözlə.' }),
+        {
+          status: 429,
+          headers: { 'content-type': 'application/json', ...rateLimitHeaders(rl) },
+        },
+      );
+    }
+
     const body = (await req.json()) as {
       message?: string;
       persona?: PersonaKey;
@@ -129,6 +146,13 @@ export default async function handler(req: Request) {
 
     const spent = Number(usage?.cost_usd ?? 0);
     if (!user.isCreator && spent >= MONTHLY_CAP_USD) {
+      await logAudit({
+        actorId: user.id,
+        action: 'mirai_chat_blocked_budget',
+        resource: 'mirai',
+        ip: clientIp(req),
+        userAgent: req.headers.get('user-agent'),
+      });
       throw new HttpError(
         429,
         `Aylıq MIRAI limit dolub (${spent.toFixed(2)}$ / ${MONTHLY_CAP_USD}$). Növbəti ay yenilənəcək.`,
