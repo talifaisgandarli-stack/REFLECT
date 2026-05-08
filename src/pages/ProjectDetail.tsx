@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/store';
 import { PROJECT_PHASES } from '@/lib/labels';
 import { ProjectPnL } from '@/components/ProjectPnL';
 import { CloseoutPanel } from '@/components/CloseoutPanel';
+import { ProjectDocuments } from '@/components/ProjectDocuments';
 
 const TABS = ['Overview', 'Tasks', 'Documents', 'Closeout', 'History'] as const;
 
@@ -108,9 +109,11 @@ export function ProjectDetailPage() {
         <CloseoutPanel projectId={id} projectStatus={project.status} />
       ) : null}
 
-      {tab === 'Documents' || tab === 'History' ? (
+      {tab === 'Documents' && id ? <ProjectDocuments projectId={id} /> : null}
+
+      {tab === 'History' ? (
         <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
-          {tab} bölməsi v1.5-də.
+          History bölməsi v1.5-də.
         </div>
       ) : null}
     </>
