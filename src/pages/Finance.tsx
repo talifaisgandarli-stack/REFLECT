@@ -6,13 +6,28 @@ import { formatAZN, formatDate } from '@/lib/format';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { IncomeModal } from '@/components/IncomeModal';
 import { ExpenseModal } from '@/components/ExpenseModal';
-import { useMarkPaid, ValidationError } from '@/lib/finance';
+import { OutsourceModal } from '@/components/OutsourceModal';
+import { RecurringExpenseModal } from '@/components/RecurringExpenseModal';
+import {
+  OUTSOURCE_STATUS_LABEL,
+  OUTSOURCE_STATUS_ORDER,
+  OutsourceStatus,
+  RECURRING_PERIOD_LABEL,
+  RecurringPeriod,
+  useDeleteRecurringExpense,
+  useMarkPaid,
+  useOutsourceItems,
+  useProjectPL,
+  useRecurringExpenses,
+  useUpdateOutsourceStatus,
+  ValidationError,
+} from '@/lib/finance';
 
 const TABS = ['Cash Cockpit', 'P&L', 'Outsource', 'Xərclər', 'Debitor', 'Forecast'] as const;
 
 export function FinancePage() {
   const [tab, setTab] = useState<(typeof TABS)[number]>('Cash Cockpit');
-  const [openModal, setOpenModal] = useState<null | 'income' | 'expense'>(null);
+  const [openModal, setOpenModal] = useState<null | 'income' | 'expense' | 'outsource' | 'recurring'>(null);
 
   const incomes = useQuery({
     queryKey: ['fin', 'incomes'],
@@ -108,14 +123,14 @@ export function FinancePage() {
         </div>
       ) : null}
 
-      {tab === 'P&L' || tab === 'Outsource' || tab === 'Xərclər' ? (
-        <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
-          {tab} cədvəli — v1.5-də.
-        </div>
-      ) : null}
+      {tab === 'P&L' ? <PLTab /> : null}
+      {tab === 'Outsource' ? <OutsourceTab /> : null}
+      {tab === 'Xərclər' ? <XercTab /> : null}
 
       {openModal === 'income' ? <IncomeModal onClose={() => setOpenModal(null)} /> : null}
       {openModal === 'expense' ? <ExpenseModal onClose={() => setOpenModal(null)} /> : null}
+      {openModal === 'outsource' ? <OutsourceModal onClose={() => setOpenModal(null)} /> : null}
+      {openModal === 'recurring' ? <RecurringExpenseModal onClose={() => setOpenModal(null)} /> : null}
     </>
   );
 }
@@ -268,4 +283,312 @@ function byMonth(ins: any[], outs: any[]) {
     m[k].out += Number(r.amount);
   }
   return Object.values(m).sort((a, b) => a.m.localeCompare(b.m));
+}
+
+// ============================================================================
+// REQ-FIN-06 — P&L tab
+// ============================================================================
+function PLTab() {
+  const { data: rows = [], isLoading } = useProjectPL();
+  if (isLoading) return <div className="card text-meta">Yüklənir…</div>;
+  if (rows.length === 0) {
+    return (
+      <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
+        Hələ aktivlik olan layihə yoxdur.
+      </div>
+    );
+  }
+  const totals = rows.reduce(
+    (a, r) => ({
+      income: a.income + r.income,
+      expenses: a.expenses + r.expenses,
+      outsource: a.outsource + r.outsource,
+      net: a.net + r.net,
+    }),
+    { income: 0, expenses: 0, outsource: 0, net: 0 },
+  );
+  return (
+    <div className="card overflow-x-auto" style={{ padding: 0 }}>
+      <table className="w-full text-body">
+        <thead>
+          <tr style={{ borderBottom: '1px solid var(--line)' }}>
+            {['Layihə', 'Gəlir', 'Xərc', 'Outsource', 'Net'].map((h, i) => (
+              <th
+                key={h}
+                className={`py-3 px-3 text-meta ${i === 0 ? 'text-left' : 'text-right'}`}
+                style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.project_id ?? '_'} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+              <td className="py-2 px-3">{r.name}</td>
+              <td className="py-2 px-3 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAZN(r.income)}</td>
+              <td className="py-2 px-3 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAZN(r.expenses)}</td>
+              <td className="py-2 px-3 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAZN(r.outsource)}</td>
+              <td
+                className="py-2 px-3 text-right font-medium"
+                style={{
+                  fontVariantNumeric: 'tabular-nums',
+                  color: r.net < 0 ? '#B91C1C' : 'var(--brand-text)',
+                }}
+              >
+                {formatAZN(r.net)}
+              </td>
+            </tr>
+          ))}
+          <tr style={{ borderTop: '2px solid var(--line)' }}>
+            <td className="py-3 px-3 font-semibold">Cəmi</td>
+            <td className="py-3 px-3 text-right font-semibold" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAZN(totals.income)}</td>
+            <td className="py-3 px-3 text-right font-semibold" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAZN(totals.expenses)}</td>
+            <td className="py-3 px-3 text-right font-semibold" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAZN(totals.outsource)}</td>
+            <td
+              className="py-3 px-3 text-right font-semibold"
+              style={{
+                fontVariantNumeric: 'tabular-nums',
+                color: totals.net < 0 ? '#B91C1C' : 'var(--brand-text)',
+              }}
+            >
+              {formatAZN(totals.net)}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ============================================================================
+// REQ-FIN-07 — Outsource tab (admin amounts; users live on /podrat)
+// ============================================================================
+type OutsourceRow = {
+  id: string;
+  project_id: string | null;
+  work_title: string;
+  contact_person: string | null;
+  contact_company: string | null;
+  amount: number;
+  payment_method: string | null;
+  responsible_user_id: string | null;
+  deadline: string | null;
+  paid_at: string | null;
+  status: OutsourceStatus;
+};
+
+function OutsourceTab() {
+  const { data: rows = [], isLoading } = useOutsourceItems() as { data: OutsourceRow[]; isLoading: boolean };
+  const update = useUpdateOutsourceStatus();
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <div className="flex justify-end mb-3">
+        <button className="btn-primary" onClick={() => setOpen(true)}>+ Outsource</button>
+      </div>
+      {isLoading ? (
+        <div className="card text-meta">Yüklənir…</div>
+      ) : rows.length === 0 ? (
+        <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
+          Outsource yoxdur.
+        </div>
+      ) : (
+        <div className="card overflow-x-auto" style={{ padding: 0 }}>
+          <table className="w-full text-body">
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--line)' }}>
+                {['İş', 'Şirkət', 'Məbləğ', 'Müddət', 'Status'].map((h, i) => (
+                  <th
+                    key={h}
+                    className={`py-3 px-3 text-meta ${i === 2 ? 'text-right' : 'text-left'}`}
+                    style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                  <td className="py-2 px-3">
+                    <div className="font-medium">{r.work_title}</div>
+                    {r.contact_person ? (
+                      <div className="text-meta" style={{ color: 'var(--text-muted)' }}>{r.contact_person}</div>
+                    ) : null}
+                  </td>
+                  <td className="py-2 px-3">{r.contact_company ?? '—'}</td>
+                  <td className="py-2 px-3 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {formatAZN(r.amount)}
+                  </td>
+                  <td className="py-2 px-3">{formatDate(r.deadline)}</td>
+                  <td className="py-2 px-3">
+                    <select
+                      className="input"
+                      style={{ height: 32, padding: '0 8px' }}
+                      value={r.status}
+                      disabled={update.isPending}
+                      onChange={(e) =>
+                        update.mutate({ id: r.id, status: e.target.value as OutsourceStatus })
+                      }
+                    >
+                      {OUTSOURCE_STATUS_ORDER.map((s) => (
+                        <option key={s} value={s}>{OUTSOURCE_STATUS_LABEL[s]}</option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {open ? <OutsourceModal onClose={() => setOpen(false)} /> : null}
+    </>
+  );
+}
+
+// ============================================================================
+// REQ-FIN-05 — Xərclər tab (one-off + recurring)
+// ============================================================================
+type ExpenseRow = {
+  id: string;
+  amount: number;
+  category: string | null;
+  vendor: string | null;
+  occurred_at: string;
+  recurring_rule_id: string | null;
+};
+type RecurringRow = {
+  id: string;
+  label: string;
+  amount: number;
+  period: RecurringPeriod;
+  next_run_at: string;
+};
+
+function XercTab() {
+  const { data: recurring = [], isLoading: recLoading } = useRecurringExpenses() as { data: RecurringRow[]; isLoading: boolean };
+  const expenses = useQuery({
+    queryKey: ['fin', 'expenses-list'],
+    queryFn: async (): Promise<ExpenseRow[]> => {
+      const { data, error } = await supabase
+        .from('expenses')
+        .select('id, amount, category, vendor, occurred_at, recurring_rule_id')
+        .order('occurred_at', { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return (data ?? []) as ExpenseRow[];
+    },
+  });
+  const del = useDeleteRecurringExpense();
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="space-y-5">
+      <section>
+        <div className="flex items-baseline justify-between mb-3">
+          <h3 className="text-h3">Sabit xərclər</h3>
+          <button className="btn-outline" onClick={() => setOpen(true)}>+ Sabit xərc</button>
+        </div>
+        {recLoading ? (
+          <div className="card text-meta">Yüklənir…</div>
+        ) : recurring.length === 0 ? (
+          <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
+            Hələ sabit xərc yoxdur.
+          </div>
+        ) : (
+          <div className="card overflow-x-auto" style={{ padding: 0 }}>
+            <table className="w-full text-body">
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--line)' }}>
+                  {['Ad', 'Dövr', 'Məbləğ', 'Növbəti', ''].map((h, i) => (
+                    <th
+                      key={h}
+                      className={`py-3 px-3 text-meta ${i === 2 ? 'text-right' : 'text-left'}`}
+                      style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {recurring.map((r) => (
+                  <tr key={r.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                    <td className="py-2 px-3">{r.label}</td>
+                    <td className="py-2 px-3">{RECURRING_PERIOD_LABEL[r.period]}</td>
+                    <td className="py-2 px-3 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                      {formatAZN(r.amount)}
+                    </td>
+                    <td className="py-2 px-3">{formatDate(r.next_run_at)}</td>
+                    <td className="py-2 px-3 text-right">
+                      <button
+                        className="btn-ghost"
+                        style={{ height: 32, padding: '0 12px' }}
+                        onClick={() => {
+                          if (confirm(`"${r.label}" qaydası silinsin?`)) del.mutate(r.id);
+                        }}
+                      >
+                        Sil
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section>
+        <h3 className="text-h3 mb-3">Bir dəfəlik xərclər</h3>
+        {expenses.isLoading ? (
+          <div className="card text-meta">Yüklənir…</div>
+        ) : (expenses.data ?? []).length === 0 ? (
+          <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
+            Xərc yoxdur.
+          </div>
+        ) : (
+          <div className="card overflow-x-auto" style={{ padding: 0 }}>
+            <table className="w-full text-body">
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--line)' }}>
+                  {['Tarix', 'Kateqoriya', 'Təchizatçı', 'Məbləğ', 'Mənbə'].map((h, i) => (
+                    <th
+                      key={h}
+                      className={`py-3 px-3 text-meta ${i === 3 ? 'text-right' : 'text-left'}`}
+                      style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(expenses.data ?? []).map((r) => (
+                  <tr key={r.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                    <td className="py-2 px-3">{formatDate(r.occurred_at)}</td>
+                    <td className="py-2 px-3">{r.category ?? '—'}</td>
+                    <td className="py-2 px-3">{r.vendor ?? '—'}</td>
+                    <td className="py-2 px-3 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                      {formatAZN(r.amount)}
+                    </td>
+                    <td className="py-2 px-3 text-meta" style={{ color: 'var(--text-muted)' }}>
+                      {r.recurring_rule_id ? 'Sabit' : 'Bir dəfəlik'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {open ? <RecurringExpenseModal onClose={() => setOpen(false)} /> : null}
+    </div>
+  );
 }
