@@ -709,25 +709,34 @@ function ForecastGrid({ rows }: { rows: CashForecastRow[] }) {
       </div>
     );
   }
+  // Show only the latest run (top 3 rows are the most recent generated_at).
+  const latest = rows.slice(0, 3).sort((a, b) => a.horizon_days - b.horizon_days);
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-      {rows.map((f) => (
-        <div key={f.id} className="card">
-          <div
-            className="text-meta uppercase tracking-wider"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            {f.horizon_days} gün
+    <>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {latest.map((f) => (
+          <div key={f.id} className="card">
+            <div
+              className="text-meta uppercase tracking-wider"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              {f.horizon_days} gün
+            </div>
+            <div className="text-h2 mt-1" style={{ fontVariantNumeric: 'tabular-nums' }}>
+              {formatAZN(f.projected_balance)}
+            </div>
+            <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+              {formatAZN(f.confidence_low)} – {formatAZN(f.confidence_high)}
+            </div>
           </div>
-          <div className="text-h2 mt-1" style={{ fontVariantNumeric: 'tabular-nums' }}>
-            {formatAZN(f.projected_balance)}
-          </div>
-          <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-            {formatAZN(f.confidence_low)} – {formatAZN(f.confidence_high)}
-          </div>
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+      <p className="text-meta mt-3" style={{ color: 'var(--text-muted)' }}>
+        Bu proqnoz MIRAI Maliyyə Analitiki tərəfindən tarixi gəlir/xərc məlumatları
+        əsasında hesablanır. Real nəticələr fərqli ola bilər — qərar vermə üçün
+        yalnız istinad mənbəyi kimi istifadə edin.
+      </p>
+    </>
   );
 }
 
