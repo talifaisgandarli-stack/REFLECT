@@ -16,6 +16,7 @@ import type {
   CareerLevel,
   ContentPlan,
   ContentStatus,
+  DayLog,
   DocumentSource,
   Equipment,
   EquipmentTransfer,
@@ -683,6 +684,64 @@ export function useAssignEquipment() {
       qc.invalidateQueries({ queryKey: ['equipment'] });
       qc.invalidateQueries({ queryKey: ['equipment-transfers', vars.id] });
     },
+  });
+}
+
+// ---------------- Day logs / timesheet (§11.1 / §12.1) ----------------
+export function useDayLogs(input: { employeeId?: string; from: string; to: string }) {
+  return useQuery({
+    queryKey: ['day-logs', input.employeeId ?? 'all', input.from, input.to],
+    queryFn: async (): Promise<DayLog[]> => {
+      let q = supabase
+        .from('day_logs')
+        .select('*')
+        .gte('day', input.from)
+        .lte('day', input.to)
+        .order('day', { ascending: false });
+      if (input.employeeId) q = q.eq('employee_id', input.employeeId);
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data ?? []) as unknown as DayLog[];
+    },
+  });
+}
+
+export function useUpsertDayLog() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      employee_id: string;
+      day: string;
+      hours: number;
+      project_id?: string | null;
+      note?: string | null;
+    }) => {
+      const { error } = await supabase
+        .from('day_logs')
+        .upsert(
+          {
+            employee_id: input.employee_id,
+            day: input.day,
+            hours: input.hours,
+            project_id: input.project_id ?? null,
+            note: input.note ?? null,
+          },
+          { onConflict: 'employee_id,day' },
+        );
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['day-logs'] }),
+  });
+}
+
+export function useDeleteDayLog() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('day_logs').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['day-logs'] }),
   });
 }
 

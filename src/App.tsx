@@ -15,6 +15,7 @@ import { TeamRosterPage } from '@/pages/team/Roster';
 import { SalaryPage } from '@/pages/team/Salary';
 import { PerformancePage } from '@/pages/team/Performance';
 import { LeavePage } from '@/pages/team/Leave';
+import { TimesheetPage } from '@/pages/team/Timesheet';
 import { CalendarPage } from '@/pages/team/Calendar';
 import { AnnouncementsPage } from '@/pages/team/Announcements';
 import { EquipmentPage } from '@/pages/team/Equipment';
@@ -86,6 +87,7 @@ export default function App() {
         <Route path="/komanda/maaş" element={<SalaryPage />} />
         <Route path="/komanda/performans" element={<PerformancePage />} />
         <Route path="/komanda/məzuniyyət" element={<LeavePage />} />
+        <Route path="/komanda/day-log" element={<TimesheetPage />} />
         <Route path="/komanda/təqvim" element={<CalendarPage />} />
         <Route path="/komanda/elanlar" element={<AnnouncementsPage />} />
         <Route path="/komanda/avadanlıq" element={<EquipmentPage />} />

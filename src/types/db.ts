@@ -289,6 +289,17 @@ export interface ContentPlan {
   created_at: string;
 }
 
+export interface DayLog {
+  id: string;
+  employee_id: string;
+  day: string;
+  hours: number;
+  project_id: string | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export type FeedSourceKind = 'trend' | 'opportunity' | 'partner';
 
 export interface MiraiFeedPost {

@@ -35,6 +35,7 @@ const NAV: NavGroup[] = [
       { to: '/komanda/maaş', label: 'Əmək Haqqı' },
       { to: '/komanda/performans', label: 'Performans' },
       { to: '/komanda/məzuniyyət', label: 'Məzuniyyət' },
+      { to: '/komanda/day-log', label: 'Day Log' },
       { to: '/komanda/təqvim', label: 'Təqvim' },
       { to: '/komanda/elanlar', label: 'Elanlar' },
       { to: '/komanda/avadanlıq', label: 'Avadanlıq' },
