@@ -220,7 +220,7 @@ export interface NotificationRow {
 export function useNotifications(limit = 20) {
   return useQuery({
     queryKey: ['notifications', limit],
-    refetchInterval: 30_000,
+    // realtime subscription in src/lib/realtime.ts invalidates this key
     queryFn: async (): Promise<NotificationRow[]> => {
       const { data, error } = await supabase
         .from('notifications')

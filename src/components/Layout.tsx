@@ -5,10 +5,12 @@ import { MiraiDrawer } from './MiraiDrawer';
 import { CmdK } from './CmdK';
 import { NotificationBell } from './NotificationBell';
 import { useUI, useAuth } from '@/lib/store';
+import { useRealtimeSync } from '@/lib/realtime';
 
 export function Layout() {
   const { setCmdK } = useUI();
   const { session } = useAuth();
+  useRealtimeSync(session?.userId);
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
