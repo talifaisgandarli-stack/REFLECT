@@ -289,6 +289,15 @@ export interface ContentPlan {
   created_at: string;
 }
 
+export type NotificationChannel = 'in_app' | 'email' | 'telegram';
+
+export interface NotificationPreference {
+  user_id: string;
+  channel: NotificationChannel;
+  event_kind: string;
+  enabled: boolean;
+}
+
 export interface DayLog {
   id: string;
   employee_id: string;

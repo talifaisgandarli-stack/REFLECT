@@ -4,10 +4,15 @@ import { useMemo, useState } from 'react';
 import { useQuery as useReactQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase as supabaseClient } from '@/lib/supabase';
 import {
+  NOTIFICATION_DEFAULTS,
+  NOTIFICATION_EVENTS,
   useDeleteTemplate,
+  useNotificationPreferences,
+  useSetNotificationPreference,
   useTemplates,
   useUpsertTemplate,
 } from '@/lib/hooks';
+import type { NotificationChannel } from '@/types/db';
 import type { Template } from '@/types/db';
 import { useAuth } from '@/lib/store';
 import { relativeTime } from '@/lib/format';
@@ -531,6 +536,99 @@ function KbIngestModal({ onClose }: { onClose: () => void }) {
     </div>
   );
 }
+const CHANNEL_LABEL: Record<NotificationChannel, string> = {
+  in_app: 'Tətbiqdaxili',
+  email: 'Email',
+  telegram: 'Telegram',
+};
+const CHANNELS: NotificationChannel[] = ['in_app', 'email', 'telegram'];
+
 function NotificationsSettings() {
-  return <p className="text-body">Email + Telegram bildiriş tərcihləri.</p>;
+  const { profile } = useAuth();
+  const { data: prefs = [], isLoading } = useNotificationPreferences(profile?.id);
+  const set = useSetNotificationPreference();
+
+  if (!profile?.id) return null;
+
+  const prefByKey = new Map<string, boolean>();
+  for (const p of prefs) prefByKey.set(`${p.channel}:${p.event_kind}`, p.enabled);
+
+  function isOn(channel: NotificationChannel, eventKey: string): boolean {
+    const key = `${channel}:${eventKey}`;
+    if (prefByKey.has(key)) return prefByKey.get(key)!;
+    return NOTIFICATION_DEFAULTS[eventKey as keyof typeof NOTIFICATION_DEFAULTS]?.[channel] ?? false;
+  }
+
+  function toggle(channel: NotificationChannel, eventKey: string) {
+    set.mutate({
+      user_id: profile!.id,
+      channel,
+      event_kind: eventKey,
+      enabled: !isOn(channel, eventKey),
+    });
+  }
+
+  return (
+    <div>
+      <h3 className="text-h3 mb-2">Bildiriş tərcihləri</h3>
+      <p className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
+        Hər hadisə üçün hansı kanal aktiv olsun seç. Telegram-ı qoşmamısansa,
+        Telegram bildirişləri göndərilmir.
+      </p>
+      {isLoading ? (
+        <p className="text-meta">Yüklənir…</p>
+      ) : (
+        <div className="card overflow-x-auto">
+          <table className="w-full text-body">
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--line)' }}>
+                <th
+                  className="text-left py-3 px-3 text-meta"
+                  style={{
+                    color: 'var(--text-muted)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                  }}
+                >
+                  Hadisə
+                </th>
+                {CHANNELS.map((c) => (
+                  <th
+                    key={c}
+                    className="text-center py-3 px-3 text-meta"
+                    style={{
+                      color: 'var(--text-muted)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                      width: 130,
+                    }}
+                  >
+                    {CHANNEL_LABEL[c]}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {NOTIFICATION_EVENTS.map((evt) => (
+                <tr key={evt.key} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                  <td className="py-3 px-3">{evt.label}</td>
+                  {CHANNELS.map((c) => (
+                    <td key={c} className="text-center py-3 px-3">
+                      <input
+                        type="checkbox"
+                        checked={isOn(c, evt.key)}
+                        disabled={set.isPending}
+                        onChange={() => toggle(c, evt.key)}
+                        aria-label={`${CHANNEL_LABEL[c]} · ${evt.label}`}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 }

@@ -17,6 +17,8 @@ import type {
   ContentPlan,
   ContentStatus,
   DayLog,
+  NotificationChannel,
+  NotificationPreference,
   DocumentSource,
   Equipment,
   EquipmentTransfer,
@@ -712,6 +714,74 @@ export function useAssignEquipment() {
       qc.invalidateQueries({ queryKey: ['equipment'] });
       qc.invalidateQueries({ queryKey: ['equipment-transfers', vars.id] });
     },
+  });
+}
+
+// ---------------- Notification preferences (US-SYS-03 / §6.4) ----------------
+export const NOTIFICATION_EVENTS = [
+  { key: 'deadline', label: 'Tapşırıq deadline' },
+  { key: 'mention', label: '@mention' },
+  { key: 'status_change', label: 'Status dəyişməsi' },
+  { key: 'finance_alert', label: 'Maliyyə xəbərdarlıqları' },
+  { key: 'mirai_feed', label: 'MIRAI elan feed-i' },
+  { key: 'okr_nudge', label: 'OKR yenilənmə xatırlatması' },
+  { key: 'leave_decision', label: 'Məzuniyyət qərarı' },
+  { key: 'performance_review', label: 'Performans baxışı' },
+] as const;
+
+export type NotificationEventKey = (typeof NOTIFICATION_EVENTS)[number]['key'];
+
+// Default channels per event when no row exists yet.
+export const NOTIFICATION_DEFAULTS: Record<NotificationEventKey, Record<NotificationChannel, boolean>> = {
+  deadline: { in_app: true, email: false, telegram: true },
+  mention: { in_app: true, email: false, telegram: true },
+  status_change: { in_app: true, email: false, telegram: false },
+  finance_alert: { in_app: true, email: true, telegram: true },
+  mirai_feed: { in_app: true, email: false, telegram: false },
+  okr_nudge: { in_app: true, email: false, telegram: false },
+  leave_decision: { in_app: true, email: false, telegram: true },
+  performance_review: { in_app: true, email: false, telegram: false },
+};
+
+export function useNotificationPreferences(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['notification-prefs', userId],
+    enabled: !!userId,
+    queryFn: async (): Promise<NotificationPreference[]> => {
+      const { data, error } = await supabase
+        .from('notification_preferences')
+        .select('*')
+        .eq('user_id', userId!);
+      if (error) throw error;
+      return (data ?? []) as unknown as NotificationPreference[];
+    },
+  });
+}
+
+export function useSetNotificationPreference() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      user_id: string;
+      channel: NotificationChannel;
+      event_kind: string;
+      enabled: boolean;
+    }) => {
+      const { error } = await supabase
+        .from('notification_preferences')
+        .upsert(
+          {
+            user_id: input.user_id,
+            channel: input.channel,
+            event_kind: input.event_kind,
+            enabled: input.enabled,
+          },
+          { onConflict: 'user_id,channel,event_kind' },
+        );
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) =>
+      qc.invalidateQueries({ queryKey: ['notification-prefs', vars.user_id] }),
   });
 }
 
