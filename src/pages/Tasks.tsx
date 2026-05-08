@@ -6,6 +6,9 @@ import { TASK_STATUS_LABEL, TASK_STATUS_ORDER, TASK_STATUS_TONE } from '@/lib/la
 import type { Task, TaskStatus } from '@/types/db';
 import { useAuth } from '@/lib/store';
 import { SubtaskBlockingModal } from '@/components/SubtaskBlockingModal';
+import { TaskModal } from '@/components/TaskModal';
+import { TaskQuickCreate } from '@/components/TaskQuickCreate';
+import { CancelTaskModal } from '@/components/CancelTaskModal';
 
 export function TasksPage() {
   const { profile } = useAuth();
@@ -16,8 +19,15 @@ export function TasksPage() {
   );
   const update = useUpdateTaskStatus();
   const [blocker, setBlocker] = useState<{ id: string; from?: TaskStatus } | null>(null);
+  const [openCreate, setOpenCreate] = useState(false);
+  const [cancelling, setCancelling] = useState<string | null>(null);
 
   function moveTask(id: string, status: TaskStatus, from?: TaskStatus) {
+    if (status === 'cancelled' && from !== 'cancelled') {
+      // REQ-TASK-04 — never cancel without a reason. Open the modal instead.
+      setCancelling(id);
+      return;
+    }
     update.mutate(
       { id, status, from },
       {
@@ -54,21 +64,26 @@ export function TasksPage() {
             >
               Mənim
             </button>
-            <button className="btn-primary">+ Yeni</button>
+            <button className="btn-primary" onClick={() => setOpenCreate(true)}>+ Yeni</button>
           </>
         }
       />
 
-      <div className="flex gap-2 mb-4">
-        {(['board', 'table'] as const).map((v) => (
-          <button
-            key={v}
-            className={`chip ${view === v ? 'chip-brand' : ''}`}
-            onClick={() => setView(v)}
-          >
-            {v === 'board' ? 'Lövhə' : 'Cədvəl'}
-          </button>
-        ))}
+      <div className="flex gap-3 items-start mb-4 flex-wrap">
+        <div className="flex gap-2">
+          {(['board', 'table'] as const).map((v) => (
+            <button
+              key={v}
+              className={`chip ${view === v ? 'chip-brand' : ''}`}
+              onClick={() => setView(v)}
+            >
+              {v === 'board' ? 'Lövhə' : 'Cədvəl'}
+            </button>
+          ))}
+        </div>
+        <div className="flex-1 min-w-[260px] max-w-md">
+          <TaskQuickCreate />
+        </div>
       </div>
 
       {isLoading ? (
@@ -112,15 +127,26 @@ export function TasksPage() {
                       draggable
                       onDragStart={(e) => e.dataTransfer.setData('text/plain', JSON.stringify({ id: t.id, from: t.status }))}
                       onDragOver={(e) => e.preventDefault()}
-                      className="rounded-card p-3 text-body"
+                      className="rounded-card p-3 text-body group relative"
                       style={{
                         background: isToday ? '#1F2925' : 'var(--surface)',
                         border: `1px solid ${isToday ? '#2D3833' : 'var(--line)'}`,
                       }}
                     >
-                      <div className="font-medium">{t.title}</div>
+                      <div className="font-medium pr-6">{t.title}</div>
                       {t.deadline ? (
                         <div className="text-meta opacity-70 mt-1">{t.deadline}</div>
+                      ) : null}
+                      {t.status !== 'done' && t.status !== 'cancelled' ? (
+                        <button
+                          type="button"
+                          onClick={() => setCancelling(t.id)}
+                          className="absolute top-2 right-2 text-meta opacity-0 group-hover:opacity-80 hover:opacity-100 transition-opacity"
+                          aria-label="Ləğv et"
+                          style={{ color: isToday ? 'var(--canvas)' : 'var(--text-muted)' }}
+                        >
+                          ✕
+                        </button>
                       ) : null}
                     </article>
                   ))}
@@ -182,6 +208,11 @@ export function TasksPage() {
             if (b) moveTask(b.id, 'done', b.from);
           }}
         />
+      ) : null}
+
+      {openCreate ? <TaskModal onClose={() => setOpenCreate(false)} /> : null}
+      {cancelling ? (
+        <CancelTaskModal taskId={cancelling} onClose={() => setCancelling(null)} />
       ) : null}
     </>
   );

@@ -1,14 +1,18 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import { useProjects } from '@/lib/hooks';
 import { Mascot } from '@/components/Mascot';
 import { PROJECT_STATUS_LABEL } from '@/lib/labels';
+import { ProjectModal } from '@/components/ProjectModal';
 
 const FOLDER_TONE = ['bg-grad-folder-sage', 'bg-grad-folder-lime', 'bg-grad-folder-forest', 'bg-grad-folder-peach', 'bg-grad-folder-lavender'];
 
 export function ProjectsPage() {
   const { data: projects = [], isLoading } = useProjects();
+  const [open, setOpen] = useState(false);
+  const nav = useNavigate();
 
   return (
     <>
@@ -18,7 +22,7 @@ export function ProjectsPage() {
         actions={
           <>
             <input className="input max-w-[240px]" placeholder="Axtar…" />
-            <button className="btn-primary">+ Yeni layihə</button>
+            <button className="btn-primary" onClick={() => setOpen(true)}>+ Yeni layihə</button>
           </>
         }
       />
@@ -64,6 +68,8 @@ export function ProjectsPage() {
             );
           })}
           <button
+            type="button"
+            onClick={() => setOpen(true)}
             className="rounded-card p-5 min-h-[180px] flex flex-col items-center justify-center gap-2 card-interactive"
             style={{ background: 'transparent', border: '1px dashed var(--line)' }}
           >
@@ -72,6 +78,13 @@ export function ProjectsPage() {
           </button>
         </div>
       )}
+
+      {open ? (
+        <ProjectModal
+          onClose={() => setOpen(false)}
+          onCreated={(id) => nav(`/layihelər/${id}`)}
+        />
+      ) : null}
     </>
   );
 }

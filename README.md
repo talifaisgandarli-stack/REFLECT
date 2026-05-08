@@ -92,6 +92,9 @@ or the design doc instead.
 - [x] `up()`/`down()` migration pairs for every migration (PRD §10.1)
 - [x] Finance: Income / Expense create modals (REQ-FIN-01, REQ-FIN-04)
 - [x] Receivable markPaid partial flow (REQ-FIN-02 overpayment, REQ-FIN-03 partial)
+- [x] Project create modal with backward-planned timeline (REQ-PROJ-01, REQ-PROJ-02)
+- [x] Task quick + full create with live workload preview (REQ-TASK-01, REQ-TASK-06)
+- [x] Task cancellation with reason from fixed list (REQ-TASK-04)
 - [ ] Realtime channels (tasks/activity/announcements) — wired in v1.5
 - [ ] Calendar Month/Week/Day full grids — placeholder list view shipped
 - [ ] Knowledge Base PDF upload + RAG embeddings pipeline
