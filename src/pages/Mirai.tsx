@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { MiraiSphere } from '@/components/MiraiSphere';
 import { Mascot } from '@/components/Mascot';
+import { supabase } from '@/lib/supabase';
 
 const SUGGESTIONS = [
   'Bu həftəki tapşırıqları yığ',
@@ -9,32 +10,59 @@ const SUGGESTIONS = [
   'Cash forecast 30 gün',
 ];
 
-type Msg = { role: 'user' | 'assistant'; content: string; sources?: { name: string; page?: number }[] };
+type Source = { name: string; page?: number };
+type Msg = { role: 'user' | 'assistant'; content: string; sources?: Source[] };
+type Usage = { spent_usd: number; cap_usd: number; pct: number; warning: string | null };
 
 export function MiraiPage() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [q, setQ] = useState('');
   const [thinking, setThinking] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [usage, setUsage] = useState<Usage | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function ask(text: string) {
     if (!text.trim()) return;
     setMsgs((m) => [...m, { role: 'user', content: text }]);
     setQ('');
     setThinking(true);
+    setError(null);
+
     try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) {
+        throw new Error('Sessiya tapılmadı — yenidən daxil ol.');
+      }
+
       const res = await fetch('/api/mirai/chat', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ message: text, persona: 'general' }),
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          message: text,
+          persona: 'general',
+          conversation_id: conversationId,
+        }),
       });
+
       const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.error ?? `MIRAI xətası (${res.status})`);
+      }
+
       const reply = data?.reply ?? 'Hazırda cavab verə bilmirəm.';
-      setMsgs((m) => [...m, { role: 'assistant', content: reply, sources: data?.sources ?? [] }]);
-    } catch {
-      setMsgs((m) => [
-        ...m,
-        { role: 'assistant', content: 'Bunu mənbədən təsdiqləyə bilmirəm — əlaqə xətası.' },
-      ]);
+      const sources: Source[] = data?.sources ?? [];
+      setMsgs((m) => [...m, { role: 'assistant', content: reply, sources }]);
+      if (data?.conversation_id) setConversationId(data.conversation_id);
+      if (data?.usage) setUsage(data.usage as Usage);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Bunu mənbədən təsdiqləyə bilmirəm.';
+      setError(msg);
+      setMsgs((m) => [...m, { role: 'assistant', content: msg }]);
     } finally {
       setThinking(false);
     }
@@ -52,6 +80,24 @@ export function MiraiPage() {
       </p>
 
       <div className="w-full max-w-[720px] mt-10">
+        {usage?.warning === 'budget_80pct' ? (
+          <div
+            role="status"
+            className="rounded-card px-4 py-3 mb-4 text-meta flex items-center justify-between"
+            style={{
+              background: 'rgba(217, 119, 6, 0.12)',
+              border: '1px solid rgba(217, 119, 6, 0.4)',
+              color: '#FFD9A8',
+            }}
+          >
+            <span>
+              Aylıq MIRAI büdcənin {Math.round(usage.pct * 100)}%-i istifadə olunub
+              ({usage.spent_usd.toFixed(2)}$ / {usage.cap_usd}$).
+            </span>
+            <span className="opacity-70">Növbəti ay sıfırlanacaq</span>
+          </div>
+        ) : null}
+
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -70,7 +116,9 @@ export function MiraiPage() {
               color: 'var(--canvas)',
             }}
           />
-          <button type="submit" className="btn-primary">Göndər</button>
+          <button type="submit" className="btn-primary" disabled={thinking}>
+            {thinking ? '…' : 'Göndər'}
+          </button>
         </form>
 
         <div className="flex flex-wrap gap-2 mt-3">
@@ -81,11 +129,18 @@ export function MiraiPage() {
               onClick={() => ask(s)}
               className="chip"
               style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--canvas)' }}
+              disabled={thinking}
             >
               {s}
             </button>
           ))}
         </div>
+
+        {error ? (
+          <p className="text-meta mt-3" style={{ color: '#F87171' }}>
+            {error}
+          </p>
+        ) : null}
 
         <div className="mt-8 space-y-3">
           {thinking ? (

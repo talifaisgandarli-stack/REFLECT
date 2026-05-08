@@ -8,7 +8,10 @@ export type AuthedUser = {
   id: string;
   email: string;
   isAdmin: boolean;
+  isCreator: boolean;
   roleKey: string | null;
+  /** Bearer token, forwarded for RLS-scoped supabase clients (PRD §7.3). */
+  token: string;
 };
 
 export function admin() {
@@ -46,8 +49,25 @@ export async function requireUser(req: Request): Promise<AuthedUser> {
     id: prof.id,
     email: prof.email,
     isAdmin: prof.is_creator || roleAdmin,
+    isCreator: !!prof.is_creator,
     roleKey,
+    token,
   };
+}
+
+/**
+ * RLS-scoped client (PRD §7.3): queries run with the user's JWT, so any tool
+ * call MIRAI invokes can never see rows the user themselves can't read.
+ * Use this — not admin() — anywhere a request acts on behalf of a user.
+ */
+export function userClient(token: string) {
+  const url = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? '';
+  const anon = process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? '';
+  if (!url || !anon) throw new Error('Supabase server env missing');
+  return createClient(url, anon, {
+    auth: { persistSession: false },
+    global: { headers: { Authorization: `Bearer ${token}` } },
+  });
 }
 
 export class HttpError extends Error {
