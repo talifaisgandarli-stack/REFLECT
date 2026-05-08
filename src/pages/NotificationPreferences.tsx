@@ -1,0 +1,221 @@
+/**
+ * Personal notification preferences (PRD §10.4).
+ *
+ * Matrix of channel × event_kind toggles. Every cell is opt-out by default
+ * (notif_enabled() in 0007 returns true when no row exists), so a fresh
+ * user sees every checkbox checked. Saving writes a single upsert per cell.
+ */
+import { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/store';
+import { PageHead } from '@/components/PageHead';
+
+type Channel = 'inapp' | 'email' | 'telegram';
+type EventKind =
+  | 'mention'
+  | 'task_assigned'
+  | 'task_status_changed'
+  | 'task_done'
+  | 'task_cancelled'
+  | 'deadline_reminder'
+  | 'finance_alert';
+
+const CHANNELS: Array<{ key: Channel; label: string; hint?: string }> = [
+  { key: 'inapp', label: 'Tətbiqdə' },
+  { key: 'email', label: 'Email' },
+  { key: 'telegram', label: 'Telegram', hint: 'Bağlamaq üçün /telegram səhifəsi' },
+];
+
+const EVENTS: Array<{ key: EventKind; label: string; description?: string }> = [
+  { key: 'mention', label: '@mention', description: 'Şərhlərdə adın çəkiləndə' },
+  { key: 'task_assigned', label: 'Yeni tapşırıq', description: 'Sənə tapşırıq təyin olunduqda' },
+  {
+    key: 'task_status_changed',
+    label: 'Status dəyişikliyi',
+    description: 'Sənin tapşırıqlarının statusu hərəkətdə olduqda',
+  },
+  { key: 'task_done', label: 'Tapşırıq tamamlandı', description: 'Komandalı tapşırıqlar tamamlanıb' },
+  { key: 'task_cancelled', label: 'Tapşırıq ləğv edildi' },
+  { key: 'deadline_reminder', label: 'Deadline xəbərdarlıq', description: '3 gün / 1 gün / həmin gün' },
+  {
+    key: 'finance_alert',
+    label: 'Maliyyə xəbərdarlığı',
+    description: 'Yalnız adminlər üçün — Telegramda gizlədilmir',
+  },
+];
+
+type PrefRow = {
+  user_id: string;
+  channel: Channel;
+  event_kind: EventKind;
+  enabled: boolean;
+};
+
+export function NotificationPreferencesPage() {
+  const { profile } = useAuth();
+  const qc = useQueryClient();
+  const [grid, setGrid] = useState<Record<string, boolean>>({});
+
+  const prefs = useQuery({
+    queryKey: ['notification-preferences', profile?.id],
+    enabled: !!profile?.id,
+    queryFn: async (): Promise<PrefRow[]> => {
+      const { data, error } = await supabase
+        .from('notification_preferences')
+        .select('user_id, channel, event_kind, enabled')
+        .eq('user_id', profile!.id);
+      if (error) throw error;
+      return (data ?? []) as PrefRow[];
+    },
+  });
+
+  useEffect(() => {
+    if (!prefs.data) return;
+    const next: Record<string, boolean> = {};
+    for (const c of CHANNELS) {
+      for (const e of EVENTS) {
+        const row = prefs.data.find((r) => r.channel === c.key && r.event_kind === e.key);
+        next[`${c.key}:${e.key}`] = row ? row.enabled : true;
+      }
+    }
+    setGrid(next);
+  }, [prefs.data]);
+
+  const save = useMutation({
+    mutationFn: async (input: { channel: Channel; event: EventKind; enabled: boolean }) => {
+      if (!profile?.id) throw new Error('Profile not ready');
+      const { error } = await supabase
+        .from('notification_preferences')
+        .upsert(
+          {
+            user_id: profile.id,
+            channel: input.channel,
+            event_kind: input.event,
+            enabled: input.enabled,
+          },
+          { onConflict: 'user_id,channel,event_kind' },
+        );
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notification-preferences'] }),
+  });
+
+  function toggle(channel: Channel, event: EventKind) {
+    const key = `${channel}:${event}`;
+    const next = !(grid[key] ?? true);
+    setGrid((g) => ({ ...g, [key]: next }));
+    save.mutate({ channel, event, enabled: next });
+  }
+
+  return (
+    <>
+      <PageHead
+        meta={profile?.full_name ?? profile?.email ?? '—'}
+        title="Bildirişlər"
+        actions={
+          save.isPending ? (
+            <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+              Yadda saxlanılır…
+            </span>
+          ) : null
+        }
+      />
+
+      <div className="card overflow-x-auto">
+        <table className="w-full text-body" style={{ minWidth: 520 }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--line)' }}>
+              <th
+                className="text-meta text-left py-3 pr-4"
+                style={{
+                  color: 'var(--text-muted)',
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                Hadisə
+              </th>
+              {CHANNELS.map((c) => (
+                <th
+                  key={c.key}
+                  className="text-meta text-center py-3 px-4"
+                  style={{
+                    color: 'var(--text-muted)',
+                    letterSpacing: '0.05em',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {c.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {EVENTS.map((e) => (
+              <tr key={e.key} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                <td className="py-3 pr-4">
+                  <div className="font-medium" style={{ color: 'var(--text)' }}>
+                    {e.label}
+                  </div>
+                  {e.description ? (
+                    <div
+                      className="text-meta"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      {e.description}
+                    </div>
+                  ) : null}
+                </td>
+                {CHANNELS.map((c) => {
+                  const k = `${c.key}:${e.key}`;
+                  const checked = grid[k] ?? true;
+                  return (
+                    <td key={c.key} className="py-3 px-4 text-center">
+                      <label
+                        className="inline-flex items-center cursor-pointer"
+                        aria-label={`${e.label} — ${c.label}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggle(c.key, e.key)}
+                          disabled={!profile?.id || prefs.isLoading}
+                          className="sr-only peer"
+                        />
+                        <span
+                          aria-hidden
+                          className="inline-block w-10 h-6 rounded-full relative transition-colors"
+                          style={{
+                            background: checked
+                              ? 'var(--brand-action)'
+                              : 'var(--surface-mist)',
+                            border: `1px solid ${checked ? 'var(--brand-action-hover)' : 'var(--line)'}`,
+                          }}
+                        >
+                          <span
+                            className="absolute top-[2px] left-[2px] w-[18px] h-[18px] rounded-full transition-transform"
+                            style={{
+                              background: 'var(--surface)',
+                              transform: checked ? 'translateX(16px)' : 'translateX(0)',
+                              boxShadow: '0 1px 2px rgba(14,22,17,0.2)',
+                            }}
+                          />
+                        </span>
+                      </label>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <p className="text-meta mt-4" style={{ color: 'var(--text-muted)' }}>
+          Yeni hesablarda hər kanal aktivdir. Söndürmək seçimi yadda saxlanır;
+          sonra notify-fanout cron-u həmin kanaldan ötürmür.
+        </p>
+      </div>
+    </>
+  );
+}

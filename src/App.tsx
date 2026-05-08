@@ -9,6 +9,7 @@ import { ProjectDetailPage } from '@/pages/ProjectDetail';
 import { TasksPage } from '@/pages/Tasks';
 import { ArchivePage } from '@/pages/Archive';
 import { DoneListPage } from '@/pages/DoneList';
+import { NotificationPreferencesPage } from '@/pages/NotificationPreferences';
 import { OutsourcePage } from '@/pages/Outsource';
 import { ClientsPage } from '@/pages/Clients';
 import { FinancePage } from '@/pages/Finance';
@@ -115,6 +116,9 @@ export default function App() {
         {/* MIRAI + Telegram */}
         <Route path="/mirai" element={<MiraiPage />} />
         <Route path="/telegram" element={<TelegramLinkPage />} />
+
+        {/* Personal — accessible to every authenticated user */}
+        <Route path="/bildirişlər" element={<NotificationPreferencesPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

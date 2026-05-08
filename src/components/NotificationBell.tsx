@@ -5,6 +5,7 @@
  * notification kinds can ship without UI changes.
  */
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   type NotificationKind,
   type NotificationRow,
@@ -119,7 +120,8 @@ export function NotificationBell() {
             <div className="px-4 py-8 text-center text-meta" style={{ color: 'var(--text-muted)' }}>
               Hələ bildiriş yoxdur.
             </div>
-          ) : (
+          ) : null}
+          {data.length > 0 ? (
             <ul>
               {data.map((n) => (
                 <li
@@ -160,7 +162,19 @@ export function NotificationBell() {
                 </li>
               ))}
             </ul>
-          )}
+          ) : null}
+          <footer
+            className="px-4 py-2 text-meta text-center"
+            style={{ borderTop: '1px solid var(--line-soft)' }}
+          >
+            <Link
+              to="/bildirişlər"
+              onClick={() => setOpen(false)}
+              style={{ color: 'var(--brand-text)' }}
+            >
+              Bildiriş tərcihlərini idarə et →
+            </Link>
+          </footer>
         </div>
       ) : null}
     </div>
