@@ -229,11 +229,26 @@ export interface CloseoutChecklist {
   completed_at: string | null;
 }
 
+/**
+ * Career-level requirement. `kind`/`op`/`value` are optional metadata that
+ * make the row auto-checkable (US-CAREER-01 final AC). When absent, the row
+ * renders as a manual unchecked checklist entry.
+ */
+export type CareerMetricKind = 'closed_projects' | 'completed_tasks';
+export type CareerMetricOp = '>=' | '<=' | '=';
+
+export interface CareerRequirement {
+  label: string;
+  kind?: CareerMetricKind;
+  op?: CareerMetricOp;
+  value?: number;
+}
+
 export interface CareerLevel {
   id: string;
   name: string;
   level_index: number;
-  requirements: { label: string }[];
+  requirements: CareerRequirement[];
   created_at: string;
 }
 

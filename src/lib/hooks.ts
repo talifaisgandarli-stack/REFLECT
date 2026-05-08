@@ -1203,6 +1203,37 @@ export function useCancelLeave() {
   });
 }
 
+// ---------------- Career metrics (US-CAREER-01 auto-eval) ----------------
+export interface CareerMetrics {
+  closed_projects: number;
+  completed_tasks: number;
+}
+
+export function useMyCareerMetrics(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['career-metrics', userId],
+    enabled: !!userId,
+    queryFn: async (): Promise<CareerMetrics> => {
+      const [{ count: closed }, { count: done }] = await Promise.all([
+        supabase
+          .from('projects')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'closed')
+          .eq('created_by', userId!),
+        supabase
+          .from('tasks')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'done')
+          .contains('assignee_ids', [userId!]),
+      ]);
+      return {
+        closed_projects: closed ?? 0,
+        completed_tasks: done ?? 0,
+      };
+    },
+  });
+}
+
 // ---------------- Career levels (US-CAREER-01) ----------------
 export function useCareerLevels() {
   return useQuery({

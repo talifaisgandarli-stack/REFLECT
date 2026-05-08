@@ -4,12 +4,38 @@ import {
   useActiveProfiles,
   useCareerLevels,
   useDeleteCareerLevel,
+  useMyCareerMetrics,
   useSetUserCareerLevel,
   useUpsertCareerLevel,
+  type CareerMetrics,
 } from '@/lib/hooks';
 import { useAuth } from '@/lib/store';
 import { EmptyState } from '@/components/EmptyState';
-import type { CareerLevel, Profile } from '@/types/db';
+import type {
+  CareerLevel,
+  CareerMetricKind,
+  CareerMetricOp,
+  CareerRequirement,
+  Profile,
+} from '@/types/db';
+
+const METRIC_LABEL: Record<CareerMetricKind, string> = {
+  closed_projects: 'Bağlanmış layihələr',
+  completed_tasks: 'Tamamlanmış tapşırıqlar',
+};
+const OP_LABEL: Record<CareerMetricOp, string> = {
+  '>=': '≥',
+  '<=': '≤',
+  '=': '=',
+};
+
+function evalRequirement(req: CareerRequirement, m: CareerMetrics | undefined): boolean | null {
+  if (!req.kind || req.op == null || req.value == null || !m) return null;
+  const have = m[req.kind] ?? 0;
+  if (req.op === '>=') return have >= req.value;
+  if (req.op === '<=') return have <= req.value;
+  return have === req.value;
+}
 
 /**
  * REQ-Komanda 9.2 / US-CAREER-01.
@@ -22,6 +48,7 @@ import type { CareerLevel, Profile } from '@/types/db';
 export function CareerPage() {
   const { profile, isAdmin } = useAuth();
   const { data: levels = [], isLoading } = useCareerLevels();
+  const { data: metrics } = useMyCareerMetrics(profile?.id);
   const [tab, setTab] = useState<'mine' | 'admin'>('mine');
 
   const current = useMemo(
@@ -74,14 +101,26 @@ export function CareerPage() {
               fallback="Cari səviyyə təyin edilməyib"
               tag="Cari"
               tone="brand"
+              metrics={metrics}
             />
             <LevelCard
               level={next}
               fallback="Daha yüksək səviyyə yoxdur"
               tag="Növbəti"
               tone="neutral"
+              metrics={metrics}
             />
           </div>
+
+          {metrics ? (
+            <div
+              className="card mb-6 flex flex-wrap gap-6"
+              style={{ background: 'var(--surface-mist)' }}
+            >
+              <Stat label="Bağlanmış layihələr" value={metrics.closed_projects} />
+              <Stat label="Tamamlanmış tapşırıqlar" value={metrics.completed_tasks} />
+            </div>
+          ) : null}
 
           <h3 className="text-h3 mb-2">Bütün nərdivan</h3>
           <ol className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -252,16 +291,16 @@ function LevelEditor({
   const [levelIndex, setLevelIndex] = useState(
     level?.level_index ?? Math.max(0, ...existing.map((l) => l.level_index)) + 1,
   );
-  const [reqs, setReqs] = useState<string[]>(
-    level?.requirements?.map((r) => r.label) ?? [''],
+  const [reqs, setReqs] = useState<CareerRequirement[]>(
+    level?.requirements?.length ? level.requirements : [{ label: '' }],
   );
   const [err, setErr] = useState<string | null>(null);
 
-  function setReq(i: number, val: string) {
-    setReqs((p) => p.map((r, idx) => (idx === i ? val : r)));
+  function patch(i: number, partial: Partial<CareerRequirement>) {
+    setReqs((p) => p.map((r, idx) => (idx === i ? { ...r, ...partial } : r)));
   }
   function addReq() {
-    setReqs((p) => [...p, '']);
+    setReqs((p) => [...p, { label: '' }]);
   }
   function removeReq(i: number) {
     setReqs((p) => p.filter((_, idx) => idx !== i));
@@ -273,13 +312,23 @@ function LevelEditor({
     if (!Number.isInteger(levelIndex) || levelIndex < 1) {
       return setErr('Səviyyə nömrəsi 1 və ya daha böyük olmalıdır.');
     }
-    const cleaned = reqs.map((r) => r.trim()).filter(Boolean);
+    const cleaned: CareerRequirement[] = reqs
+      .map((r) => ({ ...r, label: r.label.trim() }))
+      .filter((r) => r.label.length > 0)
+      .map((r) => {
+        // Drop auto-eval fields if any of them is missing/invalid.
+        if (!r.kind || !r.op || r.value == null || !Number.isFinite(r.value)) {
+          const { kind: _k, op: _o, value: _v, ...rest } = r;
+          return rest;
+        }
+        return r;
+      });
     upsert.mutate(
       {
         id: level?.id,
         name: name.trim(),
         level_index: levelIndex,
-        requirements: cleaned.map((label) => ({ label })),
+        requirements: cleaned,
       },
       { onSuccess: onClose, onError: (e) => setErr((e as Error).message) },
     );
@@ -324,21 +373,76 @@ function LevelEditor({
           </div>
           <ul className="space-y-2">
             {reqs.map((r, i) => (
-              <li key={i} className="flex gap-2">
-                <input
-                  className="input flex-1"
-                  value={r}
-                  onChange={(e) => setReq(i, e.target.value)}
-                  placeholder="məs. ≥3 tamamlanmış layihə"
-                />
-                <button
-                  className="btn-outline"
-                  type="button"
-                  onClick={() => removeReq(i)}
-                  aria-label="Sil"
-                >
-                  ×
-                </button>
+              <li
+                key={i}
+                className="rounded-card p-2"
+                style={{ border: '1px solid var(--line-soft)' }}
+              >
+                <div className="flex gap-2 mb-2">
+                  <input
+                    className="input flex-1"
+                    value={r.label}
+                    onChange={(e) => patch(i, { label: e.target.value })}
+                    placeholder="məs. ≥3 tamamlanmış layihə"
+                  />
+                  <button
+                    className="btn-outline"
+                    type="button"
+                    onClick={() => removeReq(i)}
+                    aria-label="Sil"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2 items-center text-meta">
+                  <span style={{ color: 'var(--text-muted)' }}>Avto-yoxlama:</span>
+                  <select
+                    className="input"
+                    style={{ minWidth: 220 }}
+                    value={r.kind ?? ''}
+                    onChange={(e) =>
+                      patch(i, {
+                        kind: (e.target.value || undefined) as CareerMetricKind | undefined,
+                      })
+                    }
+                  >
+                    <option value="">— manual —</option>
+                    {(['closed_projects', 'completed_tasks'] as CareerMetricKind[]).map((k) => (
+                      <option key={k} value={k}>
+                        {METRIC_LABEL[k]}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className="input"
+                    style={{ width: 70 }}
+                    value={r.op ?? '>='}
+                    onChange={(e) =>
+                      patch(i, { op: e.target.value as CareerMetricOp })
+                    }
+                    disabled={!r.kind}
+                  >
+                    {(['>=', '<=', '='] as CareerMetricOp[]).map((op) => (
+                      <option key={op} value={op}>
+                        {OP_LABEL[op]}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    className="input"
+                    style={{ width: 100 }}
+                    type="number"
+                    min={0}
+                    placeholder="dəyər"
+                    value={r.value ?? ''}
+                    onChange={(e) =>
+                      patch(i, {
+                        value: e.target.value === '' ? undefined : Number(e.target.value),
+                      })
+                    }
+                    disabled={!r.kind}
+                  />
+                </div>
               </li>
             ))}
           </ul>
@@ -399,16 +503,34 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div>
+      <div
+        className="text-meta uppercase tracking-wider"
+        style={{ color: 'var(--text-muted)' }}
+      >
+        {label}
+      </div>
+      <div className="text-h2 mt-1" style={{ fontVariantNumeric: 'tabular-nums' }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
 function LevelCard({
   level,
   fallback,
   tag,
   tone,
+  metrics,
 }: {
   level: CareerLevel | null;
   fallback: string;
   tag: string;
   tone: 'brand' | 'neutral';
+  metrics: CareerMetrics | undefined;
 }) {
   const accent = tone === 'brand' ? 'var(--brand-action)' : 'var(--line)';
   return (
@@ -436,16 +558,31 @@ function LevelCard({
           </div>
           {level.requirements.length > 0 ? (
             <ul className="mt-3 space-y-1">
-              {level.requirements.map((r, i) => (
-                <li key={i} className="text-body flex items-start gap-2">
-                  <span
-                    className="inline-block w-4 h-4 rounded-full shrink-0 mt-1"
-                    style={{ border: '1px solid var(--line)' }}
-                    aria-hidden
-                  />
-                  <span>{r.label}</span>
-                </li>
-              ))}
+              {level.requirements.map((r, i) => {
+                const met = evalRequirement(r, metrics);
+                const color =
+                  met === true
+                    ? 'var(--brand-text)'
+                    : met === false
+                      ? 'var(--text-muted)'
+                      : 'transparent';
+                return (
+                  <li key={i} className="text-body flex items-start gap-2">
+                    <span
+                      className="inline-flex items-center justify-center w-4 h-4 rounded-full shrink-0 mt-1 text-tiny"
+                      style={{
+                        border: '1px solid var(--line)',
+                        background: met === true ? 'var(--brand-action)' : 'transparent',
+                        color,
+                      }}
+                      aria-hidden
+                    >
+                      {met === true ? '✓' : ''}
+                    </span>
+                    <span>{r.label}</span>
+                  </li>
+                );
+              })}
             </ul>
           ) : null}
         </>
