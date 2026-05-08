@@ -1,0 +1,17 @@
+-- Postgres has no native DROP VALUE for enums. Reverting requires recreating
+-- the type with the original 5-value set and rewriting every column that
+-- references it. Documented manual procedure (run only if absolutely needed):
+--
+--   create type mirai_persona_old as enum (
+--     'general', 'project_manager', 'finance_analyst', 'cmo', 'hr_partner'
+--   );
+--   alter table mirai_conversations
+--     alter column persona type mirai_persona_old
+--     using persona::text::mirai_persona_old;
+--   drop type mirai_persona;
+--   alter type mirai_persona_old rename to mirai_persona;
+--
+-- The USING cast WILL FAIL on rows whose persona is one of the new values —
+-- so this is destructive and requires a deliberate decision. Left as a
+-- comment instead of executable SQL by design.
+select 1;

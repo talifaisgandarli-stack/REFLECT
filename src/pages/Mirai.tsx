@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { MiraiSphere } from '@/components/MiraiSphere';
 import { Mascot } from '@/components/Mascot';
+import { streamMiraiChat, useMiraiHandoff, type MiraiSource } from '@/lib/mirai';
 
 const SUGGESTIONS = [
   'Bu həftəki tapşırıqları yığ',
@@ -9,36 +10,70 @@ const SUGGESTIONS = [
   'Cash forecast 30 gün',
 ];
 
-type Source = { source_pdf: string; chunk_index: number; similarity?: number };
-type Msg = { role: 'user' | 'assistant'; content: string; sources?: Source[] };
+type Msg = { role: 'user' | 'assistant'; content: string; sources?: MiraiSource[] };
 
 export function MiraiPage() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [q, setQ] = useState('');
   const [thinking, setThinking] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Realtime handoff — PRD §3.4. Same-user inserts on another tab/device
+  // wake the message list (reload on the next read).
+  useMiraiHandoff(conversationId);
 
   async function ask(text: string) {
     if (!text.trim()) return;
-    setMsgs((m) => [...m, { role: 'user', content: text }]);
+    setMsgs((m) => [...m, { role: 'user', content: text }, { role: 'assistant', content: '' }]);
     setQ('');
     setThinking(true);
-    try {
-      const res = await fetch('/api/mirai/chat', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ message: text, persona: 'general' }),
-      });
-      const data = await res.json().catch(() => null);
-      const reply = data?.reply ?? 'Hazırda cavab verə bilmirəm.';
-      setMsgs((m) => [...m, { role: 'assistant', content: reply, sources: data?.sources ?? [] }]);
-    } catch {
-      setMsgs((m) => [
-        ...m,
-        { role: 'assistant', content: 'Bunu mənbədən təsdiqləyə bilmirəm — əlaqə xətası.' },
-      ]);
-    } finally {
-      setThinking(false);
-    }
+
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
+
+    await streamMiraiChat(
+      { message: text, persona: 'general', conversation_id: conversationId },
+      {
+        onMeta: (meta) => {
+          setConversationId(meta.conversation_id);
+          setMsgs((m) => {
+            const next = m.slice();
+            const last = next[next.length - 1];
+            if (last && last.role === 'assistant') {
+              next[next.length - 1] = { ...last, sources: meta.sources };
+            }
+            return next;
+          });
+        },
+        onDelta: (delta) => {
+          setMsgs((m) => {
+            const next = m.slice();
+            const last = next[next.length - 1];
+            if (last && last.role === 'assistant') {
+              next[next.length - 1] = { ...last, content: last.content + delta };
+            }
+            return next;
+          });
+        },
+        onDone: () => setThinking(false),
+        onError: (err) => {
+          setMsgs((m) => {
+            const next = m.slice();
+            const last = next[next.length - 1];
+            if (last && last.role === 'assistant') {
+              next[next.length - 1] = {
+                ...last,
+                content: last.content || `Bunu mənbədən təsdiqləyə bilmirəm — ${err}`,
+              };
+            }
+            return next;
+          });
+          setThinking(false);
+        },
+      },
+      abortRef.current.signal,
+    );
   }
 
   return (
