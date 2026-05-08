@@ -1,8 +1,10 @@
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
+import { InvitationsPanel } from '@/components/InvitationsPanel';
 
 const NAV = [
   { to: 'umumi', label: 'Ümumi' },
+  { to: 'dəvətnamələr', label: 'Dəvətnamələr' },
   { to: 'şablonlar', label: 'Şablonlar' },
   { to: 'bilik', label: 'Bilik Bazası' },
   { to: 'bildirişlər', label: 'Bildirişlər' },
@@ -30,6 +32,7 @@ export function SettingsPage() {
           <Routes>
             <Route index element={<Navigate to="umumi" replace />} />
             <Route path="umumi" element={<GeneralSettings />} />
+            <Route path="dəvətnamələr" element={<InvitationsPanel />} />
             <Route path="şablonlar" element={<TemplatesSettings />} />
             <Route path="bilik" element={<KnowledgeBaseSettings />} />
             <Route path="bildirişlər" element={<NotificationsSettings />} />

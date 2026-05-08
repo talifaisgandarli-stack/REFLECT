@@ -97,6 +97,7 @@ or the design doc instead.
 - [x] Task cancellation with reason from fixed list (REQ-TASK-04)
 - [x] Realtime channels: tasks, activity_log, announcements, user_presence (PRD §3.4)
 - [x] Presence heartbeat from frontend (REQ-PRESENCE-02)
+- [x] Invite acceptance flow: /api/invitations/accept + Login `?invite=<token>` form + admin invite/revoke panel (REQ-AUTH-02)
 - [ ] Realtime channels (tasks/activity/announcements) — wired in v1.5
 - [ ] Calendar Month/Week/Day full grids — placeholder list view shipped
 - [ ] Knowledge Base PDF upload + RAG embeddings pipeline
