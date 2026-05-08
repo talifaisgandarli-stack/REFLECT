@@ -5,18 +5,23 @@ import { relativeTime } from '@/lib/format';
 import {
   ANNOUNCEMENT_CATEGORIES,
   useAnnouncements,
+  useApproveFeedPost,
   useCreateAnnouncement,
+  useFeedQueue,
   useMarkAnnouncementRead,
+  useRejectFeedPost,
   type AnnouncementCategory,
 } from '@/lib/hooks';
 import { useAuth } from '@/lib/store';
-import type { Announcement } from '@/types/db';
+import type { Announcement, MiraiFeedPost } from '@/types/db';
+import { relativeTime } from '@/lib/format';
 
 export function AnnouncementsPage() {
   const { isAdmin, profile } = useAuth();
   const { data: items = [], isLoading } = useAnnouncements();
   const [filter, setFilter] = useState<'all' | AnnouncementCategory>('all');
   const [creating, setCreating] = useState(false);
+  const [tab, setTab] = useState<'feed' | 'moderation'>('feed');
 
   const visible = useMemo(
     () => (filter === 'all' ? items : items.filter((a) => a.category === filter)),
@@ -42,41 +47,147 @@ export function AnnouncementsPage() {
         }
       />
 
-      <div className="flex gap-2 mb-4 flex-wrap">
-        <button
-          className={`chip ${filter === 'all' ? 'chip-brand' : ''}`}
-          onClick={() => setFilter('all')}
-        >
-          Hamısı
-        </button>
-        {ANNOUNCEMENT_CATEGORIES.map((c) => (
+      {isAdmin ? (
+        <div className="flex gap-2 mb-4">
           <button
-            key={c}
-            className={`chip ${filter === c ? 'chip-brand' : ''}`}
-            onClick={() => setFilter(c)}
+            className={`chip ${tab === 'feed' ? 'chip-brand' : ''}`}
+            onClick={() => setTab('feed')}
           >
-            {c}
+            Yayında
           </button>
-        ))}
-      </div>
+          <button
+            className={`chip ${tab === 'moderation' ? 'chip-brand' : ''}`}
+            onClick={() => setTab('moderation')}
+          >
+            Moderasiya
+          </button>
+        </div>
+      ) : null}
 
-      {isLoading ? (
-        <div className="card text-meta">Yüklənir…</div>
-      ) : visible.length === 0 ? (
-        <EmptyState
-          title={filter === 'all' ? 'Elan yoxdur' : `"${filter}" üzrə elan yoxdur`}
-          body="Admin manual elan əlavə edə və ya MIRAI CMO feed-i moderasiya edib paylaşa bilər."
-        />
-      ) : (
-        <ul className="space-y-3">
-          {visible.map((a) => (
-            <AnnouncementCard key={a.id} item={a} userId={profile?.id} />
-          ))}
-        </ul>
-      )}
+      {tab === 'moderation' && isAdmin ? <ModerationQueue /> : null}
+
+      {tab === 'feed' ? (
+        <>
+          <div className="flex gap-2 mb-4 flex-wrap">
+            <button
+              className={`chip ${filter === 'all' ? 'chip-brand' : ''}`}
+              onClick={() => setFilter('all')}
+            >
+              Hamısı
+            </button>
+            {ANNOUNCEMENT_CATEGORIES.map((c) => (
+              <button
+                key={c}
+                className={`chip ${filter === c ? 'chip-brand' : ''}`}
+                onClick={() => setFilter(c)}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
+
+      {tab === 'feed' ? (
+        isLoading ? (
+          <div className="card text-meta">Yüklənir…</div>
+        ) : visible.length === 0 ? (
+          <EmptyState
+            title={filter === 'all' ? 'Elan yoxdur' : `"${filter}" üzrə elan yoxdur`}
+            body="Admin manual elan əlavə edə və ya MIRAI CMO feed-i moderasiya edib paylaşa bilər."
+          />
+        ) : (
+          <ul className="space-y-3">
+            {visible.map((a) => (
+              <AnnouncementCard key={a.id} item={a} userId={profile?.id} />
+            ))}
+          </ul>
+        )
+      ) : null}
 
       {creating ? <CreateModal onClose={() => setCreating(false)} /> : null}
     </>
+  );
+}
+
+function ModerationQueue() {
+  const { data: items = [], isLoading } = useFeedQueue();
+  const approve = useApproveFeedPost();
+  const reject = useRejectFeedPost();
+
+  if (isLoading) return <div className="card text-meta">Yüklənir…</div>;
+  if (items.length === 0) {
+    return (
+      <EmptyState
+        title="Moderasiya növbəsi boşdur"
+        body="MIRAI CMO yeni feed çəkdikdə burada görünəcək."
+      />
+    );
+  }
+
+  return (
+    <ul className="space-y-3">
+      {items.map((p) => (
+        <FeedPostRow
+          key={p.id}
+          post={p}
+          busy={approve.isPending || reject.isPending}
+          onApprove={() => approve.mutate(p.id)}
+          onReject={() => {
+            if (!confirm('Postu növbədən sil?')) return;
+            reject.mutate(p.id);
+          }}
+        />
+      ))}
+    </ul>
+  );
+}
+
+function FeedPostRow({
+  post,
+  busy,
+  onApprove,
+  onReject,
+}: {
+  post: MiraiFeedPost;
+  busy: boolean;
+  onApprove: () => void;
+  onReject: () => void;
+}) {
+  return (
+    <li className="card">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="chip">MIRAI</span>
+        <span className="chip">{post.source_kind}</span>
+      </div>
+      <h3 className="text-h3 break-words">{post.summary || post.source_url}</h3>
+      <a
+        href={post.source_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-meta block mt-1 truncate"
+        style={{ color: 'var(--brand-text)' }}
+      >
+        {post.source_url}
+      </a>
+      <div className="text-meta mt-2" style={{ color: 'var(--text-muted)' }}>
+        Çəkilib: {relativeTime(post.fetched_at)}
+        {post.deadline_at ? ` · Deadline: ${relativeTime(post.deadline_at)}` : ''}
+      </div>
+      <div className="flex gap-2 mt-3 justify-end">
+        <button
+          className="btn-outline"
+          style={{ color: 'var(--danger, #B91C1C)' }}
+          disabled={busy}
+          onClick={onReject}
+        >
+          Rədd et
+        </button>
+        <button className="btn-primary" disabled={busy} onClick={onApprove}>
+          Saxla / Paylaş
+        </button>
+      </div>
+    </li>
   );
 }
 

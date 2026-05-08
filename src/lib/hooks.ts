@@ -12,6 +12,7 @@ import type {
   OutsourceStatus,
   Announcement,
   CalendarEvent,
+  MiraiFeedPost,
   CareerLevel,
   ContentPlan,
   ContentStatus,
@@ -755,6 +756,48 @@ export function useDeleteContentPlan() {
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['content-plans'] }),
+  });
+}
+
+// ---------------- MIRAI feed moderation (US-ELAN-02) ----------------
+export function useFeedQueue() {
+  return useQuery({
+    queryKey: ['mirai-feed-queue'],
+    queryFn: async (): Promise<MiraiFeedPost[]> => {
+      const { data, error } = await supabase
+        .from('mirai_feed_posts')
+        .select('*')
+        .is('posted_announcement_id', null)
+        .order('fetched_at', { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      return (data ?? []) as unknown as MiraiFeedPost[];
+    },
+  });
+}
+
+export function useApproveFeedPost() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (postId: string) => {
+      const { error } = await supabase.rpc('approve_feed_post', { p_post_id: postId });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['mirai-feed-queue'] });
+      qc.invalidateQueries({ queryKey: ['announcements'] });
+    },
+  });
+}
+
+export function useRejectFeedPost() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (postId: string) => {
+      const { error } = await supabase.from('mirai_feed_posts').delete().eq('id', postId);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['mirai-feed-queue'] }),
   });
 }
 

@@ -289,6 +289,18 @@ export interface ContentPlan {
   created_at: string;
 }
 
+export type FeedSourceKind = 'trend' | 'opportunity' | 'partner';
+
+export interface MiraiFeedPost {
+  id: string;
+  source_url: string;
+  source_kind: FeedSourceKind;
+  summary: string | null;
+  deadline_at: string | null;
+  fetched_at: string;
+  posted_announcement_id: string | null;
+}
+
 export interface Announcement {
   id: string;
   title: string;
