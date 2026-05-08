@@ -1021,6 +1021,66 @@ export function useCareerLevels() {
   });
 }
 
+export function useUpsertCareerLevel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      id?: string;
+      name: string;
+      level_index: number;
+      requirements: { label: string }[];
+    }) => {
+      if (input.id) {
+        const { error } = await supabase
+          .from('career_levels')
+          .update({
+            name: input.name,
+            level_index: input.level_index,
+            requirements: input.requirements,
+          })
+          .eq('id', input.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('career_levels').insert({
+          name: input.name,
+          level_index: input.level_index,
+          requirements: input.requirements,
+        });
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['career-levels'] }),
+  });
+}
+
+export function useDeleteCareerLevel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('career_levels').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['career-levels'] }),
+  });
+}
+
+export function useSetUserCareerLevel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { userId: string; levelId: string | null }) => {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ career_level_id: input.levelId })
+        .eq('id', input.userId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['active-profiles'] });
+      qc.invalidateQueries({ queryKey: ['profiles'] });
+    },
+  });
+}
+
 // ---------------- OKR (REQ-DASH-02 / US-OKR-01..03) ----------------
 export function useOkrs(filter?: { scope?: OkrScope; employeeId?: string }) {
   return useQuery({
