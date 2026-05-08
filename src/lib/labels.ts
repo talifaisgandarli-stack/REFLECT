@@ -1,5 +1,6 @@
 import type {
   ClientPipelineStage,
+  InteractionType,
   PresenceStatus,
   ProjectStatus,
   TaskStatus,
@@ -77,6 +78,33 @@ export const PRESENCE_LABEL: Record<PresenceStatus, string> = {
   away: 'Uzaqda',
   offline: 'Offline',
 };
+
+export const CLIENT_STAGE_ORDER: ClientPipelineStage[] = [
+  'lead',
+  'proposal',
+  'negotiation',
+  'signed',
+  'in_progress',
+  'portfolio',
+  'lost',
+  'archived',
+];
+
+export const INTERACTION_LABEL: Record<InteractionType, string> = {
+  call: 'Zəng',
+  email: 'Email',
+  meeting: 'Görüş',
+  whatsapp: 'WhatsApp',
+  other: 'Digər',
+};
+
+export const LOST_REASONS = [
+  'Qiymət uyğun gəlmədi',
+  'Rəqib seçildi',
+  'Layihə təxirə salındı',
+  'Əlaqə kəsildi',
+  'Digər',
+] as const;
 
 export const CANCEL_REASONS = [
   'Müştəri imtina etdi',
