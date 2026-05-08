@@ -188,6 +188,19 @@ export interface OutsourceItem {
   created_at: string;
 }
 
+export interface CloseoutItem {
+  key: string;
+  label: string;
+  checked: boolean;
+}
+
+export interface CloseoutChecklist {
+  id: string;
+  project_id: string;
+  items: CloseoutItem[];
+  completed_at: string | null;
+}
+
 export interface CareerLevel {
   id: string;
   name: string;

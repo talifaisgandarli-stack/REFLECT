@@ -11,6 +11,8 @@ import type {
   OutsourceItem,
   OutsourceStatus,
   CareerLevel,
+  CloseoutChecklist,
+  CloseoutItem,
   KeyResult,
   Okr,
   OkrScope,
@@ -364,6 +366,50 @@ export function isOverpaymentError(e: unknown): boolean {
   if (!e || typeof e !== 'object') return false;
   const msg = (e as { message?: string }).message ?? '';
   return msg.includes('overpayment_blocked') || msg.includes('chk_paid_lte_amount');
+}
+
+// ---------------- Closeout (REQ-PROJ-04 / US-PROJ-03) ----------------
+export const DEFAULT_CLOSEOUT_ITEMS: CloseoutItem[] = [
+  { key: 'akt', label: 'Akt imzalandı', checked: false },
+  { key: 'final_docs', label: 'Final sənədlər təhvil verildi', checked: false },
+  { key: 'archive', label: 'Layihə arxivlənib', checked: false },
+  { key: 'portfolio', label: 'Portfeldə yeri var', checked: false },
+  { key: 'survey', label: 'Retrospektiv sorğu göndərilib', checked: false },
+];
+
+export function useCloseoutChecklist(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ['closeout', projectId],
+    enabled: !!projectId,
+    queryFn: async (): Promise<CloseoutChecklist | null> => {
+      const { data, error } = await supabase
+        .from('closeout_checklists')
+        .select('*')
+        .eq('project_id', projectId!)
+        .maybeSingle();
+      if (error) throw error;
+      return (data ?? null) as unknown as CloseoutChecklist | null;
+    },
+  });
+}
+
+export function useCloseProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { projectId: string; items: CloseoutItem[] }) => {
+      const { error } = await supabase.rpc('close_project', {
+        p_project_id: input.projectId,
+        p_items: input.items as unknown as Record<string, unknown>,
+      });
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ['project', vars.projectId] });
+      qc.invalidateQueries({ queryKey: ['projects'] });
+      qc.invalidateQueries({ queryKey: ['closeout', vars.projectId] });
+      qc.invalidateQueries({ queryKey: ['activity'] });
+    },
+  });
 }
 
 // ---------------- Retrospective survey (REQ-CRM-07 / US-CRM-06) ----------------
