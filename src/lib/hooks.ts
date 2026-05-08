@@ -198,6 +198,66 @@ export function useActivityFeed(limit = 50) {
   });
 }
 
+// ---------------- Announcements ----------------
+export interface AnnouncementRow {
+  id: string;
+  title: string;
+  body: string | null;
+  category: string | null;
+  is_featured: boolean;
+  mirai_generated: boolean;
+  approved: boolean;
+  published_at: string | null;
+  created_at: string;
+}
+
+export function useRecentAnnouncements(limit = 3) {
+  return useQuery({
+    queryKey: ['announcements', 'recent', limit],
+    queryFn: async (): Promise<AnnouncementRow[]> => {
+      const { data, error } = await supabase
+        .from('announcements')
+        .select('id, title, body, category, is_featured, mirai_generated, approved, published_at, created_at')
+        .eq('approved', true)
+        .order('published_at', { ascending: false, nullsFirst: false })
+        .limit(limit);
+      if (error) throw error;
+      return (data ?? []) as AnnouncementRow[];
+    },
+  });
+}
+
+// ---------------- Calendar (week ahead) ----------------
+export interface CalendarEventRow {
+  id: string;
+  title: string;
+  starts_at: string;
+  ends_at: string;
+  all_day: boolean;
+  location: string | null;
+  meet_url: string | null;
+  project_id: string | null;
+}
+
+export function useUpcomingMeetings(daysAhead = 7) {
+  return useQuery({
+    queryKey: ['calendar', 'upcoming', daysAhead],
+    queryFn: async (): Promise<CalendarEventRow[]> => {
+      const now = new Date();
+      const horizon = new Date(now.getTime() + daysAhead * 86_400_000);
+      const { data, error } = await supabase
+        .from('calendar_events')
+        .select('id, title, starts_at, ends_at, all_day, location, meet_url, project_id')
+        .gte('starts_at', now.toISOString())
+        .lte('starts_at', horizon.toISOString())
+        .order('starts_at', { ascending: true })
+        .limit(5);
+      if (error) throw error;
+      return (data ?? []) as CalendarEventRow[];
+    },
+  });
+}
+
 // ---------------- Notifications (PRD §6.4) ----------------
 export type NotificationKind =
   | 'mention'
