@@ -4,11 +4,15 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { formatAZN, formatDate } from '@/lib/format';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
+import { IncomeModal } from '@/components/IncomeModal';
+import { ExpenseModal } from '@/components/ExpenseModal';
+import { useMarkPaid, ValidationError } from '@/lib/finance';
 
 const TABS = ['Cash Cockpit', 'P&L', 'Outsource', 'Xərclər', 'Debitor', 'Forecast'] as const;
 
 export function FinancePage() {
   const [tab, setTab] = useState<(typeof TABS)[number]>('Cash Cockpit');
+  const [openModal, setOpenModal] = useState<null | 'income' | 'expense'>(null);
 
   const incomes = useQuery({
     queryKey: ['fin', 'incomes'],
@@ -39,8 +43,8 @@ export function FinancePage() {
         title="Maliyyə Mərkəzi"
         actions={
           <>
-            <button className="btn-outline">+ Xərc</button>
-            <button className="btn-primary">+ Gəlir</button>
+            <button className="btn-outline" onClick={() => setOpenModal('expense')}>+ Xərc</button>
+            <button className="btn-primary" onClick={() => setOpenModal('income')}>+ Gəlir</button>
           </>
         }
       />
@@ -80,32 +84,7 @@ export function FinancePage() {
       ) : null}
 
       {tab === 'Debitor' ? (
-        <table className="w-full text-body">
-          <thead>
-            <tr style={{ borderBottom: '1px solid var(--line)' }}>
-              {['Müştəri', 'Məbləğ', 'Ödənilib', 'Status', 'Müddət'].map((h) => (
-                <th
-                  key={h}
-                  className="text-left py-3 px-3 text-meta"
-                  style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {(receivables.data ?? []).map((r: any) => (
-              <tr key={r.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
-                <td className="py-3 px-3">{r.client_id ?? '—'}</td>
-                <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAZN(r.amount)}</td>
-                <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAZN(r.paid_amount)}</td>
-                <td className="py-3 px-3">{r.status}</td>
-                <td className="py-3 px-3">{formatDate(r.due_at)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <DebitorTable rows={(receivables.data ?? []) as any[]} />
       ) : null}
 
       {tab === 'Forecast' ? (
@@ -134,7 +113,131 @@ export function FinancePage() {
           {tab} cədvəli — v1.5-də.
         </div>
       ) : null}
+
+      {openModal === 'income' ? <IncomeModal onClose={() => setOpenModal(null)} /> : null}
+      {openModal === 'expense' ? <ExpenseModal onClose={() => setOpenModal(null)} /> : null}
     </>
+  );
+}
+
+type Receivable = {
+  id: string;
+  client_id: string | null;
+  amount: number;
+  paid_amount: number;
+  status: string;
+  due_at: string | null;
+};
+
+function DebitorTable({ rows }: { rows: Receivable[] }) {
+  const markPaid = useMarkPaid();
+  const [editing, setEditing] = useState<string | null>(null);
+  const [delta, setDelta] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit(id: string) {
+    setErr(null);
+    try {
+      await markPaid.mutateAsync({ id, delta: Number(delta) });
+      setEditing(null);
+      setDelta('');
+    } catch (e) {
+      setErr(e instanceof ValidationError ? e.message : (e as Error).message);
+    }
+  }
+
+  if (rows.length === 0) {
+    return <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>Açıq debitor yoxdur.</div>;
+  }
+  return (
+    <div className="card overflow-x-auto" style={{ padding: 0 }}>
+      <table className="w-full text-body">
+        <thead>
+          <tr style={{ borderBottom: '1px solid var(--line)' }}>
+            {['Müştəri', 'Məbləğ', 'Ödənilib', 'Qalıq', 'Status', 'Müddət', ''].map((h) => (
+              <th
+                key={h}
+                className="text-left py-3 px-3 text-meta"
+                style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const remaining = Number(r.amount) - Number(r.paid_amount ?? 0);
+            return (
+              <tr key={r.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                <td className="py-3 px-3">{r.client_id ?? '—'}</td>
+                <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAZN(r.amount)}</td>
+                <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAZN(r.paid_amount)}</td>
+                <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAZN(remaining)}</td>
+                <td className="py-3 px-3"><span className="chip">{r.status}</span></td>
+                <td className="py-3 px-3">{formatDate(r.due_at)}</td>
+                <td className="py-3 px-3 text-right">
+                  {r.status === 'paid' ? (
+                    <span className="text-meta" style={{ color: 'var(--text-muted)' }}>—</span>
+                  ) : editing === r.id ? (
+                    <span className="inline-flex gap-2 items-center">
+                      <input
+                        autoFocus
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        max={remaining}
+                        value={delta}
+                        onChange={(e) => setDelta(e.target.value)}
+                        className="input"
+                        style={{ width: 110, height: 32 }}
+                        placeholder={String(remaining)}
+                      />
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        style={{ height: 32, padding: '0 12px' }}
+                        onClick={() => submit(r.id)}
+                        disabled={markPaid.isPending}
+                      >
+                        Tətbiq et
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        style={{ height: 32, padding: '0 8px' }}
+                        onClick={() => {
+                          setEditing(null);
+                          setErr(null);
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn-outline"
+                      style={{ height: 32, padding: '0 12px' }}
+                      onClick={() => {
+                        setEditing(r.id);
+                        setDelta('');
+                        setErr(null);
+                      }}
+                    >
+                      Ödəniş
+                    </button>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {err ? (
+        <div className="px-3 py-2 text-meta" style={{ color: '#B91C1C' }}>{err}</div>
+      ) : null}
+    </div>
   );
 }
 

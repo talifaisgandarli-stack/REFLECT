@@ -90,6 +90,8 @@ or the design doc instead.
 - [x] `@<uuid>` mention parser + notifications fan-out (REQ-TASK-07)
 - [x] Subtask → Done blocking modal + DB guard (REQ-TASK-05)
 - [x] `up()`/`down()` migration pairs for every migration (PRD §10.1)
+- [x] Finance: Income / Expense create modals (REQ-FIN-01, REQ-FIN-04)
+- [x] Receivable markPaid partial flow (REQ-FIN-02 overpayment, REQ-FIN-03 partial)
 - [ ] Realtime channels (tasks/activity/announcements) — wired in v1.5
 - [ ] Calendar Month/Week/Day full grids — placeholder list view shipped
 - [ ] Knowledge Base PDF upload + RAG embeddings pipeline
