@@ -1,6 +1,7 @@
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
 import { InvitationsPanel } from '@/components/InvitationsPanel';
+import { KnowledgeBasePanel } from '@/components/KnowledgeBasePanel';
 
 const NAV = [
   { to: 'umumi', label: 'Ümumi' },
@@ -63,7 +64,7 @@ function TemplatesSettings() {
   return <p className="text-body">Sənəd şablonları (kontrakt, akt, faktura) — v1.5-də.</p>;
 }
 function KnowledgeBaseSettings() {
-  return <p className="text-body">Yüklənmiş PDF-lər və MIRAI RAG mənbələri — burada idarə olunur.</p>;
+  return <KnowledgeBasePanel />;
 }
 function NotificationsSettings() {
   return <p className="text-body">Email + Telegram bildiriş tərcihləri.</p>;

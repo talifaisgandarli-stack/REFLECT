@@ -9,7 +9,8 @@ const SUGGESTIONS = [
   'Cash forecast 30 gün',
 ];
 
-type Msg = { role: 'user' | 'assistant'; content: string; sources?: { name: string; page?: number }[] };
+type Source = { source_pdf: string; chunk_index: number; similarity?: number };
+type Msg = { role: 'user' | 'assistant'; content: string; sources?: Source[] };
 
 export function MiraiPage() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -117,8 +118,13 @@ export function MiraiPage() {
               {m.sources && m.sources.length ? (
                 <div className="flex flex-wrap gap-2 mt-3">
                   {m.sources.map((s, j) => (
-                    <span key={j} className="chip" style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--canvas)' }}>
-                      {s.name}{s.page ? ` · s.${s.page}` : ''}
+                    <span
+                      key={j}
+                      className="chip"
+                      style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--canvas)' }}
+                      title={s.similarity != null ? `Oxşarlıq: ${(s.similarity * 100).toFixed(0)}%` : undefined}
+                    >
+                      Mənbə: {s.source_pdf} · Maddə {s.chunk_index}
                     </span>
                   ))}
                 </div>
