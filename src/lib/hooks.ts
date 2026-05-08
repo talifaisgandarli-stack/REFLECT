@@ -10,6 +10,7 @@ import type {
   InteractionType,
   OutsourceItem,
   OutsourceStatus,
+  CareerLevel,
   KeyResult,
   Okr,
   OkrScope,
@@ -362,6 +363,21 @@ export function isOverpaymentError(e: unknown): boolean {
   if (!e || typeof e !== 'object') return false;
   const msg = (e as { message?: string }).message ?? '';
   return msg.includes('overpayment_blocked') || msg.includes('chk_paid_lte_amount');
+}
+
+// ---------------- Career levels (US-CAREER-01) ----------------
+export function useCareerLevels() {
+  return useQuery({
+    queryKey: ['career-levels'],
+    queryFn: async (): Promise<CareerLevel[]> => {
+      const { data, error } = await supabase
+        .from('career_levels')
+        .select('*')
+        .order('level_index', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as unknown as CareerLevel[];
+    },
+  });
 }
 
 // ---------------- OKR (REQ-DASH-02 / US-OKR-01..03) ----------------

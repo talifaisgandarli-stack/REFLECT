@@ -46,6 +46,7 @@ export interface Profile {
   telegram_chat_id: string | null;
   telegram_linked_at: string | null;
   locale: 'az' | 'en' | 'ru';
+  career_level_id: string | null;
   created_at: string;
 }
 
@@ -184,6 +185,14 @@ export interface OutsourceItem {
   responsible_user_id: string | null;
   deadline: string | null;
   status: OutsourceStatus;
+  created_at: string;
+}
+
+export interface CareerLevel {
+  id: string;
+  name: string;
+  level_index: number;
+  requirements: { label: string }[];
   created_at: string;
 }
 
