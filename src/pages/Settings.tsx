@@ -1,6 +1,8 @@
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
 import { useMemo, useState } from 'react';
+import { useQuery as useReactQuery, useQueryClient } from '@tanstack/react-query';
+import { supabase as supabaseClient } from '@/lib/supabase';
 import {
   useDeleteTemplate,
   useTemplates,
@@ -8,6 +10,7 @@ import {
 } from '@/lib/hooks';
 import type { Template } from '@/types/db';
 import { useAuth } from '@/lib/store';
+import { relativeTime } from '@/lib/format';
 
 const NAV = [
   { to: 'umumi', label: 'Ümumi' },
@@ -345,7 +348,188 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 function KnowledgeBaseSettings() {
-  return <p className="text-body">Yüklənmiş PDF-lər və MIRAI RAG mənbələri — burada idarə olunur.</p>;
+  return <KbPanel />;
+}
+
+interface KbSource {
+  source_pdf: string;
+  chunks: number;
+  uploaded_at: string;
+}
+
+function KbPanel() {
+  const { isAdmin } = useAuth();
+  const sources = useKbSources();
+  const [adding, setAdding] = useState(false);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-h3">Bilik Bazası</h3>
+        {isAdmin ? (
+          <button className="btn-primary" onClick={() => setAdding(true)}>
+            + Mənbə əlavə et
+          </button>
+        ) : null}
+      </div>
+      <p className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
+        AZ tikinti qanunu, AZDNT normativləri və daxili sənədlər. MIRAI Hüquqşünas
+        personası buradan istinad gətirir. Yenidən yükləmə → mövcud chunk-ları
+        əvəz edir.
+      </p>
+
+      {sources.isLoading ? (
+        <p className="text-meta">Yüklənir…</p>
+      ) : sources.data && sources.data.length > 0 ? (
+        <ul className="space-y-2">
+          {sources.data.map((s) => (
+            <li
+              key={s.source_pdf}
+              className="rounded-card p-3 flex items-center justify-between"
+              style={{ border: '1px solid var(--line-soft)' }}
+            >
+              <div className="min-w-0">
+                <div className="text-body font-medium truncate">{s.source_pdf}</div>
+                <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                  {s.chunks} chunk · {relativeTime(s.uploaded_at)}
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+          Hələ mənbə yoxdur.
+        </p>
+      )}
+
+      {adding ? <KbIngestModal onClose={() => setAdding(false)} /> : null}
+    </div>
+  );
+}
+
+function useKbSources() {
+  return useReactQuery({
+    queryKey: ['kb-sources'],
+    queryFn: async (): Promise<KbSource[]> => {
+      const { data, error } = await supabaseClient
+        .from('knowledge_base')
+        .select('source_pdf, uploaded_at');
+      if (error) throw error;
+      const map = new Map<string, KbSource>();
+      for (const r of (data ?? []) as { source_pdf: string; uploaded_at: string }[]) {
+        const cur = map.get(r.source_pdf);
+        if (!cur) {
+          map.set(r.source_pdf, { source_pdf: r.source_pdf, chunks: 1, uploaded_at: r.uploaded_at });
+        } else {
+          cur.chunks += 1;
+          if (r.uploaded_at > cur.uploaded_at) cur.uploaded_at = r.uploaded_at;
+        }
+      }
+      return [...map.values()].sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at));
+    },
+  });
+}
+
+function KbIngestModal({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient();
+  const [name, setName] = useState('');
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit() {
+    setErr(null);
+    if (!name.trim()) return setErr('Mənbə adı lazımdır.');
+    if (text.trim().length < 50) return setErr('Mətn çox qısadır (≥50 simvol).');
+    setBusy(true);
+    try {
+      const { data: sess } = await supabaseClient.auth.getSession();
+      const token = sess.session?.access_token;
+      const res = await fetch('/api/kb/ingest', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ source_pdf: name.trim(), text }),
+      });
+      const json = (await res.json()) as { error?: string; chunks?: number };
+      if (!res.ok) {
+        setErr(json.error ?? 'Ingest uğursuz oldu.');
+        return;
+      }
+      await qc.invalidateQueries({ queryKey: ['kb-sources'] });
+      onClose();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: 'rgba(14,22,17,0.55)' }}
+      onClick={onClose}
+    >
+      <div
+        className="bg-surface p-6 rounded-card w-[640px] max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-h2 mb-1">+ Bilik bazası mənbəyi</h2>
+        <p className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
+          PDF-i kənarda mətnə çevir və buraya yapışdır. Sistem ~500 token-lik
+          chunk-lara böləcək, embedding hesablayacaq və mövcud eyni adlı
+          mənbəni əvəz edəcək.
+        </p>
+        <label className="block mb-3">
+          <div
+            className="text-meta uppercase tracking-wider mb-1"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            Mənbə adı
+          </div>
+          <input
+            className="input w-full"
+            placeholder="məs. AZDNT 2.04.05-91"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus
+          />
+        </label>
+        <label className="block mb-3">
+          <div
+            className="text-meta uppercase tracking-wider mb-1"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            Mətn
+          </div>
+          <textarea
+            className="input w-full font-mono"
+            rows={12}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+        </label>
+        <div className="text-meta mb-3" style={{ color: 'var(--text-muted)' }}>
+          Təxminən {Math.ceil(text.length / 2000)} chunk
+        </div>
+        {err ? (
+          <div className="text-meta" style={{ color: 'var(--danger, #B91C1C)' }}>
+            {err}
+          </div>
+        ) : null}
+        <div className="flex justify-end gap-2 mt-4">
+          <button className="btn-outline" onClick={onClose} disabled={busy}>
+            Ləğv et
+          </button>
+          <button className="btn-primary" disabled={busy} onClick={submit}>
+            {busy ? 'İşlənir…' : 'Yüklə'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 function NotificationsSettings() {
   return <p className="text-body">Email + Telegram bildiriş tərcihləri.</p>;
