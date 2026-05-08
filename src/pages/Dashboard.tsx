@@ -7,6 +7,11 @@ import { useAuth } from '@/lib/store';
 import { relativeTime, taskHealth } from '@/lib/format';
 import { FocusWidget } from '@/components/FocusWidget';
 import { useRealtimeActivityLog, useRealtimeTasks } from '@/lib/realtime';
+import {
+  useMarkAnnouncementRead,
+  useUnreadAnnouncements,
+  useUpcomingMeetings,
+} from '@/lib/dashboard';
 
 export function DashboardPage() {
   useRealtimeActivityLog();
@@ -15,6 +20,9 @@ export function DashboardPage() {
   const { data: tasks = [] } = useTasks(profile?.id ? { assigneeId: profile.id } : undefined);
   const { data: presence = [] } = useTeamPresence();
   const { data: activity = [] } = useActivityFeed(20);
+  const { data: meetings = [] } = useUpcomingMeetings();
+  const { data: unread = [] } = useUnreadAnnouncements();
+  const markRead = useMarkAnnouncementRead();
 
   const today = tasks.filter((t) => t.status === 'active' || t.status === 'review');
   const overdue = tasks.filter((t) => taskHealth(t.deadline) === 'red');
@@ -123,6 +131,99 @@ export function DashboardPage() {
                     <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
                       {relativeTime(a.created_at)}
                     </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {/* Upcoming meetings — REQ-DASH-02 */}
+        <section className="lg:col-span-6 card">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-h3">Yaxınlaşan görüşlər</h3>
+            <a href="/komanda/təqvim" className="text-meta" style={{ color: 'var(--text-muted)' }}>
+              Təqvim →
+            </a>
+          </div>
+          {meetings.length === 0 ? (
+            <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+              Növbəti 7 gün üçün görüş yoxdur.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {meetings.map((m) => (
+                <li
+                  key={m.id}
+                  className="rounded-card px-3 py-2 flex items-center justify-between"
+                  style={{ border: '1px solid var(--line-soft)' }}
+                >
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{m.title}</div>
+                    <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                      {new Date(m.starts_at).toLocaleString('az-Latn-AZ', {
+                        weekday: 'short',
+                        day: 'numeric',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                      {m.location ? ` · ${m.location}` : ''}
+                    </div>
+                  </div>
+                  {m.meet_url ? (
+                    <a
+                      href={m.meet_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-outline shrink-0"
+                      style={{ height: 32, padding: '0 12px' }}
+                    >
+                      Qoşul
+                    </a>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {/* Unread announcements — REQ-DASH-02, PRD §8.6 */}
+        <section className="lg:col-span-6 card">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-h3">
+              Oxunmamış elanlar{unread.length ? ` · ${unread.length}` : ''}
+            </h3>
+            <a href="/komanda/elanlar" className="text-meta" style={{ color: 'var(--text-muted)' }}>
+              Hamısı →
+            </a>
+          </div>
+          {unread.length === 0 ? (
+            <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+              Hər şey oxunub.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {unread.map((a) => (
+                <li
+                  key={a.id}
+                  className="rounded-card px-3 py-2"
+                  style={{ border: '1px solid var(--line-soft)' }}
+                >
+                  <div className="flex items-baseline justify-between gap-2">
+                    <div className="font-medium truncate">{a.title}</div>
+                    <button
+                      type="button"
+                      className="text-meta shrink-0"
+                      style={{ color: 'var(--brand-text)' }}
+                      onClick={() => markRead.mutate(a.id)}
+                    >
+                      Oxundu
+                    </button>
+                  </div>
+                  <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                    {a.category ?? 'Digər'}
+                    {a.published_at ? ` · ${relativeTime(a.published_at)}` : ''}
                   </div>
                 </li>
               ))}

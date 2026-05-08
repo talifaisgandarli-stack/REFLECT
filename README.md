@@ -103,6 +103,7 @@ or the design doc instead.
 - [x] Retrospective survey: admin trigger + public /survey/:token form (REQ-CRM-07)
 - [x] Calendar Month/Week/Day grids + EventModal + .ics email invite + meet.new (PRD §8.2 / US-CAL-01..03)
 - [x] MIRAI RAG: MD/TXT ingestion, OpenAI embeddings (1536-d), pgvector cosine top-5, citations rendered as sources strip (PRD §7.4)
+- [x] Dashboard upcoming-meetings + unread-announcements widgets + sidebar unread badge (REQ-DASH-02, PRD §8.6)
 - [ ] Realtime channels (tasks/activity/announcements) — wired in v1.5
 - [ ] Calendar Month/Week/Day full grids — placeholder list view shipped
 - [ ] Knowledge Base PDF upload + RAG embeddings pipeline

@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { Mascot } from './Mascot';
 import { useAuth } from '@/lib/store';
 import { signOut } from '@/lib/auth';
+import { useUnreadAnnouncementCount } from '@/lib/dashboard';
 
 type NavItem = { to: string; label: string; admin?: boolean };
 type NavGroup = { label: string; items: NavItem[]; adminGroup?: boolean };
@@ -57,6 +58,7 @@ const NAV: NavGroup[] = [
 
 export function Sidebar() {
   const { isAdmin, profile } = useAuth();
+  const { count: unread } = useUnreadAnnouncementCount();
 
   return (
     <aside
@@ -85,16 +87,34 @@ export function Sidebar() {
           return (
             <div key={group.label}>
               <div className="sb-section">{group.label}</div>
-              {items.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.to === '/'}
-                  className={({ isActive }) => `sb-item mx-2 ${isActive ? 'active' : ''}`}
-                >
-                  {item.label}
-                </NavLink>
-              ))}
+              {items.map((item) => {
+                const badge =
+                  item.to === '/komanda/elanlar' && unread > 0 ? unread : null;
+                return (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.to === '/'}
+                    className={({ isActive }) => `sb-item mx-2 ${isActive ? 'active' : ''}`}
+                  >
+                    <span className="flex-1">{item.label}</span>
+                    {badge != null ? (
+                      <span
+                        className="text-tiny px-1.5 rounded-chip"
+                        style={{
+                          background: 'var(--brand-action)',
+                          color: 'var(--brand-text)',
+                          fontVariantNumeric: 'tabular-nums',
+                          minWidth: 18,
+                          textAlign: 'center',
+                        }}
+                      >
+                        {badge}
+                      </span>
+                    ) : null}
+                  </NavLink>
+                );
+              })}
             </div>
           );
         })}
