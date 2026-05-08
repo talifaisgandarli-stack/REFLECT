@@ -10,6 +10,7 @@ import type {
   InteractionType,
   OutsourceItem,
   OutsourceStatus,
+  CalendarEvent,
   CareerLevel,
   CloseoutChecklist,
   CloseoutItem,
@@ -515,6 +516,69 @@ export function useSubmitPerformanceReview() {
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['perf'] }),
+  });
+}
+
+// ---------------- Calendar (US-CAL-01..03) ----------------
+export function useCalendarEvents(range?: { start: string; end: string }) {
+  return useQuery({
+    queryKey: ['calendar-events', range],
+    queryFn: async (): Promise<CalendarEvent[]> => {
+      let q = supabase
+        .from('calendar_events')
+        .select('*')
+        .order('starts_at', { ascending: true });
+      if (range) q = q.gte('starts_at', range.start).lt('starts_at', range.end);
+      const { data, error } = await q.limit(500);
+      if (error) throw error;
+      return (data ?? []) as unknown as CalendarEvent[];
+    },
+  });
+}
+
+export function useCreateCalendarEvent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      title: string;
+      starts_at: string;
+      ends_at: string;
+      all_day?: boolean;
+      location?: string | null;
+      meet_url?: string | null;
+      description?: string | null;
+      recurrence_rule?: string | null;
+      attendees?: string[];
+      external_emails?: string[];
+      project_id?: string | null;
+    }) => {
+      const { error } = await supabase.from('calendar_events').insert({
+        title: input.title,
+        starts_at: input.starts_at,
+        ends_at: input.ends_at,
+        all_day: input.all_day ?? false,
+        location: input.location ?? null,
+        meet_url: input.meet_url ?? null,
+        description: input.description ?? null,
+        recurrence_rule: input.recurrence_rule ?? null,
+        attendees: input.attendees ?? [],
+        external_emails: input.external_emails ?? [],
+        project_id: input.project_id ?? null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['calendar-events'] }),
+  });
+}
+
+export function useDeleteCalendarEvent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('calendar_events').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['calendar-events'] }),
   });
 }
 

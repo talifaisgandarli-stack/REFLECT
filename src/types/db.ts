@@ -237,6 +237,23 @@ export interface CareerLevel {
   created_at: string;
 }
 
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  description: string | null;
+  starts_at: string;
+  ends_at: string;
+  all_day: boolean;
+  recurrence_rule: string | null;
+  location: string | null;
+  meet_url: string | null;
+  organizer_id: string | null;
+  attendees: string[];
+  external_emails: string[];
+  project_id: string | null;
+  created_at: string;
+}
+
 export type LeaveKind = 'annual' | 'sick' | 'unpaid' | 'parental' | 'other';
 export type LeaveStatus = 'pending' | 'approved' | 'denied' | 'cancelled';
 
