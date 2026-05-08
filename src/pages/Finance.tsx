@@ -5,15 +5,18 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { bakuMonthRange, formatAZN, formatDate } from '@/lib/format';
 import {
+  isOutsourcePaidAdminOnly,
   isOverpaymentError,
   useCreateExpense,
   useCreateIncome,
   useExpenses,
   useIncomes,
   useMarkReceivablePaid,
+  useOutsourceItems,
   useReceivables,
+  useUpdateOutsourceStatus,
 } from '@/lib/hooks';
-import type { CashForecastRow, Expense, Income, Receivable } from '@/types/db';
+import type { CashForecastRow, Expense, Income, OutsourceItem, OutsourceStatus, Receivable } from '@/types/db';
 import { useAuth } from '@/lib/store';
 import { useProjects } from '@/lib/hooks';
 import { useClients } from '@/lib/hooks';
@@ -122,9 +125,11 @@ export function FinancePage() {
         <ExpensesTable rows={allExpenses.data ?? []} loading={allExpenses.isLoading} />
       ) : null}
 
-      {tab === 'P&L' || tab === 'Outsource' ? (
+      {tab === 'Outsource' ? <OutsourceTab /> : null}
+
+      {tab === 'P&L' ? (
         <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
-          {tab} cədvəli — növbəti increment-də (REQ-FIN-06 / REQ-FIN-07).
+          P&L cədvəli — növbəti increment-də (REQ-FIN-06).
         </div>
       ) : null}
 
@@ -535,6 +540,106 @@ function ExpensesTable({ rows, loading }: { rows: Expense[]; loading: boolean })
         ))}
       </tbody>
     </table>
+  );
+}
+
+const OUTSOURCE_LABEL: Record<OutsourceStatus, string> = {
+  order: 'Sifariş',
+  in_progress: 'İcrada',
+  delivered: 'Təhvil',
+  paid: 'Ödənildi',
+};
+const OUTSOURCE_FLOW: OutsourceStatus[] = ['order', 'in_progress', 'delivered', 'paid'];
+
+function OutsourceTab() {
+  const { data: rows = [], isLoading } = useOutsourceItems();
+  const update = useUpdateOutsourceStatus();
+  const [err, setErr] = useState<string | null>(null);
+
+  function advance(row: OutsourceItem) {
+    setErr(null);
+    const next = OUTSOURCE_FLOW[OUTSOURCE_FLOW.indexOf(row.status) + 1];
+    if (!next) return;
+    update.mutate(
+      { id: row.id, status: next },
+      {
+        onError: (e) =>
+          setErr(
+            isOutsourcePaidAdminOnly(e)
+              ? 'Yalnız admin "Ödənildi" qoya bilər.'
+              : (e as Error).message,
+          ),
+      },
+    );
+  }
+
+  if (isLoading) return <div className="card text-meta">Yüklənir…</div>;
+  if (rows.length === 0) {
+    return (
+      <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
+        Podrat işi yoxdur.
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {err ? (
+        <div className="card mb-3 text-meta" style={{ color: 'var(--danger, #B91C1C)' }}>
+          {err}
+        </div>
+      ) : null}
+      <div className="card overflow-x-auto">
+        <table className="w-full text-body">
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--line)' }}>
+              {['İş', 'Layihə', 'Deadline', 'Status', 'Məbləğ', ''].map((h, i) => (
+                <th
+                  key={`${h}-${i}`}
+                  className="text-left py-3 px-3 text-meta"
+                  style={{
+                    color: 'var(--text-muted)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                  }}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const next = OUTSOURCE_FLOW[OUTSOURCE_FLOW.indexOf(row.status) + 1];
+              return (
+                <tr key={row.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                  <td className="py-3 px-3">{row.work_title}</td>
+                  <td className="py-3 px-3">{row.project_id ?? '—'}</td>
+                  <td className="py-3 px-3">{formatDate(row.deadline)}</td>
+                  <td className="py-3 px-3">
+                    <span className="chip">{OUTSOURCE_LABEL[row.status]}</span>
+                  </td>
+                  <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {formatAZN(row.amount)}
+                  </td>
+                  <td className="py-3 px-3 text-right">
+                    {next ? (
+                      <button
+                        className="btn-outline"
+                        disabled={update.isPending}
+                        onClick={() => advance(row)}
+                      >
+                        → {OUTSOURCE_LABEL[next]}
+                      </button>
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 

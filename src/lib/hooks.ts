@@ -9,6 +9,7 @@ import type {
   Income,
   InteractionType,
   OutsourceItem,
+  OutsourceStatus,
   Project,
   Receivable,
   Task,
@@ -295,6 +296,29 @@ export function useCreateExpense() {
       qc.invalidateQueries({ queryKey: ['activity'] });
     },
   });
+}
+
+export function useUpdateOutsourceStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; status: OutsourceStatus }) => {
+      const { error } = await supabase.rpc('update_outsource_status', {
+        p_item_id: input.id,
+        p_status: input.status,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fin', 'outsource'] });
+      qc.invalidateQueries({ queryKey: ['outsource'] });
+      qc.invalidateQueries({ queryKey: ['outsource-user'] });
+    },
+  });
+}
+
+export function isOutsourcePaidAdminOnly(e: unknown): boolean {
+  if (!e || typeof e !== 'object') return false;
+  return ((e as { message?: string }).message ?? '').includes('paid_admin_only');
 }
 
 export function useMarkReceivablePaid() {

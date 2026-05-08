@@ -277,6 +277,10 @@ export interface Database {
         Args: { p_receivable_id: string; p_delta: number };
         Returns: Receivable;
       };
+      update_outsource_status: {
+        Args: { p_item_id: string; p_status: OutsourceStatus };
+        Returns: OutsourceItem;
+      };
     };
     Enums: {
       task_status: TaskStatus;
