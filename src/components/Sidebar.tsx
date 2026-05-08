@@ -27,7 +27,10 @@ const NAV: NavGroup[] = [
   {
     label: 'MALİYYƏ MƏRKƏZİ',
     adminGroup: true,
-    items: [{ to: '/maliyyə', label: 'Maliyyə Mərkəzi', admin: true }],
+    items: [
+      { to: '/maliyyə', label: 'Maliyyə Mərkəzi', admin: true },
+      { to: '/hesabatlar', label: 'Hesabatlar', admin: true },
+    ],
   },
   {
     label: 'KOMANDA',
