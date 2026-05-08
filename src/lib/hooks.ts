@@ -543,6 +543,34 @@ export function useSubmitPerformanceReview() {
   });
 }
 
+// ---------------- Invoice generator (US-FIN-08) ----------------
+export function useGenerateInvoice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      project_id?: string | null;
+      client_id?: string | null;
+      title?: string;
+      category?: string;
+    }): Promise<{ document_id: string; invoice_number: string; share_token: string }> => {
+      const { data, error } = await supabase.rpc('generate_invoice', {
+        p_project_id: input.project_id ?? null,
+        p_client_id: input.client_id ?? null,
+        p_title: input.title ?? null,
+        p_category: input.category ?? 'Faktura',
+      });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      return row as { document_id: string; invoice_number: string; share_token: string };
+    },
+    onSuccess: (_d, vars) => {
+      if (vars.project_id) {
+        qc.invalidateQueries({ queryKey: ['project-documents', vars.project_id] });
+      }
+    },
+  });
+}
+
 // ---------------- Project documents (PRD §3.2 / REQ-PROJ-03) ----------------
 export const DOCUMENT_CATEGORIES = [
   'Müqavilə',

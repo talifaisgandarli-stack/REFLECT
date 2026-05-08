@@ -10,6 +10,7 @@ import {
   useCreateExpense,
   useCreateIncome,
   useExpenses,
+  useGenerateInvoice,
   useIncomes,
   useMarkReceivablePaid,
   useOutsourceItems,
@@ -31,7 +32,7 @@ const EXPENSE_CATEGORIES = ['Maaş', 'Ofis', 'Lisenziya', 'Marketinq', 'Outsourc
 export function FinancePage() {
   const { isAdmin } = useAuth();
   const [tab, setTab] = useState<Tab>('Cash Cockpit');
-  const [modal, setModal] = useState<'income' | 'expense' | null>(null);
+  const [modal, setModal] = useState<'income' | 'expense' | 'invoice' | null>(null);
 
   const range = useMemo(() => bakuMonthRange(), []);
   const monthIncomes = useIncomes(range);
@@ -75,6 +76,9 @@ export function FinancePage() {
         title="Maliyyə Mərkəzi"
         actions={
           <>
+            <button className="btn-outline" onClick={() => setModal('invoice')}>
+              + Faktura
+            </button>
             <button className="btn-outline" onClick={() => setModal('expense')}>
               + Xərc
             </button>
@@ -135,6 +139,9 @@ export function FinancePage() {
       ) : null}
       {modal === 'expense' ? (
         <ExpenseModal onClose={() => setModal(null)} />
+      ) : null}
+      {modal === 'invoice' ? (
+        <InvoiceModal onClose={() => setModal(null)} />
       ) : null}
     </>
   );
@@ -537,6 +544,145 @@ function ExpensesTable({ rows, loading }: { rows: Expense[]; loading: boolean })
         ))}
       </tbody>
     </table>
+  );
+}
+
+function InvoiceModal({ onClose }: { onClose: () => void }) {
+  const { data: projects = [] } = useProjects();
+  const { data: clients = [] } = useClients();
+  const generate = useGenerateInvoice();
+  const [projectId, setProjectId] = useState<string>('');
+  const [clientId, setClientId] = useState<string>('');
+  const [title, setTitle] = useState('');
+  const [result, setResult] = useState<
+    { invoice_number: string; share_token: string } | null
+  >(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  function submit() {
+    setErr(null);
+    generate.mutate(
+      {
+        project_id: projectId || null,
+        client_id: clientId || null,
+        title: title.trim() || undefined,
+        category: 'Faktura',
+      },
+      {
+        onSuccess: (row) =>
+          setResult({ invoice_number: row.invoice_number, share_token: row.share_token }),
+        onError: (e) => setErr((e as Error).message),
+      },
+    );
+  }
+
+  const link = result
+    ? `${typeof window !== 'undefined' ? window.location.origin : ''}/d/${result.share_token}`
+    : null;
+
+  async function copyLink() {
+    if (!link) return;
+    await navigator.clipboard.writeText(link);
+    setCopied(true);
+  }
+
+  return (
+    <Modal title="+ Faktura yarat" onClose={onClose}>
+      {result ? (
+        <div>
+          <p className="text-meta mb-2" style={{ color: 'var(--text-muted)' }}>
+            Faktura nömrəsi
+          </p>
+          <div
+            className="text-h2 mb-4"
+            style={{ fontVariantNumeric: 'tabular-nums', letterSpacing: '0.05em' }}
+          >
+            {result.invoice_number}
+          </div>
+          <p className="text-meta mb-2" style={{ color: 'var(--text-muted)' }}>
+            Paylaşım linki (read-only)
+          </p>
+          <div className="flex gap-2 mb-3">
+            <input
+              className="input flex-1"
+              value={link ?? ''}
+              readOnly
+              onFocus={(e) => e.currentTarget.select()}
+            />
+            <button className="btn-outline" onClick={copyLink}>
+              {copied ? 'Kopyalandı' : 'Kopyala'}
+            </button>
+          </div>
+          <div className="flex justify-end mt-4">
+            <button className="btn-primary" onClick={onClose}>
+              Bağla
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <p className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
+            Faktura nömrəsi avtomatik formatda AZ-{new Date().getFullYear()}-NNNN olacaq.
+            project_documents-də source='auto_generated' ilə qeyd edilir; share-token
+            link ilə müştəri ilə paylaş.
+          </p>
+          <Field label="Layihə">
+            <select
+              className="input w-full"
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+            >
+              <option value="">— Seç —</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Müştəri">
+            <select
+              className="input w-full"
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+            >
+              <option value="">— Seç —</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Başlıq (opsional)">
+            <input
+              className="input w-full"
+              placeholder="Faktura nömrəsindən başqa görünən ad"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </Field>
+          {err ? (
+            <div className="text-meta" style={{ color: 'var(--danger, #B91C1C)' }}>
+              {err}
+            </div>
+          ) : null}
+          <div className="flex justify-end gap-2 mt-4">
+            <button className="btn-outline" onClick={onClose}>
+              Ləğv et
+            </button>
+            <button
+              className="btn-primary"
+              disabled={generate.isPending}
+              onClick={submit}
+            >
+              {generate.isPending ? 'Yaradılır…' : 'Yarat'}
+            </button>
+          </div>
+        </>
+      )}
+    </Modal>
   );
 }
 
