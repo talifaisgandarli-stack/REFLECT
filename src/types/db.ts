@@ -187,6 +187,28 @@ export interface OutsourceItem {
   created_at: string;
 }
 
+export interface Salary {
+  id: string;
+  employee_id: string;
+  amount: number;
+  currency: string;
+  effective_from: string;
+  effective_to: string | null;
+  components: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface PerformanceReview {
+  id: string;
+  employee_id: string;
+  year: number;
+  score: number;
+  ratings: Record<string, number>;
+  reviewer_id: string | null;
+  summary: string | null;
+  created_at: string;
+}
+
 export interface Template {
   id: string;
   category: string;

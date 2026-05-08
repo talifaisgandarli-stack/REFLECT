@@ -10,7 +10,9 @@ import type {
   InteractionType,
   OutsourceItem,
   OutsourceStatus,
+  PerformanceReview,
   ProjectPnl,
+  Salary,
   Template,
   Project,
   Receivable,
@@ -357,6 +359,37 @@ export function isOverpaymentError(e: unknown): boolean {
   if (!e || typeof e !== 'object') return false;
   const msg = (e as { message?: string }).message ?? '';
   return msg.includes('overpayment_blocked') || msg.includes('chk_paid_lte_amount');
+}
+
+// ---------------- Salary (US-SAL-01) ----------------
+export function useSalaries(employeeId?: string) {
+  return useQuery({
+    queryKey: ['salaries', employeeId ?? 'all'],
+    queryFn: async (): Promise<Salary[]> => {
+      let q = supabase.from('salaries').select('*').order('effective_from', { ascending: false });
+      if (employeeId) q = q.eq('employee_id', employeeId);
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data ?? []) as unknown as Salary[];
+    },
+  });
+}
+
+// ---------------- Performance (US-PERF-01) ----------------
+export function usePerformanceReviews(employeeId?: string) {
+  return useQuery({
+    queryKey: ['perf', employeeId ?? 'all'],
+    queryFn: async (): Promise<PerformanceReview[]> => {
+      let q = supabase
+        .from('performance_reviews')
+        .select('*')
+        .order('year', { ascending: false });
+      if (employeeId) q = q.eq('employee_id', employeeId);
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data ?? []) as unknown as PerformanceReview[];
+    },
+  });
 }
 
 // ---------------- Templates (US-SYS-01 / §10.2) ----------------
