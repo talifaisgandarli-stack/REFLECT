@@ -109,6 +109,7 @@ or the design doc instead.
 - [x] Outsource user-side status updates via update_outsource_status RPC (REQ-FIN-07) + recurring_expenses → expenses materializer with daily Vercel cron (REQ-FIN-05)
 - [x] Test infrastructure: Vitest + migration-pairing tests + parity harness skeleton + GitHub Actions CI (PRD §9.3, §11.3)
 - [x] MIRAI polish: persona switcher (7 personas per PRD §7.2) + conversation history sidebar + resume + Yeni söhbət in Mirai page and MiraiDrawer
+- [x] Module 12 — Telegram notifications: linking flow UI (US-TG-01), notification_preferences (§10.4), daily deadline reminders cron (US-TG-02), DB-trigger queue + cron for finance alerts admin-only (US-TG-03)
 - [ ] Realtime channels (tasks/activity/announcements) — wired in v1.5
 - [ ] Calendar Month/Week/Day full grids — placeholder list view shipped
 - [ ] Knowledge Base PDF upload + RAG embeddings pipeline

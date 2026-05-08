@@ -1,0 +1,10 @@
+drop trigger if exists trg_expenses_alert on expenses;
+drop trigger if exists trg_incomes_alert on incomes;
+drop function if exists public.queue_finance_alert();
+drop function if exists public.finance_threshold(text);
+drop function if exists public.notif_pref_enabled(uuid, notification_channel, notification_event);
+drop table if exists telegram_alert_queue;
+drop table if exists notification_preferences;
+drop type if exists notification_event;
+drop type if exists notification_channel;
+delete from system_settings where key in ('income_alert', 'expense_alert');

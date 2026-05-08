@@ -7,6 +7,8 @@
   "crons": [
     { "path": "/api/cron/forecast", "schedule": "0 3 * * *" },
     { "path": "/api/cron/cmo", "schedule": "0 7 * * 1" },
-    { "path": "/api/cron/recurring-expenses", "schedule": "0 6 * * *" }
+    { "path": "/api/cron/recurring-expenses", "schedule": "0 6 * * *" },
+    { "path": "/api/cron/telegram-reminders", "schedule": "0 5 * * *" },
+    { "path": "/api/cron/telegram-alerts", "schedule": "*/5 * * * *" }
   ]
 }

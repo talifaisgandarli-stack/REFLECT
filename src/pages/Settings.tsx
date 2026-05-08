@@ -2,6 +2,7 @@ import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
 import { InvitationsPanel } from '@/components/InvitationsPanel';
 import { KnowledgeBasePanel } from '@/components/KnowledgeBasePanel';
+import { NotificationPrefsPanel } from '@/components/NotificationPrefsPanel';
 
 const NAV = [
   { to: 'umumi', label: 'Ümumi' },
@@ -67,5 +68,5 @@ function KnowledgeBaseSettings() {
   return <KnowledgeBasePanel />;
 }
 function NotificationsSettings() {
-  return <p className="text-body">Email + Telegram bildiriş tərcihləri.</p>;
+  return <NotificationPrefsPanel />;
 }
