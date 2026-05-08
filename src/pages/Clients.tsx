@@ -1,6 +1,10 @@
 import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
+import { supabase } from '@/lib/supabase';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
+import { ClientCreateModal } from '@/components/ClientCreateModal';
 import {
   isLostReasonRequired,
   useClientInteractions,
@@ -29,6 +33,7 @@ export function ClientsPage() {
   const updateStage = useUpdateClientStage();
   const [active, setActive] = useState<Client | null>(null);
   const [lostPrompt, setLostPrompt] = useState<LostPrompt | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const grouped = useMemo(() => {
     const map: Record<ClientPipelineStage, Client[]> = CLIENT_STAGE_ORDER.reduce(
@@ -63,7 +68,11 @@ export function ClientsPage() {
         actions={
           <>
             <input className="input max-w-[240px]" placeholder="Axtar…" />
-            {isAdmin ? <button className="btn-primary">+ Yeni müştəri</button> : null}
+            {isAdmin ? (
+              <button className="btn-primary" onClick={() => setCreating(true)}>
+                + Yeni müştəri
+              </button>
+            ) : null}
           </>
         }
       />
@@ -74,7 +83,11 @@ export function ClientsPage() {
         <EmptyState
           title="Müştəri yoxdur"
           body="İlk müştərini əlavə et — Lead → Müzakirə → İmzalanıb axını avtomatlaşdırılmışdır."
-          cta={isAdmin ? <button className="btn-primary">+ Yeni müştəri</button> : null}
+          cta={isAdmin ? (
+              <button className="btn-primary" onClick={() => setCreating(true)}>
+                + Yeni müştəri
+              </button>
+            ) : null}
         />
       ) : (
         <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-3">
@@ -137,6 +150,8 @@ export function ClientsPage() {
         <ClientPanel client={active} onClose={() => setActive(null)} />
       ) : null}
 
+      {creating ? <ClientCreateModal onClose={() => setCreating(false)} /> : null}
+
       {lostPrompt ? (
         <LostReasonModal
           onCancel={() => setLostPrompt(null)}
@@ -158,7 +173,15 @@ export function ClientsPage() {
   );
 }
 
-type Tab = 'overview' | 'interactions' | 'history';
+type Tab = 'overview' | 'interactions' | 'projects' | 'documents' | 'history';
+
+const TAB_LABEL: Record<Tab, string> = {
+  overview: 'Ümumi',
+  interactions: 'Əlaqələr',
+  projects: 'Layihələr',
+  documents: 'Sənədlər',
+  history: 'Tarixçə',
+};
 
 function ClientPanel({ client, onClose }: { client: Client; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('overview');
@@ -177,20 +200,22 @@ function ClientPanel({ client, onClose }: { client: Client; onClose: () => void 
           {client.company ?? '—'}
         </div>
 
-        <div className="flex gap-2 mb-4">
-          {(['overview', 'interactions', 'history'] as const).map((t) => (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {(['overview', 'interactions', 'projects', 'documents', 'history'] as const).map((t) => (
             <button
               key={t}
               className={`chip ${tab === t ? 'chip-brand' : ''}`}
               onClick={() => setTab(t)}
             >
-              {t === 'overview' ? 'Ümumi' : t === 'interactions' ? 'Əlaqələr' : 'Tarixçə'}
+              {TAB_LABEL[t]}
             </button>
           ))}
         </div>
 
         {tab === 'overview' ? <OverviewTab client={client} /> : null}
         {tab === 'interactions' ? <InteractionsTab clientId={client.id} /> : null}
+        {tab === 'projects' ? <ClientProjectsTab clientId={client.id} /> : null}
+        {tab === 'documents' ? <ClientDocumentsTab clientId={client.id} /> : null}
         {tab === 'history' ? <HistoryTab clientId={client.id} /> : null}
 
         <button className="btn-outline mt-6" onClick={onClose}>
@@ -314,6 +339,125 @@ function HistoryTab({ clientId }: { clientId: string }) {
           {h.lost_reason ? (
             <div className="text-meta mt-1">Səbəb: {h.lost_reason}</div>
           ) : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ClientProjectsTab({ clientId }: { clientId: string }) {
+  const projects = useQuery({
+    queryKey: ['client-projects', clientId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('id, name, status, deadline, phases')
+        .eq('client_id', clientId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as Array<{
+        id: string;
+        name: string;
+        status: string;
+        deadline: string | null;
+        phases: string[];
+      }>;
+    },
+  });
+  if (projects.isLoading) return <div className="text-meta">Yüklənir…</div>;
+  const list = projects.data ?? [];
+  if (list.length === 0) {
+    return (
+      <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+        Bu müştəri ilə bağlı layihə yoxdur.
+      </div>
+    );
+  }
+  return (
+    <ul className="space-y-2">
+      {list.map((p) => (
+        <li key={p.id} className="card" style={{ padding: 12 }}>
+          <Link to={`/layihelər/${p.id}`} className="text-body font-medium hover:underline">
+            {p.name}
+          </Link>
+          <div className="text-meta mt-1" style={{ color: 'var(--text-muted)' }}>
+            {p.status}
+            {p.deadline ? ` · ${p.deadline}` : ''}
+            {p.phases?.length ? ` · ${p.phases.slice(-1)[0]}` : ''}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ClientDocumentsTab({ clientId }: { clientId: string }) {
+  const docs = useQuery({
+    queryKey: ['client-documents', clientId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('project_documents')
+        .select('id, title, category, source, external_link, share_token, created_at')
+        .eq('client_id', clientId)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      return (data ?? []) as Array<{
+        id: string;
+        title: string;
+        category: string | null;
+        source: string;
+        external_link: string | null;
+        share_token: string | null;
+        created_at: string;
+      }>;
+    },
+  });
+
+  if (docs.isLoading) return <div className="text-meta">Yüklənir…</div>;
+  const list = docs.data ?? [];
+  if (list.length === 0) {
+    return (
+      <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+        Bu müştəri üçün sənəd yoxdur. Təklif/akt/kontrakt yarat və müştəri ilə bağla.
+      </div>
+    );
+  }
+  return (
+    <ul className="space-y-2">
+      {list.map((d) => (
+        <li key={d.id} className="card" style={{ padding: 12 }}>
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="text-body font-medium truncate">{d.title}</div>
+              <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                {[d.category, d.source].filter(Boolean).join(' · ')}
+              </div>
+            </div>
+            {d.external_link ? (
+              <a
+                href={d.external_link}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="chip chip-brand shrink-0"
+              >
+                Aç
+              </a>
+            ) : null}
+            {d.share_token ? (
+              <button
+                type="button"
+                className="chip shrink-0"
+                onClick={() => {
+                  const url = `${window.location.origin}/share/${d.share_token}`;
+                  navigator.clipboard?.writeText(url);
+                }}
+                title="Paylaşım linkini kopyala"
+              >
+                Link
+              </button>
+            ) : null}
+          </div>
         </li>
       ))}
     </ul>
