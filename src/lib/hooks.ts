@@ -90,6 +90,64 @@ export function useTasks(filter?: { projectId?: string; assigneeId?: string }) {
   });
 }
 
+// REQ-TASK-09: standard expertise subtask titles, in order.
+export const EXPERTISE_SUBTASKS = [
+  'Çertyoj hazırlığı',
+  'Spesifikasiya yazılması',
+  'Möhür + imza',
+  'Çap + ciltləmə',
+  'Ekspertizaya təhvil',
+] as const;
+
+export function useCreateTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      title: string;
+      project_id?: string | null;
+      is_expertise_subtask?: boolean;
+      expertise_children?: string[]; // pre-selected child titles
+      assignee_ids?: string[];
+      deadline?: string | null;
+    }) => {
+      // Insert parent first.
+      const { data: parent, error: pErr } = await supabase
+        .from('tasks')
+        .insert({
+          title: input.title,
+          project_id: input.project_id ?? null,
+          is_expertise_subtask: !!input.is_expertise_subtask,
+          assignee_ids: input.assignee_ids ?? [],
+          deadline: input.deadline ?? null,
+          status: 'queued',
+          task_level: 0,
+        })
+        .select('id')
+        .single();
+      if (pErr) throw pErr;
+      const parentId = (parent as { id: string }).id;
+
+      // Insert any selected expertise children, parent_task_id set.
+      const children = (input.expertise_children ?? []).filter(Boolean);
+      if (children.length > 0) {
+        const rows = children.map((title) => ({
+          title,
+          project_id: input.project_id ?? null,
+          parent_task_id: parentId,
+          is_expertise_subtask: true,
+          task_level: 1,
+          status: 'queued',
+          assignee_ids: input.assignee_ids ?? [],
+        }));
+        const { error: cErr } = await supabase.from('tasks').insert(rows);
+        if (cErr) throw cErr;
+      }
+      return parentId;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  });
+}
+
 export function useUpdateTaskStatus() {
   const qc = useQueryClient();
   return useMutation({

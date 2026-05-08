@@ -1,7 +1,14 @@
 import { useMemo, useState } from 'react';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
-import { isOpenChildrenError, useTasks, useUpdateTaskStatus } from '@/lib/hooks';
+import {
+  EXPERTISE_SUBTASKS,
+  isOpenChildrenError,
+  useCreateTask,
+  useProjects,
+  useTasks,
+  useUpdateTaskStatus,
+} from '@/lib/hooks';
 import { TASK_STATUS_LABEL, TASK_STATUS_ORDER, TASK_STATUS_TONE } from '@/lib/labels';
 import type { Task, TaskStatus } from '@/types/db';
 import { useAuth } from '@/lib/store';
@@ -23,6 +30,7 @@ export function TasksPage() {
   const { data: tasks = [], isLoading } = useTasks(filter);
   const update = useUpdateTaskStatus();
   const [blocker, setBlocker] = useState<{ id: string; from?: TaskStatus } | null>(null);
+  const [creating, setCreating] = useState(false);
 
   function moveTask(id: string, status: TaskStatus, from?: TaskStatus) {
     update.mutate(
@@ -61,7 +69,9 @@ export function TasksPage() {
             >
               Mənim
             </button>
-            <button className="btn-primary">+ Yeni</button>
+            <button className="btn-primary" onClick={() => setCreating(true)}>
+              + Yeni
+            </button>
           </>
         }
       />
@@ -84,7 +94,11 @@ export function TasksPage() {
         <EmptyState
           title="Hələ tapşırıq yoxdur"
           body="İlk tapşırığı yarat və BU GÜN sütunu canlanacaq."
-          cta={<button className="btn-primary">+ Yeni tapşırıq</button>}
+          cta={
+            <button className="btn-primary" onClick={() => setCreating(true)}>
+              + Yeni tapşırıq
+            </button>
+          }
         />
       ) : view === 'board' ? (
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
@@ -190,6 +204,140 @@ export function TasksPage() {
           }}
         />
       ) : null}
+
+      {creating ? <CreateTaskModal onClose={() => setCreating(false)} /> : null}
     </>
+  );
+}
+
+function CreateTaskModal({ onClose }: { onClose: () => void }) {
+  const create = useCreateTask();
+  const { data: projects = [] } = useProjects();
+  const [title, setTitle] = useState('');
+  const [projectId, setProjectId] = useState<string>('');
+  const [isExpertise, setIsExpertise] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set(EXPERTISE_SUBTASKS));
+  const [err, setErr] = useState<string | null>(null);
+
+  function toggle(t: string) {
+    setPicked((p) => {
+      const next = new Set(p);
+      if (next.has(t)) next.delete(t);
+      else next.add(t);
+      return next;
+    });
+  }
+
+  function submit() {
+    setErr(null);
+    if (!title.trim()) return setErr('Başlıq lazımdır.');
+    create.mutate(
+      {
+        title: title.trim(),
+        project_id: projectId || null,
+        is_expertise_subtask: isExpertise,
+        expertise_children: isExpertise ? [...picked] : [],
+      },
+      { onSuccess: onClose, onError: (e) => setErr((e as Error).message) },
+    );
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: 'rgba(14,22,17,0.55)' }}
+      onClick={onClose}
+    >
+      <div
+        className="bg-surface p-6 rounded-card w-[520px] max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-h2 mb-4">+ Yeni tapşırıq</h2>
+        <label className="block mb-3">
+          <div
+            className="text-meta uppercase tracking-wider mb-1"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            Başlıq
+          </div>
+          <input
+            className="input w-full"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            autoFocus
+          />
+        </label>
+        <label className="block mb-3">
+          <div
+            className="text-meta uppercase tracking-wider mb-1"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            Layihə
+          </div>
+          <select
+            className="input w-full"
+            value={projectId}
+            onChange={(e) => setProjectId(e.target.value)}
+          >
+            <option value="">— Yoxdur —</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center gap-2 mb-3">
+          <input
+            type="checkbox"
+            checked={isExpertise}
+            onChange={(e) => setIsExpertise(e.target.checked)}
+          />
+          <span className="text-body">
+            Ekspertiza tapşırığı (alt-tapşırıqlar avtomatik təklif olunur)
+          </span>
+        </label>
+        {isExpertise ? (
+          <div
+            className="rounded-card p-3 mb-3"
+            style={{ background: 'var(--surface-mist)' }}
+          >
+            <div
+              className="text-tiny uppercase tracking-wider mb-2"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              Alt-tapşırıqlar
+            </div>
+            <ul className="space-y-1">
+              {EXPERTISE_SUBTASKS.map((t) => (
+                <li key={t}>
+                  <label className="flex items-center gap-2 text-body">
+                    <input
+                      type="checkbox"
+                      checked={picked.has(t)}
+                      onChange={() => toggle(t)}
+                    />
+                    <span>{t}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {err ? (
+          <div className="text-meta" style={{ color: 'var(--danger, #B91C1C)' }}>
+            {err}
+          </div>
+        ) : null}
+        <div className="flex justify-end gap-2 mt-4">
+          <button className="btn-outline" onClick={onClose}>
+            Ləğv et
+          </button>
+          <button className="btn-primary" disabled={create.isPending} onClick={submit}>
+            {create.isPending ? 'Yaradılır…' : 'Yarat'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
