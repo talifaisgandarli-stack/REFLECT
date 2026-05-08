@@ -187,6 +187,17 @@ export interface OutsourceItem {
   created_at: string;
 }
 
+export interface Template {
+  id: string;
+  category: string;
+  name: string;
+  body: string | null;
+  variables: string[];
+  mime_type: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
 export interface ProjectPnl {
   project_id: string;
   project_name: string;

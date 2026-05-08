@@ -11,6 +11,7 @@ import type {
   OutsourceItem,
   OutsourceStatus,
   ProjectPnl,
+  Template,
   Project,
   Receivable,
   Task,
@@ -356,6 +357,68 @@ export function isOverpaymentError(e: unknown): boolean {
   if (!e || typeof e !== 'object') return false;
   const msg = (e as { message?: string }).message ?? '';
   return msg.includes('overpayment_blocked') || msg.includes('chk_paid_lte_amount');
+}
+
+// ---------------- Templates (US-SYS-01 / §10.2) ----------------
+export function useTemplates() {
+  return useQuery({
+    queryKey: ['templates'],
+    queryFn: async (): Promise<Template[]> => {
+      const { data, error } = await supabase
+        .from('templates')
+        .select('*')
+        .order('category', { ascending: true })
+        .order('name', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as unknown as Template[];
+    },
+  });
+}
+
+export function useUpsertTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      id?: string;
+      category: string;
+      name: string;
+      body: string;
+      mime_type?: string | null;
+    }) => {
+      if (input.id) {
+        const { error } = await supabase
+          .from('templates')
+          .update({
+            category: input.category,
+            name: input.name,
+            body: input.body,
+            mime_type: input.mime_type ?? null,
+          })
+          .eq('id', input.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('templates').insert({
+          category: input.category,
+          name: input.name,
+          body: input.body,
+          mime_type: input.mime_type ?? null,
+        });
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['templates'] }),
+  });
+}
+
+export function useDeleteTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('templates').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['templates'] }),
+  });
 }
 
 // ---------------- Team workload (US-DASH-05 / REQ-TASK-06) ----------------
