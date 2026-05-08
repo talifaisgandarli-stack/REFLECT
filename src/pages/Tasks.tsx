@@ -6,6 +6,8 @@ import { TASK_STATUS_LABEL, TASK_STATUS_ORDER, TASK_STATUS_TONE } from '@/lib/la
 import type { Task, TaskStatus } from '@/types/db';
 import { useAuth } from '@/lib/store';
 import { SubtaskBlockingModal } from '@/components/SubtaskBlockingModal';
+import { TaskCreateModal } from '@/components/TaskCreateModal';
+import { CancelTaskModal } from '@/components/CancelTaskModal';
 
 export function TasksPage() {
   const { profile } = useAuth();
@@ -16,8 +18,15 @@ export function TasksPage() {
   );
   const update = useUpdateTaskStatus();
   const [blocker, setBlocker] = useState<{ id: string; from?: TaskStatus } | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [cancelling, setCancelling] = useState<{ id: string; title: string } | null>(null);
 
   function moveTask(id: string, status: TaskStatus, from?: TaskStatus) {
+    if (status === 'cancelled') {
+      const t = tasks.find((x) => x.id === id);
+      setCancelling({ id, title: t?.title ?? '' });
+      return;
+    }
     update.mutate(
       { id, status, from },
       {
@@ -54,7 +63,9 @@ export function TasksPage() {
             >
               Mənim
             </button>
-            <button className="btn-primary">+ Yeni</button>
+            <button className="btn-primary" onClick={() => setCreating(true)}>
+              + Yeni
+            </button>
           </>
         }
       />
@@ -77,7 +88,11 @@ export function TasksPage() {
         <EmptyState
           title="Hələ tapşırıq yoxdur"
           body="İlk tapşırığı yarat və BU GÜN sütunu canlanacaq."
-          cta={<button className="btn-primary">+ Yeni tapşırıq</button>}
+          cta={
+            <button className="btn-primary" onClick={() => setCreating(true)}>
+              + Yeni tapşırıq
+            </button>
+          }
         />
       ) : view === 'board' ? (
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
@@ -93,6 +108,13 @@ export function TasksPage() {
                   color: isToday ? 'var(--canvas)' : 'inherit',
                   border: isToday ? 'none' : '1px dashed var(--line)',
                   minHeight: 320,
+                }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  const raw = e.dataTransfer.getData('text/plain');
+                  if (!raw) return;
+                  const { id, from } = JSON.parse(raw);
+                  if (from !== s) moveTask(id, s, from);
                 }}
               >
                 <h3
@@ -110,8 +132,12 @@ export function TasksPage() {
                     <article
                       key={t.id}
                       draggable
-                      onDragStart={(e) => e.dataTransfer.setData('text/plain', JSON.stringify({ id: t.id, from: t.status }))}
-                      onDragOver={(e) => e.preventDefault()}
+                      onDragStart={(e) =>
+                        e.dataTransfer.setData(
+                          'text/plain',
+                          JSON.stringify({ id: t.id, from: t.status }),
+                        )
+                      }
                       className="rounded-card p-3 text-body"
                       style={{
                         background: isToday ? '#1F2925' : 'var(--surface)',
@@ -119,22 +145,39 @@ export function TasksPage() {
                       }}
                     >
                       <div className="font-medium">{t.title}</div>
-                      {t.deadline ? (
-                        <div className="text-meta opacity-70 mt-1">{t.deadline}</div>
-                      ) : null}
+                      <div className="flex items-center justify-between mt-1">
+                        {t.deadline ? (
+                          <span
+                            className="text-meta"
+                            style={{
+                              color: isToday ? 'var(--text-faint)' : 'var(--text-muted)',
+                              fontVariantNumeric: 'tabular-nums',
+                            }}
+                          >
+                            {t.deadline}
+                          </span>
+                        ) : (
+                          <span />
+                        )}
+                        {t.status !== 'done' && t.status !== 'cancelled' ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCancelling({ id: t.id, title: t.title });
+                            }}
+                            className="text-meta opacity-60 hover:opacity-100"
+                            style={{
+                              color: isToday ? 'var(--text-faint)' : 'var(--text-muted)',
+                            }}
+                            aria-label={`Tapşırığı ləğv et: ${t.title}`}
+                          >
+                            Ləğv et
+                          </button>
+                        ) : null}
+                      </div>
                     </article>
                   ))}
-                </div>
-                <div
-                  className="mt-3 text-meta opacity-60 text-center"
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    const { id, from } = JSON.parse(e.dataTransfer.getData('text/plain'));
-                    if (from !== s) moveTask(id, s, from);
-                  }}
-                  style={{ minHeight: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  buraya at
                 </div>
               </div>
             );
@@ -180,6 +223,20 @@ export function TasksPage() {
             const b = blocker;
             setBlocker(null);
             if (b) moveTask(b.id, 'done', b.from);
+          }}
+        />
+      ) : null}
+
+      {creating ? <TaskCreateModal onClose={() => setCreating(false)} /> : null}
+
+      {cancelling ? (
+        <CancelTaskModal
+          taskId={cancelling.id}
+          taskTitle={cancelling.title}
+          onCancel={() => setCancelling(null)}
+          onCancelled={() => {
+            setCancelling(null);
+            update.reset();
           }}
         />
       ) : null}

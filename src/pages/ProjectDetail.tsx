@@ -5,6 +5,7 @@ import { StatusChip } from '@/components/StatusChip';
 import { useState } from 'react';
 import { useAuth } from '@/lib/store';
 import { PROJECT_PHASES } from '@/lib/labels';
+import { ProjectPnL } from '@/components/ProjectPnL';
 
 const TABS = ['Overview', 'Tasks', 'Documents', 'Closeout', 'History'] as const;
 
@@ -100,7 +101,9 @@ export function ProjectDetailPage() {
         </div>
       ) : null}
 
-      {tab === 'Documents' || tab === 'Finance' || tab === 'Closeout' || tab === 'History' ? (
+      {tab === 'Finance' && id ? <ProjectPnL projectId={id} /> : null}
+
+      {tab === 'Documents' || tab === 'Closeout' || tab === 'History' ? (
         <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
           {tab} bölməsi v1.5-də.
         </div>

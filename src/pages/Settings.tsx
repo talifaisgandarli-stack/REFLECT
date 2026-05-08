@@ -1,5 +1,6 @@
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
+import { NotificationPreferencesPage } from './NotificationPreferences';
 
 const NAV = [
   { to: 'umumi', label: 'Ümumi' },
@@ -63,5 +64,5 @@ function KnowledgeBaseSettings() {
   return <p className="text-body">Yüklənmiş PDF-lər və MIRAI RAG mənbələri — burada idarə olunur.</p>;
 }
 function NotificationsSettings() {
-  return <p className="text-body">Email + Telegram bildiriş tərcihləri.</p>;
+  return <NotificationPreferencesPage />;
 }
