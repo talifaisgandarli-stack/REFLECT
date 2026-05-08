@@ -13,6 +13,8 @@ import type {
   Announcement,
   CalendarEvent,
   CareerLevel,
+  ContentPlan,
+  ContentStatus,
   CloseoutChecklist,
   CloseoutItem,
   PortfolioApplicationItem,
@@ -532,6 +534,79 @@ export function useSubmitPerformanceReview() {
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['perf'] }),
+  });
+}
+
+// ---------------- Content plans (US-CONTENT-01) ----------------
+export const CONTENT_CHANNELS = [
+  'Instagram',
+  'LinkedIn',
+  'Behance',
+  'ArchDaily',
+  'Veb sayt',
+] as const;
+
+export function useContentPlans() {
+  return useQuery({
+    queryKey: ['content-plans'],
+    queryFn: async (): Promise<ContentPlan[]> => {
+      const { data, error } = await supabase
+        .from('content_plans')
+        .select('*')
+        .order('scheduled_at', { ascending: true, nullsFirst: false });
+      if (error) throw error;
+      return (data ?? []) as unknown as ContentPlan[];
+    },
+  });
+}
+
+export function useCreateContentPlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      channel: string;
+      topic: string;
+      scheduled_at?: string | null;
+      owner_id?: string | null;
+      status?: ContentStatus;
+      body?: string | null;
+    }) => {
+      const { error } = await supabase.from('content_plans').insert({
+        channel: input.channel,
+        topic: input.topic,
+        scheduled_at: input.scheduled_at ?? null,
+        owner_id: input.owner_id ?? null,
+        status: input.status ?? 'draft',
+        body: input.body ?? null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['content-plans'] }),
+  });
+}
+
+export function useUpdateContentPlanStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; status: ContentStatus }) => {
+      const { error } = await supabase
+        .from('content_plans')
+        .update({ status: input.status })
+        .eq('id', input.id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['content-plans'] }),
+  });
+}
+
+export function useDeleteContentPlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('content_plans').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['content-plans'] }),
   });
 }
 

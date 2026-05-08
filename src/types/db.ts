@@ -237,6 +237,20 @@ export interface CareerLevel {
   created_at: string;
 }
 
+export type ContentStatus = 'idea' | 'draft' | 'review' | 'published';
+
+export interface ContentPlan {
+  id: string;
+  channel: string;
+  scheduled_at: string | null;
+  topic: string;
+  owner_id: string | null;
+  status: ContentStatus;
+  body: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
 export interface Announcement {
   id: string;
   title: string;
