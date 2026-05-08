@@ -6,6 +6,7 @@ import { useActivityFeed, useTasks, useTeamPresence } from '@/lib/hooks';
 import { useAuth } from '@/lib/store';
 import { relativeTime, taskHealth } from '@/lib/format';
 import { FocusWidget } from '@/components/FocusWidget';
+import { WorkloadWidget } from '@/components/WorkloadWidget';
 
 export function DashboardPage() {
   const { profile, isAdmin } = useAuth();
@@ -126,6 +127,9 @@ export function DashboardPage() {
             </ul>
           )}
         </section>
+
+        {/* Team workload — US-DASH-05 (admin only) */}
+        {isAdmin ? <WorkloadWidget className="lg:col-span-5" /> : null}
 
         {/* Presence — REQ-PRESENCE-* */}
         <section className="lg:col-span-3 card">

@@ -358,6 +358,29 @@ export function isOverpaymentError(e: unknown): boolean {
   return msg.includes('overpayment_blocked') || msg.includes('chk_paid_lte_amount');
 }
 
+// ---------------- Team workload (US-DASH-05 / REQ-TASK-06) ----------------
+export interface TeamWorkloadRow {
+  user_id: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  open_count: number;
+}
+
+export function useTeamWorkload() {
+  return useQuery({
+    queryKey: ['team-workload'],
+    queryFn: async (): Promise<TeamWorkloadRow[]> => {
+      const { data, error } = await supabase
+        .from('team_workload_summary' as 'profiles')
+        .select('*');
+      if (error) throw error;
+      return ((data ?? []) as unknown as TeamWorkloadRow[]).sort(
+        (a, b) => b.open_count - a.open_count,
+      );
+    },
+  });
+}
+
 // ---------------- Activity log (Realtime in v1.5) ----------------
 export function useActivityFeed(limit = 50) {
   return useQuery({

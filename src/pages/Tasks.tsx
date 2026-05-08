@@ -11,9 +11,16 @@ export function TasksPage() {
   const { profile } = useAuth();
   const [view, setView] = useState<'board' | 'table'>('board');
   const [mineOnly, setMineOnly] = useState(false);
-  const { data: tasks = [], isLoading } = useTasks(
-    mineOnly && profile?.id ? { assigneeId: profile.id } : undefined,
-  );
+  const urlAssignee =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('assignee')
+      : null;
+  const filter = mineOnly && profile?.id
+    ? { assigneeId: profile.id }
+    : urlAssignee
+      ? { assigneeId: urlAssignee }
+      : undefined;
+  const { data: tasks = [], isLoading } = useTasks(filter);
   const update = useUpdateTaskStatus();
   const [blocker, setBlocker] = useState<{ id: string; from?: TaskStatus } | null>(null);
 
