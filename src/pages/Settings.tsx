@@ -2,6 +2,7 @@ import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
 import { NotificationPreferencesPage } from './NotificationPreferences';
 import { TemplatesManager } from '@/components/TemplatesManager';
+import { KnowledgeBaseManager } from '@/components/KnowledgeBaseManager';
 
 const NAV = [
   { to: 'umumi', label: 'Ümumi' },
@@ -62,7 +63,7 @@ function TemplatesSettings() {
   return <TemplatesManager />;
 }
 function KnowledgeBaseSettings() {
-  return <p className="text-body">Yüklənmiş PDF-lər və MIRAI RAG mənbələri — burada idarə olunur.</p>;
+  return <KnowledgeBaseManager />;
 }
 function NotificationsSettings() {
   return <NotificationPreferencesPage />;
