@@ -15,6 +15,7 @@ import type {
   Okr,
   OkrScope,
   PerformanceReview,
+  Profile,
   ProjectPnl,
   Salary,
   Template,
@@ -380,6 +381,29 @@ export function useCreateRetrospective() {
   });
 }
 
+export function useSubmitPerformanceReview() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      employee_id: string;
+      year: number;
+      score: number;
+      ratings?: Record<string, number>;
+      summary?: string | null;
+    }) => {
+      const { error } = await supabase.rpc('submit_performance_review', {
+        p_employee_id: input.employee_id,
+        p_year: input.year,
+        p_score: input.score,
+        p_ratings: input.ratings ?? {},
+        p_summary: input.summary ?? null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['perf'] }),
+  });
+}
+
 // ---------------- Career levels (US-CAREER-01) ----------------
 export function useCareerLevels() {
   return useQuery({
@@ -486,6 +510,22 @@ export function useCreateKeyResult() {
   });
 }
 
+// ---------------- Active profiles (small select for admin pickers) ----------------
+export function useActiveProfiles() {
+  return useQuery({
+    queryKey: ['active-profiles'],
+    queryFn: async (): Promise<Profile[]> => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('is_active', true)
+        .order('full_name', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as unknown as Profile[];
+    },
+  });
+}
+
 // ---------------- Salary (US-SAL-01) ----------------
 export function useSalaries(employeeId?: string) {
   return useQuery({
@@ -497,6 +537,29 @@ export function useSalaries(employeeId?: string) {
       if (error) throw error;
       return (data ?? []) as unknown as Salary[];
     },
+  });
+}
+
+export function useSetSalary() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      employee_id: string;
+      amount: number;
+      currency: string;
+      effective_from: string;
+      components?: Record<string, unknown>;
+    }) => {
+      const { error } = await supabase.rpc('set_salary', {
+        p_employee_id: input.employee_id,
+        p_amount: input.amount,
+        p_currency: input.currency,
+        p_effective_from: input.effective_from,
+        p_components: input.components ?? {},
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['salaries'] }),
   });
 }
 
