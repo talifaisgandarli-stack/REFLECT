@@ -9,6 +9,7 @@ import { computeDesignDeadline, useCreateProject } from '@/lib/work';
 import { ValidationError } from '@/lib/finance';
 import { useClients } from '@/lib/hooks';
 import { PROJECT_PHASES } from '@/lib/labels';
+import { ClientModal } from './ClientModal';
 
 type Props = { onClose: () => void; onCreated?: (id: string) => void };
 
@@ -16,6 +17,8 @@ export function ProjectModal({ onClose, onCreated }: Props) {
   const clients = useClients();
   const m = useCreateProject();
   const [err, setErr] = useState<string | null>(null);
+  const [clientId, setClientId] = useState<string>('');
+  const [openClient, setOpenClient] = useState(false);
 
   const [phases, setPhases] = useState<string[]>(['Konsepsiya', 'SD', 'DD']);
   const [requiresExpertise, setRequiresExpertise] = useState(false);
@@ -46,7 +49,7 @@ export function ProjectModal({ onClose, onCreated }: Props) {
     try {
       const created = await m.mutateAsync({
         name: String(f.get('name') ?? ''),
-        client_id: (f.get('client_id') as string) || null,
+        client_id: clientId || null,
         phases,
         requires_expertise: requiresExpertise,
         expertise_deadline: requiresExpertise ? expertiseDeadline || null : null,
@@ -69,12 +72,26 @@ export function ProjectModal({ onClose, onCreated }: Props) {
         </Field>
 
         <Field label="Müştəri">
-          <select name="client_id" className="input" defaultValue="">
-            <option value="">—</option>
-            {(clients.data ?? []).map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+          <div className="flex gap-2">
+            <select
+              className="input flex-1"
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+            >
+              <option value="">—</option>
+              {(clients.data ?? []).map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={() => setOpenClient(true)}
+              style={{ whiteSpace: 'nowrap' }}
+            >
+              + Yeni
+            </button>
+          </div>
         </Field>
 
         <Field label="Mərhələlər *">
@@ -161,6 +178,13 @@ export function ProjectModal({ onClose, onCreated }: Props) {
           </button>
         </div>
       </form>
+
+      {openClient ? (
+        <ClientModal
+          onClose={() => setOpenClient(false)}
+          onCreated={(id) => setClientId(id)}
+        />
+      ) : null}
     </Modal>
   );
 }

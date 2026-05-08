@@ -98,6 +98,9 @@ or the design doc instead.
 - [x] Realtime channels: tasks, activity_log, announcements, user_presence (PRD §3.4)
 - [x] Presence heartbeat from frontend (REQ-PRESENCE-02)
 - [x] Invite acceptance flow: /api/invitations/accept + Login `?invite=<token>` form + admin invite/revoke panel (REQ-AUTH-02)
+- [x] CRM: Client create modal (REQ-CRM-01) + inline-create wired into ProjectModal
+- [x] Quick interaction log inside Müştəri drawer (REQ-CRM-03)
+- [x] Retrospective survey: admin trigger + public /survey/:token form (REQ-CRM-07)
 - [ ] Realtime channels (tasks/activity/announcements) — wired in v1.5
 - [ ] Calendar Month/Week/Day full grids — placeholder list view shipped
 - [ ] Knowledge Base PDF upload + RAG embeddings pipeline

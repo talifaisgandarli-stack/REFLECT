@@ -5,6 +5,9 @@ import { useClients } from '@/lib/hooks';
 import { CLIENT_STAGE_LABEL, CLIENT_STAGE_CONFIDENCE } from '@/lib/labels';
 import type { Client, ClientPipelineStage } from '@/types/db';
 import { formatAZN, relativeTime } from '@/lib/format';
+import { ClientModal } from '@/components/ClientModal';
+import { InteractionLogPanel } from '@/components/InteractionLogPanel';
+import { useCreateSurvey } from '@/lib/crm';
 
 const STAGES: ClientPipelineStage[] = [
   'lead', 'proposal', 'negotiation', 'signed', 'in_progress', 'portfolio', 'lost', 'archived',
@@ -13,6 +16,15 @@ const STAGES: ClientPipelineStage[] = [
 export function ClientsPage() {
   const { data: clients = [], isLoading } = useClients();
   const [active, setActive] = useState<Client | null>(null);
+  const [openCreate, setOpenCreate] = useState(false);
+  const createSurvey = useCreateSurvey();
+  const [surveyLink, setSurveyLink] = useState<string | null>(null);
+
+  async function onSendSurvey(client: Client) {
+    setSurveyLink(null);
+    const row = await createSurvey.mutateAsync({ client_id: client.id });
+    setSurveyLink(`${window.location.origin}/survey/${row.share_token}`);
+  }
   const grouped: Record<ClientPipelineStage, Client[]> = STAGES.reduce(
     (acc, s) => ({ ...acc, [s]: [] }),
     {} as Record<ClientPipelineStage, Client[]>,
@@ -32,7 +44,7 @@ export function ClientsPage() {
         actions={
           <>
             <input className="input max-w-[240px]" placeholder="Axtar…" />
-            <button className="btn-primary">+ Yeni müştəri</button>
+            <button className="btn-primary" onClick={() => setOpenCreate(true)}>+ Yeni müştəri</button>
           </>
         }
       />
@@ -94,10 +106,42 @@ export function ClientsPage() {
               <div className="flex justify-between"><dt>Telefon</dt><dd>{active.phone ?? '—'}</dd></div>
               <div className="flex justify-between"><dt>Son əlaqə</dt><dd>{relativeTime(active.last_interaction_at)}</dd></div>
             </dl>
-            <button className="btn-outline" onClick={() => setActive(null)}>Bağla</button>
+            <div className="flex flex-wrap gap-2 mb-5">
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={() => onSendSurvey(active)}
+                disabled={createSurvey.isPending}
+              >
+                {createSurvey.isPending ? 'Yaradılır…' : 'Retro sorğusu göndər'}
+              </button>
+              <button className="btn-ghost" onClick={() => setActive(null)}>Bağla</button>
+            </div>
+
+            {surveyLink ? (
+              <div
+                className="card mb-5 text-meta"
+                style={{ padding: 12, background: 'var(--surface-mist)', border: '1px solid var(--line-soft)' }}
+              >
+                Sorğu linki yaradıldı:
+                <input
+                  readOnly
+                  value={surveyLink}
+                  className="input mt-2"
+                  onClick={(e) => (e.currentTarget as HTMLInputElement).select()}
+                />
+                <p className="mt-2" style={{ color: 'var(--text-muted)' }}>
+                  Linki müştəriyə email/WhatsApp ilə göndər. Anonim doldurula bilər.
+                </p>
+              </div>
+            ) : null}
+
+            <InteractionLogPanel clientId={active.id} />
           </aside>
         </div>
       ) : null}
+
+      {openCreate ? <ClientModal onClose={() => setOpenCreate(false)} /> : null}
     </>
   );
 }
