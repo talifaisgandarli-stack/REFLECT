@@ -48,6 +48,58 @@ import type {
 } from '@/types/db';
 
 // ---------------- Projects ----------------
+/**
+ * REQ-PROJ-02: design deadline = expertise_deadline - payment_buffer_days
+ *   - 30 (expertise wait) - 10 (revision) - 3 (print prep). Calendar days.
+ * Returns null when inputs are missing.
+ */
+export function backwardPlannedDeadline(
+  expertiseDeadlineISO: string | null | undefined,
+  paymentBufferDays: number,
+): string | null {
+  if (!expertiseDeadlineISO) return null;
+  const d = new Date(expertiseDeadlineISO);
+  if (Number.isNaN(d.getTime())) return null;
+  const offset = paymentBufferDays + 30 + 10 + 3;
+  d.setDate(d.getDate() - offset);
+  return d.toISOString().slice(0, 10);
+}
+
+export function useCreateProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      name: string;
+      client_id?: string | null;
+      phases: string[];
+      start_date?: string | null;
+      deadline?: string | null;
+      requires_expertise: boolean;
+      expertise_deadline?: string | null;
+      payment_buffer_days?: number;
+    }): Promise<string> => {
+      const { data, error } = await supabase
+        .from('projects')
+        .insert({
+          name: input.name,
+          client_id: input.client_id ?? null,
+          phases: input.phases,
+          start_date: input.start_date ?? null,
+          deadline: input.deadline ?? null,
+          requires_expertise: input.requires_expertise,
+          expertise_deadline: input.expertise_deadline ?? null,
+          payment_buffer_days: input.payment_buffer_days ?? 10,
+          status: 'active',
+        })
+        .select('id')
+        .single();
+      if (error) throw error;
+      return (data as { id: string }).id;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['projects'] }),
+  });
+}
+
 export function useProjects() {
   return useQuery({
     queryKey: ['projects'],
