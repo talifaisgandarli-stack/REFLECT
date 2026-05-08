@@ -103,38 +103,70 @@ export default async function handler(req: Request) {
       }
     }
 
+    // PRD §7.1: streaming via SSE.
     const client = new Anthropic({ apiKey });
-    const completion = await client.messages.create({
+    const stream = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1024,
       system: persona.system + ragContext,
       messages: [{ role: 'user', content: message }],
+      stream: true,
     });
 
-    const reply =
-      completion.content
-        .filter((b) => b.type === 'text')
-        .map((b) => (b as { text: string }).text)
-        .join('\n')
-        .trim() || 'Cavab boş gəldi.';
+    const encoder = new TextEncoder();
+    const send = (controller: ReadableStreamDefaultController, evt: unknown) =>
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(evt)}\n\n`));
 
-    // Naive cost estimate (Haiku 4.5 ~ $0.80 in / $4 out per Mtoken at time of writing).
-    const tIn = completion.usage?.input_tokens ?? 0;
-    const tOut = completion.usage?.output_tokens ?? 0;
-    const cost = (tIn / 1_000_000) * 0.8 + (tOut / 1_000_000) * 4;
+    const body = new ReadableStream({
+      async start(controller) {
+        let tIn = 0;
+        let tOut = 0;
+        try {
+          send(controller, { type: 'meta', persona: personaKey, sources });
+          for await (const event of stream) {
+            if (
+              event.type === 'content_block_delta' &&
+              event.delta.type === 'text_delta'
+            ) {
+              send(controller, { type: 'delta', text: event.delta.text });
+            } else if (event.type === 'message_start') {
+              tIn = event.message.usage?.input_tokens ?? 0;
+            } else if (event.type === 'message_delta') {
+              tOut = event.usage?.output_tokens ?? tOut;
+            }
+          }
 
-    await sb.from('mirai_usage_log').upsert(
-      {
-        user_id: user.id,
-        period_yyyymm: yyyymm,
-        tokens_in: (usage?.cost_usd != null ? 0 : 0) + tIn,
-        tokens_out: tOut,
-        cost_usd: (usage?.cost_usd ?? 0) + cost,
+          // Cost log (Haiku 4.5 ~ $0.80 in / $4 out per Mtoken).
+          const cost = (tIn / 1_000_000) * 0.8 + (tOut / 1_000_000) * 4;
+          await sb.from('mirai_usage_log').upsert(
+            {
+              user_id: user.id,
+              period_yyyymm: yyyymm,
+              tokens_in: tIn,
+              tokens_out: tOut,
+              cost_usd: (usage?.cost_usd ?? 0) + cost,
+            },
+            { onConflict: 'user_id,period_yyyymm' },
+          );
+
+          send(controller, { type: 'done' });
+          controller.close();
+        } catch (e) {
+          send(controller, { type: 'error', message: (e as Error).message });
+          controller.close();
+        }
       },
-      { onConflict: 'user_id,period_yyyymm' },
-    );
+    });
 
-    return jsonResponse({ reply, persona: personaKey, sources });
+    return new Response(body, {
+      status: 200,
+      headers: {
+        'content-type': 'text/event-stream; charset=utf-8',
+        'cache-control': 'no-cache, no-transform',
+        connection: 'keep-alive',
+        'x-accel-buffering': 'no',
+      },
+    });
   } catch (e) {
     return errorResponse(e);
   }

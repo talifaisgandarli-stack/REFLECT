@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { MiraiSphere } from '@/components/MiraiSphere';
 import { Mascot } from '@/components/Mascot';
+import { supabase } from '@/lib/supabase';
 
 const SUGGESTIONS = [
   'Bu həftəki tapşırıqları yığ',
@@ -9,35 +10,101 @@ const SUGGESTIONS = [
   'Cash forecast 30 gün',
 ];
 
-type Msg = { role: 'user' | 'assistant'; content: string; sources?: { name: string; page?: number }[] };
+type Source = { source_pdf: string; chunk_index: number; similarity: number };
+type Msg = { role: 'user' | 'assistant'; content: string; sources?: Source[] };
 
 export function MiraiPage() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [q, setQ] = useState('');
-  const [thinking, setThinking] = useState(false);
+  const [streaming, setStreaming] = useState(false);
 
   async function ask(text: string) {
-    if (!text.trim()) return;
-    setMsgs((m) => [...m, { role: 'user', content: text }]);
+    if (!text.trim() || streaming) return;
+    setMsgs((m) => [...m, { role: 'user', content: text }, { role: 'assistant', content: '' }]);
     setQ('');
-    setThinking(true);
+    setStreaming(true);
+
+    const { data: sess } = await supabase.auth.getSession();
+    const token = sess.session?.access_token;
+
     try {
       const res = await fetch('/api/mirai/chat', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ message: text, persona: 'general' }),
       });
-      const data = await res.json().catch(() => null);
-      const reply = data?.reply ?? 'Hazırda cavab verə bilmirəm.';
-      setMsgs((m) => [...m, { role: 'assistant', content: reply, sources: data?.sources ?? [] }]);
+      if (!res.ok || !res.body) {
+        const fallback =
+          (await res.json().catch(() => ({}))).error ?? 'Hazırda cavab verə bilmirəm.';
+        appendLast(fallback);
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let collectedSources: Source[] = [];
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split('\n\n');
+        buffer = events.pop() ?? '';
+        for (const block of events) {
+          const line = block.split('\n').find((l) => l.startsWith('data: '));
+          if (!line) continue;
+          const payload = line.slice(6);
+          if (!payload) continue;
+          let evt: { type: string; text?: string; sources?: Source[]; message?: string };
+          try {
+            evt = JSON.parse(payload);
+          } catch {
+            continue;
+          }
+          if (evt.type === 'meta') {
+            collectedSources = evt.sources ?? [];
+            updateLastSources(collectedSources);
+          } else if (evt.type === 'delta' && evt.text) {
+            appendLastChunk(evt.text);
+          } else if (evt.type === 'error') {
+            appendLastChunk(`\n\n(xəta: ${evt.message ?? 'naməlum'})`);
+          }
+          // 'done' just closes the stream
+        }
+      }
     } catch {
-      setMsgs((m) => [
-        ...m,
-        { role: 'assistant', content: 'Bunu mənbədən təsdiqləyə bilmirəm — əlaqə xətası.' },
-      ]);
+      appendLast('Bunu mənbədən təsdiqləyə bilmirəm — əlaqə xətası.');
     } finally {
-      setThinking(false);
+      setStreaming(false);
     }
+  }
+
+  function appendLast(text: string) {
+    setMsgs((m) =>
+      m.map((msg, i) =>
+        i === m.length - 1 && msg.role === 'assistant' ? { ...msg, content: text } : msg,
+      ),
+    );
+  }
+  function appendLastChunk(text: string) {
+    setMsgs((m) =>
+      m.map((msg, i) =>
+        i === m.length - 1 && msg.role === 'assistant'
+          ? { ...msg, content: msg.content + text }
+          : msg,
+      ),
+    );
+  }
+  function updateLastSources(sources: Source[]) {
+    setMsgs((m) =>
+      m.map((msg, i) =>
+        i === m.length - 1 && msg.role === 'assistant' ? { ...msg, sources } : msg,
+      ),
+    );
   }
 
   return (
@@ -88,10 +155,10 @@ export function MiraiPage() {
         </div>
 
         <div className="mt-8 space-y-3">
-          {thinking ? (
+          {streaming && msgs.length > 0 && msgs[msgs.length - 1].content === '' ? (
             <div className="flex items-center gap-3">
               <Mascot size={48} />
-              <span className="text-ui opacity-80">MIRAI düşünür…</span>
+              <span className="text-ui opacity-80">MIRAI yazır…</span>
             </div>
           ) : null}
           {msgs.slice().reverse().map((m, i) => (
@@ -113,12 +180,18 @@ export function MiraiPage() {
                   MIRAI
                 </span>
               ) : null}
-              <div className="text-body whitespace-pre-wrap">{m.content}</div>
+              <div className="text-body whitespace-pre-wrap">
+                {m.content || (m.role === 'assistant' && streaming ? '…' : '')}
+              </div>
               {m.sources && m.sources.length ? (
                 <div className="flex flex-wrap gap-2 mt-3">
                   {m.sources.map((s, j) => (
-                    <span key={j} className="chip" style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--canvas)' }}>
-                      {s.name}{s.page ? ` · s.${s.page}` : ''}
+                    <span
+                      key={j}
+                      className="chip"
+                      style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--canvas)' }}
+                    >
+                      {s.source_pdf} · maddə {s.chunk_index}
                     </span>
                   ))}
                 </div>
