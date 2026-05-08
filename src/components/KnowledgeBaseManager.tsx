@@ -6,9 +6,10 @@
  * MIRAI's RAG path immediately by letting an admin paste an excerpt of
  * AZDNT normatives or contract law sections and have them indexed.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { extractPdfText } from '@/lib/pdf';
 
 type GroupRow = { source_pdf: string; chunks: number; latest: string | null };
 
@@ -52,6 +53,30 @@ export function KnowledgeBaseManager() {
   const qc = useQueryClient();
   const [source, setSource] = useState('');
   const [text, setText] = useState('');
+  const [parsing, setParsing] = useState(false);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function onPickPdf(file: File) {
+    setParsing(true);
+    setParseError(null);
+    try {
+      const extracted = await extractPdfText(file);
+      if (!extracted.trim()) {
+        setParseError(
+          'Bu PDF-dən mətn çıxarmaq mümkün olmadı (skan/şəkil ola bilər). Əl ilə yapışdır.',
+        );
+        return;
+      }
+      if (!source) setSource(file.name);
+      setText(extracted);
+    } catch (e) {
+      setParseError(e instanceof Error ? e.message : 'PDF oxunması alınmadı');
+    } finally {
+      setParsing(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  }
 
   const groups = useQuery({
     queryKey: ['kb', 'groups'],
@@ -166,9 +191,38 @@ export function KnowledgeBaseManager() {
       <section className="card">
         <h3 className="text-h3 mb-3">Yeni mənbə əlavə et</h3>
         <p className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
-          PDF mətnini buraya yapışdır — server avtomatik chunk-laşdırıb embed edəcək.
-          Eyni mənbə adı yenidən yüklənərsə əvvəlki chunk-lar əvəz olunur.
+          PDF faylını seç və ya mətnini birbaşa yapışdır — server chunk-laşdırıb
+          embed edəcək. Eyni mənbə adı yenidən yüklənərsə əvvəlki chunk-lar əvəz olunur.
         </p>
+
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/pdf,.pdf"
+            className="sr-only"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onPickPdf(f);
+            }}
+          />
+          <button
+            type="button"
+            className="btn-outline"
+            onClick={() => fileRef.current?.click()}
+            disabled={parsing}
+          >
+            {parsing ? 'PDF oxunur…' : 'PDF seç'}
+          </button>
+          <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+            scan deyil, mətn-əsaslı PDF işləyir
+          </span>
+        </div>
+        {parseError ? (
+          <p className="text-meta mb-3" style={{ color: '#B91C1C' }}>
+            {parseError}
+          </p>
+        ) : null}
 
         <label className="block">
           <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
