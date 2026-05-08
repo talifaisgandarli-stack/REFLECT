@@ -8,6 +8,7 @@ import { ProjectsPage } from '@/pages/Projects';
 import { ProjectDetailPage } from '@/pages/ProjectDetail';
 import { TasksPage } from '@/pages/Tasks';
 import { ArchivePage } from '@/pages/Archive';
+import { DoneListPage } from '@/pages/DoneList';
 import { OutsourcePage } from '@/pages/Outsource';
 import { ClientsPage } from '@/pages/Clients';
 import { FinancePage } from '@/pages/Finance';
@@ -56,6 +57,7 @@ export default function App() {
         <Route path="/layihelər" element={<ProjectsPage />} />
         <Route path="/layihelər/:id" element={<ProjectDetailPage />} />
         <Route path="/tapşırıqlar" element={<TasksPage />} />
+        <Route path="/tamamlandı" element={<DoneListPage />} />
         <Route path="/arxiv" element={<ArchivePage />} />
         <Route path="/podrat" element={<OutsourcePage />} />
 
