@@ -112,6 +112,27 @@ export interface Client {
   created_at: string;
 }
 
+export type InteractionType = 'call' | 'email' | 'meeting' | 'whatsapp' | 'other';
+
+export interface ClientInteraction {
+  id: string;
+  client_id: string;
+  type: InteractionType;
+  note: string | null;
+  occurred_at: string;
+  logged_by: string | null;
+}
+
+export interface ClientStageHistory {
+  id: string;
+  client_id: string;
+  from_stage: ClientPipelineStage | null;
+  to_stage: ClientPipelineStage;
+  changed_by: string | null;
+  changed_at: string;
+  lost_reason: string | null;
+}
+
 export interface UserPresence {
   user_id: string;
   status: PresenceStatus;
@@ -141,6 +162,16 @@ export interface Database {
       projects: { Row: Project; Insert: Partial<Project>; Update: Partial<Project> };
       tasks: { Row: Task; Insert: Partial<Task>; Update: Partial<Task> };
       clients: { Row: Client; Insert: Partial<Client>; Update: Partial<Client> };
+      client_interactions: {
+        Row: ClientInteraction;
+        Insert: Partial<ClientInteraction>;
+        Update: Partial<ClientInteraction>;
+      };
+      client_stage_history: {
+        Row: ClientStageHistory;
+        Insert: Partial<ClientStageHistory>;
+        Update: never;
+      };
       user_presence: { Row: UserPresence; Insert: Partial<UserPresence>; Update: Partial<UserPresence> };
       activity_log: {
         Row: ActivityLogEntry;
@@ -161,7 +192,13 @@ export interface Database {
       };
     };
     Views: Record<string, never>;
-    Functions: { is_admin: { Args: Record<string, never>; Returns: boolean } };
+    Functions: {
+      is_admin: { Args: Record<string, never>; Returns: boolean };
+      set_client_stage: {
+        Args: { p_client_id: string; p_to_stage: ClientPipelineStage; p_lost_reason?: string | null };
+        Returns: void;
+      };
+    };
     Enums: {
       task_status: TaskStatus;
       project_status: ProjectStatus;

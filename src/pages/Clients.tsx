@@ -1,38 +1,69 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
-import { useClients } from '@/lib/hooks';
-import { CLIENT_STAGE_LABEL, CLIENT_STAGE_CONFIDENCE } from '@/lib/labels';
-import type { Client, ClientPipelineStage } from '@/types/db';
+import {
+  isLostReasonRequired,
+  useClientInteractions,
+  useClients,
+  useClientStageHistory,
+  useLogInteraction,
+  useUpdateClientStage,
+} from '@/lib/hooks';
+import {
+  CLIENT_STAGE_CONFIDENCE,
+  CLIENT_STAGE_LABEL,
+  CLIENT_STAGE_ORDER,
+  INTERACTION_LABEL,
+  LOST_REASONS,
+} from '@/lib/labels';
+import type { Client, ClientPipelineStage, InteractionType } from '@/types/db';
 import { formatAZN, relativeTime } from '@/lib/format';
+import { useAuth } from '@/lib/store';
 
-const STAGES: ClientPipelineStage[] = [
-  'lead', 'proposal', 'negotiation', 'signed', 'in_progress', 'portfolio', 'lost', 'archived',
-];
+type DragPayload = { id: string; from: ClientPipelineStage };
+type LostPrompt = { id: string; from: ClientPipelineStage };
 
 export function ClientsPage() {
+  const { isAdmin } = useAuth();
   const { data: clients = [], isLoading } = useClients();
+  const updateStage = useUpdateClientStage();
   const [active, setActive] = useState<Client | null>(null);
-  const grouped: Record<ClientPipelineStage, Client[]> = STAGES.reduce(
-    (acc, s) => ({ ...acc, [s]: [] }),
-    {} as Record<ClientPipelineStage, Client[]>,
-  );
-  for (const c of clients) grouped[c.pipeline_stage].push(c);
+  const [lostPrompt, setLostPrompt] = useState<LostPrompt | null>(null);
 
-  const totalValue = STAGES.reduce((sum, s) => {
-    const stageVal = grouped[s].reduce((sub, c) => sub + (c.expected_value ?? 0) * (CLIENT_STAGE_CONFIDENCE[s] / 100), 0);
-    return sum + stageVal;
-  }, 0);
+  const grouped = useMemo(() => {
+    const map: Record<ClientPipelineStage, Client[]> = CLIENT_STAGE_ORDER.reduce(
+      (acc, s) => ({ ...acc, [s]: [] }),
+      {} as Record<ClientPipelineStage, Client[]>,
+    );
+    for (const c of clients) map[c.pipeline_stage]?.push(c);
+    return map;
+  }, [clients]);
+
+  const stageValue = (s: ClientPipelineStage) =>
+    grouped[s].reduce(
+      (sub, c) => sub + (c.expected_value ?? 0) * (CLIENT_STAGE_CONFIDENCE[s] / 100),
+      0,
+    );
+  const totalPipeline = CLIENT_STAGE_ORDER.reduce((sum, s) => sum + stageValue(s), 0);
+
+  function handleDrop(s: ClientPipelineStage, payload: DragPayload) {
+    if (payload.from === s) return;
+    if (s === 'lost') {
+      setLostPrompt({ id: payload.id, from: payload.from });
+      return;
+    }
+    updateStage.mutate({ id: payload.id, to: s });
+  }
 
   return (
     <>
       <PageHead
-        meta={`${clients.length} müştəri · pipeline ${formatAZN(totalValue)}`}
+        meta={`${clients.length} müştəri · pipeline ${formatAZN(totalPipeline)}`}
         title="Müştərilər"
         actions={
           <>
             <input className="input max-w-[240px]" placeholder="Axtar…" />
-            <button className="btn-primary">+ Yeni müştəri</button>
+            {isAdmin ? <button className="btn-primary">+ Yeni müştəri</button> : null}
           </>
         }
       />
@@ -43,22 +74,52 @@ export function ClientsPage() {
         <EmptyState
           title="Müştəri yoxdur"
           body="İlk müştərini əlavə et — Lead → Müzakirə → İmzalanıb axını avtomatlaşdırılmışdır."
-          cta={<button className="btn-primary">+ Yeni müştəri</button>}
+          cta={isAdmin ? <button className="btn-primary">+ Yeni müştəri</button> : null}
         />
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {STAGES.slice(0, 6).map((s) => (
-            <div key={s} className="rounded-card p-3" style={{ border: '1px dashed var(--line)' }}>
-              <h3 className="text-tiny uppercase mb-3 tracking-wider" style={{ color: 'var(--text-muted)' }}>
+        <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-3">
+          {CLIENT_STAGE_ORDER.map((s) => (
+            <div
+              key={s}
+              className="rounded-card p-3"
+              style={{ border: '1px dashed var(--line)', minHeight: 280 }}
+              onDragOver={isAdmin ? (e) => e.preventDefault() : undefined}
+              onDrop={
+                isAdmin
+                  ? (e) => {
+                      const raw = e.dataTransfer.getData('text/plain');
+                      if (!raw) return;
+                      handleDrop(s, JSON.parse(raw) as DragPayload);
+                    }
+                  : undefined
+              }
+            >
+              <h3
+                className="text-tiny mb-1 tracking-wider"
+                style={{
+                  color: 'var(--text-muted)',
+                  textTransform: 'uppercase',
+                }}
+              >
                 {CLIENT_STAGE_LABEL[s]} · {grouped[s].length}
               </h3>
+              <div className="text-meta mb-3" style={{ color: 'var(--text-muted)' }}>
+                {formatAZN(stageValue(s))}
+              </div>
               <div className="space-y-2">
                 {grouped[s].map((c) => (
                   <button
                     key={c.id}
                     onClick={() => setActive(c)}
+                    draggable={isAdmin}
+                    onDragStart={(e) =>
+                      e.dataTransfer.setData(
+                        'text/plain',
+                        JSON.stringify({ id: c.id, from: c.pipeline_stage } satisfies DragPayload),
+                      )
+                    }
                     className="card text-left w-full"
-                    style={{ padding: 12 }}
+                    style={{ padding: 12, cursor: isAdmin ? 'grab' : 'pointer' }}
                   >
                     <div className="font-medium text-body">{c.name}</div>
                     <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
@@ -73,31 +134,254 @@ export function ClientsPage() {
       )}
 
       {active ? (
-        <div
-          className="fixed inset-0 z-40 flex justify-end"
-          style={{ background: 'rgba(14,22,17,0.4)' }}
-          onClick={() => setActive(null)}
-        >
-          <aside
-            className="w-[480px] h-full bg-surface p-6 overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-h2">{active.name}</h2>
-            <div className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
-              {active.company ?? '—'}
-            </div>
-            <dl className="text-body space-y-2 mb-4">
-              <div className="flex justify-between"><dt>Mərhələ</dt><dd>{CLIENT_STAGE_LABEL[active.pipeline_stage]}</dd></div>
-              <div className="flex justify-between"><dt>Etibar %</dt><dd>{active.confidence_pct}%</dd></div>
-              <div className="flex justify-between"><dt>Dəyər</dt><dd>{formatAZN(active.expected_value)}</dd></div>
-              <div className="flex justify-between"><dt>Email</dt><dd>{active.email ?? '—'}</dd></div>
-              <div className="flex justify-between"><dt>Telefon</dt><dd>{active.phone ?? '—'}</dd></div>
-              <div className="flex justify-between"><dt>Son əlaqə</dt><dd>{relativeTime(active.last_interaction_at)}</dd></div>
-            </dl>
-            <button className="btn-outline" onClick={() => setActive(null)}>Bağla</button>
-          </aside>
-        </div>
+        <ClientPanel client={active} onClose={() => setActive(null)} />
+      ) : null}
+
+      {lostPrompt ? (
+        <LostReasonModal
+          onCancel={() => setLostPrompt(null)}
+          onConfirm={(reason) => {
+            updateStage.mutate(
+              { id: lostPrompt.id, to: 'lost', lostReason: reason },
+              {
+                onSuccess: () => setLostPrompt(null),
+                onError: (e) => {
+                  if (isLostReasonRequired(e)) return;
+                  setLostPrompt(null);
+                },
+              },
+            );
+          }}
+        />
       ) : null}
     </>
+  );
+}
+
+type Tab = 'overview' | 'interactions' | 'history';
+
+function ClientPanel({ client, onClose }: { client: Client; onClose: () => void }) {
+  const [tab, setTab] = useState<Tab>('overview');
+  return (
+    <div
+      className="fixed inset-0 z-40 flex justify-end"
+      style={{ background: 'rgba(14,22,17,0.4)' }}
+      onClick={onClose}
+    >
+      <aside
+        className="w-[480px] h-full bg-surface p-6 overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-h2">{client.name}</h2>
+        <div className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
+          {client.company ?? '—'}
+        </div>
+
+        <div className="flex gap-2 mb-4">
+          {(['overview', 'interactions', 'history'] as const).map((t) => (
+            <button
+              key={t}
+              className={`chip ${tab === t ? 'chip-brand' : ''}`}
+              onClick={() => setTab(t)}
+            >
+              {t === 'overview' ? 'Ümumi' : t === 'interactions' ? 'Əlaqələr' : 'Tarixçə'}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'overview' ? <OverviewTab client={client} /> : null}
+        {tab === 'interactions' ? <InteractionsTab clientId={client.id} /> : null}
+        {tab === 'history' ? <HistoryTab clientId={client.id} /> : null}
+
+        <button className="btn-outline mt-6" onClick={onClose}>
+          Bağla
+        </button>
+      </aside>
+    </div>
+  );
+}
+
+function OverviewTab({ client }: { client: Client }) {
+  return (
+    <dl className="text-body space-y-2">
+      <Row label="Mərhələ" value={CLIENT_STAGE_LABEL[client.pipeline_stage]} />
+      <Row label="Etibar %" value={`${client.confidence_pct}%`} />
+      <Row label="Dəyər" value={formatAZN(client.expected_value)} />
+      <Row label="Email" value={client.email ?? '—'} />
+      <Row label="Telefon" value={client.phone ?? '—'} />
+      <Row label="Son əlaqə" value={relativeTime(client.last_interaction_at)} />
+      <Row
+        label="ICP uyğunluğu"
+        value={client.ai_icp_fit != null ? `${Math.round(client.ai_icp_fit)}%` : '—'}
+      />
+    </dl>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between">
+      <dt style={{ color: 'var(--text-muted)' }}>{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  );
+}
+
+function InteractionsTab({ clientId }: { clientId: string }) {
+  const { data: items = [], isLoading } = useClientInteractions(clientId);
+  const log = useLogInteraction();
+  const [type, setType] = useState<InteractionType>('call');
+  const [note, setNote] = useState('');
+
+  return (
+    <div>
+      <div className="card mb-3" style={{ padding: 12 }}>
+        <div className="flex flex-wrap gap-1 mb-2">
+          {(Object.keys(INTERACTION_LABEL) as InteractionType[]).map((t) => (
+            <button
+              key={t}
+              className={`chip ${type === t ? 'chip-brand' : ''}`}
+              onClick={() => setType(t)}
+            >
+              {INTERACTION_LABEL[t]}
+            </button>
+          ))}
+        </div>
+        <input
+          className="input w-full mb-2"
+          placeholder="Qeyd (opsional)"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+        <button
+          className="btn-primary w-full"
+          disabled={log.isPending}
+          onClick={() =>
+            log.mutate(
+              { clientId, type, note: note.trim() || undefined },
+              { onSuccess: () => setNote('') },
+            )
+          }
+        >
+          {log.isPending ? 'Yazılır…' : 'Qeydə al'}
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div className="text-meta">Yüklənir…</div>
+      ) : items.length === 0 ? (
+        <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+          Hələ əlaqə qeyd edilməyib.
+        </div>
+      ) : (
+        <ul className="space-y-2">
+          {items.map((it) => (
+            <li key={it.id} className="card" style={{ padding: 12 }}>
+              <div className="flex justify-between text-meta">
+                <span>{INTERACTION_LABEL[it.type]}</span>
+                <span style={{ color: 'var(--text-muted)' }}>{relativeTime(it.occurred_at)}</span>
+              </div>
+              {it.note ? <div className="text-body mt-1">{it.note}</div> : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function HistoryTab({ clientId }: { clientId: string }) {
+  const { data: items = [], isLoading } = useClientStageHistory(clientId);
+  if (isLoading) return <div className="text-meta">Yüklənir…</div>;
+  if (items.length === 0) {
+    return (
+      <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+        Mərhələ tarixçəsi yoxdur.
+      </div>
+    );
+  }
+  return (
+    <ul className="space-y-2">
+      {items.map((h) => (
+        <li key={h.id} className="card" style={{ padding: 12 }}>
+          <div className="text-body">
+            {h.from_stage ? CLIENT_STAGE_LABEL[h.from_stage] : '—'} →{' '}
+            <strong>{CLIENT_STAGE_LABEL[h.to_stage]}</strong>
+          </div>
+          <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+            {relativeTime(h.changed_at)}
+          </div>
+          {h.lost_reason ? (
+            <div className="text-meta mt-1">Səbəb: {h.lost_reason}</div>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function LostReasonModal({
+  onCancel,
+  onConfirm,
+}: {
+  onCancel: () => void;
+  onConfirm: (reason: string) => void;
+}) {
+  const [picked, setPicked] = useState<string>(LOST_REASONS[0]);
+  const [other, setOther] = useState('');
+  const isOther = picked === 'Digər';
+  const reason = isOther ? other.trim() : picked;
+  const valid = reason.length > 0;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: 'rgba(14,22,17,0.55)' }}
+      onClick={onCancel}
+    >
+      <div
+        className="bg-surface p-6 rounded-card w-[420px]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-h2 mb-1">Müştəri itirildi</h2>
+        <p className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
+          Səbəbi qeyd et — pipeline analitikası üçün vacibdir.
+        </p>
+        <div className="space-y-2 mb-3">
+          {LOST_REASONS.map((r) => (
+            <label key={r} className="flex items-center gap-2 text-body cursor-pointer">
+              <input
+                type="radio"
+                name="lost-reason"
+                checked={picked === r}
+                onChange={() => setPicked(r)}
+              />
+              {r}
+            </label>
+          ))}
+        </div>
+        {isOther ? (
+          <input
+            className="input w-full mb-3"
+            placeholder="Səbəbi yaz…"
+            value={other}
+            onChange={(e) => setOther(e.target.value)}
+            autoFocus
+          />
+        ) : null}
+        <div className="flex justify-end gap-2">
+          <button className="btn-outline" onClick={onCancel}>
+            Ləğv et
+          </button>
+          <button
+            className="btn-primary"
+            disabled={!valid}
+            onClick={() => valid && onConfirm(reason)}
+          >
+            Təsdiqlə
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
