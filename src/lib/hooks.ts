@@ -106,11 +106,15 @@ export function useCreateTask() {
       title: string;
       project_id?: string | null;
       is_expertise_subtask?: boolean;
-      expertise_children?: string[]; // pre-selected child titles
+      expertise_children?: string[];
       assignee_ids?: string[];
+      start_date?: string | null;
       deadline?: string | null;
+      estimated_duration?: number | null;
+      duration_unit?: 'hour' | 'day' | 'week' | null;
+      risk_buffer_pct?: number;
+      description?: string | null;
     }) => {
-      // Insert parent first.
       const { data: parent, error: pErr } = await supabase
         .from('tasks')
         .insert({
@@ -118,7 +122,12 @@ export function useCreateTask() {
           project_id: input.project_id ?? null,
           is_expertise_subtask: !!input.is_expertise_subtask,
           assignee_ids: input.assignee_ids ?? [],
+          start_date: input.start_date ?? null,
           deadline: input.deadline ?? null,
+          estimated_duration: input.estimated_duration ?? null,
+          duration_unit: input.duration_unit ?? null,
+          risk_buffer_pct: input.risk_buffer_pct ?? 0,
+          description: input.description ?? null,
           status: 'queued',
           task_level: 0,
         })
@@ -127,7 +136,6 @@ export function useCreateTask() {
       if (pErr) throw pErr;
       const parentId = (parent as { id: string }).id;
 
-      // Insert any selected expertise children, parent_task_id set.
       const children = (input.expertise_children ?? []).filter(Boolean);
       if (children.length > 0) {
         const rows = children.map((title) => ({

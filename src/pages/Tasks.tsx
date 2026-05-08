@@ -4,6 +4,7 @@ import { EmptyState } from '@/components/EmptyState';
 import {
   EXPERTISE_SUBTASKS,
   isOpenChildrenError,
+  useActiveProfiles,
   useCreateTask,
   useProjects,
   useTasks,
@@ -213,8 +214,17 @@ export function TasksPage() {
 function CreateTaskModal({ onClose }: { onClose: () => void }) {
   const create = useCreateTask();
   const { data: projects = [] } = useProjects();
+  const { data: people = [] } = useActiveProfiles();
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [title, setTitle] = useState('');
   const [projectId, setProjectId] = useState<string>('');
+  const [assignees, setAssignees] = useState<Set<string>>(new Set());
+  const [startDate, setStartDate] = useState('');
+  const [deadline, setDeadline] = useState('');
+  const [duration, setDuration] = useState('');
+  const [unit, setUnit] = useState<'hour' | 'day' | 'week'>('day');
+  const [risk, setRisk] = useState('0');
+  const [description, setDescription] = useState('');
   const [isExpertise, setIsExpertise] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set(EXPERTISE_SUBTASKS));
   const [err, setErr] = useState<string | null>(null);
@@ -227,14 +237,40 @@ function CreateTaskModal({ onClose }: { onClose: () => void }) {
       return next;
     });
   }
+  function toggleAssignee(id: string) {
+    setAssignees((p) => {
+      const next = new Set(p);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   function submit() {
     setErr(null);
     if (!title.trim()) return setErr('Başlıq lazımdır.');
+    if (deadline && startDate && deadline < startDate) {
+      return setErr('Deadline başlanğıcdan əvvəl ola bilməz.');
+    }
+    const dur = duration === '' ? null : Number(duration);
+    if (dur != null && (!Number.isFinite(dur) || dur < 0)) {
+      return setErr('Müddət düzgün deyil.');
+    }
+    const riskN = Number(risk);
+    if (!Number.isFinite(riskN) || riskN < 0 || riskN > 100) {
+      return setErr('Risk buffer 0–100 aralığında olmalıdır.');
+    }
     create.mutate(
       {
         title: title.trim(),
         project_id: projectId || null,
+        assignee_ids: [...assignees],
+        start_date: startDate || null,
+        deadline: deadline || null,
+        estimated_duration: dur,
+        duration_unit: dur != null ? unit : null,
+        risk_buffer_pct: riskN,
+        description: description.trim() || null,
         is_expertise_subtask: isExpertise,
         expertise_children: isExpertise ? [...picked] : [],
       },
@@ -287,6 +323,148 @@ function CreateTaskModal({ onClose }: { onClose: () => void }) {
             ))}
           </select>
         </label>
+
+        <button
+          type="button"
+          className="chip mb-3"
+          onClick={() => setShowAdvanced((v) => !v)}
+        >
+          {showAdvanced ? 'Daha az sahə' : 'Daha çox sahə'}
+        </button>
+
+        {showAdvanced ? (
+          <>
+            <div className="mb-3">
+              <div
+                className="text-meta uppercase tracking-wider mb-1"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                İcraçılar
+              </div>
+              <div
+                className="rounded-card p-2 max-h-32 overflow-y-auto"
+                style={{ border: '1px solid var(--line-soft)' }}
+              >
+                {people.length === 0 ? (
+                  <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                    İşçi yoxdur.
+                  </p>
+                ) : (
+                  <ul className="space-y-1">
+                    {people.map((p) => (
+                      <li key={p.id}>
+                        <label className="flex items-center gap-2 text-body cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={assignees.has(p.id)}
+                            onChange={() => toggleAssignee(p.id)}
+                          />
+                          <span>{p.full_name ?? p.email}</span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block mb-3">
+                <div
+                  className="text-meta uppercase tracking-wider mb-1"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  Başlanğıc
+                </div>
+                <input
+                  className="input w-full"
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                />
+              </label>
+              <label className="block mb-3">
+                <div
+                  className="text-meta uppercase tracking-wider mb-1"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  Deadline
+                </div>
+                <input
+                  className="input w-full"
+                  type="date"
+                  value={deadline}
+                  onChange={(e) => setDeadline(e.target.value)}
+                />
+              </label>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <label className="block mb-3 col-span-2">
+                <div
+                  className="text-meta uppercase tracking-wider mb-1"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  Müddət
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    className="input flex-1"
+                    type="number"
+                    min={0}
+                    step="0.5"
+                    placeholder="0"
+                    value={duration}
+                    onChange={(e) => setDuration(e.target.value)}
+                  />
+                  <select
+                    className="input"
+                    value={unit}
+                    onChange={(e) => setUnit(e.target.value as typeof unit)}
+                    disabled={duration === ''}
+                  >
+                    <option value="hour">saat</option>
+                    <option value="day">gün</option>
+                    <option value="week">həftə</option>
+                  </select>
+                </div>
+              </label>
+              <label className="block mb-3">
+                <div
+                  className="text-meta uppercase tracking-wider mb-1"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  Risk %
+                </div>
+                <input
+                  className="input w-full"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={risk}
+                  onChange={(e) => setRisk(e.target.value)}
+                />
+              </label>
+            </div>
+
+            <label className="block mb-3">
+              <div
+                className="text-meta uppercase tracking-wider mb-1"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                Təsvir
+              </div>
+              <textarea
+                className="input w-full"
+                rows={3}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </label>
+          </>
+        ) : null}
+
         <label className="flex items-center gap-2 mb-3">
           <input
             type="checkbox"
