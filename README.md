@@ -111,6 +111,7 @@ or the design doc instead.
 - [x] MIRAI polish: persona switcher (7 personas per PRD §7.2) + conversation history sidebar + resume + Yeni söhbət in Mirai page and MiraiDrawer
 - [x] Module 12 — Telegram notifications: linking flow UI (US-TG-01), notification_preferences (§10.4), daily deadline reminders cron (US-TG-02), DB-trigger queue + cron for finance alerts admin-only (US-TG-03)
 - [x] Cmd+K universal search: /api/search across tasks/projects/clients/documents/announcements/profiles + grouped results UI with Up/Down navigation (PRD §6.2)
+- [x] CRM AI ICP enrichment via MIRAI Strateq persona, 24h cache, score chip on kanban + admin refresh button (REQ-CRM-04)
 - [ ] Realtime channels (tasks/activity/announcements) — wired in v1.5
 - [ ] Calendar Month/Week/Day full grids — placeholder list view shipped
 - [ ] Knowledge Base PDF upload + RAG embeddings pipeline

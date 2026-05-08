@@ -166,3 +166,47 @@ export async function submitSurvey(token: string, response: SurveyResponse) {
   const json = (await res.json().catch(() => ({}))) as { error?: string };
   if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
 }
+
+// ============================================================================
+// REQ-CRM-04 — AI ICP enrichment via MIRAI
+// ============================================================================
+
+export type IcpResult = {
+  score: number | null;
+  reason?: string;
+  cached: boolean;
+  calculated_at: string | null;
+};
+
+export function useRefreshIcp() {
+  return useMutation({
+    mutationFn: async (clientId: string): Promise<IcpResult> => {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) throw new Error('Sessiya tapılmadı');
+      const res = await fetch('/api/mirai/icp', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ client_id: clientId }),
+      });
+      const json = (await res.json().catch(() => ({}))) as IcpResult & { error?: string };
+      if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
+      return json;
+    },
+  });
+}
+
+/** Score band labels — matches PRD §9.1 OKR health bands. */
+export function icpBand(score: number | null | undefined): {
+  label: string;
+  color: string;
+  bg: string;
+} {
+  if (score == null) return { label: '—', color: 'var(--text-muted)', bg: 'rgba(255,255,255,0.04)' };
+  if (score >= 70) return { label: `${score}`, color: 'var(--brand-text)', bg: 'rgba(173,251,73,0.16)' };
+  if (score >= 40) return { label: `${score}`, color: '#92400E', bg: 'rgba(245,158,11,0.16)' };
+  return { label: `${score}`, color: '#B91C1C', bg: 'rgba(239,68,68,0.12)' };
+}

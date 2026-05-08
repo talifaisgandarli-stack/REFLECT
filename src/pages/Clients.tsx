@@ -7,7 +7,9 @@ import type { Client, ClientPipelineStage } from '@/types/db';
 import { formatAZN, relativeTime } from '@/lib/format';
 import { ClientModal } from '@/components/ClientModal';
 import { InteractionLogPanel } from '@/components/InteractionLogPanel';
-import { useCreateSurvey } from '@/lib/crm';
+import { useCreateSurvey, useRefreshIcp, icpBand } from '@/lib/crm';
+import { useAuth } from '@/lib/store';
+import { useQueryClient } from '@tanstack/react-query';
 
 const STAGES: ClientPipelineStage[] = [
   'lead', 'proposal', 'negotiation', 'signed', 'in_progress', 'portfolio', 'lost', 'archived',
@@ -18,7 +20,23 @@ export function ClientsPage() {
   const [active, setActive] = useState<Client | null>(null);
   const [openCreate, setOpenCreate] = useState(false);
   const createSurvey = useCreateSurvey();
+  const refreshIcp = useRefreshIcp();
+  const qc = useQueryClient();
+  const { isAdmin } = useAuth();
   const [surveyLink, setSurveyLink] = useState<string | null>(null);
+  const [icpBusy, setIcpBusy] = useState<string | null>(null);
+
+  async function onRefreshIcp(clientId: string) {
+    setIcpBusy(clientId);
+    try {
+      await refreshIcp.mutateAsync(clientId);
+      qc.invalidateQueries({ queryKey: ['clients'] });
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setIcpBusy(null);
+    }
+  }
 
   async function onSendSurvey(client: Client) {
     setSurveyLink(null);
@@ -65,19 +83,39 @@ export function ClientsPage() {
                 {CLIENT_STAGE_LABEL[s]} · {grouped[s].length}
               </h3>
               <div className="space-y-2">
-                {grouped[s].map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => setActive(c)}
-                    className="card text-left w-full"
-                    style={{ padding: 12 }}
-                  >
-                    <div className="font-medium text-body">{c.name}</div>
-                    <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                      {c.company ?? '—'} · {formatAZN(c.expected_value)}
-                    </div>
-                  </button>
-                ))}
+                {grouped[s].map((c) => {
+                  const band = icpBand(c.ai_icp_fit);
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => setActive(c)}
+                      className="card text-left w-full"
+                      style={{ padding: 12 }}
+                    >
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="font-medium text-body truncate">{c.name}</span>
+                        <span
+                          className="chip text-tiny shrink-0"
+                          title={
+                            c.ai_icp_calculated_at
+                              ? `AI Fit · ${new Date(c.ai_icp_calculated_at).toLocaleDateString('az-Latn-AZ')}`
+                              : 'AI Fit hələ hesablanmayıb'
+                          }
+                          style={{
+                            background: band.bg,
+                            color: band.color,
+                            fontVariantNumeric: 'tabular-nums',
+                          }}
+                        >
+                          AI {band.label}
+                        </span>
+                      </div>
+                      <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                        {c.company ?? '—'} · {formatAZN(c.expected_value)}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           ))}
@@ -107,6 +145,17 @@ export function ClientsPage() {
               <div className="flex justify-between"><dt>Son əlaqə</dt><dd>{relativeTime(active.last_interaction_at)}</dd></div>
             </dl>
             <div className="flex flex-wrap gap-2 mb-5">
+              {isAdmin ? (
+                <button
+                  type="button"
+                  className="btn-outline"
+                  onClick={() => onRefreshIcp(active.id)}
+                  disabled={icpBusy === active.id}
+                  title="MIRAI ilə ICP uyğunluğunu yenidən hesabla (24 saat keş)"
+                >
+                  {icpBusy === active.id ? 'Hesablanır…' : 'AI Fit yenilə'}
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="btn-outline"
