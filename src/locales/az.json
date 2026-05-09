@@ -424,6 +424,7 @@
   "task.detail.not_found": "Tapşırıq tapılmadı.",
   "task.detail.no_description": "Təsvir əlavə olunmayıb.",
   "task.detail.facts_title": "Əsas məlumat",
+  "task.detail.subtasks_title": "Alt-tapşırıqlar ({count})",
 
   "outsource.modal.title": "+ Outsource sifarişi",
   "outsource.modal.dialog_label": "Yeni outsource sifarişi",

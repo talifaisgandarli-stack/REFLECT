@@ -62,6 +62,21 @@ export function TaskDetailPage() {
     },
   });
 
+  const subtasks = useQuery({
+    queryKey: ['task-detail', id, 'subtasks'],
+    enabled: !!id,
+    queryFn: async (): Promise<Task[]> => {
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('parent_task_id', id)
+        .is('archived_at', null)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as Task[];
+    },
+  });
+
   const comments = useQuery({
     queryKey: ['task-comments', id],
     enabled: !!id,
@@ -160,6 +175,44 @@ export function TaskDetailPage() {
           </dl>
         </aside>
       </div>
+
+      {(subtasks.data ?? []).length > 0 ? (
+        <section className="mt-6">
+          <h3
+            className="text-meta mb-2"
+            style={{
+              color: 'var(--text-muted)',
+              letterSpacing: '0.05em',
+              textTransform: 'uppercase',
+            }}
+          >
+            {t('task.detail.subtasks_title', { count: subtasks.data?.length ?? 0 })}
+          </h3>
+          <ul className="card divide-y" style={{ borderColor: 'var(--line-soft)' }}>
+            {(subtasks.data ?? []).map((sub) => (
+              <li key={sub.id} className="py-3 flex items-center justify-between gap-3">
+                <Link
+                  to={`/tapşırıqlar/${sub.id}`}
+                  className="flex-1 min-w-0 truncate"
+                  style={{ color: 'var(--text)' }}
+                >
+                  {sub.is_expertise_subtask ? (
+                    <span
+                      aria-hidden
+                      className="text-tiny mr-2"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      ◇
+                    </span>
+                  ) : null}
+                  {sub.title}
+                </Link>
+                <StatusChip status={sub.status} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section className="mt-6">
         <h3

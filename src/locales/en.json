@@ -424,6 +424,7 @@
   "task.detail.not_found": "Task not found.",
   "task.detail.no_description": "No description.",
   "task.detail.facts_title": "Key facts",
+  "task.detail.subtasks_title": "Subtasks ({count})",
 
   "outsource.modal.title": "+ Outsource order",
   "outsource.modal.dialog_label": "New outsource order",
