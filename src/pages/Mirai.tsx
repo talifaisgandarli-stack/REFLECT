@@ -36,7 +36,7 @@ export function MiraiPage() {
         throw new Error('Sessiya tapılmadı — yenidən daxil ol.');
       }
 
-      const res = await fetch('/api/mirai/chat', {
+      const res = await fetch('/api/mirai/stream', {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
@@ -49,16 +49,67 @@ export function MiraiPage() {
         }),
       });
 
-      const data = await res.json().catch(() => null);
-      if (!res.ok) {
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => null);
         throw new Error(data?.error ?? `MIRAI xətası (${res.status})`);
       }
 
-      const reply = data?.reply ?? 'Hazırda cavab verə bilmirəm.';
-      const sources: Source[] = data?.sources ?? [];
-      setMsgs((m) => [...m, { role: 'assistant', content: reply, sources }]);
-      if (data?.conversation_id) setConversationId(data.conversation_id);
-      if (data?.usage) setUsage(data.usage as Usage);
+      // Insert an empty assistant bubble that we'll mutate in place as
+      // tokens arrive — feels alive without keeping a separate state.
+      let bubbleIndex = -1;
+      setMsgs((m) => {
+        bubbleIndex = m.length;
+        return [...m, { role: 'assistant', content: '', sources: [] }];
+      });
+      // bubbleIndex is captured by the closure below
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let collected = '';
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          let frame: { type: string; [k: string]: unknown };
+          try {
+            frame = JSON.parse(line);
+          } catch {
+            continue;
+          }
+          if (frame.type === 'delta' && typeof frame.text === 'string') {
+            collected += frame.text;
+            const snapshot = collected;
+            setMsgs((m) =>
+              m.map((msg, i) => (i === bubbleIndex ? { ...msg, content: snapshot } : msg)),
+            );
+          } else if (frame.type === 'sources' && Array.isArray(frame.items)) {
+            const items = frame.items as Source[];
+            setMsgs((m) =>
+              m.map((msg, i) => (i === bubbleIndex ? { ...msg, sources: items } : msg)),
+            );
+          } else if (frame.type === 'done') {
+            if (typeof frame.conversation_id === 'string') {
+              setConversationId(frame.conversation_id);
+            }
+            if (frame.usage) setUsage(frame.usage as Usage);
+          } else if (frame.type === 'error' && typeof frame.message === 'string') {
+            throw new Error(frame.message);
+          }
+        }
+      }
+      if (!collected.trim()) {
+        setMsgs((m) =>
+          m.map((msg, i) =>
+            i === bubbleIndex ? { ...msg, content: 'Cavab boş gəldi.' } : msg,
+          ),
+        );
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Bunu mənbədən təsdiqləyə bilmirəm.';
       setError(msg);
