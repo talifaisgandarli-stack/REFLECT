@@ -14,6 +14,7 @@ import {
 } from '@/lib/hooks';
 import { relativeTime } from '@/lib/format';
 import { useT } from '@/lib/i18n';
+import { collapse } from '@/lib/notificationGroup';
 
 const KIND_KEY: Record<NotificationKind | 'fallback', string> = {
   mention: 'notif.kind.mention',
@@ -31,36 +32,6 @@ function bodyFor(n: NotificationRow): string {
   if (typeof p.title === 'string') return p.title;
   if (typeof p.task_id === 'string') return `Tapşırıq #${p.task_id.slice(0, 8)}`;
   return '';
-}
-
-type Group =
-  | { kind: 'single'; row: NotificationRow }
-  | { kind: 'group'; leader: NotificationRow; rows: NotificationRow[] };
-
-/** Collapse consecutive same-kind unread notifications into a summary row.
- *  Read rows pass through individually so they're easy to scan when the
- *  user opens the drawer to clear stragglers. */
-function collapse(rows: NotificationRow[]): Group[] {
-  const out: Group[] = [];
-  let i = 0;
-  while (i < rows.length) {
-    const head = rows[i];
-    if (head.read_at) {
-      out.push({ kind: 'single', row: head });
-      i += 1;
-      continue;
-    }
-    let j = i + 1;
-    while (j < rows.length && rows[j].kind === head.kind && !rows[j].read_at) j += 1;
-    const run = rows.slice(i, j);
-    if (run.length >= 3) {
-      out.push({ kind: 'group', leader: head, rows: run });
-    } else {
-      for (const r of run) out.push({ kind: 'single', row: r });
-    }
-    i = j;
-  }
-  return out;
 }
 
 export function NotificationBell() {
