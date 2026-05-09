@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { PageHead } from '@/components/PageHead';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { formatAZN, formatDate } from '@/lib/format';
+import { formatAZN, formatDate, bakuMonthKey, bakuCurrentMonthRange } from '@/lib/format';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { IncomeExpenseModal, type FinanceKind } from '@/components/IncomeExpenseModal';
 import { MarkPaidModal } from '@/components/MarkPaidModal';
@@ -49,14 +49,19 @@ export function FinancePage() {
       ).data ?? [],
   });
 
-  const totalIn = (incomes.data ?? []).reduce(
-    (s: number, r: { amount: number }) => s + Number(r.amount),
-    0,
-  );
-  const totalOut = (expenses.data ?? []).reduce(
-    (s: number, r: { amount: number }) => s + Number(r.amount),
-    0,
-  );
+  // REQ-FIN-09: "(cari ay)" stats use Asia/Baku month boundaries, not UTC.
+  const { start: monthStart, end: monthEnd } = bakuCurrentMonthRange();
+  const inMonth = (occurredAt: string | null | undefined) => {
+    if (!occurredAt) return false;
+    const t = new Date(occurredAt).getTime();
+    return t >= monthStart.getTime() && t < monthEnd.getTime();
+  };
+  const totalIn = (incomes.data ?? [])
+    .filter((r: { occurred_at: string | null }) => inMonth(r.occurred_at))
+    .reduce((s: number, r: { amount: number }) => s + Number(r.amount), 0);
+  const totalOut = (expenses.data ?? [])
+    .filter((r: { occurred_at: string | null }) => inMonth(r.occurred_at))
+    .reduce((s: number, r: { amount: number }) => s + Number(r.amount), 0);
   const balance = totalIn - totalOut;
   const debtor = (receivables.data ?? []).reduce(
     (s, r) => s + (Number(r.amount) - Number(r.paid_amount)),
@@ -252,14 +257,17 @@ function byMonth(
   ins: Array<{ amount: number; occurred_at: string | null }>,
   outs: Array<{ amount: number; occurred_at: string | null }>,
 ) {
+  // REQ-FIN-09: bucket by Asia/Baku month, not UTC slice.
   const m: Record<string, { m: string; in: number; out: number }> = {};
   for (const r of ins) {
-    const k = (r.occurred_at ?? '').slice(0, 7);
+    const k = bakuMonthKey(r.occurred_at);
+    if (!k) continue;
     m[k] ??= { m: k, in: 0, out: 0 };
     m[k].in += Number(r.amount);
   }
   for (const r of outs) {
-    const k = (r.occurred_at ?? '').slice(0, 7);
+    const k = bakuMonthKey(r.occurred_at);
+    if (!k) continue;
     m[k] ??= { m: k, in: 0, out: 0 };
     m[k].out += Number(r.amount);
   }
