@@ -2,25 +2,80 @@ import { useState } from 'react';
 import { MiraiSphere } from '@/components/MiraiSphere';
 import { Mascot } from '@/components/Mascot';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/store';
 
-const SUGGESTIONS = [
-  'Bu həftəki tapşırıqları yığ',
-  'Hansı debitorlar gecikib?',
-  'Aksent kontraktının statusunu yoxla',
-  'Cash forecast 30 gün',
+type Persona = 'general' | 'project_manager' | 'finance_analyst' | 'cmo' | 'hr_partner';
+
+const PERSONAS: Array<{ key: Persona; label: string; tagline: string; adminOnly?: boolean }> = [
+  { key: 'general', label: 'Köməkçi', tagline: 'Universal — sual ver, kömək alın.' },
+  { key: 'project_manager', label: 'Layihə Mühəndisi', tagline: 'Tapşırıq, deadline, faza.' },
+  {
+    key: 'finance_analyst',
+    label: 'Maliyyə Analitiki',
+    tagline: 'Cash flow, P&L, forecast.',
+    adminOnly: true,
+  },
+  { key: 'cmo', label: 'CMO', tagline: 'Trend, mükafat, məzmun.', adminOnly: true },
+  { key: 'hr_partner', label: 'HR', tagline: 'Karyera, performans.', adminOnly: true },
 ];
+
+const SUGGESTIONS_BY_PERSONA: Record<Persona, string[]> = {
+  general: [
+    'Bu həftəki tapşırıqları yığ',
+    'MIRAI nə edə bilər?',
+    'Aktiv layihələrin statusu',
+    'Bilik bazasından AZDNT 2.04 tap',
+  ],
+  project_manager: [
+    'Bu həftə hansı tapşırıqlar gecikəcək?',
+    'Aksent layihəsinin fazaları',
+    'Boş icraçısı olan tapşırıqlar',
+    'Ekspertiza gözləyənlər',
+  ],
+  finance_analyst: [
+    'Cari ay gəliri',
+    'Hansı debitorlar 30 gündən çoxdur?',
+    'Cash forecast 60 gün',
+    'Layihə üzrə P&L — ilk 5',
+  ],
+  cmo: [
+    'Bu həftəki ArchDaily trend xülasəsi',
+    'Yaxınlaşan mükafat müraciətləri',
+    'Müştəri portfelinə tövsiyə',
+    'Press release qaralaması',
+  ],
+  hr_partner: [
+    'Bu il məzuniyyət balansı',
+    'Performans (At Risk siyahısı)',
+    'Karyera promosyon yolu',
+    'Yeni dəvət göndər',
+  ],
+};
 
 type Source = { name: string; page?: number };
 type Msg = { role: 'user' | 'assistant'; content: string; sources?: Source[] };
 type Usage = { spent_usd: number; cap_usd: number; pct: number; warning: string | null };
 
 export function MiraiPage() {
+  const { isAdmin } = useAuth();
+  const [persona, setPersona] = useState<Persona>('general');
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [q, setQ] = useState('');
   const [thinking, setThinking] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [usage, setUsage] = useState<Usage | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const SUGGESTIONS = SUGGESTIONS_BY_PERSONA[persona];
+
+  function changePersona(next: Persona) {
+    if (next === persona) return;
+    // PRD §7.2 — "Persona switch starts a new conversation context"
+    setPersona(next);
+    setMsgs([]);
+    setConversationId(null);
+    setError(null);
+  }
 
   async function ask(text: string) {
     if (!text.trim()) return;
@@ -44,7 +99,7 @@ export function MiraiPage() {
         },
         body: JSON.stringify({
           message: text,
-          persona: 'general',
+          persona,
           conversation_id: conversationId,
         }),
       });
@@ -127,10 +182,41 @@ export function MiraiPage() {
       <MiraiSphere size={Math.min(360, typeof window !== 'undefined' ? window.innerWidth - 80 : 360)} />
       <h1 className="text-hero mt-6" style={{ letterSpacing: '-0.02em' }}>MIRAI</h1>
       <p className="text-ui mt-2 opacity-70 max-w-md text-center">
-        Sənin layihə rəhbərin, maliyyə analitikin, və CMO-n. Soruş.
+        {PERSONAS.find((p) => p.key === persona)?.tagline ??
+          'Sənin layihə rəhbərin, maliyyə analitikin, və CMO-n. Soruş.'}
       </p>
 
-      <div className="w-full max-w-[720px] mt-10">
+      <div
+        role="tablist"
+        aria-label="MIRAI persona"
+        className="flex flex-wrap justify-center gap-2 mt-6 max-w-[720px]"
+      >
+        {PERSONAS.filter((p) => !p.adminOnly || isAdmin).map((p) => {
+          const active = persona === p.key;
+          return (
+            <button
+              key={p.key}
+              role="tab"
+              aria-selected={active}
+              type="button"
+              onClick={() => changePersona(p.key)}
+              className="chip"
+              style={{
+                background: active
+                  ? 'var(--brand-action)'
+                  : 'rgba(255,255,255,0.04)',
+                color: active ? 'var(--ink)' : 'var(--canvas)',
+                height: 32,
+                padding: '0 14px',
+              }}
+            >
+              {p.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="w-full max-w-[720px] mt-6">
         {usage?.warning === 'budget_80pct' ? (
           <div
             role="status"
