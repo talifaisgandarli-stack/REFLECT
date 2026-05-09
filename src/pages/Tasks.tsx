@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import {
@@ -69,6 +69,16 @@ export function TasksPage() {
   const [blocker, setBlocker] = useState<{ id: string; from?: TaskStatus } | null>(null);
   const [creating, setCreating] = useState(false);
   const [cancelling, setCancelling] = useState<{ id: string; title: string } | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      setCreating(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete('new');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   function moveTask(id: string, status: TaskStatus, from?: TaskStatus) {
     if (status === 'cancelled') {

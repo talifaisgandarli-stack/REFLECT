@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
@@ -34,6 +34,16 @@ export function ClientsPage() {
   const [active, setActive] = useState<Client | null>(null);
   const [lostPrompt, setLostPrompt] = useState<LostPrompt | null>(null);
   const [creating, setCreating] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      setCreating(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete('new');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const grouped = useMemo(() => {
     const map: Record<ClientPipelineStage, Client[]> = CLIENT_STAGE_ORDER.reduce(

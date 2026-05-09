@@ -18,6 +18,14 @@ const QUICK = [
   { label: 'Parametrlər', to: '/parametrlər' },
 ];
 
+// Quick-create actions navigate to the page with ?new=1 so each
+// destination's existing useEffect can auto-open its create modal.
+const ACTIONS = [
+  { labelKey: 'cmdk.action.new_task', to: '/tapşırıqlar?new=1' },
+  { labelKey: 'cmdk.action.new_project', to: '/layihelər?new=1' },
+  { labelKey: 'cmdk.action.new_client', to: '/müştərilər?new=1' },
+];
+
 type Hit = {
   type: 'task' | 'project' | 'client' | 'announcement' | 'profile';
   id: string;
@@ -100,16 +108,26 @@ export function CmdK() {
     return QUICK.filter((i) => i.label.toLowerCase().includes(ql));
   }, [q]);
 
+  const actionHits = useMemo(() => {
+    const ql = q.toLowerCase().trim();
+    return ACTIONS.filter((a) => {
+      if (!ql) return true;
+      return t(a.labelKey).toLowerCase().includes(ql);
+    });
+  }, [q, t]);
+
   type ListItem =
+    | { kind: 'action'; labelKey: string; to: string }
     | { kind: 'nav'; label: string; to: string }
     | { kind: 'hit'; hit: Hit };
 
   const items: ListItem[] = useMemo(() => {
     const list: ListItem[] = [];
+    for (const a of actionHits) list.push({ kind: 'action', labelKey: a.labelKey, to: a.to });
     for (const n of navHits) list.push({ kind: 'nav', label: n.label, to: n.to });
     for (const h of serverHits) list.push({ kind: 'hit', hit: h });
     return list;
-  }, [navHits, serverHits]);
+  }, [actionHits, navHits, serverHits]);
 
   function activate(item: ListItem) {
     // Project hits open the preview drawer instead of navigating away
@@ -125,7 +143,8 @@ export function CmdK() {
       setCmdK(false);
       return;
     }
-    const to = item.kind === 'nav' ? item.to : item.hit.href;
+    const to =
+      item.kind === 'nav' || item.kind === 'action' ? item.to : item.hit.href;
     nav(to);
     setCmdK(false);
   }
@@ -201,9 +220,19 @@ export function CmdK() {
           ) : null}
           {items.map((it, idx) => {
             const active = idx === cursor;
-            const label = it.kind === 'nav' ? it.label : it.hit.title;
+            const label =
+              it.kind === 'action'
+                ? t(it.labelKey)
+                : it.kind === 'nav'
+                  ? it.label
+                  : it.hit.title;
             const subtitle = it.kind === 'hit' ? it.hit.subtitle : undefined;
-            const tag = it.kind === 'nav' ? 'Naviqasiya' : TYPE_LABEL[it.hit.type];
+            const tag =
+              it.kind === 'action'
+                ? t('cmdk.tag.action')
+                : it.kind === 'nav'
+                  ? t('cmdk.tag.nav')
+                  : TYPE_LABEL[it.hit.type];
             return (
               <li key={`${it.kind}-${idx}`}>
                 <button
