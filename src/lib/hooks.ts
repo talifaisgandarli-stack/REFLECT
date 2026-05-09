@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from './supabase';
+import { useAuth } from './store';
 import type {
   Client,
   ClientInteraction,
@@ -89,6 +91,68 @@ export function usePortfolioWorkflow(projectId: string | undefined) {
       if (error) throw error;
       return data;
     },
+  });
+}
+
+export function useSystemAwards() {
+  return useQuery({
+    queryKey: ['system-awards'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('system_awards')
+        .select('id, name, organizer, deadline_month, url, criteria')
+        .order('deadline_month', { ascending: true });
+      if (error) throw error;
+      return data ?? [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/** REQ-PROJ-05: toggle an award in/out of portfolio_workflows.selected_awards. */
+export function useToggleAward() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      workflowId,
+      awardId,
+      selected_awards,
+    }: {
+      workflowId: string;
+      awardId: string;
+      selected_awards: string[];
+    }) => {
+      const current = new Set(selected_awards);
+      if (current.has(awardId)) current.delete(awardId);
+      else current.add(awardId);
+      const { error } = await supabase
+        .from('portfolio_workflows')
+        .update({ selected_awards: [...current] })
+        .eq('id', workflowId);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['portfolio'] }),
+  });
+}
+
+/** REQ-PROJ-05: update per-award checklist stored in applications jsonb. */
+export function useUpdateAwardApplications() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      workflowId,
+      applications,
+    }: {
+      workflowId: string;
+      applications: Record<string, { docs: boolean; submitted: boolean }>;
+    }) => {
+      const { error } = await supabase
+        .from('portfolio_workflows')
+        .update({ applications })
+        .eq('id', workflowId);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['portfolio'] }),
   });
 }
 
@@ -368,6 +432,83 @@ export function useMarkNotificationRead() {
 }
 
 // ---------------- Presence ----------------
+
+/**
+ * REQ-PRESENCE-03: map route pathname to human page label (privacy: no entity
+ * name — just the module, e.g. "Müştərilərdə" not "Aksent Group profilində").
+ */
+export function pageLabel(pathname: string): string {
+  if (pathname === '/' || pathname === '') return 'Dashboardda';
+  if (pathname.startsWith('/layihelər')) return 'Layihələrdə';
+  if (pathname.startsWith('/tapşırıqlar')) return 'Tapşırıqlarda';
+  if (pathname.startsWith('/tamamlandı')) return 'Tamamlandıda';
+  if (pathname.startsWith('/arxiv')) return 'Arxivdə';
+  if (pathname.startsWith('/podrat')) return 'Podratlarda';
+  if (pathname.startsWith('/müştərilər')) return 'Müştərilərdə';
+  if (pathname.startsWith('/maliyyə')) return 'Maliyyədə';
+  if (pathname.startsWith('/komanda/maaş')) return 'Komandada';
+  if (pathname.startsWith('/komanda/performans')) return 'Komandada';
+  if (pathname.startsWith('/komanda/məzuniyyət')) return 'Komandada';
+  if (pathname.startsWith('/komanda/təqvim')) return 'Təqvimdə';
+  if (pathname.startsWith('/komanda/elanlar')) return 'Elanlarda';
+  if (pathname.startsWith('/komanda/avadanlıq')) return 'Avadanlıqda';
+  if (pathname.startsWith('/komanda')) return 'Komandada';
+  if (pathname.startsWith('/şirkət/okr')) return 'OKR-dər';
+  if (pathname.startsWith('/şirkət')) return 'Şirkətdə';
+  if (pathname.startsWith('/parametrlər')) return 'Parametrlərdə';
+  if (pathname.startsWith('/mirai')) return 'MIRAI-da';
+  return 'Tətbiqdə';
+}
+
+/**
+ * REQ-PRESENCE-01..05: send a heartbeat upsert to user_presence every 30s.
+ * Status: online → active within 60s, away → idle ≥5 min, offline on cleanup.
+ * Idle detection: tracks last user input event via document listeners.
+ */
+export function usePresenceHeartbeat(pathname: string) {
+  const { profile } = useAuth();
+  useEffect(() => {
+    if (!profile?.id) return;
+    let lastActivity = Date.now();
+    const onActivity = () => { lastActivity = Date.now(); };
+    document.addEventListener('mousemove', onActivity, { passive: true });
+    document.addEventListener('keydown', onActivity, { passive: true });
+
+    const send = async (status: 'online' | 'away' | 'offline') => {
+      await supabase.from('user_presence').upsert(
+        {
+          user_id: profile.id,
+          status,
+          last_heartbeat_at: new Date().toISOString(),
+          current_page: status !== 'offline' ? pageLabel(pathname) : null,
+          session_type: 'desktop',
+        },
+        { onConflict: 'user_id' },
+      );
+    };
+
+    send('online');
+    const interval = window.setInterval(() => {
+      const idle = Date.now() - lastActivity;
+      send(idle >= 5 * 60 * 1000 ? 'away' : 'online');
+    }, 30_000);
+
+    const handleFocus = () => send('online');
+    const handleBlur = () => send('away');
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('blur', handleBlur);
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('mousemove', onActivity);
+      document.removeEventListener('keydown', onActivity);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('blur', handleBlur);
+      send('offline');
+    };
+  }, [profile?.id, pathname]);
+}
+
 export function useTeamPresence() {
   return useQuery({
     queryKey: ['presence'],
@@ -378,4 +519,18 @@ export function useTeamPresence() {
       return data ?? [];
     },
   });
+}
+
+/** REQ-PRESENCE-04: relative "last seen" string from heartbeat timestamp. */
+export function lastSeen(ts: string): string {
+  const diff = Date.now() - new Date(ts).getTime();
+  const min = Math.floor(diff / 60_000);
+  if (min < 2) return 'İndi';
+  if (min < 60) return `${min} dəq əvvəl`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} saat əvvəl`;
+  const day = Math.floor(hr / 24);
+  if (day === 1) return 'Dünən';
+  if (day < 7) return `${day} gün əvvəl`;
+  return new Date(ts).toLocaleDateString('az-AZ', { day: 'numeric', month: 'short' });
 }

@@ -5,6 +5,9 @@ import {
   useTasks,
   useCompleteProject,
   usePortfolioWorkflow,
+  useSystemAwards,
+  useToggleAward,
+  useUpdateAwardApplications,
 } from '@/lib/hooks';
 import { StatusChip } from '@/components/StatusChip';
 import { useState } from 'react';
@@ -207,6 +210,131 @@ function CloseoutTab({
             </button>
           </>
         )}
+      </div>
+      {/* REQ-PROJ-05: Awards panel — only shown once project is closed and workflow exists */}
+      {closed && portfolio.data ? (
+        <AwardsPanel workflow={portfolio.data} isAdmin={isAdmin} />
+      ) : null}
+    </div>
+  );
+}
+
+type SystemAward = {
+  id: string;
+  name: string;
+  organizer: string | null;
+  deadline_month: number | null;
+  url: string | null;
+  criteria: string | null;
+};
+
+type PortfolioWorkflow = {
+  id: string;
+  project_id: string;
+  selected_awards: string[];
+  website_published_at: string | null;
+  press_release_sent: boolean;
+  applications: Record<string, { docs: boolean; submitted: boolean }>;
+};
+
+function daysUntilDeadlineMonth(month: number | null): number | null {
+  if (!month) return null;
+  const now = new Date();
+  let target = new Date(now.getFullYear(), month - 1, 1);
+  if (target.getTime() <= now.getTime()) {
+    target = new Date(now.getFullYear() + 1, month - 1, 1);
+  }
+  return Math.ceil((target.getTime() - now.getTime()) / 86_400_000);
+}
+
+function AwardsPanel({
+  workflow,
+  isAdmin,
+}: {
+  workflow: PortfolioWorkflow;
+  isAdmin: boolean;
+}) {
+  // REQ-PROJ-05: pick from system_awards, per-award checklist, deadline indicator.
+  const { data: awards = [] } = useSystemAwards();
+  const toggle = useToggleAward();
+  const updateApps = useUpdateAwardApplications();
+  const apps: Record<string, { docs: boolean; submitted: boolean }> =
+    (workflow.applications as Record<string, { docs: boolean; submitted: boolean }>) ?? {};
+
+  function setStep(awardId: string, key: 'docs' | 'submitted', val: boolean) {
+    const next = { ...apps, [awardId]: { ...apps[awardId], [key]: val } };
+    updateApps.mutate({ workflowId: workflow.id, applications: next });
+  }
+
+  return (
+    <div className="col-span-full mt-4">
+      <h3 className="text-h3 mb-3">Mükafat müraciətləri</h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        {(awards as SystemAward[]).map((award) => {
+          const selected = workflow.selected_awards.includes(award.id);
+          const days = daysUntilDeadlineMonth(award.deadline_month);
+          const app = apps[award.id] ?? { docs: false, submitted: false };
+          return (
+            <div
+              key={award.id}
+              className="card"
+              style={{ borderColor: selected ? 'var(--brand-action)' : 'var(--line)' }}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="text-body font-medium truncate">{award.name}</div>
+                  <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                    {award.organizer}
+                  </div>
+                </div>
+                {isAdmin ? (
+                  <input
+                    type="checkbox"
+                    title="Seç"
+                    checked={selected}
+                    onChange={() =>
+                      toggle.mutate({
+                        workflowId: workflow.id,
+                        awardId: award.id,
+                        selected_awards: workflow.selected_awards,
+                      })
+                    }
+                  />
+                ) : null}
+              </div>
+              {award.criteria ? (
+                <div className="text-meta mt-1" style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                  {award.criteria}
+                </div>
+              ) : null}
+              {days !== null ? (
+                <div
+                  className="text-meta mt-1"
+                  style={{ color: days <= 30 ? 'var(--danger, #c33)' : 'var(--text-muted)' }}
+                >
+                  {days} gün qaldı
+                </div>
+              ) : null}
+              {selected ? (
+                <ul className="mt-2 space-y-1">
+                  {([['docs', 'Portfel sənədləri hazırdır'], ['submitted', 'Ərizə göndərildi']] as const).map(
+                    ([key, label]) => (
+                      <li key={key} className="flex items-center gap-2 text-meta">
+                        <input
+                          type="checkbox"
+                          checked={!!app[key]}
+                          disabled={!isAdmin}
+                          onChange={(e) => setStep(award.id, key, e.target.checked)}
+                        />
+                        {label}
+                      </li>
+                    ),
+                  )}
+                </ul>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

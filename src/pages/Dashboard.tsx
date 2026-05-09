@@ -7,6 +7,7 @@ import {
   useTasks,
   useTeamPresence,
   useUpcomingMeetings,
+  lastSeen,
 } from '@/lib/hooks';
 import { useAuth } from '@/lib/store';
 import { formatDate, relativeTime, taskHealth } from '@/lib/format';
@@ -194,23 +195,47 @@ export function DashboardPage() {
           )}
         </section>
 
-        {/* Presence — REQ-PRESENCE-* */}
+        {/* Presence panel — REQ-DASH-06 / REQ-PRESENCE-01..05 */}
         <section className="lg:col-span-3 card">
-          <h3 className="text-h3 mb-3">Komanda</h3>
-          <div className="flex flex-wrap gap-2">
-            {presence.length === 0 ? (
-              <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                Heç kim onlayn deyil.
-              </div>
-            ) : (
-              presence.slice(0, 12).map((p) => (
-                <Avatar key={p.user_id} name={p.user_id.slice(0, 4)} presence={p.status} size={36} />
-              ))
-            )}
-          </div>
-          <div className="text-meta mt-3" style={{ color: 'var(--text-muted)' }}>
-            {onlineCount} onlayn
-          </div>
+          <h3 className="text-h3 mb-3">
+            Komanda{' '}
+            <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+              ({onlineCount} onlayn)
+            </span>
+          </h3>
+          {presence.length === 0 ? (
+            <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+              Heç kim onlayn deyil.
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {presence.slice(0, 12).map((p) => (
+                <li key={p.user_id} className="flex items-center gap-3">
+                  <Avatar
+                    name={p.user_id.slice(0, 4)}
+                    presence={p.status}
+                    size={32}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-body truncate" style={{ lineHeight: 1.2 }}>
+                      {p.current_page ?? '—'}
+                    </div>
+                    <div
+                      className="text-meta"
+                      style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}
+                    >
+                      {/* REQ-PRESENCE-04: relative last seen */}
+                      {p.status === 'offline'
+                        ? lastSeen(p.last_heartbeat_at)
+                        : p.status === 'away'
+                          ? 'Uzaqda'
+                          : 'Onlayn'}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
 
         {/* Upcoming meetings — REQ-CAL-* (week ahead) */}

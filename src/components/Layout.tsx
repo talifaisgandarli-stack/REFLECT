@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { MiraiDrawer } from './MiraiDrawer';
@@ -6,11 +6,15 @@ import { CmdK } from './CmdK';
 import { NotificationBell } from './NotificationBell';
 import { useUI, useAuth } from '@/lib/store';
 import { useRealtimeSync } from '@/lib/realtime';
+import { usePresenceHeartbeat } from '@/lib/hooks';
 
 export function Layout() {
   const { setCmdK } = useUI();
   const { session } = useAuth();
+  const { pathname } = useLocation();
   useRealtimeSync(session?.userId);
+  // REQ-PRESENCE-01..05: heartbeat upsert on every page + idle detection.
+  usePresenceHeartbeat(pathname);
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
