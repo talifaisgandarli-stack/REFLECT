@@ -12,7 +12,15 @@ import { PortfolioPanel } from '@/components/PortfolioPanel';
 import { ProjectEditModal } from '@/components/ProjectEditModal';
 import { useT } from '@/lib/i18n';
 
-const TABS = ['Overview', 'Tasks', 'Documents', 'Closeout', 'Portfolio', 'History'] as const;
+type Tab =
+  | 'overview'
+  | 'tasks'
+  | 'documents'
+  | 'finance'
+  | 'closeout'
+  | 'portfolio'
+  | 'history';
+const TABS_BASE: Tab[] = ['overview', 'tasks', 'documents', 'closeout', 'portfolio', 'history'];
 
 export function ProjectDetailPage() {
   const tr = useT();
@@ -20,17 +28,16 @@ export function ProjectDetailPage() {
   const { data: project } = useProject(id);
   const { data: tasks = [] } = useTasks({ projectId: id });
   const { isAdmin } = useAuth();
-  type Tab = (typeof TABS)[number] | 'Finance';
-  const [tab, setTab] = useState<Tab>('Overview');
+  const [tab, setTab] = useState<Tab>('overview');
   const [editing, setEditing] = useState(false);
   const tabs: Tab[] = isAdmin
-    ? [...TABS.slice(0, 3), 'Finance', ...TABS.slice(3)]
-    : [...TABS];
+    ? [...TABS_BASE.slice(0, 3), 'finance', ...TABS_BASE.slice(3)]
+    : TABS_BASE;
 
   if (!project) {
     return (
       <div className="card text-meta">
-        Layihə tapılmadı. <Link to="/layihelər">geri</Link>
+        {tr('projects.detail.not_found')} <Link to="/layihelər">{tr('common.back')}</Link>
       </div>
     );
   }
@@ -48,26 +55,26 @@ export function ProjectDetailPage() {
       />
 
       <nav className="flex gap-2 mb-6 border-b border-line-soft">
-        {tabs.map((t) => (
+        {tabs.map((tabKey) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
+            key={tabKey}
+            onClick={() => setTab(tabKey)}
             className="px-4 py-2 text-ui"
             style={{
-              color: tab === t ? 'var(--text)' : 'var(--text-muted)',
-              borderBottom: tab === t ? '2px solid var(--brand-text)' : '2px solid transparent',
+              color: tab === tabKey ? 'var(--text)' : 'var(--text-muted)',
+              borderBottom: tab === tabKey ? '2px solid var(--brand-text)' : '2px solid transparent',
               marginBottom: -1,
             }}
           >
-            {t}
+            {tr(`projects.detail.tab.${tabKey}`)}
           </button>
         ))}
       </nav>
 
-      {tab === 'Overview' ? (
+      {tab === 'overview' ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="card lg:col-span-2">
-            <h3 className="text-h3 mb-3">Mərhələlər</h3>
+            <h3 className="text-h3 mb-3">{tr('projects.detail.phases_title')}</h3>
             <ol className="space-y-2">
               {PROJECT_PHASES.map((p) => {
                 const active = project.phases?.includes(p);
@@ -84,27 +91,37 @@ export function ProjectDetailPage() {
             </ol>
           </div>
           <div className="card">
-            <h3 className="text-h3 mb-3">Əsas məlumat</h3>
+            <h3 className="text-h3 mb-3">{tr('projects.detail.facts_title')}</h3>
             <dl className="text-body space-y-2">
-              <Row k="Status" v={project.status} />
-              <Row k="Başlama" v={project.start_date ?? '—'} />
-              <Row k="Deadline" v={project.deadline ?? '—'} />
-              <Row k="Ekspertiza" v={project.requires_expertise ? 'Lazımdır' : 'Yox'} />
+              <Row
+                k={tr('projects.detail.row.status')}
+                v={tr(`projects.status.${project.status}`)}
+              />
+              <Row k={tr('projects.detail.row.start')} v={project.start_date ?? '—'} />
+              <Row k={tr('projects.detail.row.deadline')} v={project.deadline ?? '—'} />
+              <Row
+                k={tr('projects.detail.row.expertise')}
+                v={
+                  project.requires_expertise
+                    ? tr('projects.detail.expertise_yes')
+                    : tr('projects.detail.expertise_no')
+                }
+              />
             </dl>
           </div>
         </div>
       ) : null}
 
-      {tab === 'Tasks' ? (
+      {tab === 'tasks' ? (
         <div className="card">
           {tasks.length === 0 ? (
-            <p className="text-meta">Bu layihədə tapşırıq yoxdur.</p>
+            <p className="text-meta">{tr('projects.detail.tasks_empty')}</p>
           ) : (
             <ul className="divide-y divide-line-soft">
-              {tasks.map((t) => (
-                <li key={t.id} className="py-3 flex items-center justify-between">
-                  <span>{t.title}</span>
-                  <StatusChip status={t.status} />
+              {tasks.map((task) => (
+                <li key={task.id} className="py-3 flex items-center justify-between">
+                  <span>{task.title}</span>
+                  <StatusChip status={task.status} />
                 </li>
               ))}
             </ul>
@@ -112,19 +129,19 @@ export function ProjectDetailPage() {
         </div>
       ) : null}
 
-      {tab === 'Finance' && id ? <ProjectPnL projectId={id} /> : null}
+      {tab === 'finance' && id ? <ProjectPnL projectId={id} /> : null}
 
-      {tab === 'Closeout' && id ? (
+      {tab === 'closeout' && id ? (
         <CloseoutPanel projectId={id} projectStatus={project.status} />
       ) : null}
 
-      {tab === 'Documents' && id ? <ProjectDocuments projectId={id} /> : null}
+      {tab === 'documents' && id ? <ProjectDocuments projectId={id} /> : null}
 
-      {tab === 'Portfolio' && id ? <PortfolioPanel projectId={id} /> : null}
+      {tab === 'portfolio' && id ? <PortfolioPanel projectId={id} /> : null}
 
-      {tab === 'History' ? (
+      {tab === 'history' ? (
         <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
-          History bölməsi v1.5-də.
+          {tr('projects.detail.history_placeholder')}
         </div>
       ) : null}
 
