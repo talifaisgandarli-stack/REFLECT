@@ -198,6 +198,15 @@
   "task.create.duration.days": "дн",
   "task.subtask.blocker": "Открытые подзадачи блокируют завершение",
 
+  "projects.title": "Проекты",
+  "projects.count": "{count} проектов",
+  "projects.create": "+ Новый проект",
+  "projects.search": "Поиск…",
+  "projects.empty.title": "Проектов пока нет",
+  "projects.empty.body": "Создайте проект — выберите фазы и клиента; MIRAI предложит первые задачи.",
+  "projects.no_phase": "—",
+  "projects.no_deadline": "без срока",
+
   "client.create.title": "+ Новый клиент",
   "client.create.dialog_label": "Новый клиент",
   "client.create.name": "Имя",

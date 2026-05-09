@@ -198,6 +198,15 @@
   "task.create.duration.days": "gün",
   "task.subtask.blocker": "Tamamlanmaq üçün açıq alt-tapşırıqlar var",
 
+  "projects.title": "Layihələr",
+  "projects.count": "{count} layihə",
+  "projects.create": "+ Yeni layihə",
+  "projects.search": "Axtar…",
+  "projects.empty.title": "Hələ layihə yoxdur",
+  "projects.empty.body": "Yeni layihə yarat — fazaları və müştərini seç, MIRAI tapşırıqları təklif edəcək.",
+  "projects.no_phase": "—",
+  "projects.no_deadline": "tarixsiz",
+
   "client.create.title": "+ Yeni müştəri",
   "client.create.dialog_label": "Yeni müştəri",
   "client.create.name": "Ad",

@@ -198,6 +198,15 @@
   "task.create.duration.days": "days",
   "task.subtask.blocker": "Open subtasks block completion",
 
+  "projects.title": "Projects",
+  "projects.count": "{count} projects",
+  "projects.create": "+ New project",
+  "projects.search": "Search…",
+  "projects.empty.title": "No projects yet",
+  "projects.empty.body": "Create a project — pick phases and a client; MIRAI will suggest the first tasks.",
+  "projects.no_phase": "—",
+  "projects.no_deadline": "no deadline",
+
   "client.create.title": "+ New client",
   "client.create.dialog_label": "New client",
   "client.create.name": "Name",
