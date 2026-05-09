@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { MiraiSphere } from '@/components/MiraiSphere';
 import { Mascot } from '@/components/Mascot';
+import { MiraiHistory } from '@/components/MiraiHistory';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 
@@ -57,7 +58,7 @@ type Msg = { role: 'user' | 'assistant'; content: string; sources?: Source[] };
 type Usage = { spent_usd: number; cap_usd: number; pct: number; warning: string | null };
 
 export function MiraiPage() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, profile } = useAuth();
   const [persona, setPersona] = useState<Persona>('general');
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [q, setQ] = useState('');
@@ -65,6 +66,7 @@ export function MiraiPage() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [usage, setUsage] = useState<Usage | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const SUGGESTIONS = SUGGESTIONS_BY_PERSONA[persona];
 
@@ -214,7 +216,37 @@ export function MiraiPage() {
             </button>
           );
         })}
+        {profile?.id ? (
+          <button
+            type="button"
+            onClick={() => setHistoryOpen(true)}
+            className="chip"
+            style={{
+              background: 'rgba(255,255,255,0.04)',
+              color: 'var(--canvas)',
+              height: 32,
+              padding: '0 14px',
+            }}
+            title="Keçmiş söhbətlər"
+          >
+            Tarixçə
+          </button>
+        ) : null}
       </div>
+
+      {profile?.id ? (
+        <MiraiHistory
+          userId={profile.id}
+          open={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          onLoad={({ conversationId: cid, persona: p, messages }) => {
+            setPersona(p);
+            setConversationId(cid);
+            setMsgs(messages);
+            setError(null);
+          }}
+        />
+      ) : null}
 
       <div className="w-full max-w-[720px] mt-6">
         {usage?.warning === 'budget_80pct' ? (
