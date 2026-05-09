@@ -1,8 +1,12 @@
 # Reflect — sessiya gedişatı (`claude/create-done-list-Y8FuN`)
 
-PRD v3.8 + designstyle4 əsasında bu branch boyunca yığılmış 98 slice-ın
+PRD v3.8 + designstyle4 əsasında bu branch boyunca yığılmış **108 slice-ın**
 xülasəsi. Hər bir slice atomar commit-dir; tam tarixçə üçün
 `git log --oneline main..`.
+
+> **🎯 100 commit milestone.** 99-cu commit (slice 99 — ClientCreateModal
+> i18n) ilə branch 100 sənaye-keyfiyyətli atomar commit-i keçdi. Sonrakı
+> hər iş PRD §11.3 + `docs/DOD_CHECKLIST.md` üzərindən yoxlanılır.
 
 ## Modul sıxlığı
 
@@ -163,11 +167,26 @@ DoD                    ●●●●●  CI workflow, RLS audit, vitest (~135 tes
 | 95 | `edef085` | MIRAI conversation archive + restore |
 | 96 | `bd6f432` | NotificationPreferences page i18n |
 | 97 | `ef2c1be` | Archive + Roster empty states i18n |
-| 98 | this   | docs/PROGRESS.md ledger refresh |
+| 98 | `c9a03de` | docs/PROGRESS.md 98-commit ledger refresh |
+
+### Polish IV (99–108)
+
+| # | Commit | Mövzu |
+|---|---|---|
+| 99 | `c910678` | Settings → Ümumi form labels through `useT()` |
+| 100 | `303fa59` | NotificationPreferences event labels via i18n |
+| 101 | `d9bc166` | MiraiHistory drawer + persona labels via i18n |
+| 102 | `6f7f830` | IncomeExpenseModal copy + dropdown labels via i18n |
+| 103 | `bd072a9` | TaskCreateModal copy via i18n (workload preview localized) |
+| 104 | `688d27e` | Migration 0019: RSVP fan-out → organizer notification |
+| 105 | `354e301` | `--state-error` / `--state-warn` tokens + 60-hex sweep |
+| 106 | `bfc3568` | `docs/DOD_CHECKLIST.md` — runnable §11.3 expansion |
+| 107 | `a1e04b2` | ClientCreateModal copy via i18n (12 keys per locale) |
+| 108 | this   | docs/PROGRESS.md ledger refresh + 100-commit note |
 
 ## Migrasiya intizamı
 
-18 migrasiya, hər biri up + down:
+19 migrasiya, hər biri up + down:
 
 | Fayl | Mövzu |
 |---|---|
@@ -189,6 +208,7 @@ DoD                    ●●●●●  CI workflow, RLS audit, vitest (~135 tes
 | `0016_project_documents_bucket` | Storage bucket + RLS |
 | `0017_promotion_requests` | Promotion request + decide RPC |
 | `0018_calendar_rsvps` | Calendar RSVP + `calendar_rsvp` RPC |
+| `0019_calendar_rsvp_notify` | RSVP → organizer notification fan-out |
 
 §10.2 qaydası boyu hər `down` script tabloları rename edir, drop etmir.
 
@@ -215,13 +235,17 @@ DoD                    ●●●●●  CI workflow, RLS audit, vitest (~135 tes
 
 ## i18n əhatəsi
 
-- 200+ açar `src/locales/{az,en,ru}.json` (parity test enforces).
+- 290+ açar `src/locales/{az,en,ru}.json` (parity test enforces).
 - Missing-key dev konsol xəbərdarlığı (PROD-da tree-shake olur).
 - Qoşulan səhifələr: Sidebar, Layout topbar, OnboardingHero, Tasks
-  (full), Settings (nav + Ümumi), Maliyyə tabs, Komanda page-heads,
-  Hesabatlar, Audit log entity/action, NotificationPreferences,
-  CmdK + bell + shortcut overlay, Archive empty, Roster empty,
-  Cancel modal, MIRAI persona switcher (sources stay AZ).
+  (full), Settings (nav + Ümumi + form sahələri), Maliyyə tabs +
+  IncomeExpenseModal (4 ödəniş üsulu + 8 xərc kateqoriyası),
+  Komanda page-heads, Hesabatlar, Audit log entity/action,
+  NotificationPreferences (8 event kind), CmdK + bell + shortcut
+  overlay, Archive empty, Roster empty, Cancel modal,
+  TaskCreateModal (status + risk + workload), ClientCreateModal,
+  MiraiHistory drawer (+ 5 persona), MIRAI persona switcher
+  (sources stay AZ).
 - Email helpers (invite/share/MIRAI budget) + Telegram bot
   (10 commands × 3 locales) consume `profile.locale`.
 
@@ -250,5 +274,7 @@ DoD                    ●●●●●  CI workflow, RLS audit, vitest (~135 tes
 - Notification body dictionary (event-specific copy beyond title)
 - Storage RLS / DB-trigger size limit mirror
 - E2E business flow (login → kanban → cancel) — needs seeded user
-- Locale extraction qalan komponentlərdə (Settings Ümumi form
-  field labels, project create/edit modals, finance modals)
+- Locale extraction qalan komponentlərdə (project create/edit modals,
+  outsource modal, mark-paid modal, knowledge base manager)
+- Server-side enum codes for finance categories / payment methods
+  (DB stores AZ canonical strings — relabel doesn't translate old rows)
