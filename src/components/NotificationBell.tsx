@@ -33,6 +33,36 @@ function bodyFor(n: NotificationRow): string {
   return '';
 }
 
+type Group =
+  | { kind: 'single'; row: NotificationRow }
+  | { kind: 'group'; leader: NotificationRow; rows: NotificationRow[] };
+
+/** Collapse consecutive same-kind unread notifications into a summary row.
+ *  Read rows pass through individually so they're easy to scan when the
+ *  user opens the drawer to clear stragglers. */
+function collapse(rows: NotificationRow[]): Group[] {
+  const out: Group[] = [];
+  let i = 0;
+  while (i < rows.length) {
+    const head = rows[i];
+    if (head.read_at) {
+      out.push({ kind: 'single', row: head });
+      i += 1;
+      continue;
+    }
+    let j = i + 1;
+    while (j < rows.length && rows[j].kind === head.kind && !rows[j].read_at) j += 1;
+    const run = rows.slice(i, j);
+    if (run.length >= 3) {
+      out.push({ kind: 'group', leader: head, rows: run });
+    } else {
+      for (const r of run) out.push({ kind: 'single', row: r });
+    }
+    i = j;
+  }
+  return out;
+}
+
 export function NotificationBell() {
   const t = useT();
   const { data = [] } = useNotifications();
@@ -47,6 +77,7 @@ export function NotificationBell() {
 
   const unread = data.filter((n) => !n.read_at);
   const unreadCount = unread.length;
+  const groups = collapse(data);
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -129,44 +160,90 @@ export function NotificationBell() {
           ) : null}
           {data.length > 0 ? (
             <ul>
-              {data.map((n) => (
-                <li
-                  key={n.id}
-                  className="px-4 py-3 flex gap-3 cursor-pointer"
-                  style={{
-                    borderBottom: '1px solid var(--line-soft)',
-                    background: n.read_at ? 'transparent' : 'var(--brand-mist)',
-                  }}
-                  onClick={() => {
-                    if (!n.read_at) markRead.mutate({ id: n.id });
-                  }}
-                >
-                  <span
-                    aria-hidden
-                    className="mt-1 w-2 h-2 rounded-full shrink-0"
-                    style={{
-                      background: n.read_at ? 'var(--text-faint)' : 'var(--brand-action)',
-                    }}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-ui font-medium" style={{ color: 'var(--text)' }}>
-                      {labelFor(n.kind)}
-                    </div>
-                    {bodyFor(n) ? (
-                      <div className="text-meta truncate" style={{ color: 'var(--text-soft)' }}>
-                        {bodyFor(n)}
-                      </div>
-                    ) : null}
-                    <time
-                      dateTime={n.created_at}
-                      className="text-tiny"
-                      style={{ color: 'var(--text-muted)' }}
+              {groups.map((g) => {
+                if (g.kind === 'group') {
+                  const { leader, rows } = g;
+                  return (
+                    <li
+                      key={`g-${leader.id}`}
+                      className="px-4 py-3 flex gap-3 cursor-pointer"
+                      style={{
+                        borderBottom: '1px solid var(--line-soft)',
+                        background: 'var(--brand-mist)',
+                      }}
+                      onClick={() => {
+                        for (const r of rows) markRead.mutate({ id: r.id });
+                      }}
                     >
-                      {relativeTime(n.created_at)}
-                    </time>
-                  </div>
-                </li>
-              ))}
+                      <span
+                        aria-hidden
+                        className="mt-1 w-2 h-2 rounded-full shrink-0"
+                        style={{ background: 'var(--brand-action)' }}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div
+                          className="text-ui font-medium"
+                          style={{ color: 'var(--text)' }}
+                        >
+                          {labelFor(leader.kind)} · {rows.length}
+                        </div>
+                        <time
+                          dateTime={leader.created_at}
+                          className="text-tiny"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          {relativeTime(leader.created_at)}
+                        </time>
+                      </div>
+                    </li>
+                  );
+                }
+                const n = g.row;
+                return (
+                  <li
+                    key={n.id}
+                    className="px-4 py-3 flex gap-3 cursor-pointer"
+                    style={{
+                      borderBottom: '1px solid var(--line-soft)',
+                      background: n.read_at ? 'transparent' : 'var(--brand-mist)',
+                    }}
+                    onClick={() => {
+                      if (!n.read_at) markRead.mutate({ id: n.id });
+                    }}
+                  >
+                    <span
+                      aria-hidden
+                      className="mt-1 w-2 h-2 rounded-full shrink-0"
+                      style={{
+                        background: n.read_at ? 'var(--text-faint)' : 'var(--brand-action)',
+                      }}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div
+                        className="text-ui font-medium"
+                        style={{ color: 'var(--text)' }}
+                      >
+                        {labelFor(n.kind)}
+                      </div>
+                      {bodyFor(n) ? (
+                        <div
+                          className="text-meta truncate"
+                          style={{ color: 'var(--text-soft)' }}
+                        >
+                          {bodyFor(n)}
+                        </div>
+                      ) : null}
+                      <time
+                        dateTime={n.created_at}
+                        className="text-tiny"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        {relativeTime(n.created_at)}
+                      </time>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           ) : null}
           <footer
