@@ -6,10 +6,12 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { useT } from '@/lib/i18n';
 
 type Props = { onClose: () => void };
 
 export function OutsourceModal({ onClose }: Props) {
+  const t = useT();
   const qc = useQueryClient();
 
   const projects = useQuery({
@@ -34,10 +36,10 @@ export function OutsourceModal({ onClose }: Props) {
 
   const save = useMutation({
     mutationFn: async () => {
-      if (!workTitle.trim()) throw new Error('İş başlığı tələb olunur');
+      if (!workTitle.trim()) throw new Error(t('outsource.modal.work_title_required'));
       const n = amount ? Number(amount.replace(',', '.')) : null;
       if (n != null && (!Number.isFinite(n) || n <= 0)) {
-        throw new Error('Məbləğ müsbət olmalıdır');
+        throw new Error(t('outsource.modal.amount_invalid'));
       }
       const { error } = await supabase.from('outsource_items').insert({
         work_title: workTitle.trim(),
@@ -60,7 +62,7 @@ export function OutsourceModal({ onClose }: Props) {
   return (
     <div
       role="dialog"
-      aria-label="Yeni outsource sifarişi"
+      aria-label={t('outsource.modal.dialog_label')}
       className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8 overflow-y-auto"
       style={{ background: 'rgba(14,22,17,0.4)' }}
       onClick={onClose}
@@ -74,10 +76,10 @@ export function OutsourceModal({ onClose }: Props) {
         }}
         style={{ padding: 24 }}
       >
-        <h2 className="text-h2">+ Outsource sifarişi</h2>
+        <h2 className="text-h2">{t('outsource.modal.title')}</h2>
 
         <div className="mt-4 space-y-3">
-          <Field label="İşin başlığı" required>
+          <Field label={t('outsource.modal.work_title')} required>
             <input
               className="input"
               value={workTitle}
@@ -88,14 +90,14 @@ export function OutsourceModal({ onClose }: Props) {
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Əlaqə şəxsi">
+            <Field label={t('outsource.modal.contact_person')}>
               <input
                 className="input"
                 value={contactPerson}
                 onChange={(e) => setContactPerson(e.target.value)}
               />
             </Field>
-            <Field label="Əlaqə şirkəti">
+            <Field label={t('outsource.modal.contact_company')}>
               <input
                 className="input"
                 value={contactCompany}
@@ -105,7 +107,7 @@ export function OutsourceModal({ onClose }: Props) {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Məbləğ (AZN)">
+            <Field label={t('outsource.modal.amount')}>
               <input
                 type="text"
                 inputMode="decimal"
@@ -115,7 +117,7 @@ export function OutsourceModal({ onClose }: Props) {
                 style={{ fontVariantNumeric: 'tabular-nums' }}
               />
             </Field>
-            <Field label="Deadline">
+            <Field label={t('outsource.modal.deadline')}>
               <input
                 type="date"
                 className="input"
@@ -125,13 +127,13 @@ export function OutsourceModal({ onClose }: Props) {
             </Field>
           </div>
 
-          <Field label="Layihə">
+          <Field label={t('outsource.modal.project')}>
             <select
               className="input"
               value={projectId}
               onChange={(e) => setProjectId(e.target.value)}
             >
-              <option value="">— layihəsiz —</option>
+              <option value="">{t('outsource.modal.project_none')}</option>
               {(projects.data ?? []).map((p: { id: string; name: string }) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -140,13 +142,13 @@ export function OutsourceModal({ onClose }: Props) {
             </select>
           </Field>
 
-          <Field label="Məsul şəxs">
+          <Field label={t('outsource.modal.responsible')}>
             <select
               className="input"
               value={responsibleId}
               onChange={(e) => setResponsibleId(e.target.value)}
             >
-              <option value="">— təyin olunmayıb —</option>
+              <option value="">{t('outsource.modal.responsible_none')}</option>
               {(profiles.data ?? []).map(
                 (p: { id: string; full_name: string | null; email: string }) => (
                   <option key={p.id} value={p.id}>
@@ -171,14 +173,14 @@ export function OutsourceModal({ onClose }: Props) {
             onClick={onClose}
             disabled={save.isPending}
           >
-            Geri
+            {t('common.back')}
           </button>
           <button
             type="submit"
             className="btn-primary"
             disabled={save.isPending || !workTitle.trim()}
           >
-            {save.isPending ? 'Yadda saxlanılır…' : 'Yarat'}
+            {save.isPending ? t('outsource.modal.saving') : t('outsource.modal.submit')}
           </button>
         </div>
       </form>
