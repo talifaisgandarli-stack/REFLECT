@@ -534,3 +534,181 @@ export function lastSeen(ts: string): string {
   if (day < 7) return `${day} gün əvvəl`;
   return new Date(ts).toLocaleDateString('az-AZ', { day: 'numeric', month: 'short' });
 }
+
+// ---------------- Module 8/9 (added in migration 0010) ----------------
+
+// §8.2 Salary
+export function useSalaries() {
+  return useQuery({
+    queryKey: ['salaries'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('salaries')
+        .select('*')
+        .order('effective_from', { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
+// §8.3 Performance reviews
+export function usePerformanceReviews(employeeId?: string) {
+  return useQuery({
+    queryKey: ['performance', employeeId],
+    queryFn: async () => {
+      let q = supabase.from('performance_reviews').select('*').order('year', { ascending: false });
+      if (employeeId) q = q.eq('employee_id', employeeId);
+      const { data, error } = await q;
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
+// §8.4 Leave requests
+export function useLeaveRequests() {
+  return useQuery({
+    queryKey: ['leave-requests'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('leave_requests')
+        .select('*')
+        .order('starts_at', { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
+export function useDecideLeave() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      status,
+      approverId,
+    }: {
+      id: string;
+      status: 'approved' | 'denied';
+      approverId: string;
+    }) => {
+      const { error } = await supabase
+        .from('leave_requests')
+        .update({
+          status,
+          approver_id: approverId,
+          decided_at: new Date().toISOString(),
+        })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['leave-requests'] }),
+  });
+}
+
+// §9.2 Career levels
+export function useCareerLevels() {
+  return useQuery({
+    queryKey: ['career-levels'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('career_levels')
+        .select('*')
+        .order('level_index', { ascending: true });
+      if (error) throw error;
+      return data ?? [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+// §9.3 Content plans
+export function useContentPlans() {
+  return useQuery({
+    queryKey: ['content-plans'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('content_plans')
+        .select('*')
+        .order('scheduled_at', { ascending: true, nullsFirst: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
+export function useUpdateContentStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      status,
+    }: {
+      id: string;
+      status: 'idea' | 'draft' | 'review' | 'published';
+    }) => {
+      const { error } = await supabase.from('content_plans').update({ status }).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['content-plans'] }),
+  });
+}
+
+// §10.1 System settings
+export function useSystemSettings() {
+  return useQuery({
+    queryKey: ['system-settings'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('system_settings').select('*');
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
+// §9.1 OKR — extend to load with key_results
+export function useOkrsWithKRs(scope: 'company' | 'personal') {
+  return useQuery({
+    queryKey: ['okrs-with-krs', scope],
+    queryFn: async () => {
+      const { data: okrs, error } = await supabase
+        .from('okrs')
+        .select('*')
+        .eq('scope', scope);
+      if (error) throw error;
+      const ids = (okrs ?? []).map((o: { id: string }) => o.id);
+      if (ids.length === 0) return [];
+      const { data: krs } = await supabase
+        .from('key_results')
+        .select('*')
+        .in('okr_id', ids);
+      return (okrs ?? []).map((o: { id: string }) => ({
+        ...o,
+        key_results: (krs ?? []).filter((k: { okr_id: string }) => k.okr_id === o.id),
+      }));
+    },
+  });
+}
+
+// §8.6 Mark announcement as read (read_by jsonb keyed by user_id)
+export function useMarkAnnouncementsRead() {
+  const qc = useQueryClient();
+  const { profile } = useAuth();
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      if (!profile?.id) return;
+      // Fetch existing read_by maps to merge
+      const { data } = await supabase
+        .from('announcements')
+        .select('id, read_by')
+        .in('id', ids);
+      const stamp = new Date().toISOString();
+      for (const row of data ?? []) {
+        const merged = { ...(row.read_by ?? {}), [profile.id]: stamp };
+        await supabase.from('announcements').update({ read_by: merged }).eq('id', row.id);
+      }
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['announcements'] }),
+  });
+}

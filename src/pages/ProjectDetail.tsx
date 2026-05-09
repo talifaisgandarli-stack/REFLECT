@@ -1,4 +1,6 @@
 import { useParams, Link } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
 import { PageHead } from '@/components/PageHead';
 import {
   useProject,
@@ -215,6 +217,76 @@ function CloseoutTab({
       {closed && portfolio.data ? (
         <AwardsPanel workflow={portfolio.data} isAdmin={isAdmin} />
       ) : null}
+      {/* REQ-CRM-07: Survey trigger — visible after closeout */}
+      {closed && isAdmin ? <SurveyTrigger projectId={projectId} /> : null}
+    </div>
+  );
+}
+
+function SurveyTrigger({ projectId }: { projectId: string }) {
+  const qc = useQueryClient();
+  const survey = useQuery({
+    queryKey: ['survey', projectId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('retrospective_surveys')
+        .select('*')
+        .eq('project_id', projectId)
+        .maybeSingle();
+      return data;
+    },
+  });
+  const send = useMutation({
+    mutationFn: async () => {
+      const token = crypto.randomUUID().replace(/-/g, '');
+      const { error } = await supabase.from('retrospective_surveys').insert({
+        project_id: projectId,
+        share_token: token,
+        sent_at: new Date().toISOString(),
+      });
+      if (error) throw error;
+      return token;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['survey', projectId] }),
+  });
+
+  const surveyUrl = survey.data?.share_token
+    ? `${window.location.origin}/survey/${survey.data.share_token}`
+    : null;
+
+  return (
+    <div className="card col-span-full mt-4">
+      <h3 className="text-h3 mb-2">Retrospektiv sorğu</h3>
+      {survey.data ? (
+        <>
+          <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+            {survey.data.responded_at
+              ? `Cavablandı: NPS ${survey.data.nps_score ?? '—'}`
+              : `Göndərildi: ${new Date(survey.data.sent_at).toLocaleDateString('az-AZ')}`}
+          </p>
+          {surveyUrl && !survey.data.responded_at ? (
+            <div className="mt-2 flex items-center gap-2">
+              <input className="input flex-1" readOnly value={surveyUrl} />
+              <button
+                type="button"
+                className="chip"
+                onClick={() => navigator.clipboard?.writeText(surveyUrl)}
+              >
+                Kopyala
+              </button>
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <button
+          type="button"
+          className="btn-primary"
+          onClick={() => send.mutate()}
+          disabled={send.isPending}
+        >
+          Sorğu yarat
+        </button>
+      )}
     </div>
   );
 }
