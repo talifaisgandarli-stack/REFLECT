@@ -7,17 +7,19 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Mascot } from './Mascot';
+import { useT } from '@/lib/i18n';
 
 const DISMISS_KEY = 'reflect.onboarding.dismissed.v1';
 
-const STEPS = [
-  { to: '/layihelər', label: '1. Layihə yarat' },
-  { to: '/tapşırıqlar', label: '2. Tapşırıq əlavə et' },
-  { to: '/komanda/heyət', label: '3. Komandaya dəvət göndər' },
-  { to: '/mirai', label: '4. MIRAI-dən soruş' },
+const STEPS: Array<{ to: string; key: string }> = [
+  { to: '/layihelər', key: 'onboarding.step.1' },
+  { to: '/tapşırıqlar', key: 'onboarding.step.2' },
+  { to: '/komanda/heyət', key: 'onboarding.step.3' },
+  { to: '/mirai', key: 'onboarding.step.4' },
 ];
 
 export function OnboardingHero({ visible }: { visible: boolean }) {
+  const t = useT();
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
@@ -42,16 +44,16 @@ export function OnboardingHero({ visible }: { visible: boolean }) {
       role="region"
       aria-label="İlk addımlar"
     >
-      <Mascot size={96} decorative={false} label="Reflect-ə xoş gəlmisən" />
+      <Mascot size={96} decorative={false} label={t('onboarding.eyebrow')} />
       <div className="min-w-0 flex-1">
         <div
           className="text-tiny font-medium"
           style={{ letterSpacing: '0.08em', textTransform: 'uppercase' }}
         >
-          Reflect-ə xoş gəlmisən
+          {t('onboarding.eyebrow')}
         </div>
         <h2 className="text-h2 mt-1" style={{ color: 'var(--ink)' }}>
-          Studiyanı 4 addımda işə sal
+          {t('onboarding.headline')}
         </h2>
         <ul className="mt-3 flex flex-wrap gap-2">
           {STEPS.map((s) => (
@@ -61,7 +63,7 @@ export function OnboardingHero({ visible }: { visible: boolean }) {
                 className="chip"
                 style={{ background: 'rgba(14,22,17,0.08)', color: 'var(--ink)' }}
               >
-                {s.label}
+                {t(s.key)}
               </Link>
             </li>
           ))}
@@ -74,7 +76,7 @@ export function OnboardingHero({ visible }: { visible: boolean }) {
         style={{ color: 'var(--ink)', opacity: 0.6 }}
         aria-label="Onboarding bağla"
       >
-        Bağla
+        {t('onboarding.dismiss')}
       </button>
     </section>
   );

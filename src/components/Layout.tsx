@@ -7,6 +7,7 @@ import { NotificationBell } from './NotificationBell';
 import { ShortcutOverlay } from './ShortcutOverlay';
 import { useUI, useAuth } from '@/lib/store';
 import { useRealtimeSync } from '@/lib/realtime';
+import { useT } from '@/lib/i18n';
 
 const CHORD_TARGETS: Record<string, string> = {
   d: '/',
@@ -19,6 +20,7 @@ const CHORD_TARGETS: Record<string, string> = {
 };
 
 export function Layout() {
+  const t = useT();
   const { setCmdK, toggleMirai, toggleSidebar } = useUI();
   const { session } = useAuth();
   const nav = useNavigate();
@@ -102,7 +104,7 @@ export function Layout() {
             <button
               type="button"
               className="btn-ghost lg:hidden"
-              aria-label="Menyu"
+              aria-label={t('topbar.menu')}
               onClick={toggleSidebar}
               style={{ height: 40, width: 40, padding: 0 }}
             >
