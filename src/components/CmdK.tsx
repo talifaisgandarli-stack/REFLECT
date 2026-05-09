@@ -3,6 +3,7 @@ import { useUI } from '@/lib/store';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { ProjectPreviewDrawer } from './ProjectPreviewDrawer';
+import { TaskPreviewDrawer } from './TaskPreviewDrawer';
 import { useT } from '@/lib/i18n';
 
 const QUICK = [
@@ -40,6 +41,7 @@ export function CmdK() {
   const [loading, setLoading] = useState(false);
   const [cursor, setCursor] = useState(0);
   const [previewProjectId, setPreviewProjectId] = useState<string | null>(null);
+  const [previewTaskId, setPreviewTaskId] = useState<string | null>(null);
   const nav = useNavigate();
   const t = useT();
 
@@ -118,6 +120,11 @@ export function CmdK() {
       setCmdK(false);
       return;
     }
+    if (item.kind === 'hit' && item.hit.type === 'task') {
+      setPreviewTaskId(item.hit.id);
+      setCmdK(false);
+      return;
+    }
     const to = item.kind === 'nav' ? item.to : item.hit.href;
     nav(to);
     setCmdK(false);
@@ -125,12 +132,21 @@ export function CmdK() {
 
   if (!cmdkOpen) {
     // Palette closed but a preview drawer may still be open
-    return previewProjectId ? (
-      <ProjectPreviewDrawer
-        projectId={previewProjectId}
-        onClose={() => setPreviewProjectId(null)}
-      />
-    ) : null;
+    if (previewProjectId)
+      return (
+        <ProjectPreviewDrawer
+          projectId={previewProjectId}
+          onClose={() => setPreviewProjectId(null)}
+        />
+      );
+    if (previewTaskId)
+      return (
+        <TaskPreviewDrawer
+          taskId={previewTaskId}
+          onClose={() => setPreviewTaskId(null)}
+        />
+      );
+    return null;
   }
 
   return (
