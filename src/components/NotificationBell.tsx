@@ -13,21 +13,18 @@ import {
   useNotifications,
 } from '@/lib/hooks';
 import { relativeTime } from '@/lib/format';
+import { useT } from '@/lib/i18n';
 
-const KIND_LABEL: Record<NotificationKind | 'fallback', string> = {
-  mention: 'Sənə müraciət',
-  task_assigned: 'Yeni tapşırıq təyin edildi',
-  task_status_changed: 'Tapşırıq statusu dəyişdi',
-  task_done: 'Tapşırıq tamamlandı',
-  task_cancelled: 'Tapşırıq ləğv edildi',
-  deadline_reminder: 'Deadline yaxınlaşır',
-  finance_alert: 'Maliyyə xəbərdarlığı',
-  fallback: 'Bildiriş',
+const KIND_KEY: Record<NotificationKind | 'fallback', string> = {
+  mention: 'notif.kind.mention',
+  task_assigned: 'notif.kind.task_assigned',
+  task_status_changed: 'notif.kind.task_status_changed',
+  task_done: 'notif.kind.task_done',
+  task_cancelled: 'notif.kind.task_cancelled',
+  deadline_reminder: 'notif.kind.deadline_reminder',
+  finance_alert: 'notif.kind.finance_alert',
+  fallback: 'notif.kind.mention', // unused; useT() falls back to the key itself
 };
-
-function labelFor(kind: string): string {
-  return (KIND_LABEL as Record<string, string>)[kind] ?? KIND_LABEL.fallback;
-}
 
 function bodyFor(n: NotificationRow): string {
   const p = n.payload ?? {};
@@ -37,10 +34,16 @@ function bodyFor(n: NotificationRow): string {
 }
 
 export function NotificationBell() {
+  const t = useT();
   const { data = [] } = useNotifications();
   const markRead = useMarkNotificationRead();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  function labelFor(kind: string): string {
+    const k = (KIND_KEY as Record<string, string>)[kind];
+    return k ? t(k) : kind;
+  }
 
   const unread = data.filter((n) => !n.read_at);
   const unreadCount = unread.length;
@@ -68,7 +71,9 @@ export function NotificationBell() {
       <button
         type="button"
         className="btn-ghost relative"
-        aria-label={`Bildirişlər${unreadCount ? ` (${unreadCount} oxunmamış)` : ''}`}
+        aria-label={
+          unreadCount > 0 ? t('notif.bell.unread', { count: unreadCount }) : 'Bildirişlər'
+        }
         aria-expanded={open}
         aria-haspopup="dialog"
         onClick={() => setOpen((v) => !v)}
@@ -114,12 +119,12 @@ export function NotificationBell() {
               onClick={() => markRead.mutate({ all: true })}
               disabled={unreadCount === 0 || markRead.isPending}
             >
-              Hamısını oxunmuş işarələ
+              {t('notif.bell.mark_all')}
             </button>
           </header>
           {data.length === 0 ? (
             <div className="px-4 py-8 text-center text-meta" style={{ color: 'var(--text-muted)' }}>
-              Hələ bildiriş yoxdur.
+              {t('notif.empty')}
             </div>
           ) : null}
           {data.length > 0 ? (
