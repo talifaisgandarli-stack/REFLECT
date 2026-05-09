@@ -1,6 +1,6 @@
 # Reflect — sessiya gedişatı (`claude/create-done-list-Y8FuN`)
 
-PRD v3.8 + designstyle4 əsasında bu branch boyunca yığılmış **128 slice-ın**
+PRD v3.8 + designstyle4 əsasında bu branch boyunca yığılmış **138 slice-ın**
 xülasəsi. Hər bir slice atomar commit-dir; tam tarixçə üçün
 `git log --oneline main..`.
 
@@ -212,11 +212,26 @@ DoD                    ●●●●●  CI workflow, RLS audit, vitest (~135 tes
 | 125 | `39d849a` | ProjectDocuments + DocumentModal i18n (28 keys × 3) |
 | 126 | `cf9ccf4` | SurveyPublic retrospective form i18n |
 | 127 | `200c743` | CI: explicit parity + migration-pair gates + tests |
-| 128 | this   | docs/PROGRESS.md ledger refresh |
+| 128 | `c50c101` | docs/PROGRESS.md ledger refresh |
+
+### Polish VII (129–138)
+
+| # | Commit | Mövzu |
+|---|---|---|
+| 129 | `33dbbc6` | Mention picker + comment input (REQ-TASK-07 UI side) |
+| 130 | `ba0bdc1` | ProjectEditModal + Düzəlt action on detail page |
+| 131 | `f053f6e` | NotificationPreferences bulk all-on/all-off per channel |
+| 132 | `e311a3c` | Cmd+K quick-create actions (task/project/client) |
+| 133 | `b5c5f5e` | AuditLog full i18n + actor name resolver |
+| 134 | `ff8d172` | Migration 0022: closeout label cleanup (id-only items) |
+| 135 | `4a58181` | Raw-hex budget guard test (per-file allowlist) |
+| 136 | `583eb40` | /api error envelope `{error, code}` with stable codes |
+| 137 | `bc95f27` | mentionPicker + HttpError unit tests (24 assertions) |
+| 138 | this   | docs/PROGRESS.md ledger refresh |
 
 ## Migrasiya intizamı
 
-21 migrasiya, hər biri up + down:
+22 migrasiya, hər biri up + down:
 
 | Fayl | Mövzu |
 |---|---|
@@ -241,6 +256,7 @@ DoD                    ●●●●●  CI workflow, RLS audit, vitest (~135 tes
 | `0019_calendar_rsvp_notify` | RSVP → organizer notification fan-out |
 | `0020_storage_size_guard` | project-documents bucket: 25MB + MIME allow-list at DB |
 | `0021_mention_notif_prefs` | @mention trigger honors prefs + carries task title |
+| `0022_closeout_labels_cleanup` | drop legacy items[*].label from existing rows |
 
 §10.2 qaydası boyu hər `down` script tabloları rename edir, drop etmir.
 
@@ -267,7 +283,7 @@ DoD                    ●●●●●  CI workflow, RLS audit, vitest (~135 tes
 
 ## i18n əhatəsi
 
-- 510+ açar `src/locales/{az,en,ru}.json` (parity test enforces).
+- 580+ açar `src/locales/{az,en,ru}.json` (parity test enforces).
 - Missing-key dev konsol xəbərdarlığı (PROD-da tree-shake olur).
 - Qoşulan səhifələr: Sidebar, Layout topbar, OnboardingHero, Tasks
   (full), Projects (page-head + grid + ProjectCreateModal),
@@ -310,13 +326,18 @@ DoD                    ●●●●●  CI workflow, RLS audit, vitest (~135 tes
 
 - Time tracking dictionary surface (out of v1 scope §12.1)
 - Native DOCX render (RTF kifayətdir; .docx Word-friendly)
-- Project edit modal (create works as of slice 119; the slide-in
-  drawer for editing existing projects is its own slice)
 - E2E business flow (login → kanban → cancel) — needs seeded user
 - Server-side enum codes for finance categories / payment methods +
-  cancel reasons + closeout checklist labels (DB stores AZ canonical
-  strings — relabel doesn't translate old rows in reports)
+  cancel reasons (closeout labels migrated in slice 126; finance
+  categories still store AZ canonical strings — relabel doesn't
+  translate old rows in reports)
 - Activity feed body strings (entity_type and action both done; the
   freeform "diff summary" line still uses raw strings)
+- Mention picker dropdown anchored absolute under the textarea — works
+  for the drawer's right-aligned aside but won't render correctly in a
+  clipped-overflow embed (TaskCommentInput note from slice 121)
+- Per-throw-site error codes in /api — slice 128 added the envelope +
+  defaults; widening from defaultCodeForStatus to explicit codes per
+  callsite is a gradual migration as endpoints get touched
 - Test infra deps: vitest binary not in current env image; CI runs are
   green per workflow but local `npx vitest run` requires `npm i`
