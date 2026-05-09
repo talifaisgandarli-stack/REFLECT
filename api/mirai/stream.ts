@@ -143,6 +143,20 @@ export default async function handler(req: Request) {
     if (!apiKey) throw new HttpError(500, 'ANTHROPIC_API_KEY not configured');
 
     const sb = admin();
+
+    // Optional admin override — system_settings.mirai.persona.<key>
+    const { data: override } = await sb
+      .from('system_settings')
+      .select('value')
+      .eq('key', `mirai.persona.${personaKey}`)
+      .maybeSingle();
+    const overrideText =
+      (override as { value: { v: unknown } | null } | null)?.value?.v;
+    const personaSystem =
+      typeof overrideText === 'string' && overrideText.trim().length > 0
+        ? overrideText
+        : persona.system;
+
     const yyyymm = periodYyyyMm();
     const { data: usage } = await sb
       .from('mirai_usage_log')
@@ -218,7 +232,7 @@ export default async function handler(req: Request) {
     const systemPrompt =
       contextPrefix +
       '\n\n' +
-      persona.system +
+      personaSystem +
       (user.isAdmin ? '' : NON_ADMIN_GUARD_RAIL) +
       (ragSnippets.length > 0 ? KB_GUIDANCE : '') +
       ragBlock;

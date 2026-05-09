@@ -4,11 +4,13 @@ import { NotificationPreferencesPage } from './NotificationPreferences';
 import { TemplatesManager } from '@/components/TemplatesManager';
 import { KnowledgeBaseManager } from '@/components/KnowledgeBaseManager';
 import { GeneralSettingsForm } from '@/components/GeneralSettingsForm';
+import { MiraiPersonaEditor } from '@/components/MiraiPersonaEditor';
 
 const NAV = [
   { to: 'umumi', label: 'Ümumi' },
   { to: 'şablonlar', label: 'Şablonlar' },
   { to: 'bilik', label: 'Bilik Bazası' },
+  { to: 'mirai', label: 'MIRAI personalar' },
   { to: 'bildirişlər', label: 'Bildirişlər' },
 ];
 
@@ -36,6 +38,7 @@ export function SettingsPage() {
             <Route path="umumi" element={<GeneralSettings />} />
             <Route path="şablonlar" element={<TemplatesSettings />} />
             <Route path="bilik" element={<KnowledgeBaseSettings />} />
+            <Route path="mirai" element={<MiraiPersonaEditor />} />
             <Route path="bildirişlər" element={<NotificationsSettings />} />
           </Routes>
         </div>

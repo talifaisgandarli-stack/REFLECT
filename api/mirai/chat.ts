@@ -135,6 +135,20 @@ export default async function handler(req: Request) {
 
     const sb = admin();
 
+    // Optional admin override — system_settings.mirai.persona.<key> = {"v": "..."}.
+    // We swap only the `.system` text; adminOnly + locale rules stay enforced.
+    const { data: override } = await sb
+      .from('system_settings')
+      .select('value')
+      .eq('key', `mirai.persona.${personaKey}`)
+      .maybeSingle();
+    const overrideText =
+      (override as { value: { v: unknown } | null } | null)?.value?.v;
+    const personaSystem =
+      typeof overrideText === 'string' && overrideText.trim().length > 0
+        ? overrideText
+        : persona.system;
+
     // --- Cost guardian (PRD §7.6) -------------------------------------------
     const yyyymm = periodYyyyMm();
     const { data: usage } = await sb
@@ -234,7 +248,7 @@ export default async function handler(req: Request) {
     const systemPrompt =
       contextPrefix +
       '\n\n' +
-      persona.system +
+      personaSystem +
       (user.isAdmin ? '' : NON_ADMIN_GUARD_RAIL) +
       (ragSnippets.length > 0 ? KB_GUIDANCE : '') +
       ragBlock;
