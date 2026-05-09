@@ -10,14 +10,20 @@ import { SubtaskBlockingModal } from '@/components/SubtaskBlockingModal';
 import { TaskCreateModal } from '@/components/TaskCreateModal';
 import { CancelTaskModal } from '@/components/CancelTaskModal';
 import { useT } from '@/lib/i18n';
+import { useQueryClient } from '@tanstack/react-query';
+import { usePullToRefresh } from '@/lib/usePullToRefresh';
 
 export function TasksPage() {
   const t = useT();
+  const qc = useQueryClient();
   const { profile } = useAuth();
   const { hash } = useLocation();
   const [view, setView] = useState<'board' | 'table'>('board');
   const [mineOnly, setMineOnly] = useState(false);
   const [highlightId, setHighlightId] = useState<string | null>(null);
+  const ptr = usePullToRefresh(async () => {
+    await qc.invalidateQueries({ queryKey: ['tasks'] });
+  });
 
   useEffect(() => {
     const m = hash.match(/^#task-([0-9a-f-]+)/i);
@@ -72,7 +78,35 @@ export function TasksPage() {
   const meta = `${tasks.length} cəmi · ${grouped.active.length} icrada · ${grouped.review.length} yoxlamada`;
 
   return (
-    <>
+    <div {...ptr.bind} style={{ touchAction: 'pan-y' }}>
+      {ptr.offset > 0 || ptr.refreshing ? (
+        <div
+          aria-hidden
+          className="lg:hidden flex justify-center"
+          style={{
+            height: ptr.refreshing ? 30 : Math.max(0, ptr.offset),
+            transition: ptr.offset === 0 ? 'height 220ms var(--ease-out)' : undefined,
+          }}
+        >
+          <span
+            className="text-tiny font-medium"
+            style={{
+              color: ptr.offset >= 70 || ptr.refreshing ? 'var(--brand-text)' : 'var(--text-muted)',
+              padding: '6px 12px',
+              borderRadius: 999,
+              background: 'var(--surface-mist)',
+              alignSelf: 'flex-end',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {ptr.refreshing
+              ? 'Yenilənir…'
+              : ptr.offset >= 70
+                ? 'Buraxın və yeniləyin'
+                : 'Aşağı çəkin'}
+          </span>
+        </div>
+      ) : null}
       <PageHead
         meta={meta}
         title={t('tasks.title')}
@@ -271,6 +305,6 @@ export function TasksPage() {
           }}
         />
       ) : null}
-    </>
+    </div>
   );
 }
