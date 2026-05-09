@@ -28,22 +28,14 @@ const CHANNELS: Array<{ key: Channel; labelKey: string }> = [
   { key: 'telegram', labelKey: 'notif.channel.telegram' },
 ];
 
-const EVENTS: Array<{ key: EventKind; label: string; description?: string }> = [
-  { key: 'mention', label: '@mention', description: 'Şərhlərdə adın çəkiləndə' },
-  { key: 'task_assigned', label: 'Yeni tapşırıq', description: 'Sənə tapşırıq təyin olunduqda' },
-  {
-    key: 'task_status_changed',
-    label: 'Status dəyişikliyi',
-    description: 'Sənin tapşırıqlarının statusu hərəkətdə olduqda',
-  },
-  { key: 'task_done', label: 'Tapşırıq tamamlandı', description: 'Komandalı tapşırıqlar tamamlanıb' },
-  { key: 'task_cancelled', label: 'Tapşırıq ləğv edildi' },
-  { key: 'deadline_reminder', label: 'Deadline xəbərdarlıq', description: '3 gün / 1 gün / həmin gün' },
-  {
-    key: 'finance_alert',
-    label: 'Maliyyə xəbərdarlığı',
-    description: 'Yalnız adminlər üçün — Telegramda gizlədilmir',
-  },
+const EVENT_KINDS: EventKind[] = [
+  'mention',
+  'task_assigned',
+  'task_status_changed',
+  'task_done',
+  'task_cancelled',
+  'deadline_reminder',
+  'finance_alert',
 ];
 
 type PrefRow = {
@@ -76,9 +68,9 @@ export function NotificationPreferencesPage() {
     if (!prefs.data) return;
     const next: Record<string, boolean> = {};
     for (const c of CHANNELS) {
-      for (const e of EVENTS) {
-        const row = prefs.data.find((r) => r.channel === c.key && r.event_kind === e.key);
-        next[`${c.key}:${e.key}`] = row ? row.enabled : true;
+      for (const kind of EVENT_KINDS) {
+        const row = prefs.data.find((r) => r.channel === c.key && r.event_kind === kind);
+        next[`${c.key}:${kind}`] = row ? row.enabled : true;
       }
     }
     setGrid(next);
@@ -154,37 +146,40 @@ export function NotificationPreferencesPage() {
             </tr>
           </thead>
           <tbody>
-            {EVENTS.map((e) => (
-              <tr key={e.key} style={{ borderBottom: '1px solid var(--line-soft)' }}>
-                <td className="py-3 pr-4">
-                  <div className="font-medium" style={{ color: 'var(--text)' }}>
-                    {e.label}
-                  </div>
-                  {e.description ? (
-                    <div
-                      className="text-meta"
-                      style={{ color: 'var(--text-muted)' }}
-                    >
-                      {e.description}
+            {EVENT_KINDS.map((kind) => {
+              const eventLabel = t(`notif.event.${kind}.label`);
+              const eventDesc = t(`notif.event.${kind}.desc`);
+              return (
+                <tr key={kind} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                  <td className="py-3 pr-4">
+                    <div className="font-medium" style={{ color: 'var(--text)' }}>
+                      {eventLabel}
                     </div>
-                  ) : null}
-                </td>
-                {CHANNELS.map((c) => {
-                  const k = `${c.key}:${e.key}`;
-                  const checked = grid[k] ?? true;
-                  return (
-                    <td key={c.key} className="py-3 px-4 text-center">
-                      <label
-                        className="inline-flex items-center cursor-pointer"
-                        aria-label={`${e.label} — ${t(c.labelKey)}`}
+                    {eventDesc ? (
+                      <div
+                        className="text-meta"
+                        style={{ color: 'var(--text-muted)' }}
                       >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggle(c.key, e.key)}
-                          disabled={!profile?.id || prefs.isLoading}
-                          className="sr-only peer"
-                        />
+                        {eventDesc}
+                      </div>
+                    ) : null}
+                  </td>
+                  {CHANNELS.map((c) => {
+                    const k = `${c.key}:${kind}`;
+                    const checked = grid[k] ?? true;
+                    return (
+                      <td key={c.key} className="py-3 px-4 text-center">
+                        <label
+                          className="inline-flex items-center cursor-pointer"
+                          aria-label={`${eventLabel} — ${t(c.labelKey)}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggle(c.key, kind)}
+                            disabled={!profile?.id || prefs.isLoading}
+                            className="sr-only peer"
+                          />
                         <span
                           aria-hidden
                           className="inline-block w-10 h-6 rounded-full relative transition-colors"
@@ -203,13 +198,14 @@ export function NotificationPreferencesPage() {
                               boxShadow: '0 1px 2px rgba(14,22,17,0.2)',
                             }}
                           />
-                        </span>
-                      </label>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
+                                  </span>
+                        </label>
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
 
