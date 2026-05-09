@@ -16,6 +16,14 @@ type Props = {
   onCancelled: () => void;
 };
 
+const CANCEL_REASON_KEY: Record<(typeof CANCEL_REASONS)[number], string> = {
+  'Müştəri imtina etdi': 'task.cancel.reason.client_declined',
+  'Layihə dəyişdi': 'task.cancel.reason.scope_changed',
+  'Texniki problem': 'task.cancel.reason.technical',
+  'Yenidən planlaşdırılır': 'task.cancel.reason.replanned',
+  'Digər': 'task.cancel.reason.other',
+};
+
 export function CancelTaskModal({ taskId, taskTitle, onCancel, onCancelled }: Props) {
   const qc = useQueryClient();
   const t = useT();
@@ -67,11 +75,11 @@ export function CancelTaskModal({ taskId, taskTitle, onCancel, onCancelled }: Pr
           </p>
         ) : null}
         <p className="text-meta mt-2" style={{ color: 'var(--text-muted)' }}>
-          Səbəb arxivdə qalacaq və hesabatda görünəcək.
+          {t('task.cancel.required')}
         </p>
 
         <fieldset className="mt-4 space-y-2">
-          <legend className="sr-only">Ləğv səbəbi</legend>
+          <legend className="sr-only">{t('task.cancel.legend')}</legend>
           {CANCEL_REASONS.map((r) => (
             <label
               key={r}
@@ -89,7 +97,7 @@ export function CancelTaskModal({ taskId, taskTitle, onCancel, onCancelled }: Pr
                 onChange={() => setPicked(r)}
                 className="accent-current"
               />
-              <span className="text-body">{r}</span>
+              <span className="text-body">{t(CANCEL_REASON_KEY[r])}</span>
             </label>
           ))}
         </fieldset>
@@ -97,7 +105,7 @@ export function CancelTaskModal({ taskId, taskTitle, onCancel, onCancelled }: Pr
         {picked === 'Digər' ? (
           <textarea
             className="input mt-3"
-            placeholder="Səbəbi qısa yaz…"
+            placeholder={t('task.cancel.other_placeholder')}
             value={other}
             onChange={(e) => setOther(e.target.value)}
             style={{ minHeight: 88, padding: '12px 14px' }}
