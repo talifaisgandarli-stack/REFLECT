@@ -34,9 +34,20 @@ type ActivityRow = {
   created_at: string;
 };
 
+type EntityFilter = 'all' | 'task' | 'project' | 'client' | 'task_comment';
+
+const ENTITY_LABEL: Record<EntityFilter, string> = {
+  all: 'Hamısı',
+  task: 'Tapşırıq',
+  project: 'Layihə',
+  client: 'Müştəri',
+  task_comment: 'Şərh',
+};
+
 export function AuditLogPage() {
   const [tab, setTab] = useState<'audit' | 'activity'>('audit');
   const [actionFilter, setActionFilter] = useState('');
+  const [entityFilter, setEntityFilter] = useState<EntityFilter>('all');
 
   const audit = useQuery({
     queryKey: ['audit-log', actionFilter],
@@ -55,7 +66,7 @@ export function AuditLogPage() {
   });
 
   const activity = useQuery({
-    queryKey: ['activity-log', actionFilter],
+    queryKey: ['activity-log', actionFilter, entityFilter],
     queryFn: async (): Promise<ActivityRow[]> => {
       let q = supabase
         .from('activity_log')
@@ -63,6 +74,7 @@ export function AuditLogPage() {
         .order('created_at', { ascending: false })
         .limit(200);
       if (actionFilter) q = q.ilike('action', `%${actionFilter}%`);
+      if (entityFilter !== 'all') q = q.eq('entity_type', entityFilter);
       const { data, error } = await q;
       if (error) throw error;
       return (data ?? []) as ActivityRow[];
@@ -90,17 +102,37 @@ export function AuditLogPage() {
         }
       />
 
-      <div className="flex gap-2 mb-4">
-        {(['audit', 'activity'] as const).map((t) => (
+      <div className="flex gap-2 mb-4 flex-wrap">
+        {(['audit', 'activity'] as const).map((tname) => (
           <button
-            key={t}
-            className={`chip ${tab === t ? 'chip-brand' : ''}`}
-            onClick={() => setTab(t)}
+            key={tname}
+            className={`chip ${tab === tname ? 'chip-brand' : ''}`}
+            onClick={() => setTab(tname)}
           >
-            {t === 'audit' ? 'Privilegiya (audit_log)' : 'CRUD (activity_log)'}
+            {tname === 'audit' ? 'Privilegiya (audit_log)' : 'CRUD (activity_log)'}
           </button>
         ))}
       </div>
+
+      {tab === 'activity' ? (
+        <div
+          className="flex gap-2 mb-4 flex-wrap"
+          role="tablist"
+          aria-label="Növ filteri"
+        >
+          {(Object.keys(ENTITY_LABEL) as EntityFilter[]).map((e) => (
+            <button
+              key={e}
+              role="tab"
+              aria-selected={entityFilter === e}
+              className={`chip ${entityFilter === e ? 'chip-brand' : ''}`}
+              onClick={() => setEntityFilter(e)}
+            >
+              {ENTITY_LABEL[e]}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       {tab === 'audit' ? <AuditTable rows={audit.data ?? []} loading={audit.isLoading} /> : null}
       {tab === 'activity' ? (
