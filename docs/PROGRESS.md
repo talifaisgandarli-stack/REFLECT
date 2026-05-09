@@ -1,6 +1,6 @@
 # Reflect — sessiya gedişatı (`claude/create-done-list-Y8FuN`)
 
-PRD v3.8 + designstyle4 əsasında bu branch boyunca yığılmış **158 slice-ın**
+PRD v3.8 + designstyle4 əsasında bu branch boyunca yığılmış **168 slice-ın**
 xülasəsi. Hər bir slice atomar commit-dir; tam tarixçə üçün
 `git log --oneline main..`.
 
@@ -257,7 +257,22 @@ DoD                    ●●●●●  CI workflow, RLS audit, vitest (~135 tes
 | 155 | `899049d` | Lazy-load 21 heavier route components |
 | 156 | `01d7f0c` | Activity feed on task detail (last 20 entries) |
 | 157 | `5bf229e` | ErrorBoundary + toast store unit tests (14 cases) |
-| 158 | this   | docs/PROGRESS.md ledger refresh |
+| 158 | `dcd99b0` | docs/PROGRESS.md ledger refresh |
+
+### Polish X (159–168)
+
+| # | Commit | Mövzu |
+|---|---|---|
+| 159 | `a1ad7b4` | Toast adoption: 5 hot modals (inline errors → toast) |
+| 160 | `8c85888` | Locale-aware inner LocaleErrorBoundary |
+| 161 | `975d839` | Tasks page assignee + project filter chips |
+| 162 | `7fa187b` | Audit log CSV export (audit + activity tabs) |
+| 163 | `550452f` | /api explicit error codes (search, knowledge, mirai) |
+| 164 | `dce5969` | Mention picker portal positioning + outside-click |
+| 165 | `efba639` | Dashboard memoization (5 hot-path filters/sorts) |
+| 166 | `fc21e46` | Dashboard greeting + section headers i18n |
+| 167 | `9b0c68e` | filterTasks unit tests (8 cases) |
+| 168 | this   | docs/PROGRESS.md ledger refresh |
 
 ## Migrasiya intizamı
 
@@ -314,7 +329,7 @@ DoD                    ●●●●●  CI workflow, RLS audit, vitest (~135 tes
 
 ## i18n əhatəsi
 
-- 660+ açar `src/locales/{az,en,ru}.json` (parity test enforces).
+- 700+ açar `src/locales/{az,en,ru}.json` (parity test enforces).
 - Missing-key dev konsol xəbərdarlığı (PROD-da tree-shake olur).
 - Qoşulan səhifələr: Sidebar, Layout topbar, OnboardingHero, Tasks
   (full), Projects (page-head + grid + ProjectCreateModal),
@@ -368,15 +383,22 @@ DoD                    ●●●●●  CI workflow, RLS audit, vitest (~135 tes
 - Per-throw-site error codes in /api — slice 128 added the envelope +
   defaults; widening from defaultCodeForStatus to explicit codes per
   callsite is a gradual migration as endpoints get touched
-- Toast adoption — slice 146 wired NotificationPreferences first; the
-  rest of the mutations across the app still surface errors as inline
-  <p> tags. Migrating those is a per-component cleanup as each is
-  touched
-- ErrorBoundary fallback uses the AZ default — reading profile.locale
-  inside a class boundary needs a HOC wrapper or a second nested
-  boundary
+- Toast adoption — 5 hot modals migrated in slice 151; the remaining
+  8 components (CloseoutPanel, EventModal, OutsourceModal,
+  MarkPaidModal, TemplatesManager, KnowledgeBaseManager,
+  MiraiPersonaEditor, ProjectDocuments, GeneralSettingsForm) follow
+  the same pattern as they're touched
+- ErrorBoundary in main.tsx still falls back to AZ; LocaleErrorBoundary
+  inside Layout (slice 152) handles the auth-loaded subtree, so 99%
+  of throws now render in the user's locale
 - Inline subtask create has only the title field — full TaskCreateModal
   features (deadline, assignee, expertise) still route through the
   modal
+- Audit CSV export caps at 200 rows (the existing query .limit) — full
+  historical dump should go through Postgres COPY, not client-side
+  string concat
+- Mention picker portal works in the drawer + the detail page; if a
+  third surface embeds TaskCommentInput inside an iframe or a Shadow
+  DOM, the createPortal target needs to change
 - Test infra deps: vitest binary not in current env image; CI runs are
   green per workflow but local `npx vitest run` requires `npm i`
