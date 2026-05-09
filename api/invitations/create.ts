@@ -2,7 +2,7 @@
  * Admin-only invite. Issues a 48h token, sends magic-link email via Resend.
  * REQ-AUTH-02.
  */
-import { admin, errorResponse, HttpError, jsonResponse, requireUser } from '../_lib/auth';
+import { admin, errorResponse, HttpError, jsonResponse, requireUser, writeAuditLog } from '../_lib/auth';
 
 export const config = { runtime: 'edge' };
 
@@ -45,6 +45,8 @@ export default async function handler(req: Request) {
         }),
       }).catch(() => null);
     }
+
+    await writeAuditLog(user.id, 'invite_created', `email:${email} role:${role_key}`, req);
 
     return jsonResponse({ ok: true, token });
   } catch (e) {

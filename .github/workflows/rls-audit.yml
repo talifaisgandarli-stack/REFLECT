@@ -1,0 +1,27 @@
+# PRD §9.1: CI check — every public table must have RLS enabled + at least one policy.
+# Fails the build (blocks deploy) if any table is unprotected.
+name: RLS audit
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/scripts/rls_audit.sql'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  rls-audit:
+    name: RLS policy coverage check
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install psql client
+        run: sudo apt-get install -y postgresql-client
+
+      - name: Run RLS audit
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/scripts/rls_audit.sql

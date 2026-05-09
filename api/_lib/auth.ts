@@ -120,6 +120,29 @@ export class HttpError extends Error {
   }
 }
 
+/**
+ * PRD §3.2 / §9.4: Write to audit_log for any privileged action (role change,
+ * settings update, invite creation). Best-effort — never throws.
+ */
+export async function writeAuditLog(
+  actorId: string,
+  action: string,
+  resource: string,
+  req: Request,
+): Promise<void> {
+  try {
+    const sb = admin();
+    const ip =
+      req.headers.get('cf-connecting-ip') ??
+      req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+      null;
+    const userAgent = req.headers.get('user-agent') ?? null;
+    await sb.from('audit_log').insert({ actor_id: actorId, action, resource, ip, user_agent: userAgent });
+  } catch {
+    // best-effort — audit failure must never block the primary action
+  }
+}
+
 export function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,

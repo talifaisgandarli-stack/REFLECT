@@ -1,0 +1,389 @@
+{
+  "_meta": { "lang": "az", "version": "1.0", "note": "PRD §6.5 — canonical AZ string table. EN/RU stubs in en.json / ru.json." },
+
+  "common": {
+    "save": "Saxla",
+    "cancel": "Ləğv et",
+    "delete": "Sil",
+    "add": "Əlavə et",
+    "edit": "Düzəliş et",
+    "close": "Bağla",
+    "back": "Geri",
+    "confirm": "Təsdiqlə",
+    "loading": "Yüklənir…",
+    "saving": "Saxlanılır…",
+    "error": "Xəta baş verdi",
+    "success": "Uğurlu",
+    "search": "Axtar…",
+    "noData": "Məlumat yoxdur",
+    "required": "Tələb olunur",
+    "optional": "Opsional",
+    "send": "Göndər",
+    "sending": "Göndərilir…",
+    "copy": "Kopyala",
+    "open": "Aç",
+    "yes": "Bəli",
+    "no": "Xeyr",
+    "adminOnly": "Admin yalnız"
+  },
+
+  "nav": {
+    "dashboard": "İdarə paneli",
+    "projects": "Layihələr",
+    "tasks": "Tapşırıqlar",
+    "done": "Tamamlandı",
+    "archive": "Arxiv",
+    "clients": "Müştərilər",
+    "outsource": "Podrat İşləri",
+    "finance": "Maliyyə Mərkəzi",
+    "mirai": "MIRAI",
+    "team": "Komanda",
+    "company": "Şirkət",
+    "settings": "Parametrlər",
+    "notifications": "Bildirişlər"
+  },
+
+  "auth": {
+    "login": "Daxil ol",
+    "logout": "Çıxış",
+    "email": "E-poçt",
+    "password": "Şifrə",
+    "forgotPassword": "Şifrəni unutdunuz?",
+    "loginError": "E-poçt və ya şifrə yanlışdır",
+    "sessionExpired": "Sessiya başa çatdı — yenidən daxil olun",
+    "inviteOnly": "Daxil olmaq üçün dəvət lazımdır",
+    "welcome": "Xoş gəldiniz"
+  },
+
+  "dashboard": {
+    "title": "İdarə paneli",
+    "activeProjects": "Aktiv layihələr",
+    "teamWorkload": "Komanda iş yükü",
+    "deadlinesSoon": "Yaxın müddətlər",
+    "activityFeed": "Fəaliyyət lenti",
+    "noActivity": "Hələ fəaliyyət yoxdur",
+    "presence": "Komanda varlığı",
+    "online": "Onlayn",
+    "away": "Uzaqda",
+    "offline": "Oflayn",
+    "lastSeen": "Son görünmə",
+    "focusMode": "Fokus rejimi"
+  },
+
+  "projects": {
+    "title": "Layihələr",
+    "new": "+ Yeni layihə",
+    "name": "Ad",
+    "client": "Müştəri",
+    "phases": "Mərhələlər",
+    "startDate": "Başlama",
+    "deadline": "Deadline",
+    "status": "Status",
+    "requiresExpertise": "Ekspertiza lazımdır",
+    "notFound": "Layihə tapılmadı",
+    "noProjects": "Layihə yoxdur",
+    "statuses": {
+      "active": "Aktiv",
+      "on_hold": "Gözləmədə",
+      "closed": "Tamamlandı",
+      "cancelled": "Ləğv edildi"
+    },
+    "tabs": {
+      "overview": "Ümumi",
+      "tasks": "Tapşırıqlar",
+      "documents": "Sənədlər",
+      "finance": "Maliyyə",
+      "closeout": "Bağlanış",
+      "history": "Tarixçə"
+    },
+    "overview": {
+      "phases": "Mərhələlər",
+      "basicInfo": "Əsas məlumat",
+      "expertise": "Ekspertiza",
+      "expertiseRequired": "Lazımdır",
+      "expertiseNotRequired": "Yox"
+    },
+    "documents": {
+      "title": "Sənədlər",
+      "noDocuments": "Sənəd əlavə edilməyib",
+      "addLink": "Link əlavə et",
+      "docTitle": "Sənəd adı",
+      "driveLink": "Google Drive / xarici link"
+    },
+    "history": {
+      "title": "Tarixçə",
+      "noHistory": "Tarixçə yoxdur"
+    },
+    "closeout": {
+      "title": "Bağlanış siyahısı",
+      "close": "Layihəni Tamamla",
+      "closing": "Bağlanır…",
+      "closed": "Layihə tamamlandı ✓",
+      "allRequired": "Bütün maddələri tamamlayın",
+      "items": {
+        "akt": "Akt imzalandı",
+        "final_docs": "Final sənədlər təhvil verildi",
+        "archive": "Arxivə əlavə edildi",
+        "portfolio": "Portfolio hazırlandı",
+        "survey": "Retrospektiv sorğu göndərildi"
+      },
+      "awards": {
+        "title": "Mükafat müraciətləri",
+        "loading": "Sistem mükafatları yüklənir…",
+        "selected": "Seçildi ✓",
+        "select": "Seç",
+        "applicationSite": "Müraciət saytı →",
+        "daysLeft": "gün qalıb",
+        "lockedMessage": "Mükafat müraciətləri layihə bağlandıqdan sonra açılır."
+      },
+      "survey": {
+        "title": "Müştəri sorğusu",
+        "send": "Sorğu göndər",
+        "sending": "Yaradılır…",
+        "sent": "Sorğu göndərildi",
+        "newLink": "Yeni link yarat",
+        "responded": "Cavablandı ✓",
+        "copyLink": "Kopyala"
+      }
+    }
+  },
+
+  "tasks": {
+    "title": "Tapşırıqlar",
+    "new": "+ Yeni tapşırıq",
+    "noTasks": "Bu layihədə tapşırıq yoxdur",
+    "statuses": {
+      "idea": "İdeyalar",
+      "queued": "Növbədə",
+      "active": "Aktiv",
+      "review": "Yoxlamada",
+      "expert": "Ekspert",
+      "done": "Tamamlandı",
+      "cancelled": "Ləğv edildi"
+    },
+    "fields": {
+      "title": "Başlıq",
+      "assignees": "Icraçılar",
+      "deadline": "Deadline",
+      "estimate": "Vaxt qiyməti",
+      "riskBuffer": "Risk buferi (%)",
+      "description": "Təsvir",
+      "cancelReason": "Ləğv səbəbi"
+    },
+    "comment": {
+      "placeholder": "Şərh yaz… @UUID ilə istifadəçini qeyd et",
+      "send": "Göndər"
+    }
+  },
+
+  "clients": {
+    "title": "Müştərilər",
+    "new": "+ Yeni müştəri",
+    "noClients": "Müştəri yoxdur",
+    "pipeline": "pipeline",
+    "stages": {
+      "lead": "Lead",
+      "proposal": "Təklif",
+      "negotiation": "Müzakirə",
+      "signed": "İmzalanıb",
+      "in_progress": "İcrada",
+      "portfolio": "Portfolio",
+      "lost": "İtirildi",
+      "archived": "Arxiv"
+    },
+    "panel": {
+      "tabs": {
+        "overview": "Ümumi",
+        "interactions": "Əlaqələr",
+        "history": "Tarixçə"
+      },
+      "overview": {
+        "stage": "Mərhələ",
+        "confidence": "Etibar %",
+        "value": "Dəyər",
+        "email": "Email",
+        "phone": "Telefon",
+        "lastContact": "Son əlaqə",
+        "icpFit": "ICP uyğunluğu",
+        "aiAnalyze": "AI analiz",
+        "aiAnalyzing": "AI analiz edir…",
+        "lastAnalysis": "Son analiz"
+      },
+      "interactions": {
+        "noInteractions": "Hələ əlaqə qeyd edilməyib",
+        "notePlaceholder": "Qeyd (opsional)",
+        "log": "Qeydə al",
+        "logging": "Yazılır…",
+        "types": {
+          "call": "Zəng",
+          "email": "Email",
+          "meeting": "Görüş",
+          "whatsapp": "WhatsApp",
+          "other": "Digər"
+        }
+      },
+      "history": {
+        "noHistory": "Mərhələ tarixçəsi yoxdur",
+        "reason": "Səbəb"
+      }
+    },
+    "lostModal": {
+      "title": "Müştəri itirildi",
+      "subtitle": "Səbəbi qeyd et — pipeline analitikası üçün vacibdir.",
+      "otherReason": "Səbəbi yaz…"
+    }
+  },
+
+  "finance": {
+    "title": "Maliyyə Mərkəzi",
+    "tabs": {
+      "cashCockpit": "Cash Cockpit",
+      "pnl": "P&L",
+      "outsource": "Outsource",
+      "expenses": "Xərclər",
+      "recurring": "Sabit",
+      "receivables": "Debitor",
+      "forecast": "Forecast"
+    },
+    "stats": {
+      "balance": "Cari balans",
+      "income": "Gəlir (cari ay)",
+      "expenses": "Xərc (cari ay)",
+      "receivables": "Debitor"
+    },
+    "pnl": {
+      "title": "Mənfəət və Zərər (P&L)",
+      "revenue": "Gəlir",
+      "directCosts": "Birbaşa Xərclər",
+      "outsource": "Outsource",
+      "net": "Net"
+    },
+    "outsource": {
+      "title": "Podrat İşləri",
+      "noItems": "Podrat işi yoxdur",
+      "columns": {
+        "work": "İş",
+        "company": "Şirkət / Şəxs",
+        "deadline": "Deadline",
+        "status": "Status",
+        "amount": "Məbləğ"
+      },
+      "statuses": {
+        "order": "Sifariş",
+        "in_progress": "İcrada",
+        "delivered": "Təhvil",
+        "paid": "Ödənildi"
+      }
+    },
+    "expenses": {
+      "noExpenses": "Xərc yazılmayıb",
+      "columns": {
+        "date": "Tarix",
+        "category": "Kateqoriya",
+        "note": "Qeyd",
+        "source": "Mənbə",
+        "amount": "Məbləğ"
+      },
+      "recurring": "Sabit",
+      "manual": "Manual"
+    },
+    "recurring": {
+      "title": "Sabit xərclər",
+      "newRule": "Yeni qayda",
+      "noRules": "Sabit xərc qaydası yoxdur",
+      "name": "Ad",
+      "amount": "Məbləğ (AZN)",
+      "period": "Dövr",
+      "nextDate": "Növbəti tarix",
+      "periods": {
+        "weekly": "Həftəlik",
+        "monthly": "Aylıq",
+        "quarterly": "Rüblük",
+        "yearly": "İllik"
+      },
+      "columns": {
+        "name": "Ad",
+        "period": "Dövr",
+        "next": "Növbəti",
+        "amount": "Məbləğ"
+      }
+    },
+    "receivables": {
+      "noItems": "Açıq debitor yoxdur",
+      "markPaid": "Ödənişi qeyd et",
+      "columns": {
+        "client": "Müştəri",
+        "amount": "Məbləğ",
+        "paid": "Ödənilib",
+        "status": "Status",
+        "due": "Müddət"
+      }
+    },
+    "forecast": {
+      "disclaimer": "Bu proqnoz son 6 ayın məlumatlarına əsaslanır.",
+      "refresh": "Yenilə",
+      "refreshing": "Yenilənir…",
+      "refreshLimit": "Forecast 24 saatda 1 dəfə yenilənir",
+      "notReady": "Forecast hələ hazır deyil. Cron sabah işə düşəcək.",
+      "lastUpdate": "Son yeniləmə",
+      "days": "gün"
+    },
+    "modal": {
+      "addIncome": "+ Gəlir",
+      "addExpense": "+ Xərc"
+    }
+  },
+
+  "mirai": {
+    "title": "MIRAI",
+    "placeholder": "Bir şey soruş…",
+    "send": "Göndər",
+    "thinking": "Düşünür…",
+    "budgetWarning": "MIRAI büdcəsinin 80%-i istifadə olunub",
+    "personas": {
+      "general": "Ümumi",
+      "project_manager": "Layihə meneceri",
+      "finance_analyst": "Maliyyə analitiki",
+      "cmo": "Marketinq direktoru",
+      "hr_partner": "HR",
+      "operations_director": "Əməliyyat direktoru",
+      "legal": "Hüquq",
+      "strategist": "Strategist",
+      "team_assistant": "Komanda köməkçisi"
+    }
+  },
+
+  "survey": {
+    "title": "Müştəri sorğusu",
+    "subtitle": "Əməkdaşlığımızı qiymətləndirin — cavabınız bizim inkişafımıza kömək edir.",
+    "npsTitle": "Ümumi tövsiyə balı",
+    "npsHint": "0 — Heç tövsiyə etmərəm · 10 — Mütləq tövsiyə edərəm",
+    "categoriesTitle": "Kateqoriya üzrə qiymət",
+    "commentTitle": "Əlavə qeyd (opsional)",
+    "commentPlaceholder": "Şərhinizi yazın…",
+    "submit": "Göndər",
+    "submitting": "Göndərilir…",
+    "successTitle": "Təşəkkür edirik!",
+    "successBody": "Cavabınız qeyd edildi.",
+    "alreadyDoneTitle": "Bu sorğu artıq cavablanıb",
+    "alreadyDoneBody": "Hər sorğuya bir dəfə cavab vermək mümkündür.",
+    "notFoundTitle": "Sorğu tapılmadı",
+    "notFoundBody": "Link etibarsızdır.",
+    "categories": {
+      "communication": "Ünsiyyət",
+      "quality": "Keyfiyyət",
+      "timeline": "Müddətlərə riayət",
+      "value": "Qiymət/Keyfiyyət nisbəti"
+    }
+  },
+
+  "errors": {
+    "generic": "Xəta baş verdi",
+    "notFound": "Tapılmadı",
+    "unauthorized": "İcazə yoxdur",
+    "forbidden": "Bu əməliyyat üçün icazəniz yoxdur",
+    "rateLimited": "Çox tez-tez sorğu. Gözləyin.",
+    "networkError": "Şəbəkə xətası — yenidən cəhd edin",
+    "sessionMissing": "Sessiya tapılmadı"
+  }
+}

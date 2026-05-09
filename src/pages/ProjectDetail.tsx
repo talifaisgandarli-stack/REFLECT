@@ -597,7 +597,8 @@ type ActivityRow = {
   old_value: unknown;
   new_value: unknown;
   created_at: string;
-  profiles: { full_name: string | null } | null;
+  // Supabase returns foreign-key joins as array; we take index 0.
+  profiles: Array<{ full_name: string | null }> | null;
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -621,7 +622,7 @@ function HistoryTab({ projectId }: { projectId: string }) {
         .order('created_at', { ascending: false })
         .limit(50);
       if (error) throw error;
-      return (data ?? []) as ActivityRow[];
+      return (data ?? []) as unknown as ActivityRow[];
     },
   });
 
@@ -640,7 +641,7 @@ function HistoryTab({ projectId }: { projectId: string }) {
             <li key={r.id} className="py-3 flex items-start justify-between gap-3">
               <div>
                 <span className="text-body">
-                  {r.profiles?.full_name ?? 'İstifadəçi'}{' '}
+                  {r.profiles?.[0]?.full_name ?? 'İstifadəçi'}{' '}
                   <span style={{ color: 'var(--text-muted)' }}>
                     {ACTION_LABELS[r.action] ?? r.action}
                     {r.field_name ? ` (${r.field_name})` : ''}
