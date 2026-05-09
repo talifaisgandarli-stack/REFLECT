@@ -462,6 +462,9 @@
   "task.detail.subtasks_placeholder": "New subtask title…",
   "task.detail.subtasks_add": "+ Subtask",
   "task.detail.status_change_aria": "Change status",
+  "error_boundary.title": "Something went wrong",
+  "error_boundary.body": "The page hit an unexpected error. Reflect captured it — try reloading.",
+  "error_boundary.reload": "Reload",
 
   "outsource.modal.title": "+ Outsource order",
   "outsource.modal.dialog_label": "New outsource order",
