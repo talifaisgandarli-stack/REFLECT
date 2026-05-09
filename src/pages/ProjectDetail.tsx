@@ -9,16 +9,20 @@ import { ProjectPnL } from '@/components/ProjectPnL';
 import { CloseoutPanel } from '@/components/CloseoutPanel';
 import { ProjectDocuments } from '@/components/ProjectDocuments';
 import { PortfolioPanel } from '@/components/PortfolioPanel';
+import { ProjectEditModal } from '@/components/ProjectEditModal';
+import { useT } from '@/lib/i18n';
 
 const TABS = ['Overview', 'Tasks', 'Documents', 'Closeout', 'Portfolio', 'History'] as const;
 
 export function ProjectDetailPage() {
+  const tr = useT();
   const { id } = useParams();
   const { data: project } = useProject(id);
   const { data: tasks = [] } = useTasks({ projectId: id });
   const { isAdmin } = useAuth();
   type Tab = (typeof TABS)[number] | 'Finance';
   const [tab, setTab] = useState<Tab>('Overview');
+  const [editing, setEditing] = useState(false);
   const tabs: Tab[] = isAdmin
     ? [...TABS.slice(0, 3), 'Finance', ...TABS.slice(3)]
     : [...TABS];
@@ -36,7 +40,11 @@ export function ProjectDetailPage() {
       <PageHead
         meta={(project.phases ?? []).join(' → ') || '—'}
         title={project.name}
-        actions={<button className="btn-primary">+ Sənəd əlavə et</button>}
+        actions={
+          <button className="btn-outline" onClick={() => setEditing(true)}>
+            {tr('projects.edit.cta')}
+          </button>
+        }
       />
 
       <nav className="flex gap-2 mb-6 border-b border-line-soft">
@@ -118,6 +126,10 @@ export function ProjectDetailPage() {
         <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
           History bölməsi v1.5-də.
         </div>
+      ) : null}
+
+      {editing ? (
+        <ProjectEditModal project={project} onClose={() => setEditing(false)} />
       ) : null}
     </>
   );
