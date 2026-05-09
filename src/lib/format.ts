@@ -36,6 +36,52 @@ export function relativeTime(iso: string | null | undefined): string {
   return formatDate(iso);
 }
 
+/**
+ * Asia/Baku midnight for `daysAgo` days back from today.
+ * Baku has no DST since 2016, so a fixed +04:00 offset is correct.
+ * Used for date-bucket queries (e.g. "this week" / "current month").
+ */
+export function bakuMidnight(daysAgo = 0): Date {
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const today = fmt.format(new Date());
+  const d = new Date(`${today}T00:00:00+04:00`);
+  d.setDate(d.getDate() - daysAgo);
+  return d;
+}
+
+/** YYYY-MM key for an ISO timestamp evaluated in Asia/Baku (REQ-FIN-09). */
+export function bakuMonthKey(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ,
+    year: 'numeric',
+    month: '2-digit',
+  });
+  return fmt.format(new Date(iso)).slice(0, 7);
+}
+
+/** [startUTC, endUTC) covering the current Baku calendar month. */
+export function bakuCurrentMonthRange(now: Date = new Date()): { start: Date; end: Date } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ,
+    year: 'numeric',
+    month: '2-digit',
+  }).format(now);
+  const [y, m] = parts.split('-').map(Number);
+  const start = new Date(`${parts}-01T00:00:00+04:00`);
+  const nextMonth = m === 12 ? 1 : m + 1;
+  const nextYear = m === 12 ? y + 1 : y;
+  const end = new Date(
+    `${nextYear}-${String(nextMonth).padStart(2, '0')}-01T00:00:00+04:00`,
+  );
+  return { start, end };
+}
+
 /** Task health color per REQ-DASH-04. */
 export function taskHealth(deadlineISO: string | null | undefined): 'red' | 'amber' | 'green' | 'none' {
   if (!deadlineISO) return 'none';

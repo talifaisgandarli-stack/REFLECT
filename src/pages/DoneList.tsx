@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import { StatusChip } from '@/components/StatusChip';
-import { formatDate, relativeTime, TZ } from '@/lib/format';
+import { formatDate, relativeTime, bakuMidnight } from '@/lib/format';
 import { useAuth } from '@/lib/store';
 import type { Task } from '@/types/db';
 
@@ -16,15 +16,6 @@ const RANGE_LABEL: Record<Range, string> = {
   month: 'Bu ay',
   all: 'Hamısı',
 };
-
-/** Asia/Baku midnight for a given offset in days from today. */
-function bakuMidnight(daysAgo: number): Date {
-  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
-  const today = fmt.format(new Date());
-  const d = new Date(`${today}T00:00:00+04:00`);
-  d.setDate(d.getDate() - daysAgo);
-  return d;
-}
 
 /** Best-effort completion timestamp: archived_at after REQ-TASK-08, else created_at. */
 function completedAt(t: Task): string {

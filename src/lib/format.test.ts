@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { formatAZN, formatDate, relativeTime, taskHealth } from './format';
+import {
+  formatAZN,
+  formatDate,
+  relativeTime,
+  taskHealth,
+  bakuMonthKey,
+  bakuCurrentMonthRange,
+} from './format';
 
 describe('formatAZN', () => {
   it('returns em-dash for null/undefined', () => {
@@ -44,6 +51,38 @@ describe('relativeTime', () => {
   it('reports days under a week', () => {
     const t = new Date(Date.now() - 3 * 86400_000).toISOString();
     expect(relativeTime(t)).toBe('3 gün əvvəl');
+  });
+});
+
+describe('bakuMonthKey (REQ-FIN-09)', () => {
+  it('groups a UTC instant by Baku local month', () => {
+    // 2026-01-31 22:00 UTC == 2026-02-01 02:00 Asia/Baku → February.
+    expect(bakuMonthKey('2026-01-31T22:00:00Z')).toBe('2026-02');
+  });
+
+  it('keeps a mid-day UTC instant in the same Baku month', () => {
+    expect(bakuMonthKey('2026-03-15T12:00:00Z')).toBe('2026-03');
+  });
+
+  it('returns empty string on missing input', () => {
+    expect(bakuMonthKey(null)).toBe('');
+    expect(bakuMonthKey(undefined)).toBe('');
+  });
+});
+
+describe('bakuCurrentMonthRange (REQ-FIN-09)', () => {
+  it('returns a half-open range one Baku month wide', () => {
+    // Pick a fixed reference inside February 2026 in Baku.
+    const ref = new Date('2026-02-15T08:00:00Z');
+    const { start, end } = bakuCurrentMonthRange(ref);
+    expect(start.toISOString()).toBe('2026-01-31T20:00:00.000Z'); // 2026-02-01 00:00 +04:00
+    expect(end.toISOString()).toBe('2026-02-28T20:00:00.000Z'); // 2026-03-01 00:00 +04:00
+  });
+
+  it('rolls year over from December to January', () => {
+    const ref = new Date('2026-12-20T05:00:00Z');
+    const { end } = bakuCurrentMonthRange(ref);
+    expect(end.toISOString()).toBe('2026-12-31T20:00:00.000Z'); // 2027-01-01 00:00 +04:00
   });
 });
 
