@@ -11,6 +11,9 @@ import {
 import { useAuth } from '@/lib/store';
 import { formatDate, relativeTime, taskHealth } from '@/lib/format';
 import { FocusWidget } from '@/components/FocusWidget';
+import { OnboardingHero } from '@/components/OnboardingHero';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
 
 const HEALTH_COLOR: Record<'green' | 'amber' | 'red' | 'none', string> = {
   green: '#22C55E',
@@ -68,12 +71,30 @@ export function DashboardPage() {
   const overdue = tasks.filter((t) => taskHealth(t.deadline) === 'red');
   const onlineCount = presence.filter((p) => p.status === 'online').length;
 
+  // Workspace-empty signal — only ping the server when the local task list is
+  // empty; avoids a round-trip in the steady state.
+  const projectCount = useQuery({
+    queryKey: ['onboarding', 'project-count'],
+    enabled: tasks.length === 0,
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('projects')
+        .select('id', { count: 'exact', head: true })
+        .is('archived_at', null);
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+  const showOnboarding = tasks.length === 0 && (projectCount.data ?? 0) === 0;
+
   return (
     <>
       <PageHead
         meta={isAdmin ? 'Admin görünüşü' : 'Sizin görünüşünüz'}
         title={`Salam, ${profile?.full_name?.split(' ')[0] ?? 'arxitekt'}`}
       />
+
+      <OnboardingHero visible={showOnboarding} />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Featured */}
