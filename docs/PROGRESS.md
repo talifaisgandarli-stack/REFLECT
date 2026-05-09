@@ -1,6 +1,6 @@
 # Reflect — sessiya gedişatı (`claude/create-done-list-Y8FuN`)
 
-PRD v3.8 + designstyle4 əsasında bu branch boyunca yığılmış **118 slice-ın**
+PRD v3.8 + designstyle4 əsasında bu branch boyunca yığılmış **128 slice-ın**
 xülasəsi. Hər bir slice atomar commit-dir; tam tarixçə üçün
 `git log --oneline main..`.
 
@@ -197,11 +197,26 @@ DoD                    ●●●●●  CI workflow, RLS audit, vitest (~135 tes
 | 115 | `b140c84` | SubtaskBlockingModal i18n |
 | 116 | `40a1bc0` | KnowledgeBaseManager i18n |
 | 117 | `d297abb` | Migration 0020: storage size + MIME guard mirror |
-| 118 | this   | docs/PROGRESS.md ledger refresh |
+| 118 | `c50c101` | docs/PROGRESS.md ledger refresh |
+
+### Polish VI (119–128)
+
+| # | Commit | Mövzu |
+|---|---|---|
+| 119 | `aadb423` | ProjectCreateModal + wire to +Yeni layihə button |
+| 120 | `50e690d` | Migration 0021: @mention notif honors prefs + carries title |
+| 121 | `81217b5` | TemplatesManager i18n (31 keys × 3 locales) |
+| 122 | `7ad9417` | CloseoutPanel i18n (5 default checklist items via id→key) |
+| 123 | `3e64e4e` | PortfolioPanel i18n |
+| 124 | `22b72bc` | MiraiPersonaEditor i18n (reuses persona dict) |
+| 125 | `39d849a` | ProjectDocuments + DocumentModal i18n (28 keys × 3) |
+| 126 | `cf9ccf4` | SurveyPublic retrospective form i18n |
+| 127 | `200c743` | CI: explicit parity + migration-pair gates + tests |
+| 128 | this   | docs/PROGRESS.md ledger refresh |
 
 ## Migrasiya intizamı
 
-20 migrasiya, hər biri up + down:
+21 migrasiya, hər biri up + down:
 
 | Fayl | Mövzu |
 |---|---|
@@ -225,6 +240,7 @@ DoD                    ●●●●●  CI workflow, RLS audit, vitest (~135 tes
 | `0018_calendar_rsvps` | Calendar RSVP + `calendar_rsvp` RPC |
 | `0019_calendar_rsvp_notify` | RSVP → organizer notification fan-out |
 | `0020_storage_size_guard` | project-documents bucket: 25MB + MIME allow-list at DB |
+| `0021_mention_notif_prefs` | @mention trigger honors prefs + carries task title |
 
 §10.2 qaydası boyu hər `down` script tabloları rename edir, drop etmir.
 
@@ -251,18 +267,22 @@ DoD                    ●●●●●  CI workflow, RLS audit, vitest (~135 tes
 
 ## i18n əhatəsi
 
-- 380+ açar `src/locales/{az,en,ru}.json` (parity test enforces).
+- 510+ açar `src/locales/{az,en,ru}.json` (parity test enforces).
 - Missing-key dev konsol xəbərdarlığı (PROD-da tree-shake olur).
 - Qoşulan səhifələr: Sidebar, Layout topbar, OnboardingHero, Tasks
-  (full), Projects (page-head + grid), Settings (nav + Ümumi + form
-  sahələri), Maliyyə tabs + IncomeExpenseModal (4 ödəniş üsulu + 8
-  xərc kateqoriyası) + MarkPaidModal, OutsourceModal, EventModal
-  (calendar create), Komanda page-heads, Hesabatlar, Audit log
-  entity/action, NotificationPreferences (8 event kind), CmdK + bell
-  + shortcut overlay (per-kind body lines + RSVP statuses), Archive
-  empty, Roster empty, CancelTaskModal (5 reason chips),
+  (full), Projects (page-head + grid + ProjectCreateModal),
+  ProjectDocuments + DocumentModal, Settings (nav + Ümumi + form
+  sahələri + TemplatesManager + MiraiPersonaEditor), Maliyyə tabs
+  + IncomeExpenseModal (4 ödəniş üsulu + 8 xərc kateqoriyası) +
+  MarkPaidModal, OutsourceModal, EventModal (calendar create),
+  Komanda page-heads, Hesabatlar, Audit log entity/action,
+  NotificationPreferences (8 event kind), CmdK + bell + shortcut
+  overlay (per-kind body lines + RSVP statuses), Archive empty,
+  Roster empty, CancelTaskModal (5 reason chips),
   SubtaskBlockingModal, TaskCreateModal (status + risk + workload),
   ClientCreateModal, KnowledgeBaseManager (admin RAG ingest),
+  CloseoutPanel (5 checklist items by id→key), PortfolioPanel (5
+  awards), SurveyPublic (NPS + 4 aspect ratings, public route),
   MiraiHistory drawer (+ 5 persona), MIRAI persona switcher
   (sources stay AZ).
 - Email helpers (invite/share/MIRAI budget) + Telegram bot
@@ -290,13 +310,13 @@ DoD                    ●●●●●  CI workflow, RLS audit, vitest (~135 tes
 
 - Time tracking dictionary surface (out of v1 scope §12.1)
 - Native DOCX render (RTF kifayətdir; .docx Word-friendly)
-- Project create/edit modal (page text done in slice 110, but the
-  +Yeni layihə button still no-ops)
+- Project edit modal (create works as of slice 119; the slide-in
+  drawer for editing existing projects is its own slice)
 - E2E business flow (login → kanban → cancel) — needs seeded user
-- Locale extraction qalan komponentlərdə (TemplatesManager,
-  CloseoutPanel, PortfolioPanel, MiraiPersonaEditor)
 - Server-side enum codes for finance categories / payment methods +
-  cancel reasons (DB stores AZ canonical strings — relabel doesn't
-  translate old rows in reports)
+  cancel reasons + closeout checklist labels (DB stores AZ canonical
+  strings — relabel doesn't translate old rows in reports)
+- Activity feed body strings (entity_type and action both done; the
+  freeform "diff summary" line still uses raw strings)
 - Test infra deps: vitest binary not in current env image; CI runs are
   green per workflow but local `npx vitest run` requires `npm i`
