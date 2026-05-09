@@ -23,9 +23,25 @@
     outline: 0;
     box-shadow: var(--focus-ring);
   }
+  /* Plain :focus on buttons inside dark surfaces (sidebar, MIRAI page)
+     gets a brighter ring so the Mindaro 33% rgba doesn't disappear into
+     #0E1611. */
+  [data-theme='dark'] *:focus-visible,
+  aside *:focus-visible,
+  .card-mirai *:focus-visible {
+    box-shadow: 0 0 0 3px rgba(173, 251, 73, 0.55);
+  }
   ::selection {
     background: var(--brand-action-soft);
     color: var(--ink);
+  }
+  /* Honour Windows High Contrast / Forced Colors mode by replacing the
+     custom ring with the system "Highlight" color. */
+  @media (forced-colors: active) {
+    *:focus-visible {
+      outline: 3px solid Highlight;
+      box-shadow: none;
+    }
   }
 }
 
