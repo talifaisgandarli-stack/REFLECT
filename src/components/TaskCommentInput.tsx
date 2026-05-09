@@ -10,7 +10,8 @@
  * The dropdown navigates with ArrowUp/ArrowDown/Enter and closes on
  * Escape — matches the rest of Reflect's overlay surfaces (Cmd+K bell).
  */
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
@@ -29,6 +30,48 @@ export function TaskCommentInput({ taskId }: Props) {
   const [trigger, setTrigger] = useState<MentionTrigger | null>(null);
   const [hover, setHover] = useState(0);
   const ref = useRef<HTMLTextAreaElement>(null);
+  const [anchor, setAnchor] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  // Re-measure the textarea on every render where the picker is open
+  // so the portaled dropdown stays glued to it during scroll/resize.
+  useLayoutEffect(() => {
+    if (!trigger || !ref.current) {
+      setAnchor(null);
+      return;
+    }
+    function measure() {
+      if (!ref.current) return;
+      const r = ref.current.getBoundingClientRect();
+      setAnchor({ top: r.bottom + 4, left: r.left, width: r.width });
+    }
+    measure();
+    window.addEventListener('scroll', measure, true);
+    window.addEventListener('resize', measure);
+    return () => {
+      window.removeEventListener('scroll', measure, true);
+      window.removeEventListener('resize', measure);
+    };
+  }, [trigger]);
+
+  // Close the picker if the user clicks anywhere outside the textarea
+  // + portal.
+  useEffect(() => {
+    if (!trigger) return;
+    function onClick(e: MouseEvent) {
+      const target = e.target as Node;
+      if (ref.current?.contains(target)) return;
+      // The portal nodes carry a data attr we can match.
+      if (
+        target instanceof HTMLElement &&
+        target.closest('[data-mention-picker]')
+      ) {
+        return;
+      }
+      setTrigger(null);
+    }
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [trigger]);
 
   const profiles = useQuery({
     queryKey: ['mention-picker', 'profiles'],
@@ -93,7 +136,7 @@ export function TaskCommentInput({ taskId }: Props) {
 
   return (
     <form
-      className="relative mt-3"
+      className="mt-3"
       onSubmit={(e) => {
         e.preventDefault();
         send.mutate();
@@ -133,61 +176,64 @@ export function TaskCommentInput({ taskId }: Props) {
         }}
       />
 
-      {trigger ? (
-        <ul
-          role="listbox"
-          aria-label={t('task.comments.mention.aria')}
-          className="rounded-card"
-          style={{
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            right: 0,
-            zIndex: 30,
-            marginTop: 4,
-            background: 'var(--surface)',
-            border: '1px solid var(--line)',
-            boxShadow: '0 8px 24px rgba(14,22,17,0.12)',
-            overflow: 'hidden',
-          }}
-        >
-          {matches.length === 0 ? (
-            <li
-              className="text-meta px-3 py-2"
-              style={{ color: 'var(--text-muted)' }}
+      {trigger && anchor
+        ? createPortal(
+            <ul
+              role="listbox"
+              data-mention-picker
+              aria-label={t('task.comments.mention.aria')}
+              className="rounded-card"
+              style={{
+                position: 'fixed',
+                top: anchor.top,
+                left: anchor.left,
+                width: anchor.width,
+                zIndex: 60,
+                background: 'var(--surface)',
+                border: '1px solid var(--line)',
+                boxShadow: '0 8px 24px rgba(14,22,17,0.12)',
+                overflow: 'hidden',
+              }}
             >
-              {t('task.comments.mention.empty')}
-            </li>
-          ) : (
-            matches.map((p, i) => (
-              <li
-                key={p.id}
-                role="option"
-                aria-selected={i === hover}
-                onMouseEnter={() => setHover(i)}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  pickProfile(p);
-                }}
-                className="px-3 py-2 cursor-pointer text-body"
-                style={{
-                  background: i === hover ? 'var(--brand-mist)' : 'transparent',
-                  borderBottom: '1px solid var(--line-soft)',
-                }}
-              >
-                <div className="font-medium truncate">
-                  {p.full_name || p.email}
-                </div>
-                {p.full_name ? (
-                  <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                    {p.email}
-                  </div>
-                ) : null}
-              </li>
-            ))
-          )}
-        </ul>
-      ) : null}
+              {matches.length === 0 ? (
+                <li
+                  className="text-meta px-3 py-2"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  {t('task.comments.mention.empty')}
+                </li>
+              ) : (
+                matches.map((p, i) => (
+                  <li
+                    key={p.id}
+                    role="option"
+                    aria-selected={i === hover}
+                    onMouseEnter={() => setHover(i)}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      pickProfile(p);
+                    }}
+                    className="px-3 py-2 cursor-pointer text-body"
+                    style={{
+                      background: i === hover ? 'var(--brand-mist)' : 'transparent',
+                      borderBottom: '1px solid var(--line-soft)',
+                    }}
+                  >
+                    <div className="font-medium truncate">
+                      {p.full_name || p.email}
+                    </div>
+                    {p.full_name ? (
+                      <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                        {p.email}
+                      </div>
+                    ) : null}
+                  </li>
+                ))
+              )}
+            </ul>,
+            document.body,
+          )
+        : null}
 
       <div className="flex justify-end mt-2">
         <button
