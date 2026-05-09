@@ -463,6 +463,7 @@
   "task.detail.subtasks_placeholder": "Yeni alt-tapşırıq başlığı…",
   "task.detail.subtasks_add": "+ Alt-tapşırıq",
   "task.detail.status_change_aria": "Statusu dəyiş",
+  "task.detail.activity_title": "Tarixçə",
   "error_boundary.title": "Nəsə düz getmədi",
   "error_boundary.body": "Səhifə gözlənilməz halda dayandı. Reflect xətanı qeyd etdi — yenidən yükləməyə cəhd et.",
   "error_boundary.reload": "Yenidən yüklə",

@@ -19,6 +19,7 @@ import { PageHead } from '@/components/PageHead';
 import { StatusChip } from '@/components/StatusChip';
 import { TaskCommentInput } from '@/components/TaskCommentInput';
 import { renderCommentSegments } from '@/lib/commentMentions';
+import { actionLabelKey, activityDiffSummary } from '@/lib/activity';
 import { formatDate, relativeTime } from '@/lib/format';
 import { useT } from '@/lib/i18n';
 import { useAuth } from '@/lib/store';
@@ -126,13 +127,41 @@ export function TaskDetailPage() {
 
   const profiles = useQuery({
     queryKey: ['comment-mention-profiles'],
-    enabled: (comments.data ?? []).some((c) => c.body.includes('@')),
+    // Fire whenever we have comments with @ tokens or activity rows
+    // with a user_id — both surfaces share the same id→label map.
+    enabled:
+      (comments.data ?? []).some((c) => c.body.includes('@')) ||
+      (activity.data ?? []).some((a) => !!a.user_id),
     queryFn: async () => {
       const { data, error } = await supabase
         .from('profiles')
         .select('id, full_name, email');
       if (error) throw error;
       return data as Array<{ id: string; full_name: string | null; email: string }>;
+    },
+  });
+
+  const activity = useQuery({
+    queryKey: ['task-detail', id, 'activity'],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('activity_log')
+        .select('id, action, field_name, old_value, new_value, user_id, created_at')
+        .eq('entity_type', 'task')
+        .eq('entity_id', id)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return (data ?? []) as Array<{
+        id: string;
+        action: string;
+        field_name: string | null;
+        old_value: unknown;
+        new_value: unknown;
+        user_id: string | null;
+        created_at: string;
+      }>;
     },
   });
 
@@ -325,6 +354,50 @@ export function TaskDetailPage() {
           </p>
         ) : null}
       </section>
+
+      {(activity.data ?? []).length > 0 ? (
+        <section className="mt-6">
+          <h3
+            className="text-meta mb-2"
+            style={{
+              color: 'var(--text-muted)',
+              letterSpacing: '0.05em',
+              textTransform: 'uppercase',
+            }}
+          >
+            {t('task.detail.activity_title')}
+          </h3>
+          <ul className="card divide-y" style={{ borderColor: 'var(--line-soft)' }}>
+            {(activity.data ?? []).map((row) => {
+              const diff = activityDiffSummary(row.field_name, row.old_value, row.new_value, t);
+              const actor = row.user_id ? mentionLookup.byId.get(row.user_id) ?? null : null;
+              return (
+                <li key={row.id} className="py-2 flex items-start gap-3">
+                  <span
+                    aria-hidden
+                    className="mt-2 w-1.5 h-1.5 rounded-full shrink-0"
+                    style={{ background: 'var(--brand-action)' }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-body">
+                      <span className="font-medium">{t(actionLabelKey(row.action))}</span>
+                      {diff ? (
+                        <span className="text-meta ml-2" style={{ color: 'var(--text-muted)' }}>
+                          · {diff}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                      {actor ? `${actor} · ` : ''}
+                      {relativeTime(row.created_at)}
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
 
       <section className="mt-6">
         <h3

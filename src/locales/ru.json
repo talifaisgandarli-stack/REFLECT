@@ -463,6 +463,7 @@
   "task.detail.subtasks_placeholder": "Название новой подзадачи…",
   "task.detail.subtasks_add": "+ Подзадача",
   "task.detail.status_change_aria": "Изменить статус",
+  "task.detail.activity_title": "Активность",
   "error_boundary.title": "Что-то пошло не так",
   "error_boundary.body": "Страница встретила непредвиденную ошибку. Reflect её зафиксировал — попробуйте перезагрузить.",
   "error_boundary.reload": "Перезагрузить",
