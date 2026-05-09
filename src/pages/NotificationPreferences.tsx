@@ -127,6 +127,35 @@ export function NotificationPreferencesPage() {
     save.mutate({ channel, event, enabled: next });
   }
 
+  // Reset = drop every notification_preferences row for this user.
+  // notif_enabled() in 0007 defaults to true when no row exists, so a
+  // wiped row set returns the user to the PRD-spec "everything on"
+  // baseline that new accounts start with.
+  const resetDefaults = useMutation({
+    mutationFn: async () => {
+      if (!profile?.id) throw new Error('Profile not ready');
+      const { error } = await supabase
+        .from('notification_preferences')
+        .delete()
+        .eq('user_id', profile.id);
+      if (error) throw error;
+      // Optimistic: every cell back to "on".
+      const fresh: Record<string, boolean> = {};
+      for (const c of CHANNELS) {
+        for (const kind of EVENT_KINDS) fresh[`${c.key}:${kind}`] = true;
+      }
+      setGrid(fresh);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notification-preferences'] }),
+  });
+
+  function confirmReset() {
+    if (!profile?.id) return;
+    if (confirm(t('notif.reset.confirm'))) {
+      resetDefaults.mutate();
+    }
+  }
+
   function channelAllChecked(channel: Channel): boolean {
     return EVENT_KINDS.every((kind) => (grid[`${channel}:${kind}`] ?? true));
   }
@@ -137,11 +166,21 @@ export function NotificationPreferencesPage() {
         meta={profile?.full_name ?? profile?.email ?? '—'}
         title={t('notif.title')}
         actions={
-          save.isPending ? (
-            <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
-              {t('notif.saving')}
-            </span>
-          ) : null
+          <span className="flex items-center gap-3">
+            {save.isPending || resetDefaults.isPending ? (
+              <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                {t('notif.saving')}
+              </span>
+            ) : null}
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={confirmReset}
+              disabled={!profile?.id || resetDefaults.isPending}
+            >
+              {t('notif.reset.cta')}
+            </button>
+          </span>
         }
       />
 
