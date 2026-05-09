@@ -44,3 +44,53 @@ export function activityHref(entity_type: string, entity_id: string | null): str
       return null;
   }
 }
+
+/**
+ * Locale key for a field name surfaced in the activity diff summary.
+ * Falls through to the raw `activity.field.<name>` key so the i18n
+ * missing-key warning catches new fields and we add a row to the
+ * dictionaries.
+ */
+export function fieldLabelKey(field: string): string {
+  return `activity.field.${field}`;
+}
+
+/**
+ * Render a short, human diff string for an activity_log row, given
+ * the field that changed and its old/new values. Pure helper so the
+ * AuditLog page (and future activity-feed surfaces) all read consistent
+ * copy through t().
+ *
+ * Pattern: "<field> <oldValue> → <newValue>" with empty values shown
+ * as "—". Locale-aware via the t() argument so it slots into
+ * useT()-driven components without hooks gymnastics.
+ */
+type Translator = (key: string, vars?: Record<string, string | number>) => string;
+
+function valueToString(v: unknown): string {
+  if (v == null) return '—';
+  if (typeof v === 'string') return v.length > 0 ? v : '—';
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  // Arrays + objects: best-effort short form for the diff line; the
+  // detail panel can still expand these later.
+  try {
+    const s = JSON.stringify(v);
+    return s.length > 64 ? `${s.slice(0, 64)}…` : s;
+  } catch {
+    return '—';
+  }
+}
+
+export function activityDiffSummary(
+  field: string | null,
+  oldValue: unknown,
+  newValue: unknown,
+  t: Translator,
+): string | null {
+  if (!field) return null;
+  return t('activity.diff.template', {
+    field: t(fieldLabelKey(field)),
+    old: valueToString(oldValue),
+    new: valueToString(newValue),
+  });
+}

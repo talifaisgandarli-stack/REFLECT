@@ -10,7 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { PageHead } from '@/components/PageHead';
 import { formatDate, relativeTime } from '@/lib/format';
-import { actionLabelKey, activityHref, entityLabelKey } from '@/lib/activity';
+import { actionLabelKey, activityDiffSummary, activityHref, entityLabelKey } from '@/lib/activity';
 import { useT } from '@/lib/i18n';
 
 type ProfileLite = { id: string; full_name: string | null; email: string };
@@ -291,7 +291,7 @@ function ActivityTable({
                 )}
                 {r.field_name ? (
                   <span className="text-meta ml-2" style={{ color: 'var(--text-muted)' }}>
-                    · {r.field_name}
+                    · {activityDiffSummary(r.field_name, r.old_value, r.new_value, t)}
                   </span>
                 ) : null}
               </div>
