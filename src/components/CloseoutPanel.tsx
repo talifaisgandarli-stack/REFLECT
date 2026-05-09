@@ -245,7 +245,7 @@ export function CloseoutPanel({ projectId, projectStatus }: Props) {
           </div>
 
           {sendSurvey.error ? (
-            <p className="text-meta" style={{ color: '#B91C1C' }}>
+            <p className="text-meta" style={{ color: 'var(--state-error)' }}>
               {(sendSurvey.error as Error).message}
             </p>
           ) : null}
@@ -253,7 +253,7 @@ export function CloseoutPanel({ projectId, projectStatus }: Props) {
       )}
 
       {close.error ? (
-        <p className="text-meta" style={{ color: '#B91C1C' }}>
+        <p className="text-meta" style={{ color: 'var(--state-error)' }}>
           {(close.error as Error).message}
         </p>
       ) : null}

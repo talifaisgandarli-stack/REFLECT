@@ -30,7 +30,7 @@ const CONDITION_TONE: Record<string, { bg: string; text: string }> = {
   Yeni: { bg: '#ECF9EF', text: '#15803D' },
   Yaxşı: { bg: '#EAF2FF', text: '#1D4ED8' },
   'İstifadə olunur': { bg: '#F1F5F2', text: '#475569' },
-  'Təmir tələb edir': { bg: '#FEEEED', text: '#B91C1C' },
+  'Təmir tələb edir': { bg: '#FEEEED', text: 'var(--state-error)' },
 };
 
 type EquipmentRow = {
@@ -391,7 +391,7 @@ function EquipmentModal({
         </div>
 
         {save.error ? (
-          <p className="text-meta mt-3" style={{ color: '#B91C1C' }}>
+          <p className="text-meta mt-3" style={{ color: 'var(--state-error)' }}>
             {(save.error as Error).message}
           </p>
         ) : null}
@@ -403,7 +403,7 @@ function EquipmentModal({
               className="btn-ghost"
               onClick={() => remove.mutate()}
               disabled={remove.isPending}
-              style={{ color: '#B91C1C' }}
+              style={{ color: 'var(--state-error)' }}
             >
               Sil
             </button>

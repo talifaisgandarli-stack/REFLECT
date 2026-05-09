@@ -35,6 +35,16 @@
   --mascot-body: #0E1611;
   --mascot-eye: #ADFB49;
 
+  /* State (extends designstyle4 §A — semantic feedback) */
+  --state-error: #B91C1C;
+  --state-error-soft: #FEE2E2;
+  --state-warn: #D97706;
+  --state-warn-soft: #FEF3C7;
+  --state-success: #15803D;
+  --state-success-soft: #DCFCE7;
+  --state-info: #1D4ED8;
+  --state-info-soft: #DBEAFE;
+
   /* Focus */
   --focus-ring: 0 0 0 3px rgba(173, 251, 73, 0.33);
 

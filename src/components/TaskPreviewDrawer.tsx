@@ -33,7 +33,7 @@ type CommentRow = {
 
 const HEALTH_COLOR: Record<ReturnType<typeof taskHealth>, string> = {
   green: '#22C55E',
-  amber: '#D97706',
+  amber: 'var(--state-warn)',
   red: '#EF4444',
   none: '#94A3B8',
 };

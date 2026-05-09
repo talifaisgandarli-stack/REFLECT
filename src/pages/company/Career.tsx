@@ -285,7 +285,7 @@ function LevelModal({ level, onClose }: { level: LevelRow; onClose: () => void }
         </div>
 
         {save.error ? (
-          <p className="text-meta mt-3" style={{ color: '#B91C1C' }}>
+          <p className="text-meta mt-3" style={{ color: 'var(--state-error)' }}>
             {(save.error as Error).message}
           </p>
         ) : null}
@@ -297,7 +297,7 @@ function LevelModal({ level, onClose }: { level: LevelRow; onClose: () => void }
               className="btn-ghost"
               onClick={() => remove.mutate()}
               disabled={remove.isPending}
-              style={{ color: '#B91C1C' }}
+              style={{ color: 'var(--state-error)' }}
             >
               Sil
             </button>
@@ -555,7 +555,7 @@ function AdminQueue({
               <button
                 type="button"
                 className="chip"
-                style={{ background: '#FEEEED', color: '#B91C1C' }}
+                style={{ background: '#FEEEED', color: 'var(--state-error)' }}
                 onClick={() => decide.mutate({ id: r.id, status: 'denied' })}
               >
                 Rədd
@@ -565,7 +565,7 @@ function AdminQueue({
         ))}
       </ul>
       {decide.error ? (
-        <p className="text-meta mt-3" style={{ color: '#B91C1C' }}>
+        <p className="text-meta mt-3" style={{ color: 'var(--state-error)' }}>
           {(decide.error as Error).message}
         </p>
       ) : null}

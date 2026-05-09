@@ -30,7 +30,7 @@ const RATING_KEYS = [
 
 function gaugeColor(score: number): string {
   if (score >= 70) return '#22C55E';
-  if (score >= 40) return '#D97706';
+  if (score >= 40) return 'var(--state-warn)';
   return '#EF4444';
 }
 
@@ -370,7 +370,7 @@ function ReviewModal({
         </div>
 
         {save.error ? (
-          <p className="text-meta mt-3" style={{ color: '#B91C1C' }}>
+          <p className="text-meta mt-3" style={{ color: 'var(--state-error)' }}>
             {(save.error as Error).message}
           </p>
         ) : null}

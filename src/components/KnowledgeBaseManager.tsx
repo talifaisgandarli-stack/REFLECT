@@ -178,7 +178,7 @@ export function KnowledgeBaseManager() {
                       remove.mutate(g.source_pdf);
                     }
                   }}
-                  style={{ height: 28, padding: '0 10px', color: '#B91C1C' }}
+                  style={{ height: 28, padding: '0 10px', color: 'var(--state-error)' }}
                 >
                   Sil
                 </button>
@@ -219,7 +219,7 @@ export function KnowledgeBaseManager() {
           </span>
         </div>
         {parseError ? (
-          <p className="text-meta mb-3" style={{ color: '#B91C1C' }}>
+          <p className="text-meta mb-3" style={{ color: 'var(--state-error)' }}>
             {parseError}
           </p>
         ) : null}
@@ -250,7 +250,7 @@ export function KnowledgeBaseManager() {
         </label>
 
         {ingest.error ? (
-          <p className="text-meta mt-3" style={{ color: '#B91C1C' }}>
+          <p className="text-meta mt-3" style={{ color: 'var(--state-error)' }}>
             {(ingest.error as Error).message}
           </p>
         ) : null}

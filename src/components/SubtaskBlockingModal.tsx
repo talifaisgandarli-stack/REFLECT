@@ -95,7 +95,7 @@ export function SubtaskBlockingModal({ parentTaskId, onCancel, onResolved }: Pro
         )}
 
         {err ? (
-          <p className="text-meta mt-3" style={{ color: '#B91C1C' }}>
+          <p className="text-meta mt-3" style={{ color: 'var(--state-error)' }}>
             {err}
           </p>
         ) : null}

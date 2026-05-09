@@ -28,6 +28,8 @@ import { PROJECT_PHASES } from '@/lib/labels';
 import { downloadCsv, printSection } from '@/lib/export';
 import { useT } from '@/lib/i18n';
 
+// recharts paints these as SVG fill attributes which can't dereference
+// CSS custom properties; keep literal hex matched to designstyle4 tokens.
 const PHASE_COLOR = ['#ADFB49', '#5CA87C', '#1A5140', '#84A6FF', '#A78BFA', '#D97706'];
 
 function monthBucket(iso: string): string {

@@ -255,7 +255,7 @@ export function TaskCreateModal({ onClose }: Props) {
         </div>
 
         {create.error ? (
-          <p className="text-meta mt-3" style={{ color: '#B91C1C' }}>
+          <p className="text-meta mt-3" style={{ color: 'var(--state-error)' }}>
             {(create.error as Error).message}
           </p>
         ) : null}
@@ -289,7 +289,7 @@ function Field({
         style={{ color: 'var(--text-muted)' }}
       >
         {label}
-        {required ? <span style={{ color: '#B91C1C' }}> *</span> : null}
+        {required ? <span style={{ color: 'var(--state-error)' }}> *</span> : null}
       </span>
       {children}
     </label>

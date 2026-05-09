@@ -204,7 +204,7 @@ export function EventModal({ initial, onClose }: Props) {
         </div>
 
         {save.error ? (
-          <p className="text-meta mt-3" style={{ color: '#B91C1C' }}>
+          <p className="text-meta mt-3" style={{ color: 'var(--state-error)' }}>
             {(save.error as Error).message}
           </p>
         ) : null}

@@ -90,7 +90,7 @@ export function SurveyPublicPage() {
         {loading ? (
           <p className="text-body mt-6">Yüklənir…</p>
         ) : error ? (
-          <p className="text-body mt-6" style={{ color: '#B91C1C' }}>
+          <p className="text-body mt-6" style={{ color: 'var(--state-error)' }}>
             {error}
           </p>
         ) : submitted ? (

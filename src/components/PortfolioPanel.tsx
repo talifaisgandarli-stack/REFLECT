@@ -173,7 +173,7 @@ export function PortfolioPanel({ projectId }: Props) {
               : dl.days <= 30
                 ? '#EF4444'
                 : dl.days <= 90
-                  ? '#D97706'
+                  ? 'var(--state-warn)'
                   : '#22C55E';
 
           return (

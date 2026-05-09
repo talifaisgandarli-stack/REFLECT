@@ -27,7 +27,7 @@ const KIND_LABEL: Record<LeaveKind, string> = {
 const STATUS_TONE: Record<LeaveStatus, { bg: string; text: string }> = {
   pending: { bg: '#FFF6E5', text: '#92400E' },
   approved: { bg: '#ECF9EF', text: '#15803D' },
-  denied: { bg: '#FEEEED', text: '#B91C1C' },
+  denied: { bg: '#FEEEED', text: 'var(--state-error)' },
   cancelled: { bg: '#F1F5F2', text: '#475569' },
 };
 
@@ -185,7 +185,7 @@ export function LeavePage() {
                           <button
                             type="button"
                             className="chip"
-                            style={{ background: '#FEEEED', color: '#B91C1C' }}
+                            style={{ background: '#FEEEED', color: 'var(--state-error)' }}
                             onClick={() => decide.mutate({ id: r.id, status: 'denied' })}
                           >
                             Rədd
@@ -220,7 +220,7 @@ export function LeavePage() {
       ) : null}
 
       {decide.error ? (
-        <p className="text-meta mt-3" style={{ color: '#B91C1C' }}>
+        <p className="text-meta mt-3" style={{ color: 'var(--state-error)' }}>
           {(decide.error as Error).message}
         </p>
       ) : null}
@@ -329,7 +329,7 @@ function LeaveRequestModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {save.error ? (
-          <p className="text-meta mt-3" style={{ color: '#B91C1C' }}>
+          <p className="text-meta mt-3" style={{ color: 'var(--state-error)' }}>
             {(save.error as Error).message}
           </p>
         ) : null}

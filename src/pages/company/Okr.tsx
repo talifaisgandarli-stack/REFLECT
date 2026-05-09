@@ -47,7 +47,7 @@ function avgProgress(krs: KrRow[]): number {
 
 function healthLabel(pct: number): { label: string; color: string } {
   if (pct >= 70) return { label: 'On Track', color: '#22C55E' };
-  if (pct >= 40) return { label: 'At Risk', color: '#D97706' };
+  if (pct >= 40) return { label: 'At Risk', color: 'var(--state-warn)' };
   return { label: 'Off Track', color: '#EF4444' };
 }
 
@@ -456,7 +456,7 @@ function ObjectiveModal({
           </label>
         </div>
         {save.error ? (
-          <p className="text-meta mt-3" style={{ color: '#B91C1C' }}>
+          <p className="text-meta mt-3" style={{ color: 'var(--state-error)' }}>
             {(save.error as Error).message}
           </p>
         ) : null}

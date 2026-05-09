@@ -335,7 +335,7 @@ function RsvpChips({
   const tone: Record<Exclude<RsvpStatus, 'pending'>, { bg: string; fg: string }> = {
     yes: { bg: '#ECF9EF', fg: '#15803D' },
     maybe: { bg: '#FFF6E5', fg: '#92400E' },
-    no: { bg: '#FEEEED', fg: '#B91C1C' },
+    no: { bg: '#FEEEED', fg: 'var(--state-error)' },
   };
   return (
     <span className="flex gap-0.5 shrink-0">

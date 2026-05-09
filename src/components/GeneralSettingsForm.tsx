@@ -205,7 +205,7 @@ export function GeneralSettingsForm() {
       </section>
 
       {save.error ? (
-        <p className="text-meta" style={{ color: '#B91C1C' }}>
+        <p className="text-meta" style={{ color: 'var(--state-error)' }}>
           {(save.error as Error).message}
         </p>
       ) : null}

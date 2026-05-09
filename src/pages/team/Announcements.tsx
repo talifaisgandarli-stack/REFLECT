@@ -234,7 +234,7 @@ export function AnnouncementsPage() {
                       <button
                         type="button"
                         className="chip"
-                        style={{ background: '#FEEEED', color: '#B91C1C' }}
+                        style={{ background: '#FEEEED', color: 'var(--state-error)' }}
                         onClick={(e) => {
                           e.stopPropagation();
                           reject.mutate(a.id);
@@ -358,7 +358,7 @@ function AnnouncementModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {save.error ? (
-          <p className="text-meta mt-3" style={{ color: '#B91C1C' }}>
+          <p className="text-meta mt-3" style={{ color: 'var(--state-error)' }}>
             {(save.error as Error).message}
           </p>
         ) : null}

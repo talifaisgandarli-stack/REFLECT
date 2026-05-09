@@ -20,7 +20,7 @@ import { useT } from '@/lib/i18n';
 
 const HEALTH_COLOR: Record<'green' | 'amber' | 'red' | 'none', string> = {
   green: '#22C55E',
-  amber: '#D97706',
+  amber: 'var(--state-warn)',
   red: '#EF4444',
   none: '#94A3B8',
 };
@@ -352,7 +352,7 @@ function Kpi({ label, value, red }: { label: string; value: number; red?: boolea
         className="text-h2 mt-1"
         style={{
           fontVariantNumeric: 'tabular-nums',
-          color: red && value > 0 ? '#B91C1C' : 'var(--text)',
+          color: red && value > 0 ? 'var(--state-error)' : 'var(--text)',
         }}
       >
         {value}

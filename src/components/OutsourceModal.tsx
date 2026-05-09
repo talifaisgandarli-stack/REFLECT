@@ -159,7 +159,7 @@ export function OutsourceModal({ onClose }: Props) {
         </div>
 
         {save.error ? (
-          <p className="text-meta mt-3" style={{ color: '#B91C1C' }}>
+          <p className="text-meta mt-3" style={{ color: 'var(--state-error)' }}>
             {(save.error as Error).message}
           </p>
         ) : null}
@@ -199,7 +199,7 @@ function Field({
     <label className="block">
       <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
         {label}
-        {required ? <span style={{ color: '#B91C1C' }}> *</span> : null}
+        {required ? <span style={{ color: 'var(--state-error)' }}> *</span> : null}
       </span>
       {children}
     </label>

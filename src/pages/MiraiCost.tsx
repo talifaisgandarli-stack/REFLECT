@@ -221,7 +221,7 @@ export function MiraiCostPage() {
               {top.map((r) => {
                 const cost = Number(r.cost_usd);
                 const pct = (cost / CAP_USD) * 100;
-                const tone = pct >= 100 ? '#EF4444' : pct >= 80 ? '#D97706' : '#22C55E';
+                const tone = pct >= 100 ? '#EF4444' : pct >= 80 ? 'var(--state-warn)' : '#22C55E';
                 const p = profileMap.get(r.user_id);
                 return (
                   <tr
@@ -277,7 +277,7 @@ function Kpi({
   const color = accent
     ? 'var(--brand-text)'
     : tone === 'warning'
-      ? '#D97706'
+      ? 'var(--state-warn)'
       : 'var(--text)';
   return (
     <div className="card flex flex-col">

@@ -293,7 +293,7 @@ function TemplateEditor({
                 className="chip"
                 style={{
                   background: known ? 'var(--brand-mist)' : '#FEEEED',
-                  color: known ? 'var(--brand-text)' : '#B91C1C',
+                  color: known ? 'var(--brand-text)' : 'var(--state-error)',
                 }}
                 title={known ? VARIABLE_REGISTRY[v as VariableKey].label : 'Naməlum dəyişən'}
               >
@@ -304,7 +304,7 @@ function TemplateEditor({
         )}
       </div>
       {unknown.length > 0 ? (
-        <p className="text-meta" style={{ color: '#B91C1C' }}>
+        <p className="text-meta" style={{ color: 'var(--state-error)' }}>
           Naməlum dəyişən{unknown.length > 1 ? 'lər' : ''}: {unknown.join(', ')} — render zamanı olduğu kimi qalacaq.
         </p>
       ) : null}
@@ -315,7 +315,7 @@ function TemplateEditor({
           className="btn-ghost"
           onClick={onDelete}
           disabled={deleting}
-          style={{ color: '#B91C1C' }}
+          style={{ color: 'var(--state-error)' }}
         >
           Sil
         </button>
@@ -354,7 +354,7 @@ function TemplateEditor({
         </span>
       </div>
       {save.error ? (
-        <p className="text-meta" style={{ color: '#B91C1C' }}>
+        <p className="text-meta" style={{ color: 'var(--state-error)' }}>
           {(save.error as Error).message}
         </p>
       ) : null}

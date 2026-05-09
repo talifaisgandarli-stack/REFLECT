@@ -219,7 +219,7 @@ export function ProjectDocuments({ projectId }: Props) {
         </div>
       ) : null}
       {uploadError ? (
-        <p className="text-meta" style={{ color: '#B91C1C' }}>
+        <p className="text-meta" style={{ color: 'var(--state-error)' }}>
           {uploadError}
         </p>
       ) : null}
@@ -316,7 +316,7 @@ export function ProjectDocuments({ projectId }: Props) {
                   onClick={() => {
                     if (confirm(`${d.title} silinsin?`)) remove.mutate(d.id);
                   }}
-                  style={{ background: '#FEEEED', color: '#B91C1C' }}
+                  style={{ background: '#FEEEED', color: 'var(--state-error)' }}
                 >
                   Sil
                 </button>
@@ -434,7 +434,7 @@ function DocumentModal({
         </div>
 
         {save.error ? (
-          <p className="text-meta mt-3" style={{ color: '#B91C1C' }}>
+          <p className="text-meta mt-3" style={{ color: 'var(--state-error)' }}>
             {(save.error as Error).message}
           </p>
         ) : null}

@@ -83,7 +83,7 @@ export function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
             />
           </label>
-          {err ? <p className="text-meta" style={{ color: '#B91C1C' }}>{err}</p> : null}
+          {err ? <p className="text-meta" style={{ color: 'var(--state-error)' }}>{err}</p> : null}
           {info ? <p className="text-meta" style={{ color: 'var(--brand-text)' }}>{info}</p> : null}
           <button type="submit" className="btn-primary w-full" disabled={busy}>
             Daxil ol

@@ -101,13 +101,13 @@ export function MarkPaidModal({ receivable, onClose }: Props) {
         </label>
 
         {!valid && delta ? (
-          <p className="text-meta mt-2" style={{ color: '#B91C1C' }}>
+          <p className="text-meta mt-2" style={{ color: 'var(--state-error)' }}>
             Məbləğ qalan borcdan ({formatAZN(remaining)}) çox ola bilməz.
           </p>
         ) : null}
 
         {save.error ? (
-          <p className="text-meta mt-3" style={{ color: '#B91C1C' }}>
+          <p className="text-meta mt-3" style={{ color: 'var(--state-error)' }}>
             {(save.error as Error).message}
           </p>
         ) : null}
