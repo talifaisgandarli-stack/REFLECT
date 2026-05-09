@@ -164,6 +164,7 @@
   "notif.bulk.all_off_aria": "Выключить все события для канала {channel}",
   "notif.reset.cta": "Сбросить",
   "notif.reset.confirm": "Удалить все ваши настройки? Каждое событие на каждом канале снова станет включённым.",
+  "notif.reset.toast_done": "Настройки уведомлений сброшены до дефолта.",
   "notif.saving": "Сохранение…",
   "archive.title": "Архив",
   "archive.empty.title": "Архив пуст",

@@ -6,6 +6,7 @@ import App from './App';
 import './styles/index.css';
 import { installGlobalHandlers } from './lib/observability';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { ToastContainer } from './components/ToastContainer';
 
 installGlobalHandlers();
 
@@ -58,6 +59,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <App />
         </BrowserRouter>
       </QueryClientProvider>
+      <ToastContainer />
     </ErrorBoundary>
   </React.StrictMode>
 );

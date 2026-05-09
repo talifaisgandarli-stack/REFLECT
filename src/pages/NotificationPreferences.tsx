@@ -11,6 +11,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { PageHead } from '@/components/PageHead';
 import { useT } from '@/lib/i18n';
+import { toast } from '@/lib/toast';
 
 type Channel = 'inapp' | 'email' | 'telegram';
 type EventKind =
@@ -146,7 +147,13 @@ export function NotificationPreferencesPage() {
       }
       setGrid(fresh);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['notification-preferences'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['notification-preferences'] });
+      toast.success(t('notif.reset.toast_done'));
+    },
+    onError: (e) => {
+      toast.error((e as Error).message);
+    },
   });
 
   function confirmReset() {

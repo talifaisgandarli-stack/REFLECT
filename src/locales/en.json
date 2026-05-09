@@ -164,6 +164,7 @@
   "notif.bulk.all_off_aria": "Turn off every event for {channel}",
   "notif.reset.cta": "Reset to defaults",
   "notif.reset.confirm": "Clear all your overrides? Every event on every channel goes back to on.",
+  "notif.reset.toast_done": "Notification preferences restored to defaults.",
   "notif.saving": "Saving…",
   "archive.title": "Archive",
   "archive.empty.title": "Archive is empty",

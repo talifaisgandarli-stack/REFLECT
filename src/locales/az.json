@@ -164,6 +164,7 @@
   "notif.bulk.all_off_aria": "{channel} kanalında bütün hadisələri söndür",
   "notif.reset.cta": "Default-a qaytar",
   "notif.reset.confirm": "Bütün üstün-tutmaları silmək istəyirsiniz? Hər kanalda bütün hadisələr yenidən aktiv olacaq.",
+  "notif.reset.toast_done": "Bildiriş üstün-tutmaları default-a qaytarıldı.",
   "notif.saving": "Yadda saxlanılır…",
   "archive.title": "Arxiv",
   "archive.empty.title": "Arxiv boşdur",
