@@ -70,6 +70,50 @@ export function userClient(token: string) {
   });
 }
 
+/**
+ * PRD §9.1 rate limiting: Upstash Redis sliding window.
+ * Limits: 100 req/min admin, 30 req/min user, 10 req/min anonymous.
+ * Call with the AuthedUser result (or null for anonymous) and a request key (IP or userId).
+ * Throws HttpError(429) if limit exceeded.
+ */
+export async function rateLimit(
+  user: AuthedUser | null,
+  identifier: string,
+): Promise<void> {
+  const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  // If Upstash is not configured, skip rate limiting (local dev / CI).
+  if (!redisUrl || !redisToken) return;
+
+  const limit = user?.isAdmin ? 100 : user ? 30 : 10;
+  const windowSec = 60;
+  const key = `rl:${user?.id ?? `anon:${identifier}`}`;
+  const now = Date.now();
+  const windowStart = now - windowSec * 1000;
+
+  // Upstash REST pipeline: ZREMRANGEBYSCORE + ZADD + ZCARD + EXPIRE
+  const pipeline = [
+    ['ZREMRANGEBYSCORE', key, '-inf', windowStart],
+    ['ZADD', key, now, `${now}-${Math.random()}`],
+    ['ZCARD', key],
+    ['EXPIRE', key, windowSec],
+  ];
+
+  const res = await fetch(`${redisUrl}/pipeline`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${redisToken}`, 'content-type': 'application/json' },
+    body: JSON.stringify(pipeline),
+  });
+
+  if (!res.ok) return; // fail-open: don't block on Redis errors
+
+  const results = await res.json() as Array<{ result: number }>;
+  const count = results[2]?.result ?? 0;
+  if (count > limit) {
+    throw new HttpError(429, `Çox tez-tez sorğu. Gözləyin (${limit} sorğu/dəq).`);
+  }
+}
+
 export class HttpError extends Error {
   constructor(public status: number, message: string) {
     super(message);

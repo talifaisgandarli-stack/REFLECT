@@ -6,7 +6,7 @@
  * Rate-limited: 1 call per client per 24h (ai_icp_calculated_at guard).
  */
 import Anthropic from '@anthropic-ai/sdk';
-import { admin, errorResponse, HttpError, jsonResponse, requireUser } from '../_lib/auth';
+import { admin, errorResponse, HttpError, jsonResponse, requireUser, rateLimit } from '../_lib/auth';
 
 export const config = { runtime: 'edge' };
 
@@ -18,6 +18,7 @@ export default async function handler(req: Request) {
   try {
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed');
     const user = await requireUser(req);
+    await rateLimit(user, user.id);
     if (!user.isAdmin) throw new HttpError(403, 'Yalnız adminlər üçündür.');
 
     const body = (await req.json()) as { client_id?: string };

@@ -106,11 +106,8 @@ export function ProjectDetailPage() {
 
       {tab === 'Finance' && id ? <ProjectPnL projectId={id} /> : null}
 
-      {tab === 'Documents' || tab === 'History' ? (
-        <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
-          {tab} bölməsi v1.5-də.
-        </div>
-      ) : null}
+      {tab === 'Documents' && id ? <DocumentsTab projectId={id} /> : null}
+      {tab === 'History' && id ? <HistoryTab projectId={id} /> : null}
 
       {tab === 'Closeout' && id ? <CloseoutTab projectId={id} project={project} /> : null}
     </>
@@ -253,6 +250,42 @@ function CloseoutTab({ projectId, project }: { projectId: string; project: { sta
     onSuccess: () => qc.invalidateQueries({ queryKey: ['portfolio', projectId] }),
   });
 
+  // REQ-CRM-07: retrospective survey
+  const surveyQ = useQuery({
+    queryKey: ['survey', projectId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('retrospective_surveys')
+        .select('id, share_token, sent_at, responded_at')
+        .eq('project_id', projectId)
+        .maybeSingle();
+      return data as { id: string; share_token: string | null; sent_at: string | null; responded_at: string | null } | null;
+    },
+  });
+
+  const sendSurvey = useMutation({
+    mutationFn: async () => {
+      const token = crypto.randomUUID();
+      if (surveyQ.data?.id) {
+        await supabase
+          .from('retrospective_surveys')
+          .update({ share_token: token, sent_at: new Date().toISOString() })
+          .eq('id', surveyQ.data.id);
+      } else {
+        await supabase.from('retrospective_surveys').insert({
+          project_id: projectId,
+          share_token: token,
+          sent_at: new Date().toISOString(),
+        });
+      }
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['survey', projectId] }),
+  });
+
+  const surveyLink = surveyQ.data?.share_token
+    ? `${window.location.origin}/sorğu/${surveyQ.data.share_token}`
+    : null;
+
   const isClosed = project.status === 'closed';
 
   return (
@@ -299,6 +332,44 @@ function CloseoutTab({ projectId, project }: { projectId: string; project: { sta
       </section>
 
       {/* REQ-PROJ-05 award/portfolio submission */}
+      {/* REQ-CRM-07: retrospective survey */}
+      {isClosed ? (
+        <section className="card">
+          <h3 className="text-h3 mb-3">Müştəri sorğusu</h3>
+          {surveyQ.data?.responded_at ? (
+            <div className="text-meta" style={{ color: 'var(--brand-action)' }}>
+              Cavablandı ✓ — {relativeTime(surveyQ.data.responded_at)}
+            </div>
+          ) : surveyLink ? (
+            <div className="space-y-3">
+              <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                Sorğu göndərildi — {surveyQ.data?.sent_at ? relativeTime(surveyQ.data.sent_at) : ''}
+              </p>
+              <div className="flex items-center gap-2">
+                <input className="input flex-1" readOnly value={surveyLink} />
+                <button
+                  className="chip chip-brand shrink-0"
+                  onClick={() => navigator.clipboard.writeText(surveyLink)}
+                >
+                  Kopyala
+                </button>
+              </div>
+              <button className="btn-outline" onClick={() => sendSurvey.mutate()} disabled={sendSurvey.isPending}>
+                Yeni link yarat
+              </button>
+            </div>
+          ) : (
+            <button
+              className="btn-primary"
+              onClick={() => sendSurvey.mutate()}
+              disabled={sendSurvey.isPending}
+            >
+              {sendSurvey.isPending ? 'Yaradılır…' : 'Sorğu göndər'}
+            </button>
+          )}
+        </section>
+      ) : null}
+
       {portfolioQ.data ? (
         <section className="card">
           <h3 className="text-h3 mb-4">Mükafat müraciətləri</h3>
@@ -398,6 +469,190 @@ function CloseoutTab({ projectId, project }: { projectId: string; project: { sta
         <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
           Mükafat müraciətləri layihə bağlandıqdan sonra açılır.
         </div>
+      )}
+    </div>
+  );
+}
+
+// ── Documents tab — REQ-PROJ-03 ───────────────────────────────────────────────
+
+type ProjectDocument = {
+  id: string;
+  title: string;
+  category: string | null;
+  source: string;
+  external_link: string | null;
+  created_at: string;
+};
+
+function DocumentsTab({ projectId }: { projectId: string }) {
+  const qc = useQueryClient();
+  const [title, setTitle] = useState('');
+  const [link, setLink] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+
+  const q = useQuery({
+    queryKey: ['project_docs', projectId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('project_documents')
+        .select('id, title, category, source, external_link, created_at')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as ProjectDocument[];
+    },
+  });
+
+  const add = useMutation({
+    mutationFn: async () => {
+      if (!title.trim()) throw new Error('Başlıq daxil edin');
+      if (!link.trim()) throw new Error('Link daxil edin');
+      const { error } = await supabase.from('project_documents').insert({
+        project_id: projectId,
+        title: title.trim(),
+        source: 'drive_link',
+        external_link: link.trim(),
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setTitle('');
+      setLink('');
+      setErr(null);
+      qc.invalidateQueries({ queryKey: ['project_docs', projectId] });
+    },
+    onError: (e: Error) => setErr(e.message),
+  });
+
+  const docs = q.data ?? [];
+
+  return (
+    <div className="space-y-4">
+      <section className="card">
+        <h3 className="text-h3 mb-4">Sənədlər</h3>
+        {docs.length === 0 ? (
+          <p className="text-meta" style={{ color: 'var(--text-muted)' }}>Sənəd əlavə edilməyib.</p>
+        ) : (
+          <ul className="divide-y divide-line-soft">
+            {docs.map((d) => (
+              <li key={d.id} className="py-3 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-body">{d.title}</div>
+                  {d.category ? (
+                    <div className="text-meta" style={{ color: 'var(--text-muted)' }}>{d.category}</div>
+                  ) : null}
+                </div>
+                {d.external_link ? (
+                  <a
+                    href={d.external_link}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="chip chip-brand shrink-0"
+                  >
+                    Aç →
+                  </a>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="card">
+        <h3 className="text-h3 mb-3">Link əlavə et</h3>
+        <div className="flex flex-col gap-3">
+          <input
+            className="input"
+            placeholder="Sənəd adı"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+          <input
+            className="input"
+            placeholder="Google Drive / xarici link"
+            value={link}
+            onChange={(e) => setLink(e.target.value)}
+          />
+          {err ? <p className="text-meta" style={{ color: '#EF4444' }}>{err}</p> : null}
+          <button
+            className="btn-primary"
+            disabled={add.isPending}
+            onClick={() => add.mutate()}
+          >
+            {add.isPending ? 'Əlavə edilir…' : 'Əlavə et'}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+// ── History tab — PRD §6.1 / REQ-PROJ-03 ─────────────────────────────────────
+
+type ActivityRow = {
+  id: string;
+  action: string;
+  field_name: string | null;
+  old_value: unknown;
+  new_value: unknown;
+  created_at: string;
+  profiles: { full_name: string | null } | null;
+};
+
+const ACTION_LABELS: Record<string, string> = {
+  created: 'yaratdı',
+  updated: 'yenilədi',
+  deleted: 'sildi',
+  status_changed: 'statusu dəyişdi',
+  closed: 'bağladı',
+  reopened: 'yenidən açdı',
+};
+
+function HistoryTab({ projectId }: { projectId: string }) {
+  const q = useQuery({
+    queryKey: ['project_history', projectId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('activity_log')
+        .select('id, action, field_name, old_value, new_value, created_at, profiles:profiles!activity_log_user_id_fkey(full_name)')
+        .eq('entity_type', 'project')
+        .eq('entity_id', projectId)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      return (data ?? []) as ActivityRow[];
+    },
+  });
+
+  const rows = q.data ?? [];
+
+  return (
+    <div className="card">
+      <h3 className="text-h3 mb-4">Tarixçə</h3>
+      {q.isLoading ? (
+        <p className="text-meta">Yüklənir…</p>
+      ) : rows.length === 0 ? (
+        <p className="text-meta" style={{ color: 'var(--text-muted)' }}>Tarixçə yoxdur.</p>
+      ) : (
+        <ul className="divide-y divide-line-soft">
+          {rows.map((r) => (
+            <li key={r.id} className="py-3 flex items-start justify-between gap-3">
+              <div>
+                <span className="text-body">
+                  {r.profiles?.full_name ?? 'İstifadəçi'}{' '}
+                  <span style={{ color: 'var(--text-muted)' }}>
+                    {ACTION_LABELS[r.action] ?? r.action}
+                    {r.field_name ? ` (${r.field_name})` : ''}
+                  </span>
+                </span>
+              </div>
+              <span className="text-meta shrink-0" style={{ color: 'var(--text-muted)' }}>
+                {relativeTime(r.created_at)}
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

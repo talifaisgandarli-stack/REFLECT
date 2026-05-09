@@ -26,6 +26,7 @@ import { ContentPlanPage } from '@/pages/company/ContentPlan';
 import { SettingsPage } from '@/pages/Settings';
 import { MiraiPage } from '@/pages/Mirai';
 import { TelegramLinkPage } from '@/pages/TelegramLink';
+import { SurveyPage } from '@/pages/Survey';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { session, hydrated } = useAuth();
@@ -120,6 +121,9 @@ export default function App() {
         {/* Personal — accessible to every authenticated user */}
         <Route path="/bildirişlər" element={<NotificationPreferencesPage />} />
       </Route>
+
+      {/* Public — no auth required */}
+      <Route path="/sorğu/:token" element={<SurveyPage />} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

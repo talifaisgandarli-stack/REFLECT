@@ -198,11 +198,8 @@ export function FinancePage() {
       {tab === 'Xərclər' ? <ExpensesTable /> : null}
       {tab === 'Sabit' ? <RecurringExpensesPanel /> : null}
 
-      {tab === 'P&L' || tab === 'Outsource' ? (
-        <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
-          {tab} cədvəli — v1.5-də.
-        </div>
-      ) : null}
+      {tab === 'P&L' ? <PnLPanel /> : null}
+      {tab === 'Outsource' ? <OutsourcePanel /> : null}
 
       {modal ? <IncomeExpenseModal kind={modal} onClose={() => setModal(null)} /> : null}
       {markPaid ? (
@@ -560,6 +557,148 @@ function ForecastPanel({ forecasts }: { forecasts: ForecastRow[] }) {
           Son yeniləmə: {formatDate(latestGenerated)}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+// ── P&L Panel (REQ-FIN-06 / US-FIN-06) ──────────────────────────────────────
+
+const OUTSOURCE_STATUS_LABEL = { order: 'Sifariş', in_progress: 'İcrada', delivered: 'Təhvil', paid: 'Ödənildi' } as const;
+
+type OutsourceRow = {
+  id: string;
+  work_title: string;
+  contact_person: string | null;
+  contact_company: string | null;
+  amount: number | null;
+  deadline: string | null;
+  status: keyof typeof OUTSOURCE_STATUS_LABEL;
+  project_id: string | null;
+};
+
+function PnLPanel() {
+  const incomes = useQuery({
+    queryKey: ['fin', 'pnl', 'incomes'],
+    queryFn: async () => (await supabase.from('incomes').select('amount, occurred_at')).data ?? [],
+  });
+  const expenses = useQuery({
+    queryKey: ['fin', 'pnl', 'expenses'],
+    queryFn: async () =>
+      (await supabase.from('expenses').select('amount, occurred_at, category')).data ?? [],
+  });
+  const outsource = useQuery({
+    queryKey: ['fin', 'pnl', 'outsource'],
+    queryFn: async () =>
+      (await supabase.from('outsource_items').select('amount, status')).data ?? [],
+  });
+
+  const revenue = (incomes.data ?? []).reduce((s: number, r: { amount: number }) => s + Number(r.amount ?? 0), 0);
+  const directCosts = (expenses.data ?? []).reduce((s: number, r: { amount: number }) => s + Number(r.amount ?? 0), 0);
+  const outsourceCosts = (outsource.data ?? [])
+    .filter((r: { status: string; amount: number | null }) => r.status === 'paid' && r.amount)
+    .reduce((s: number, r: { amount: number | null }) => s + Number(r.amount ?? 0), 0);
+  const net = revenue - directCosts - outsourceCosts;
+
+  const isLoading = incomes.isLoading || expenses.isLoading || outsource.isLoading;
+
+  return (
+    <div className="card">
+      <h3 className="text-h3 mb-4">Mənfəət və Zərər (P&L)</h3>
+      {isLoading ? (
+        <div className="text-meta" style={{ color: 'var(--text-muted)' }}>Yüklənir…</div>
+      ) : (
+        <table className="w-full text-body">
+          <tbody>
+            <PnLRow label="Gəlir" value={revenue} />
+            <PnLRow label="Birbaşa Xərclər" value={-directCosts} />
+            <PnLRow label="Outsource" value={-outsourceCosts} />
+            <tr style={{ borderTop: '2px solid var(--line)' }}>
+              <td className="py-3 font-medium">Net</td>
+              <td
+                className="py-3 text-right"
+                style={{
+                  fontVariantNumeric: 'tabular-nums',
+                  color: net >= 0 ? 'var(--brand-text)' : '#EF4444',
+                  fontWeight: 600,
+                }}
+              >
+                {formatAZN(net)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function PnLRow({ label, value }: { label: string; value: number }) {
+  return (
+    <tr style={{ borderBottom: '1px solid var(--line-soft)' }}>
+      <td className="py-3" style={{ color: 'var(--text-muted)' }}>{label}</td>
+      <td className="py-3 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
+        {formatAZN(Math.abs(value))}
+      </td>
+    </tr>
+  );
+}
+
+// ── Outsource Panel (REQ-FIN-07) ─────────────────────────────────────────────
+
+function OutsourcePanel() {
+  const { data: rows = [], isLoading } = useQuery({
+    queryKey: ['fin', 'outsource'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('outsource_items')
+        .select('id, work_title, contact_person, contact_company, amount, deadline, status, project_id')
+        .order('deadline', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as OutsourceRow[];
+    },
+  });
+
+  if (isLoading) return <div className="card text-meta">Yüklənir…</div>;
+
+  return (
+    <div className="card overflow-x-auto">
+      <h3 className="text-h3 mb-4">Podrat İşləri</h3>
+      {rows.length === 0 ? (
+        <p className="text-meta" style={{ color: 'var(--text-muted)' }}>Podrat işi yoxdur.</p>
+      ) : (
+        <table className="w-full text-body">
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--line)' }}>
+              {['İş', 'Şirkət / Şəxs', 'Deadline', 'Status', 'Məbləğ'].map((h) => (
+                <th
+                  key={h}
+                  className="text-left py-3 px-3 text-meta"
+                  style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                <td className="py-3 px-3">{r.work_title}</td>
+                <td className="py-3 px-3">{r.contact_company ?? r.contact_person ?? '—'}</td>
+                <td className="py-3 px-3">{r.deadline ? formatDate(r.deadline) : '—'}</td>
+                <td className="py-3 px-3">
+                  <span className={`chip ${r.status === 'paid' ? 'chip-brand' : ''}`}>
+                    {OUTSOURCE_STATUS_LABEL[r.status]}
+                  </span>
+                </td>
+                <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {r.amount != null ? formatAZN(r.amount) : '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

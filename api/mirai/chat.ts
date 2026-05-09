@@ -14,7 +14,7 @@
  * if key absent (TODO: PRD §7.4 should name the embedding provider explicitly).
  */
 import Anthropic from '@anthropic-ai/sdk';
-import { admin, errorResponse, HttpError, jsonResponse, requireUser, userClient } from '../_lib/auth';
+import { admin, errorResponse, HttpError, jsonResponse, requireUser, rateLimit, userClient } from '../_lib/auth';
 
 export const config = { runtime: 'edge' };
 
@@ -263,6 +263,7 @@ export default async function handler(req: Request) {
   try {
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed');
     const user = await requireUser(req);
+    await rateLimit(user, user.id);
     const body = (await req.json()) as {
       message?: string;
       persona?: PersonaKey;
