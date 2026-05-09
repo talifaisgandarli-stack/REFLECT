@@ -443,6 +443,7 @@
   "task.detail.subtasks_empty": "Подзадач пока нет.",
   "task.detail.subtasks_placeholder": "Название новой подзадачи…",
   "task.detail.subtasks_add": "+ Подзадача",
+  "task.detail.status_change_aria": "Изменить статус",
 
   "outsource.modal.title": "+ Заказ подряда",
   "outsource.modal.dialog_label": "Новый заказ подряда",

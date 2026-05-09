@@ -22,6 +22,10 @@ import { renderCommentSegments } from '@/lib/commentMentions';
 import { formatDate, relativeTime } from '@/lib/format';
 import { useT } from '@/lib/i18n';
 import { useAuth } from '@/lib/store';
+import { isOpenChildrenError, useUpdateTaskStatus } from '@/lib/hooks';
+import { CancelTaskModal } from '@/components/CancelTaskModal';
+import { SubtaskBlockingModal } from '@/components/SubtaskBlockingModal';
+import { TASK_STATUS_ORDER } from '@/lib/labels';
 import type { Task, TaskStatus } from '@/types/db';
 
 type CommentRow = {
@@ -37,6 +41,9 @@ export function TaskDetailPage() {
   const { profile } = useAuth();
   const { id = '' } = useParams();
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+  const [cancelling, setCancelling] = useState(false);
+  const [blocker, setBlocker] = useState(false);
+  const updateStatus = useUpdateTaskStatus();
 
   const task = useQuery({
     queryKey: ['task-detail', id],
@@ -156,7 +163,52 @@ export function TaskDetailPage() {
       <PageHead
         meta={project.data?.name ?? tk.project_id ?? ''}
         title={tk.title}
-        actions={<StatusChip status={tk.status} />}
+        actions={
+          <span className="flex items-center gap-2 flex-wrap">
+            <StatusChip status={tk.status} />
+            {tk.status !== 'done' && tk.status !== 'cancelled' ? (
+              <>
+                <select
+                  className="input"
+                  value={tk.status}
+                  onChange={(e) => {
+                    const next = e.target.value as TaskStatus;
+                    if (next === tk.status) return;
+                    updateStatus.mutate(
+                      { id: tk.id, status: next, from: tk.status },
+                      {
+                        onError: (err) => {
+                          if (next === 'done' && isOpenChildrenError(err)) {
+                            setBlocker(true);
+                          }
+                        },
+                      },
+                    );
+                  }}
+                  aria-label={t('task.detail.status_change_aria')}
+                  style={{ height: 32, paddingTop: 0, paddingBottom: 0 }}
+                  disabled={updateStatus.isPending}
+                >
+                  {TASK_STATUS_ORDER.filter(
+                    (s) => s !== 'done' || tk.status === 'review' || tk.status === 'expert',
+                  ).map((s) => (
+                    <option key={s} value={s}>
+                      {t(`task.status.${s}`)}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="btn-outline"
+                  onClick={() => setCancelling(true)}
+                  disabled={updateStatus.isPending}
+                >
+                  {t('task.cancel.cta')}
+                </button>
+              </>
+            ) : null}
+          </span>
+        }
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -332,6 +384,29 @@ export function TaskDetailPage() {
 
         <TaskCommentInput taskId={tk.id} />
       </section>
+
+      {cancelling ? (
+        <CancelTaskModal
+          taskId={tk.id}
+          taskTitle={tk.title}
+          onCancel={() => setCancelling(false)}
+          onCancelled={() => {
+            setCancelling(false);
+            qc.invalidateQueries({ queryKey: ['task-detail', id] });
+          }}
+        />
+      ) : null}
+
+      {blocker ? (
+        <SubtaskBlockingModal
+          parentTaskId={tk.id}
+          onCancel={() => setBlocker(false)}
+          onResolved={() => {
+            setBlocker(false);
+            updateStatus.mutate({ id: tk.id, status: 'done', from: tk.status });
+          }}
+        />
+      ) : null}
     </>
   );
 }
