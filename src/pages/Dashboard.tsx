@@ -14,6 +14,8 @@ import { FocusWidget } from '@/components/FocusWidget';
 import { OnboardingHero } from '@/components/OnboardingHero';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { Link } from 'react-router-dom';
+import { activityHref } from '@/lib/activity';
 
 const HEALTH_COLOR: Record<'green' | 'amber' | 'red' | 'none', string> = {
   green: '#22C55E',
@@ -195,22 +197,36 @@ export function DashboardPage() {
             </div>
           ) : (
             <ul className="space-y-3">
-              {activity.slice(0, 6).map((a) => (
-                <li key={a.id} className="text-body flex items-start gap-2">
-                  <span
-                    className="w-1.5 h-1.5 rounded-full mt-2 shrink-0"
-                    style={{ background: 'var(--brand-action)' }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="truncate">
-                      {a.action} · {a.entity_type}
+              {activity.slice(0, 6).map((a) => {
+                const href = activityHref(a.entity_type, a.entity_id);
+                const inner = (
+                  <>
+                    <span
+                      className="w-1.5 h-1.5 rounded-full mt-2 shrink-0"
+                      style={{ background: 'var(--brand-action)' }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="truncate">
+                        {a.action} · {a.entity_type}
+                      </div>
+                      <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                        {relativeTime(a.created_at)}
+                      </div>
                     </div>
-                    <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                      {relativeTime(a.created_at)}
-                    </div>
-                  </div>
-                </li>
-              ))}
+                  </>
+                );
+                return (
+                  <li key={a.id} className="text-body flex items-start gap-2">
+                    {href ? (
+                      <Link to={href} className="flex items-start gap-2 flex-1 min-w-0">
+                        {inner}
+                      </Link>
+                    ) : (
+                      inner
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>

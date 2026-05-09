@@ -5,10 +5,12 @@
  * data-touch history (activity_log: trigger-emitted CRUD events).
  */
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { PageHead } from '@/components/PageHead';
 import { formatDate, relativeTime } from '@/lib/format';
+import { activityHref } from '@/lib/activity';
 
 type AuditRow = {
   id: string;
@@ -172,32 +174,39 @@ function ActivityTable({ rows, loading }: { rows: ActivityRow[]; loading: boolea
   }
   return (
     <ul className="card divide-y" style={{ borderColor: 'var(--line-soft)' }}>
-      {rows.map((r) => (
-        <li key={r.id} className="py-3 first:pt-0 last:pb-0 flex items-start gap-3">
-          <span
-            aria-hidden
-            className="mt-2 w-1.5 h-1.5 rounded-full shrink-0"
-            style={{ background: 'var(--brand-action)' }}
-          />
-          <div className="flex-1 min-w-0">
-            <div className="text-body">
-              <span className="font-medium">{r.action}</span>{' '}
-              <span style={{ color: 'var(--text-muted)' }}>
-                ({r.entity_type})
-              </span>
-              {r.field_name ? (
-                <span className="text-meta ml-2" style={{ color: 'var(--text-muted)' }}>
-                  · {r.field_name}
-                </span>
-              ) : null}
+      {rows.map((r) => {
+        const href = activityHref(r.entity_type, r.entity_id);
+        return (
+          <li key={r.id} className="py-3 first:pt-0 last:pb-0 flex items-start gap-3">
+            <span
+              aria-hidden
+              className="mt-2 w-1.5 h-1.5 rounded-full shrink-0"
+              style={{ background: 'var(--brand-action)' }}
+            />
+            <div className="flex-1 min-w-0">
+              <div className="text-body">
+                <span className="font-medium">{r.action}</span>{' '}
+                {href ? (
+                  <Link to={href} style={{ color: 'var(--brand-text)' }}>
+                    ({r.entity_type})
+                  </Link>
+                ) : (
+                  <span style={{ color: 'var(--text-muted)' }}>({r.entity_type})</span>
+                )}
+                {r.field_name ? (
+                  <span className="text-meta ml-2" style={{ color: 'var(--text-muted)' }}>
+                    · {r.field_name}
+                  </span>
+                ) : null}
+              </div>
+              <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                {r.user_id ? `${r.user_id.slice(0, 8)} · ` : ''}
+                {relativeTime(r.created_at)}
+              </div>
             </div>
-            <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-              {r.user_id ? `${r.user_id.slice(0, 8)} · ` : ''}
-              {relativeTime(r.created_at)}
-            </div>
-          </div>
-        </li>
-      ))}
+          </li>
+        );
+      })}
     </ul>
   );
 }
