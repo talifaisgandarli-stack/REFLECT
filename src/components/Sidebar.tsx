@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Mascot } from './Mascot';
 import { useAuth, useUI } from '@/lib/store';
@@ -69,6 +70,24 @@ export function Sidebar() {
   const { isAdmin, profile } = useAuth();
   const { sidebarOpen, toggleSidebar } = useUI();
   const t = useT();
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+
+  // Mobile swipe-left to close. Threshold of 60px horizontal beats
+  // accidental swipes; vertical guard so a tap-to-scroll doesn't trip.
+  function onTouchStart(e: React.TouchEvent) {
+    if (window.innerWidth >= 1024) return;
+    const tt = e.touches[0];
+    touchStart.current = { x: tt.clientX, y: tt.clientY };
+  }
+  function onTouchEnd(e: React.TouchEvent) {
+    const start = touchStart.current;
+    touchStart.current = null;
+    if (!start || window.innerWidth >= 1024) return;
+    const tt = e.changedTouches[0];
+    const dx = tt.clientX - start.x;
+    const dy = Math.abs(tt.clientY - start.y);
+    if (dx < -60 && dy < 80 && sidebarOpen) toggleSidebar();
+  }
 
   return (
     <>
@@ -83,6 +102,8 @@ export function Sidebar() {
       ) : null}
 
       <aside
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
         className={[
           'flex flex-col rounded-capsule self-start',
           // Desktop: stays in flow
