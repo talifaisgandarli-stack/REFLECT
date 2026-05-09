@@ -1,6 +1,6 @@
 # Reflect — sessiya gedişatı (`claude/create-done-list-Y8FuN`)
 
-PRD v3.8 + designstyle4 əsasında bu branch boyunca yığılmış **138 slice-ın**
+PRD v3.8 + designstyle4 əsasında bu branch boyunca yığılmış **148 slice-ın**
 xülasəsi. Hər bir slice atomar commit-dir; tam tarixçə üçün
 `git log --oneline main..`.
 
@@ -227,11 +227,26 @@ DoD                    ●●●●●  CI workflow, RLS audit, vitest (~135 tes
 | 135 | `4a58181` | Raw-hex budget guard test (per-file allowlist) |
 | 136 | `583eb40` | /api error envelope `{error, code}` with stable codes |
 | 137 | `bc95f27` | mentionPicker + HttpError unit tests (24 assertions) |
-| 138 | this   | docs/PROGRESS.md ledger refresh |
+| 138 | `6dbb314` | docs/PROGRESS.md ledger refresh |
+
+### Polish VIII (139–148)
+
+| # | Commit | Mövzu |
+|---|---|---|
+| 139 | `392b1e9` | Comment renderer — `@<uuid>` → @FullName chips |
+| 140 | `9a64e92` | Task detail full route /tapşırıqlar/:id |
+| 141 | `a098849` | Subtask list rendering on task detail |
+| 142 | `82375e2` | Migration 0023: realtime publication for task_comments |
+| 143 | `55b4e79` | Activity diff summary line + 12 field translations |
+| 144 | `5dfc1f4` | NotificationPreferences \"reset to defaults\" action |
+| 145 | `1655450` | docs/ENV.md production setup guide |
+| 146 | `8415d30` | React Query defaults documented + pinned (audit) |
+| 147 | `3558b3c` | commentMentions + activityDiffSummary tests (16 cases) |
+| 148 | this   | docs/PROGRESS.md ledger refresh |
 
 ## Migrasiya intizamı
 
-22 migrasiya, hər biri up + down:
+23 migrasiya, hər biri up + down:
 
 | Fayl | Mövzu |
 |---|---|
@@ -257,6 +272,7 @@ DoD                    ●●●●●  CI workflow, RLS audit, vitest (~135 tes
 | `0020_storage_size_guard` | project-documents bucket: 25MB + MIME allow-list at DB |
 | `0021_mention_notif_prefs` | @mention trigger honors prefs + carries task title |
 | `0022_closeout_labels_cleanup` | drop legacy items[*].label from existing rows |
+| `0023_task_comments_realtime` | add task_comments to supabase_realtime publication |
 
 §10.2 qaydası boyu hər `down` script tabloları rename edir, drop etmir.
 
@@ -283,7 +299,7 @@ DoD                    ●●●●●  CI workflow, RLS audit, vitest (~135 tes
 
 ## i18n əhatəsi
 
-- 580+ açar `src/locales/{az,en,ru}.json` (parity test enforces).
+- 620+ açar `src/locales/{az,en,ru}.json` (parity test enforces).
 - Missing-key dev konsol xəbərdarlığı (PROD-da tree-shake olur).
 - Qoşulan səhifələr: Sidebar, Layout topbar, OnboardingHero, Tasks
   (full), Projects (page-head + grid + ProjectCreateModal),
@@ -327,17 +343,20 @@ DoD                    ●●●●●  CI workflow, RLS audit, vitest (~135 tes
 - Time tracking dictionary surface (out of v1 scope §12.1)
 - Native DOCX render (RTF kifayətdir; .docx Word-friendly)
 - E2E business flow (login → kanban → cancel) — needs seeded user
+- Inline subtask create + cancel from task detail (slice 133 surfaces
+  the list, but adding a child still routes through TaskCreateModal)
 - Server-side enum codes for finance categories / payment methods +
   cancel reasons (closeout labels migrated in slice 126; finance
   categories still store AZ canonical strings — relabel doesn't
   translate old rows in reports)
-- Activity feed body strings (entity_type and action both done; the
-  freeform "diff summary" line still uses raw strings)
 - Mention picker dropdown anchored absolute under the textarea — works
   for the drawer's right-aligned aside but won't render correctly in a
   clipped-overflow embed (TaskCommentInput note from slice 121)
 - Per-throw-site error codes in /api — slice 128 added the envelope +
   defaults; widening from defaultCodeForStatus to explicit codes per
   callsite is a gradual migration as endpoints get touched
+- TaskPreviewDrawer's \"Tam aç\" still routes to /tapşırıqlar#task-<id>
+  (kanban hash anchor) instead of the new /tapşırıqlar/:id route from
+  slice 132 — both work, picking one is its own slice
 - Test infra deps: vitest binary not in current env image; CI runs are
   green per workflow but local `npx vitest run` requires `npm i`
