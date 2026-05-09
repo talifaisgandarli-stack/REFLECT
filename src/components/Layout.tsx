@@ -79,8 +79,15 @@ export function Layout() {
 
   return (
     <div className="flex min-h-screen">
+      <a href="#main-content" className="skip-link">
+        Əsas məzmuna keç
+      </a>
       <Sidebar />
-      <main className="flex-1 px-4 lg:px-10 py-4 lg:py-6 max-w-[1600px] mx-auto w-full">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="flex-1 px-4 lg:px-10 py-4 lg:py-6 max-w-[1600px] mx-auto w-full"
+      >
         {session ? (
           <div className="flex justify-between items-center mb-3 lg:mb-2">
             <button

@@ -70,6 +70,7 @@ export function NotificationBell() {
         className="btn-ghost relative"
         aria-label={`Bildirişlər${unreadCount ? ` (${unreadCount} oxunmamış)` : ''}`}
         aria-expanded={open}
+        aria-haspopup="dialog"
         onClick={() => setOpen((v) => !v)}
       >
         <BellIcon />
