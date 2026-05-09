@@ -8,8 +8,9 @@
 import { useMemo, useState } from 'react';
 import { PageHead } from '@/components/PageHead';
 import { useT } from '@/lib/i18n';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/store';
 import { formatDate } from '@/lib/format';
 import { EventModal } from '@/components/EventModal';
 import { buildIcs, buildMailtoInvite, downloadIcs } from '@/lib/ics';
@@ -23,8 +24,11 @@ type CalendarEvent = {
   all_day: boolean;
   location: string | null;
   meet_url: string | null;
+  attendees: string[];
   external_emails: string[];
 };
+
+type RsvpStatus = 'pending' | 'yes' | 'no' | 'maybe';
 
 const TZ = 'Asia/Baku';
 const VIEW_LABEL = { month: 'Ay', week: 'Həftə', day: 'Gün' } as const;
@@ -102,6 +106,8 @@ function periodLabel(view: 'month' | 'week' | 'day', anchor: Date): string {
 
 export function CalendarPage() {
   const t = useT();
+  const { profile } = useAuth();
+  const qc = useQueryClient();
   const [view, setView] = useState<'month' | 'week' | 'day'>('month');
   const [anchor, setAnchor] = useState<Date>(new Date());
   const [creating, setCreating] = useState(false);
@@ -132,6 +138,38 @@ export function CalendarPage() {
     }
     return map;
   }, [events.data]);
+
+  // Pull the caller's RSVPs for the visible window — single batch query.
+  const eventIds = (events.data ?? []).map((e) => e.id);
+  const rsvps = useQuery({
+    queryKey: ['rsvps', profile?.id, eventIds.join(',')],
+    enabled: !!profile?.id && eventIds.length > 0,
+    queryFn: async (): Promise<Record<string, RsvpStatus>> => {
+      if (!profile?.id || eventIds.length === 0) return {};
+      const { data, error } = await supabase
+        .from('calendar_rsvps')
+        .select('event_id, status')
+        .eq('attendee_id', profile.id)
+        .in('event_id', eventIds);
+      if (error) throw error;
+      const out: Record<string, RsvpStatus> = {};
+      for (const r of (data ?? []) as Array<{ event_id: string; status: RsvpStatus }>) {
+        out[r.event_id] = r.status;
+      }
+      return out;
+    },
+  });
+
+  const respond = useMutation({
+    mutationFn: async (input: { eventId: string; status: RsvpStatus }) => {
+      const { error } = await supabase.rpc('calendar_rsvp', {
+        p_event_id: input.eventId,
+        p_status: input.status,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['rsvps'] }),
+  });
 
   function downloadEvent(e: CalendarEvent) {
     downloadIcs(`reflect-${e.id}`, buildIcs({ ...e, external_emails: e.external_emails ?? [] }));
@@ -228,7 +266,16 @@ export function CalendarPage() {
                             : ''}
                         </div>
                       </div>
-                      <div className="flex gap-1 shrink-0">
+                      <div className="flex gap-1 shrink-0 flex-wrap items-center">
+                        {profile?.id && e.attendees?.includes(profile.id) ? (
+                          <RsvpChips
+                            current={rsvps.data?.[e.id] ?? 'pending'}
+                            onChoose={(status) =>
+                              respond.mutate({ eventId: e.id, status })
+                            }
+                            pending={respond.isPending}
+                          />
+                        ) : null}
                         {e.meet_url ? (
                           <a
                             href={e.meet_url}
@@ -268,5 +315,52 @@ export function CalendarPage() {
 
       {creating ? <EventModal onClose={() => setCreating(false)} /> : null}
     </>
+  );
+}
+
+function RsvpChips({
+  current,
+  onChoose,
+  pending,
+}: {
+  current: RsvpStatus;
+  onChoose: (status: RsvpStatus) => void;
+  pending: boolean;
+}) {
+  const options: Array<{ status: Exclude<RsvpStatus, 'pending'>; label: string }> = [
+    { status: 'yes', label: 'Bəli' },
+    { status: 'maybe', label: 'Bəlkə' },
+    { status: 'no', label: 'Yox' },
+  ];
+  const tone: Record<Exclude<RsvpStatus, 'pending'>, { bg: string; fg: string }> = {
+    yes: { bg: '#ECF9EF', fg: '#15803D' },
+    maybe: { bg: '#FFF6E5', fg: '#92400E' },
+    no: { bg: '#FEEEED', fg: '#B91C1C' },
+  };
+  return (
+    <span className="flex gap-0.5 shrink-0">
+      {options.map((o) => {
+        const active = current === o.status;
+        return (
+          <button
+            key={o.status}
+            type="button"
+            disabled={pending}
+            onClick={() => onChoose(o.status)}
+            className="chip"
+            style={{
+              background: active ? tone[o.status].bg : 'var(--surface-mist)',
+              color: active ? tone[o.status].fg : 'var(--text-soft)',
+              height: 24,
+              padding: '0 8px',
+              border: active ? `1px solid ${tone[o.status].fg}33` : '1px solid transparent',
+            }}
+            aria-pressed={active}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </span>
   );
 }
