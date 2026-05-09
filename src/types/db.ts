@@ -139,6 +139,8 @@ export interface UserPresence {
   last_heartbeat_at: string;
   current_page: string | null;
   session_type: 'desktop' | 'mobile';
+  /** Joined from profiles via useTeamPresence (REQ-PRESENCE-03). */
+  profiles?: { id: string; full_name: string | null; avatar_url: string | null } | null;
 }
 
 export interface Invitation {

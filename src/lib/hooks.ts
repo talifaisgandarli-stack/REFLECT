@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from './supabase';
 import type {
@@ -322,9 +323,124 @@ export function useTeamPresence() {
     queryKey: ['presence'],
     refetchInterval: 30_000,
     queryFn: async (): Promise<UserPresence[]> => {
-      const { data, error } = await supabase.from('user_presence').select('*');
+      const { data, error } = await supabase
+        .from('user_presence')
+        .select('*, profiles!user_presence_user_id_fkey(id, full_name, avatar_url)');
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as UserPresence[];
     },
   });
+}
+
+/**
+ * REQ-PRESENCE-02 — heartbeat every 30s; marks away on inactivity ≥5min or
+ * tab blur ≥3min. Reads current route to populate REQ-PRESENCE-03 page label.
+ */
+const PAGE_LABELS: Record<string, string> = {
+  '/': 'Dashboard',
+  '/layihelər': 'Layihələrdə',
+  '/tapşırıqlar': 'Tapşırıqlarda',
+  '/müştərilər': 'Müştərilərdə',
+  '/maliyyə': 'Maliyyədə',
+  '/arxiv': 'Arxivdə',
+  '/podrat': 'Podratda',
+  '/mirai': 'MIRAI-da',
+  '/komanda/heyət': 'Komandada',
+  '/komanda/maaş': 'Maaşda',
+  '/komanda/performans': 'Performansda',
+  '/komanda/məzuniyyət': 'Məzuniyyətdə',
+  '/komanda/təqvim': 'Təqvimdə',
+  '/komanda/elanlar': 'Elanlarda',
+  '/komanda/avadanlıq': 'Avadanlıqda',
+  '/şirkət/okr': 'OKR-də',
+  '/şirkət/karyera': 'Karyerada',
+  '/şirkət/məzmun': 'Məzmunda',
+  '/parametrlər': 'Parametrlərdə',
+};
+
+function pageLabel(pathname: string): string {
+  if (PAGE_LABELS[pathname]) return PAGE_LABELS[pathname];
+  if (pathname.startsWith('/layihelər/')) return 'Layihədə';
+  if (pathname.startsWith('/parametrlər')) return 'Parametrlərdə';
+  return 'Platformada';
+}
+
+export function usePresenceHeartbeat(userId: string | undefined) {
+  const lastActivityRef = useRef(Date.now());
+  const tabFocusedRef = useRef(true);
+  const statusRef = useRef<'online' | 'away'>('online');
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const INACTIVITY_MS = 5 * 60 * 1000;
+    const BLUR_MS = 3 * 60 * 1000;
+    let blurAt = 0;
+
+    function onActivity() {
+      lastActivityRef.current = Date.now();
+      if (statusRef.current === 'away') statusRef.current = 'online';
+    }
+    function onFocus() {
+      tabFocusedRef.current = true;
+      blurAt = 0;
+      onActivity();
+    }
+    function onBlur() {
+      tabFocusedRef.current = false;
+      blurAt = Date.now();
+    }
+
+    window.addEventListener('mousemove', onActivity, { passive: true });
+    window.addEventListener('keydown', onActivity, { passive: true });
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('blur', onBlur);
+
+    async function beat() {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) return;
+
+      const now = Date.now();
+      const inactive = now - lastActivityRef.current > INACTIVITY_MS;
+      const blurred = !tabFocusedRef.current && blurAt > 0 && now - blurAt > BLUR_MS;
+      const derived: 'online' | 'away' = inactive || blurred ? 'away' : 'online';
+      statusRef.current = derived;
+
+      const pathname = window.location.pathname;
+      fetch('/api/presence/heartbeat', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          status: derived,
+          current_page: pageLabel(pathname),
+          session_type: 'desktop',
+        }),
+      }).catch(() => {});
+    }
+
+    beat();
+    const id = window.setInterval(beat, 30_000);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener('mousemove', onActivity);
+      window.removeEventListener('keydown', onActivity);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('blur', onBlur);
+
+      // Mark offline on unmount (tab close / logout)
+      supabase.auth.getSession().then(({ data: s }) => {
+        const token = s.session?.access_token;
+        if (!token) return;
+        fetch('/api/presence/heartbeat', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+          body: JSON.stringify({ status: 'offline', current_page: null, session_type: 'desktop' }),
+        }).catch(() => {});
+      });
+    };
+  }, [userId]);
 }

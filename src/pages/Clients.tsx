@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import {
@@ -19,6 +20,7 @@ import {
 import type { Client, ClientPipelineStage, InteractionType } from '@/types/db';
 import { formatAZN, relativeTime } from '@/lib/format';
 import { useAuth } from '@/lib/store';
+import { supabase } from '@/lib/supabase';
 
 type DragPayload = { id: string; from: ClientPipelineStage };
 type LostPrompt = { id: string; from: ClientPipelineStage };
@@ -28,6 +30,7 @@ export function ClientsPage() {
   const { data: clients = [], isLoading } = useClients();
   const updateStage = useUpdateClientStage();
   const [active, setActive] = useState<Client | null>(null);
+  const [creating, setCreating] = useState(false);
   const [lostPrompt, setLostPrompt] = useState<LostPrompt | null>(null);
 
   const grouped = useMemo(() => {
@@ -63,7 +66,7 @@ export function ClientsPage() {
         actions={
           <>
             <input className="input max-w-[240px]" placeholder="Axtar…" />
-            {isAdmin ? <button className="btn-primary">+ Yeni müştəri</button> : null}
+            {isAdmin ? <button className="btn-primary" onClick={() => setCreating(true)}>+ Yeni müştəri</button> : null}
           </>
         }
       />
@@ -137,6 +140,13 @@ export function ClientsPage() {
         <ClientPanel client={active} onClose={() => setActive(null)} />
       ) : null}
 
+      {creating ? (
+        <CreateClientModal
+          onClose={() => setCreating(false)}
+          onCreated={() => setCreating(false)}
+        />
+      ) : null}
+
       {lostPrompt ? (
         <LostReasonModal
           onCancel={() => setLostPrompt(null)}
@@ -155,6 +165,98 @@ export function ClientsPage() {
         />
       ) : null}
     </>
+  );
+}
+
+// ── Create client modal (REQ-CRM-01) ──
+function CreateClientModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const qc = useQueryClient();
+  const [name, setName] = useState('');
+  const [company, setCompany] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [expectedValue, setExpectedValue] = useState('');
+
+  const create = useMutation({
+    mutationFn: async () => {
+      if (!name.trim()) throw new Error('Ad tələb olunur');
+      const { error } = await supabase.from('clients').insert({
+        name: name.trim(),
+        company: company.trim() || null,
+        email: email.trim() || null,
+        phone: phone.trim() || null,
+        expected_value: expectedValue ? Number(expectedValue) : null,
+        pipeline_stage: 'lead',
+        confidence_pct: 10,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['clients'] });
+      onCreated();
+    },
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center px-4"
+      style={{ background: 'rgba(14,22,17,0.4)' }}
+      onClick={onClose}
+    >
+      <form
+        className="card w-full max-w-md"
+        style={{ padding: 24 }}
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={(e) => { e.preventDefault(); create.mutate(); }}
+      >
+        <h2 className="text-h2 mb-4">Yeni müştəri</h2>
+        <div className="space-y-3">
+          <CField label="Ad *">
+            <input className="input" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
+          </CField>
+          <CField label="Şirkət">
+            <input className="input" value={company} onChange={(e) => setCompany(e.target.value)} />
+          </CField>
+          <div className="grid grid-cols-2 gap-3">
+            <CField label="Email">
+              <input type="email" className="input" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </CField>
+            <CField label="Telefon">
+              <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            </CField>
+          </div>
+          <CField label="Gözlənilən dəyər (AZN)">
+            <input
+              type="number"
+              min="0"
+              step="100"
+              className="input"
+              value={expectedValue}
+              onChange={(e) => setExpectedValue(e.target.value)}
+              style={{ fontVariantNumeric: 'tabular-nums' }}
+            />
+          </CField>
+        </div>
+        {create.error ? (
+          <p className="text-meta mt-3" style={{ color: '#B91C1C' }}>{(create.error as Error).message}</p>
+        ) : null}
+        <div className="flex justify-end gap-2 mt-6">
+          <button type="button" className="btn-outline" onClick={onClose} disabled={create.isPending}>Ləğv</button>
+          <button type="submit" className="btn-primary" disabled={create.isPending || !name.trim()}>
+            {create.isPending ? 'Yaradılır…' : 'Yarat'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function CField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>{label}</span>
+      {children}
+    </label>
   );
 }
 
@@ -202,19 +304,64 @@ function ClientPanel({ client, onClose }: { client: Client; onClose: () => void 
 }
 
 function OverviewTab({ client }: { client: Client }) {
+  const qc = useQueryClient();
+  const [icpLoading, setIcpLoading] = useState(false);
+  const [icpErr, setIcpErr] = useState<string | null>(null);
+
+  async function runIcp() {
+    setIcpLoading(true);
+    setIcpErr(null);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) throw new Error('Sessiya yoxdur');
+      const res = await fetch('/api/mirai/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          persona: 'operations_director',
+          message: `Müştəri adı: ${client.name}. Şirkət: ${client.company ?? '—'}. Əlaqə: ${client.email ?? '—'}. ICP uyğunluğunu 0-100 arasında qiymətləndir. Yalnız rəqəm cavab ver.`,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      const match = String(data?.reply ?? '').match(/\d+/);
+      const score = match ? Math.min(100, Math.max(0, Number(match[0]))) : null;
+      if (score != null) {
+        await supabase.from('clients').update({ ai_icp_fit: score }).eq('id', client.id);
+        qc.invalidateQueries({ queryKey: ['clients'] });
+      }
+    } catch (e) {
+      setIcpErr((e as Error).message);
+    } finally {
+      setIcpLoading(false);
+    }
+  }
+
   return (
-    <dl className="text-body space-y-2">
-      <Row label="Mərhələ" value={CLIENT_STAGE_LABEL[client.pipeline_stage]} />
-      <Row label="Etibar %" value={`${client.confidence_pct}%`} />
-      <Row label="Dəyər" value={formatAZN(client.expected_value)} />
-      <Row label="Email" value={client.email ?? '—'} />
-      <Row label="Telefon" value={client.phone ?? '—'} />
-      <Row label="Son əlaqə" value={relativeTime(client.last_interaction_at)} />
-      <Row
-        label="ICP uyğunluğu"
-        value={client.ai_icp_fit != null ? `${Math.round(client.ai_icp_fit)}%` : '—'}
-      />
-    </dl>
+    <div>
+      <dl className="text-body space-y-2">
+        <Row label="Mərhələ" value={CLIENT_STAGE_LABEL[client.pipeline_stage]} />
+        <Row label="Etibar %" value={`${client.confidence_pct}%`} />
+        <Row label="Dəyər" value={formatAZN(client.expected_value)} />
+        <Row label="Email" value={client.email ?? '—'} />
+        <Row label="Telefon" value={client.phone ?? '—'} />
+        <Row label="Son əlaqə" value={relativeTime(client.last_interaction_at)} />
+        <Row
+          label="ICP uyğunluğu"
+          value={client.ai_icp_fit != null ? `${Math.round(client.ai_icp_fit)}%` : '—'}
+        />
+      </dl>
+      <div className="mt-4">
+        <button
+          className="btn-outline"
+          disabled={icpLoading}
+          onClick={runIcp}
+        >
+          {icpLoading ? 'AI analiz edir…' : 'AI analiz (ICP)'}
+        </button>
+        {icpErr ? <p className="text-meta mt-1" style={{ color: '#B91C1C' }}>{icpErr}</p> : null}
+      </div>
+    </div>
   );
 }
 
