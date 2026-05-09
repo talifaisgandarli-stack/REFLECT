@@ -6,12 +6,13 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
+import { useT } from '@/lib/i18n';
 
 const RATING_DIMENSIONS = [
-  { key: 'communication', label: 'Ünsiyyət' },
-  { key: 'design_quality', label: 'Dizayn keyfiyyəti' },
-  { key: 'timeliness', label: 'Vaxtlılıq' },
-  { key: 'value', label: 'Dəyər (qiymət/keyfiyyət)' },
+  'communication',
+  'design_quality',
+  'timeliness',
+  'value',
 ] as const;
 
 type SurveyRow = {
@@ -27,6 +28,7 @@ type SurveyRow = {
 };
 
 export function SurveyPublicPage() {
+  const t = useT();
   const { token = '' } = useParams();
   const [survey, setSurvey] = useState<SurveyRow | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,7 +51,7 @@ export function SurveyPublicPage() {
       }
       const row = (data as SurveyRow[] | null)?.[0] ?? null;
       if (!row) {
-        setError('Sorğu tapılmadı.');
+        setError(t('survey.not_found'));
       } else {
         setSurvey(row);
         if (row.responded_at) setSubmitted(true);
@@ -59,6 +61,7 @@ export function SurveyPublicPage() {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   async function submit() {
@@ -82,34 +85,34 @@ export function SurveyPublicPage() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-12">
       <div className="card w-full max-w-lg" style={{ padding: 32 }}>
-        <h1 className="text-h1">Reflect — sorğu</h1>
+        <h1 className="text-h1">{t('survey.title')}</h1>
         <p className="text-meta mt-1" style={{ color: 'var(--text-muted)' }}>
-          Cavablarınız yalnız studiya tərəfindən görünür.
+          {t('survey.privacy')}
         </p>
 
         {loading ? (
-          <p className="text-body mt-6">Yüklənir…</p>
+          <p className="text-body mt-6">{t('common.loading')}</p>
         ) : error ? (
           <p className="text-body mt-6" style={{ color: 'var(--state-error)' }}>
             {error}
           </p>
         ) : submitted ? (
           <div className="mt-6">
-            <h2 className="text-h2">Təşəkkürlər! ✓</h2>
+            <h2 className="text-h2">{t('survey.thanks_title')}</h2>
             <p className="text-body mt-2" style={{ color: 'var(--text-soft)' }}>
-              Cavabınız qeydə alındı. Bunu bağlaya bilərsiniz.
+              {t('survey.thanks_body')}
             </p>
           </div>
         ) : survey ? (
           <div className="mt-6 space-y-5">
             <div>
               <label className="block">
-                <span className="text-h4 block">NPS — bizi tövsiyə edərsinizmi?</span>
+                <span className="text-h4 block">{t('survey.nps.title')}</span>
                 <span
                   className="text-meta block mt-1"
                   style={{ color: 'var(--text-muted)' }}
                 >
-                  0 (heç vaxt) – 10 (mütləq)
+                  {t('survey.nps.scale')}
                 </span>
               </label>
               <div className="flex flex-wrap gap-2 mt-3">
@@ -135,51 +138,54 @@ export function SurveyPublicPage() {
             </div>
 
             <div>
-              <h3 className="text-h4 mb-2">Aspektlər (1-5 ulduz)</h3>
+              <h3 className="text-h4 mb-2">{t('survey.aspects.title')}</h3>
               <div className="space-y-3">
-                {RATING_DIMENSIONS.map((d) => (
-                  <div key={d.key} className="flex items-center justify-between gap-3">
-                    <span className="text-body">{d.label}</span>
-                    <div className="flex gap-1">
-                      {[1, 2, 3, 4, 5].map((s) => (
-                        <button
-                          key={s}
-                          type="button"
-                          aria-label={`${d.label} ${s} ulduz`}
-                          onClick={() =>
-                            setRatings((prev) => ({ ...prev, [d.key]: s }))
-                          }
-                          style={{
-                            width: 28,
-                            height: 28,
-                            border: 'none',
-                            background: 'transparent',
-                            cursor: 'pointer',
-                            color:
-                              (ratings[d.key] ?? 0) >= s
-                                ? 'var(--brand-action)'
-                                : 'var(--line)',
-                            fontSize: 22,
-                            lineHeight: '28px',
-                          }}
-                        >
-                          ★
-                        </button>
-                      ))}
+                {RATING_DIMENSIONS.map((key) => {
+                  const label = t(`survey.aspect.${key}`);
+                  return (
+                    <div key={key} className="flex items-center justify-between gap-3">
+                      <span className="text-body">{label}</span>
+                      <div className="flex gap-1">
+                        {[1, 2, 3, 4, 5].map((s) => (
+                          <button
+                            key={s}
+                            type="button"
+                            aria-label={t('survey.star_aria', { aspect: label, n: s })}
+                            onClick={() =>
+                              setRatings((prev) => ({ ...prev, [key]: s }))
+                            }
+                            style={{
+                              width: 28,
+                              height: 28,
+                              border: 'none',
+                              background: 'transparent',
+                              cursor: 'pointer',
+                              color:
+                                (ratings[key] ?? 0) >= s
+                                  ? 'var(--brand-action)'
+                                  : 'var(--line)',
+                              fontSize: 22,
+                              lineHeight: '28px',
+                            }}
+                          >
+                            ★
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
             <label className="block">
-              <span className="text-h4 block mb-2">Şərh (könüllü)</span>
+              <span className="text-h4 block mb-2">{t('survey.comment.title')}</span>
               <textarea
                 className="input"
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 style={{ minHeight: 120, padding: '12px 14px' }}
-                placeholder="Bizə daha yaxşı olmaq üçün nə tövsiyə edərdiniz?"
+                placeholder={t('survey.comment.placeholder')}
               />
             </label>
 
@@ -189,7 +195,7 @@ export function SurveyPublicPage() {
               onClick={submit}
               disabled={submitting}
             >
-              {submitting ? 'Göndərilir…' : 'Cavabı göndər'}
+              {submitting ? t('survey.submitting') : t('survey.submit')}
             </button>
           </div>
         ) : null}
