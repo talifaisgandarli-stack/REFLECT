@@ -46,39 +46,45 @@ export function ProjectDocuments({ projectId }: Props) {
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  async function uploadFile(file: File) {
-    setUploading(true);
+  async function uploadFiles(files: File[]) {
+    if (files.length === 0) return;
+    setProgress({ done: 0, total: files.length });
     setUploadError(null);
+    let i = 0;
     try {
-      const safe = file.name.replace(/[^A-Za-z0-9._-]+/g, '_');
-      const path = `${projectId}/${Date.now()}-${safe}`;
-      const { error: upErr } = await supabase.storage
-        .from(STORAGE_BUCKET)
-        .upload(path, file, {
-          cacheControl: '3600',
-          upsert: false,
-          contentType: file.type || 'application/octet-stream',
+      for (const file of files) {
+        const safe = file.name.replace(/[^A-Za-z0-9._-]+/g, '_');
+        const path = `${projectId}/${Date.now()}-${i}-${safe}`;
+        const { error: upErr } = await supabase.storage
+          .from(STORAGE_BUCKET)
+          .upload(path, file, {
+            cacheControl: '3600',
+            upsert: false,
+            contentType: file.type || 'application/octet-stream',
+          });
+        if (upErr) throw upErr;
+
+        const { error: insErr } = await supabase.from('project_documents').insert({
+          project_id: projectId,
+          title: file.name,
+          category: null,
+          source: 'upload',
+          storage_path: path,
+          created_by: profile?.id ?? null,
         });
-      if (upErr) throw upErr;
-
-      const { error: insErr } = await supabase.from('project_documents').insert({
-        project_id: projectId,
-        title: file.name,
-        category: null,
-        source: 'upload',
-        storage_path: path,
-        created_by: profile?.id ?? null,
-      });
-      if (insErr) throw insErr;
-
+        if (insErr) throw insErr;
+        i += 1;
+        setProgress({ done: i, total: files.length });
+      }
       qc.invalidateQueries({ queryKey: ['project-docs', projectId] });
     } catch (e) {
       setUploadError(e instanceof Error ? e.message : 'Yükləmə alınmadı');
     } finally {
-      setUploading(false);
+      // Defer clearing the progress chip so the user sees the final "N/N"
+      setTimeout(() => setProgress(null), 1200);
       if (fileRef.current) fileRef.current.value = '';
     }
   }
@@ -144,29 +150,48 @@ export function ProjectDocuments({ projectId }: Props) {
           Sənədlər — Drive linki, faktiki yüklənmiş fayllar və paylaşım
           tokenləri burada toplanır.
         </p>
-        <span className="flex flex-wrap gap-2">
+        <span className="flex flex-wrap gap-2 items-center">
           <input
             ref={fileRef}
             type="file"
+            multiple
             className="sr-only"
             onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) uploadFile(f);
+              const fs = Array.from(e.target.files ?? []);
+              if (fs.length > 0) uploadFiles(fs);
             }}
           />
           <button
             type="button"
             className="btn-outline"
             onClick={() => fileRef.current?.click()}
-            disabled={uploading}
+            disabled={!!progress}
           >
-            {uploading ? 'Yüklənir…' : 'Fayl yüklə'}
+            {progress
+              ? `Yüklənir ${progress.done}/${progress.total}…`
+              : 'Fayl(lar) yüklə'}
           </button>
           <button className="btn-primary" onClick={() => setAdding(true)}>
             + Drive linki
           </button>
         </span>
       </div>
+      {progress ? (
+        <div
+          aria-label="Yükləmə gedişatı"
+          className="rounded-full overflow-hidden"
+          style={{ background: 'var(--surface-mist)', height: 6, maxWidth: 320 }}
+        >
+          <div
+            style={{
+              width: `${Math.round((progress.done / progress.total) * 100)}%`,
+              height: '100%',
+              background: 'var(--brand-action)',
+              transition: 'width var(--dur-base) var(--ease-out)',
+            }}
+          />
+        </div>
+      ) : null}
       {uploadError ? (
         <p className="text-meta" style={{ color: '#B91C1C' }}>
           {uploadError}
