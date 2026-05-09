@@ -15,6 +15,7 @@ import {
   renderTemplate,
 } from '@/lib/templates';
 import { downloadCsv, printSection } from '@/lib/export';
+import { buildRtf, downloadRtf } from '@/lib/rtf';
 
 type TemplateRow = {
   id: string;
@@ -318,7 +319,22 @@ function TemplateEditor({
         >
           Sil
         </button>
-        <span className="flex gap-2">
+        <span className="flex gap-2 flex-wrap">
+          <button
+            type="button"
+            className="btn-outline"
+            onClick={() => {
+              const rtf = buildRtf({
+                title: name.trim() || 'Şablon',
+                body: renderTemplate(body, sampleCtx),
+                firmName: 'Reflect',
+              });
+              downloadRtf(`reflect-${(name || 'sablon').replace(/\s+/g, '_')}`, rtf);
+            }}
+            title="Word/Pages-də açılan RTF faylı"
+          >
+            Word (.rtf)
+          </button>
           <button
             type="button"
             className="btn-outline"
