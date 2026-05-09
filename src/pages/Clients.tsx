@@ -18,6 +18,8 @@ import {
 } from '@/lib/labels';
 import type { Client, ClientPipelineStage, InteractionType } from '@/types/db';
 import { formatAZN, relativeTime } from '@/lib/format';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 
 type DragPayload = { id: string; from: ClientPipelineStage };
@@ -202,6 +204,26 @@ function ClientPanel({ client, onClose }: { client: Client; onClose: () => void 
 }
 
 function OverviewTab({ client }: { client: Client }) {
+  const qc = useQueryClient();
+  const refresh = useMutation({
+    // REQ-CRM-04: trigger MIRAI ICP enrichment (24h cache lives server-side).
+    mutationFn: async () => {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      const res = await fetch('/api/mirai/icp', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ client_id: client.id }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['clients'] }),
+  });
+
   return (
     <dl className="text-body space-y-2">
       <Row label="Mərhələ" value={CLIENT_STAGE_LABEL[client.pipeline_stage]} />
@@ -210,10 +232,21 @@ function OverviewTab({ client }: { client: Client }) {
       <Row label="Email" value={client.email ?? '—'} />
       <Row label="Telefon" value={client.phone ?? '—'} />
       <Row label="Son əlaqə" value={relativeTime(client.last_interaction_at)} />
-      <Row
-        label="ICP uyğunluğu"
-        value={client.ai_icp_fit != null ? `${Math.round(client.ai_icp_fit)}%` : '—'}
-      />
+      <div className="flex justify-between items-center">
+        <dt style={{ color: 'var(--text-muted)' }}>ICP uyğunluğu</dt>
+        <dd className="flex items-center gap-2">
+          <span>{client.ai_icp_fit != null ? `${Math.round(client.ai_icp_fit)}%` : '—'}</span>
+          <button
+            type="button"
+            className="chip"
+            disabled={refresh.isPending}
+            onClick={() => refresh.mutate()}
+            title="MIRAI ilə yenilə (24 saat keş)"
+          >
+            {refresh.isPending ? '…' : '↻'}
+          </button>
+        </dd>
+      </div>
     </dl>
   );
 }

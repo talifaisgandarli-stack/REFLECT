@@ -6,6 +6,7 @@ import { formatAZN, formatDate, bakuMonthKey, bakuCurrentMonthRange } from '@/li
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { IncomeExpenseModal, type FinanceKind } from '@/components/IncomeExpenseModal';
 import { MarkPaidModal } from '@/components/MarkPaidModal';
+import { ProjectPnL } from '@/components/ProjectPnL';
 
 const TABS = ['Cash Cockpit', 'P&L', 'Outsource', 'Xərclər', 'Debitor', 'Forecast'] as const;
 
@@ -23,6 +24,16 @@ export function FinancePage() {
   const [tab, setTab] = useState<(typeof TABS)[number]>('Cash Cockpit');
   const [modal, setModal] = useState<FinanceKind | null>(null);
   const [markPaid, setMarkPaid] = useState<Receivable | null>(null);
+  const [pnlProjectId, setPnlProjectId] = useState<string>('');
+
+  const projects = useQuery({
+    queryKey: ['fin', 'project-list'],
+    queryFn: async () =>
+      ((await supabase.from('projects').select('id, name').order('name')).data ?? []) as Array<{
+        id: string;
+        name: string;
+      }>,
+  });
 
   const incomes = useQuery({
     queryKey: ['fin', 'incomes'],
@@ -226,9 +237,104 @@ export function FinancePage() {
         </div>
       ) : null}
 
-      {tab === 'P&L' || tab === 'Outsource' || tab === 'Xərclər' ? (
+      {tab === 'P&L' ? (
+        <div className="space-y-3">
+          <div className="card flex items-center gap-3">
+            <label className="text-meta" style={{ color: 'var(--text-muted)' }}>
+              Layihə:
+            </label>
+            <select
+              value={pnlProjectId}
+              onChange={(e) => setPnlProjectId(e.target.value)}
+              className="text-body"
+              style={{
+                background: 'var(--surface)',
+                border: '1px solid var(--line)',
+                borderRadius: 6,
+                padding: '6px 10px',
+              }}
+            >
+              <option value="">— seç —</option>
+              {(projects.data ?? []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          {pnlProjectId ? (
+            <ProjectPnL projectId={pnlProjectId} />
+          ) : (
+            <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
+              P&L baxışı üçün layihə seçin.
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {tab === 'Outsource' ? (
         <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
-          {tab} cədvəli — v1.5-də.
+          Bu görünüş ayrıca <a href="/podrat" style={{ color: 'var(--brand-text)' }}>/podrat</a> səhifəsindədir.
+        </div>
+      ) : null}
+
+      {tab === 'Xərclər' ? (
+        <div className="card overflow-x-auto">
+          <table className="w-full text-body">
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--line)' }}>
+                {['Tarix', 'Kateqoriya', 'Vendor', 'Qeyd', 'Məbləğ'].map((h) => (
+                  <th
+                    key={h}
+                    className="text-left py-3 px-3 text-meta"
+                    style={{
+                      color: 'var(--text-muted)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                    }}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {((expenses.data ?? []) as Array<{
+                id: string;
+                category: string | null;
+                vendor: string | null;
+                note: string | null;
+                amount: number;
+                occurred_at: string | null;
+              }>).map((e) => (
+                <tr key={e.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                  <td className="py-3 px-3">{formatDate(e.occurred_at)}</td>
+                  <td className="py-3 px-3">{e.category ?? '—'}</td>
+                  <td className="py-3 px-3">{e.vendor ?? '—'}</td>
+                  <td className="py-3 px-3 text-meta" style={{ color: 'var(--text-muted)' }}>
+                    {e.note ?? ''}
+                  </td>
+                  <td
+                    className="py-3 px-3 text-right"
+                    style={{ fontVariantNumeric: 'tabular-nums' }}
+                  >
+                    {formatAZN(e.amount)}
+                  </td>
+                </tr>
+              ))}
+              {(expenses.data ?? []).length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="py-6 text-center text-meta"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    Xərc yoxdur.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
         </div>
       ) : null}
 

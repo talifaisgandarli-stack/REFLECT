@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
 import { NotificationPreferencesPage } from './NotificationPreferences';
+import { supabase } from '@/lib/supabase';
 
 const NAV = [
   { to: 'umumi', label: 'Ümumi' },
@@ -60,8 +63,142 @@ function GeneralSettings() {
 function TemplatesSettings() {
   return <p className="text-body">Sənəd şablonları (kontrakt, akt, faktura) — v1.5-də.</p>;
 }
+/**
+ * Bilik Bazası — PRD §10.3 + §7.4.
+ * Text-paste ingest path. PDF parsing + embeddings are gaps in PRD §3.1
+ * (no parser/embedding model approved); retrieval works today via FTS index.
+ */
 function KnowledgeBaseSettings() {
-  return <p className="text-body">Yüklənmiş PDF-lər və MIRAI RAG mənbələri — burada idarə olunur.</p>;
+  const qc = useQueryClient();
+  const [source, setSource] = useState('');
+  const [text, setText] = useState('');
+  const [status, setStatus] = useState<string | null>(null);
+
+  const sources = useQuery({
+    queryKey: ['kb', 'sources'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('knowledge_base')
+        .select('source_pdf, chunk_index, uploaded_at')
+        .order('uploaded_at', { ascending: false })
+        .limit(500);
+      const map = new Map<string, { count: number; uploaded_at: string }>();
+      for (const r of (data ?? []) as Array<{
+        source_pdf: string;
+        uploaded_at: string;
+      }>) {
+        const cur = map.get(r.source_pdf);
+        if (!cur) map.set(r.source_pdf, { count: 1, uploaded_at: r.uploaded_at });
+        else cur.count++;
+      }
+      return Array.from(map.entries()).map(([source_pdf, v]) => ({
+        source_pdf,
+        ...v,
+      }));
+    },
+  });
+
+  const ingest = useMutation({
+    mutationFn: async () => {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      const res = await fetch('/api/knowledge/ingest', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ source, text }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: (j: { chunks: number }) => {
+      setStatus(`Əlavə edildi · ${j.chunks} hissə`);
+      setText('');
+      setSource('');
+      qc.invalidateQueries({ queryKey: ['kb', 'sources'] });
+    },
+    onError: (e: Error) => setStatus(`Xəta: ${e.message}`),
+  });
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h3 className="text-h3 mb-3">Yeni mənbə əlavə et</h3>
+        <p className="text-meta mb-3" style={{ color: 'var(--text-muted)' }}>
+          Mətni yapışdır — server abzaslara bölüb knowledge_base-ə əlavə edəcək.
+          PDF emalı və embedding PRD §3.1-də təsdiqlənmiş tech stack-də yoxdur,
+          ona görə retrieval hələlik FTS (migration 0013) üzərindən işləyir.
+        </p>
+        <label className="block mb-2">
+          <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+            Mənbə adı (PDF / sənəd başlığı)
+          </span>
+          <input
+            className="input mt-1 max-w-md"
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+            placeholder="məs. Əmək Məcəlləsi 2024.pdf"
+          />
+        </label>
+        <label className="block">
+          <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+            Mətn
+          </span>
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={10}
+            className="w-full text-body mt-1"
+            style={{
+              background: 'var(--surface)',
+              border: '1px solid var(--line)',
+              borderRadius: 6,
+              padding: 10,
+            }}
+          />
+        </label>
+        <div className="flex items-center gap-3 mt-3">
+          <button
+            className="btn-primary"
+            disabled={!source.trim() || !text.trim() || ingest.isPending}
+            onClick={() => ingest.mutate()}
+          >
+            {ingest.isPending ? '…' : 'Yüklə'}
+          </button>
+          {status ? (
+            <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+              {status}
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-h3 mb-3">Mövcud mənbələr</h3>
+        {(sources.data ?? []).length === 0 ? (
+          <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+            Hələ heç bir sənəd əlavə edilməyib.
+          </p>
+        ) : (
+          <ul className="divide-y" style={{ borderColor: 'var(--line-soft)' }}>
+            {(sources.data ?? []).map((s) => (
+              <li
+                key={s.source_pdf}
+                className="py-2 flex items-center justify-between gap-3"
+              >
+                <span className="text-body truncate">{s.source_pdf}</span>
+                <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                  {s.count} hissə
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
 }
 function NotificationsSettings() {
   return <NotificationPreferencesPage />;

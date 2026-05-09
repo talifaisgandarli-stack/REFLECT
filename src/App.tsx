@@ -27,6 +27,7 @@ import { ContentPlanPage } from '@/pages/company/ContentPlan';
 import { SettingsPage } from '@/pages/Settings';
 import { MiraiPage } from '@/pages/Mirai';
 import { TelegramLinkPage } from '@/pages/TelegramLink';
+import { PublicSurveyPage } from '@/pages/PublicSurvey';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { session, hydrated } = useAuth();
@@ -50,6 +51,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      {/* Public retrospective survey (no auth) — REQ-CRM-07 */}
+      <Route path="/sorğu/:token" element={<PublicSurveyPage />} />
       <Route
         element={
           <RequireAuth>
