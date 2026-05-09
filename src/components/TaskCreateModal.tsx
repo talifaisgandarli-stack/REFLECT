@@ -12,6 +12,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { useProjects } from '@/lib/hooks';
+import { useT } from '@/lib/i18n';
 import { EXPERTISE_SUBTASKS, computeWorkload } from '@/lib/workload';
 import type { Task, TaskStatus } from '@/types/db';
 
@@ -20,26 +21,14 @@ type Props = { onClose: () => void };
 const DURATION_UNITS = ['hours', 'days'] as const;
 type DurationUnit = (typeof DURATION_UNITS)[number];
 
-const DURATION_LABEL: Record<DurationUnit, string> = {
-  hours: 'saat',
-  days: 'gün',
-};
-
 const STATUS_OPTIONS: TaskStatus[] = ['idea', 'queued', 'active'];
-const STATUS_LABEL: Record<TaskStatus, string> = {
-  idea: 'İdeyalar',
-  queued: 'Başlanmayıb',
-  active: 'İcrada',
-  review: 'Yoxlamada',
-  expert: 'Ekspertizada',
-  done: 'Tamamlandı',
-  cancelled: 'Ləğv edilmiş',
-};
 
 export function TaskCreateModal({ onClose }: Props) {
+  const t = useT();
   const { profile } = useAuth();
   const projects = useProjects();
   const qc = useQueryClient();
+  const durationLabel = (u: DurationUnit) => t(`task.create.duration.${u}`);
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -61,7 +50,7 @@ export function TaskCreateModal({ onClose }: Props) {
   const create = useMutation({
     mutationFn: async () => {
       const trimmed = title.trim();
-      if (!trimmed) throw new Error('Başlıq tələb olunur');
+      if (!trimmed) throw new Error(t('task.create.title_required'));
       const payload: Partial<Task> = {
         title: trimmed,
         description: description.trim() || null,
@@ -103,7 +92,7 @@ export function TaskCreateModal({ onClose }: Props) {
   return (
     <div
       role="dialog"
-      aria-label="Yeni tapşırıq"
+      aria-label={t('task.create.title')}
       className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8 overflow-y-auto"
       style={{ background: 'rgba(14,22,17,0.4)' }}
       onClick={onClose}
@@ -117,38 +106,38 @@ export function TaskCreateModal({ onClose }: Props) {
         }}
         style={{ padding: 24 }}
       >
-        <h2 className="text-h2">Yeni tapşırıq</h2>
+        <h2 className="text-h2">{t('task.create.title')}</h2>
 
         <div className="mt-4 space-y-3">
-          <Field label="Başlıq" required>
+          <Field label={t('task.create.title_field')} required>
             <input
               className="input"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Nə görüləcək…"
+              placeholder={t('task.create.placeholder')}
               autoFocus
               required
             />
           </Field>
 
-          <Field label="Təsvir (könüllü)">
+          <Field label={t('task.create.description_field')}>
             <textarea
               className="input"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               style={{ minHeight: 88, padding: '12px 14px' }}
-              placeholder="Detal, kontekst, link…"
+              placeholder={t('task.create.description_placeholder')}
             />
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Layihə">
+            <Field label={t('task.create.project_field')}>
               <select
                 className="input"
                 value={projectId}
                 onChange={(e) => setProjectId(e.target.value)}
               >
-                <option value="">— layihəsiz —</option>
+                <option value="">{t('task.create.project_none')}</option>
                 {(projects.data ?? []).map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
@@ -156,7 +145,7 @@ export function TaskCreateModal({ onClose }: Props) {
                 ))}
               </select>
             </Field>
-            <Field label="Status">
+            <Field label={t('task.create.status_field')}>
               <select
                 className="input"
                 value={status}
@@ -164,7 +153,7 @@ export function TaskCreateModal({ onClose }: Props) {
               >
                 {STATUS_OPTIONS.map((s) => (
                   <option key={s} value={s}>
-                    {STATUS_LABEL[s]}
+                    {t(`task.status.${s}`)}
                   </option>
                 ))}
               </select>
@@ -172,7 +161,7 @@ export function TaskCreateModal({ onClose }: Props) {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Başlama">
+            <Field label={t('task.create.start_field')}>
               <input
                 type="date"
                 className="input"
@@ -180,7 +169,7 @@ export function TaskCreateModal({ onClose }: Props) {
                 onChange={(e) => setStartDate(e.target.value)}
               />
             </Field>
-            <Field label="Bitmə tarixi">
+            <Field label={t('task.create.deadline_field')}>
               <input
                 type="date"
                 className="input"
@@ -192,7 +181,7 @@ export function TaskCreateModal({ onClose }: Props) {
           </div>
 
           <div className="grid grid-cols-3 gap-3">
-            <Field label="Müddət">
+            <Field label={t('task.create.duration_field')}>
               <input
                 type="number"
                 min={0}
@@ -203,7 +192,7 @@ export function TaskCreateModal({ onClose }: Props) {
                 style={{ fontVariantNumeric: 'tabular-nums' }}
               />
             </Field>
-            <Field label="Vahid">
+            <Field label={t('task.create.unit_field')}>
               <select
                 className="input"
                 value={unit}
@@ -211,12 +200,12 @@ export function TaskCreateModal({ onClose }: Props) {
               >
                 {DURATION_UNITS.map((u) => (
                   <option key={u} value={u}>
-                    {DURATION_LABEL[u]}
+                    {durationLabel(u)}
                   </option>
                 ))}
               </select>
             </Field>
-            <Field label={`Risk +${riskBuffer}%`}>
+            <Field label={t('task.create.risk_label', { pct: riskBuffer })}>
               <input
                 type="range"
                 min={0}
@@ -224,7 +213,7 @@ export function TaskCreateModal({ onClose }: Props) {
                 step={5}
                 value={riskBuffer}
                 onChange={(e) => setRiskBuffer(Number(e.target.value))}
-                aria-label="Risk buffer"
+                aria-label={t('task.create.risk_aria')}
               />
             </Field>
           </div>
@@ -238,8 +227,11 @@ export function TaskCreateModal({ onClose }: Props) {
                 fontVariantNumeric: 'tabular-nums',
               }}
             >
-              İş yükü ≈ <strong>{workloadPreview}</strong> {DURATION_LABEL[unit]}
-              <span className="opacity-60"> · DB triggerdə təsdiq olunacaq</span>
+              {t('task.create.workload_preview', {
+                value: workloadPreview,
+                unit: durationLabel(unit),
+              })}
+              <span className="opacity-60"> · {t('task.create.workload_note')}</span>
             </div>
           ) : null}
 
@@ -249,7 +241,7 @@ export function TaskCreateModal({ onClose }: Props) {
               checked={assignSelf}
               onChange={(e) => setAssignSelf(e.target.checked)}
             />
-            Mənə təyin et
+            {t('task.create.assign_self')}
           </label>
 
           <label className="flex items-center gap-2 text-body cursor-pointer">
@@ -258,7 +250,7 @@ export function TaskCreateModal({ onClose }: Props) {
               checked={withExpertise}
               onChange={(e) => setWithExpertise(e.target.checked)}
             />
-            Ekspertiza alt-tapşırıqlarını əlavə et (5 ədəd)
+            {t('task.create.expertise_subtasks')}
           </label>
         </div>
 
@@ -270,10 +262,10 @@ export function TaskCreateModal({ onClose }: Props) {
 
         <div className="flex justify-end gap-2 mt-6">
           <button type="button" className="btn-outline" onClick={onClose} disabled={create.isPending}>
-            Geri
+            {t('common.back')}
           </button>
           <button type="submit" className="btn-primary" disabled={create.isPending || !title.trim()}>
-            {create.isPending ? 'Yaradılır…' : 'Yarat'}
+            {create.isPending ? t('task.create.saving') : t('task.create.submit')}
           </button>
         </div>
       </form>
