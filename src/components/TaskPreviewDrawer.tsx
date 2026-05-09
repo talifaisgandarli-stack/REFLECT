@@ -265,7 +265,7 @@ export function TaskPreviewDrawer({ taskId, onClose }: Props) {
                 className="btn-primary"
                 onClick={() => {
                   onClose();
-                  nav(`/tapşırıqlar#task-${t.id}`);
+                  nav(`/tapşırıqlar/${t.id}`);
                 }}
               >
                 {tr('task.comments.open_full')}
