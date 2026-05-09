@@ -29,6 +29,7 @@ import { TelegramLinkPage } from '@/pages/TelegramLink';
 import { SurveyPublicPage } from '@/pages/SurveyPublic';
 import { ReportsPage } from '@/pages/Reports';
 import { AuditLogPage } from '@/pages/AuditLog';
+import { MiraiCostPage } from '@/pages/MiraiCost';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { session, hydrated } = useAuth();
@@ -102,6 +103,16 @@ export default function App() {
           element={
             <RequireAdmin>
               <AuditLogPage />
+            </RequireAdmin>
+          }
+        />
+
+        {/* MIRAI cost dashboard (admin) */}
+        <Route
+          path="/mirai/cost"
+          element={
+            <RequireAdmin>
+              <MiraiCostPage />
             </RequireAdmin>
           }
         />
