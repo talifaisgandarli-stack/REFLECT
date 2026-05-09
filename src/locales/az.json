@@ -440,6 +440,9 @@
   "task.detail.no_description": "Təsvir əlavə olunmayıb.",
   "task.detail.facts_title": "Əsas məlumat",
   "task.detail.subtasks_title": "Alt-tapşırıqlar ({count})",
+  "task.detail.subtasks_empty": "Hələ alt-tapşırıq yoxdur.",
+  "task.detail.subtasks_placeholder": "Yeni alt-tapşırıq başlığı…",
+  "task.detail.subtasks_add": "+ Alt-tapşırıq",
 
   "outsource.modal.title": "+ Outsource sifarişi",
   "outsource.modal.dialog_label": "Yeni outsource sifarişi",

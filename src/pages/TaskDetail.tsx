@@ -12,8 +12,8 @@
  * 131. RLS restricts what the user can see at the DB layer.
  */
 import { Link, useParams } from 'react-router-dom';
-import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { PageHead } from '@/components/PageHead';
 import { StatusChip } from '@/components/StatusChip';
@@ -21,7 +21,8 @@ import { TaskCommentInput } from '@/components/TaskCommentInput';
 import { renderCommentSegments } from '@/lib/commentMentions';
 import { formatDate, relativeTime } from '@/lib/format';
 import { useT } from '@/lib/i18n';
-import type { Task } from '@/types/db';
+import { useAuth } from '@/lib/store';
+import type { Task, TaskStatus } from '@/types/db';
 
 type CommentRow = {
   id: string;
@@ -32,7 +33,10 @@ type CommentRow = {
 
 export function TaskDetailPage() {
   const t = useT();
+  const qc = useQueryClient();
+  const { profile } = useAuth();
   const { id = '' } = useParams();
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
 
   const task = useQuery({
     queryKey: ['task-detail', id],
@@ -74,6 +78,28 @@ export function TaskDetailPage() {
         .order('created_at', { ascending: true });
       if (error) throw error;
       return (data ?? []) as Task[];
+    },
+  });
+
+  const addSubtask = useMutation({
+    mutationFn: async () => {
+      const trimmed = newSubtaskTitle.trim();
+      if (!trimmed || !task.data) return;
+      const { error } = await supabase.from('tasks').insert({
+        title: trimmed,
+        status: 'queued' as TaskStatus,
+        project_id: task.data.project_id,
+        parent_task_id: task.data.id,
+        task_level: (task.data.task_level ?? 0) + 1,
+        is_expertise_subtask: false,
+        assignee_ids: [],
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setNewSubtaskTitle('');
+      qc.invalidateQueries({ queryKey: ['task-detail', id, 'subtasks'] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
     },
   });
 
@@ -176,19 +202,23 @@ export function TaskDetailPage() {
         </aside>
       </div>
 
-      {(subtasks.data ?? []).length > 0 ? (
-        <section className="mt-6">
-          <h3
-            className="text-meta mb-2"
-            style={{
-              color: 'var(--text-muted)',
-              letterSpacing: '0.05em',
-              textTransform: 'uppercase',
-            }}
-          >
-            {t('task.detail.subtasks_title', { count: subtasks.data?.length ?? 0 })}
-          </h3>
-          <ul className="card divide-y" style={{ borderColor: 'var(--line-soft)' }}>
+      <section className="mt-6">
+        <h3
+          className="text-meta mb-2"
+          style={{
+            color: 'var(--text-muted)',
+            letterSpacing: '0.05em',
+            textTransform: 'uppercase',
+          }}
+        >
+          {t('task.detail.subtasks_title', { count: subtasks.data?.length ?? 0 })}
+        </h3>
+        {(subtasks.data ?? []).length === 0 ? (
+          <p className="text-meta mb-2" style={{ color: 'var(--text-muted)' }}>
+            {t('task.detail.subtasks_empty')}
+          </p>
+        ) : (
+          <ul className="card divide-y mb-2" style={{ borderColor: 'var(--line-soft)' }}>
             {(subtasks.data ?? []).map((sub) => (
               <li key={sub.id} className="py-3 flex items-center justify-between gap-3">
                 <Link
@@ -211,8 +241,38 @@ export function TaskDetailPage() {
               </li>
             ))}
           </ul>
-        </section>
-      ) : null}
+        )}
+        {profile?.id ? (
+          <form
+            className="flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              addSubtask.mutate();
+            }}
+          >
+            <input
+              className="input flex-1"
+              value={newSubtaskTitle}
+              onChange={(e) => setNewSubtaskTitle(e.target.value)}
+              placeholder={t('task.detail.subtasks_placeholder')}
+            />
+            <button
+              type="submit"
+              className="btn-outline"
+              disabled={addSubtask.isPending || !newSubtaskTitle.trim()}
+            >
+              {addSubtask.isPending
+                ? t('common.loading')
+                : t('task.detail.subtasks_add')}
+            </button>
+          </form>
+        ) : null}
+        {addSubtask.error ? (
+          <p className="text-meta mt-2" style={{ color: 'var(--state-error)' }}>
+            {(addSubtask.error as Error).message}
+          </p>
+        ) : null}
+      </section>
 
       <section className="mt-6">
         <h3

@@ -440,6 +440,9 @@
   "task.detail.no_description": "No description.",
   "task.detail.facts_title": "Key facts",
   "task.detail.subtasks_title": "Subtasks ({count})",
+  "task.detail.subtasks_empty": "No subtasks yet.",
+  "task.detail.subtasks_placeholder": "New subtask title…",
+  "task.detail.subtasks_add": "+ Subtask",
 
   "outsource.modal.title": "+ Outsource order",
   "outsource.modal.dialog_label": "New outsource order",
