@@ -12,6 +12,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { formatDate } from '@/lib/format';
+import { useT } from '@/lib/i18n';
+
+type Translator = ReturnType<typeof useT>;
 
 type Doc = {
   id: string;
@@ -46,18 +49,19 @@ const ACCEPT_RE =
 const ACCEPT_ATTR =
   '.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.webp,.svg,.zip,.json,.rtf';
 
-function describeFileError(file: File): string | null {
+function describeFileError(file: File, t: Translator): string | null {
   if (file.size > MAX_BYTES) {
     const mb = (file.size / 1024 / 1024).toFixed(1);
-    return `${file.name}: ${mb}MB → 25MB həddini aşır`;
+    return t('docs.upload.too_big', { name: file.name, mb });
   }
   if (file.type && !ACCEPT_RE.test(file.type)) {
-    return `${file.name}: ${file.type} dəstəklənmir`;
+    return t('docs.upload.bad_type', { name: file.name, type: file.type });
   }
   return null;
 }
 
 export function ProjectDocuments({ projectId }: Props) {
+  const t = useT();
   const { profile } = useAuth();
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
@@ -70,7 +74,7 @@ export function ProjectDocuments({ projectId }: Props) {
     // Pre-flight: size + content-type. Reject the whole batch if any file
     // fails — partial uploads are confusing when the user dropped 5 docs
     // expecting all-or-nothing.
-    const errors = files.map(describeFileError).filter(Boolean) as string[];
+    const errors = files.map((f) => describeFileError(f, t)).filter(Boolean) as string[];
     if (errors.length > 0) {
       setUploadError(errors.join(' · '));
       if (fileRef.current) fileRef.current.value = '';
@@ -106,7 +110,7 @@ export function ProjectDocuments({ projectId }: Props) {
       }
       qc.invalidateQueries({ queryKey: ['project-docs', projectId] });
     } catch (e) {
-      setUploadError(e instanceof Error ? e.message : 'Yükləmə alınmadı');
+      setUploadError(e instanceof Error ? e.message : t('docs.upload.failed'));
     } finally {
       // Defer clearing the progress chip so the user sees the final "N/N"
       setTimeout(() => setProgress(null), 1200);
@@ -120,7 +124,7 @@ export function ProjectDocuments({ projectId }: Props) {
       .from(STORAGE_BUCKET)
       .createSignedUrl(d.storage_path, 60 * 5);
     if (error || !data?.signedUrl) {
-      alert(error?.message ?? 'Link yaradılmadı');
+      alert(error?.message ?? t('docs.upload.link_failed'));
       return;
     }
     window.open(data.signedUrl, '_blank', 'noreferrer,noopener');
@@ -172,8 +176,7 @@ export function ProjectDocuments({ projectId }: Props) {
     <div className="space-y-3">
       <div className="flex flex-wrap justify-between items-center gap-3">
         <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
-          Sənədlər — Drive linki, faktiki yüklənmiş fayllar və paylaşım
-          tokenləri burada toplanır.
+          {t('docs.intro')}
         </p>
         <span className="flex flex-wrap gap-2 items-center">
           <input
@@ -194,17 +197,17 @@ export function ProjectDocuments({ projectId }: Props) {
             disabled={!!progress}
           >
             {progress
-              ? `Yüklənir ${progress.done}/${progress.total}…`
-              : 'Fayl(lar) yüklə'}
+              ? t('docs.upload.progress', { done: progress.done, total: progress.total })
+              : t('docs.upload.cta')}
           </button>
           <button className="btn-primary" onClick={() => setAdding(true)}>
-            + Drive linki
+            {t('docs.add_drive')}
           </button>
         </span>
       </div>
       {progress ? (
         <div
-          aria-label="Yükləmə gedişatı"
+          aria-label={t('docs.upload.aria_progress')}
           className="rounded-full overflow-hidden"
           style={{ background: 'var(--surface-mist)', height: 6, maxWidth: 320 }}
         >
@@ -225,10 +228,10 @@ export function ProjectDocuments({ projectId }: Props) {
       ) : null}
 
       {docs.isLoading ? (
-        <div className="card text-meta">Yüklənir…</div>
+        <div className="card text-meta">{t('common.loading')}</div>
       ) : (docs.data ?? []).length === 0 ? (
         <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
-          Bu layihə üçün sənəd yoxdur. Drive linki yapışdır və ya akt yarat.
+          {t('docs.list.empty')}
         </div>
       ) : (
         <ul className="space-y-2">
@@ -251,10 +254,10 @@ export function ProjectDocuments({ projectId }: Props) {
                     }}
                   >
                     {d.source === 'drive_link'
-                      ? 'Drive'
+                      ? t('docs.source.drive')
                       : d.source === 'auto_generated'
-                        ? 'Şablon'
-                        : 'Yüklənmiş'}
+                        ? t('docs.source.template')
+                        : t('docs.source.upload')}
                   </span>
                   {d.category ? (
                     <span
@@ -277,7 +280,7 @@ export function ProjectDocuments({ projectId }: Props) {
                     rel="noreferrer noopener"
                     className="chip chip-brand"
                   >
-                    Aç
+                    {t('docs.action.open')}
                   </a>
                 ) : d.storage_path ? (
                   <button
@@ -285,7 +288,7 @@ export function ProjectDocuments({ projectId }: Props) {
                     className="chip chip-brand"
                     onClick={() => openUpload(d)}
                   >
-                    Aç
+                    {t('docs.action.open')}
                   </button>
                 ) : null}
                 {d.share_token ? (
@@ -296,9 +299,9 @@ export function ProjectDocuments({ projectId }: Props) {
                       const url = `${window.location.origin}/share/${d.share_token}`;
                       navigator.clipboard?.writeText(url);
                     }}
-                    title="Paylaşım linkini kopyala"
+                    title={t('docs.action.share_copy_tooltip')}
                   >
-                    Link kopya
+                    {t('docs.action.share_copy')}
                   </button>
                 ) : (
                   <button
@@ -307,18 +310,19 @@ export function ProjectDocuments({ projectId }: Props) {
                     onClick={() => enableShare.mutate(d)}
                     disabled={enableShare.isPending}
                   >
-                    {enableShare.isPending ? '…' : 'Paylaş'}
+                    {enableShare.isPending ? '…' : t('docs.action.share')}
                   </button>
                 )}
                 <button
                   type="button"
                   className="chip"
                   onClick={() => {
-                    if (confirm(`${d.title} silinsin?`)) remove.mutate(d.id);
+                    if (confirm(t('docs.action.delete_confirm', { name: d.title })))
+                      remove.mutate(d.id);
                   }}
-                  style={{ background: '#FEEEED', color: 'var(--state-error)' }}
+                  style={{ background: 'var(--state-error-soft)', color: 'var(--state-error)' }}
                 >
-                  Sil
+                  {t('docs.action.delete')}
                 </button>
               </div>
             </li>
@@ -346,6 +350,7 @@ function DocumentModal({
   projectId: string;
   onClose: () => void;
 }) {
+  const t = useT();
   const { profile } = useAuth();
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<string>(CATEGORIES[0]);
@@ -353,8 +358,8 @@ function DocumentModal({
 
   const save = useMutation({
     mutationFn: async () => {
-      if (!title.trim()) throw new Error('Başlıq tələb olunur');
-      if (!link.trim()) throw new Error('Drive/URL linki tələb olunur (v1)');
+      if (!title.trim()) throw new Error(t('docs.modal.title_required'));
+      if (!link.trim()) throw new Error(t('docs.modal.link_required'));
       const { error } = await supabase.from('project_documents').insert({
         project_id: projectId,
         title: title.trim(),
@@ -371,7 +376,7 @@ function DocumentModal({
   return (
     <div
       role="dialog"
-      aria-label="Sənəd əlavə et"
+      aria-label={t('docs.modal.dialog_label')}
       className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8 overflow-y-auto"
       style={{ background: 'rgba(14,22,17,0.4)' }}
       onClick={onClose}
@@ -385,15 +390,15 @@ function DocumentModal({
         }}
         style={{ padding: 24 }}
       >
-        <h2 className="text-h2">+ Sənəd</h2>
+        <h2 className="text-h2">{t('docs.modal.title')}</h2>
         <p className="text-meta mt-1" style={{ color: 'var(--text-muted)' }}>
-          v1: Drive/Dropbox linki (faktiki upload v1.5-də əlavə olunacaq).
+          {t('docs.modal.intro')}
         </p>
 
         <div className="mt-4 space-y-3">
           <label className="block">
             <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-              Başlıq
+              {t('docs.modal.field.title')}
             </span>
             <input
               className="input"
@@ -405,7 +410,7 @@ function DocumentModal({
           </label>
           <label className="block">
             <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-              Kateqoriya
+              {t('docs.modal.field.category')}
             </span>
             <select
               className="input"
@@ -421,7 +426,7 @@ function DocumentModal({
           </label>
           <label className="block">
             <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-              Link
+              {t('docs.modal.field.link')}
             </span>
             <input
               className="input"
@@ -441,10 +446,10 @@ function DocumentModal({
 
         <div className="flex justify-end gap-2 mt-6">
           <button type="button" className="btn-outline" onClick={onClose} disabled={save.isPending}>
-            Geri
+            {t('common.back')}
           </button>
           <button type="submit" className="btn-primary" disabled={save.isPending || !title || !link}>
-            {save.isPending ? 'Yadda saxlanılır…' : 'Yarat'}
+            {save.isPending ? t('docs.modal.saving') : t('docs.modal.submit')}
           </button>
         </div>
       </form>
