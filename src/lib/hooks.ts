@@ -182,18 +182,18 @@ export function useClientStageHistory(clientId: string | undefined) {
   });
 }
 
-// ---------------- Activity log (Realtime in v1.5) ----------------
+// ---------------- Activity log (PRD §6.1) ----------------
 export function useActivityFeed(limit = 50) {
   return useQuery({
     queryKey: ['activity', limit],
     queryFn: async (): Promise<ActivityLogEntry[]> => {
       const { data, error } = await supabase
         .from('activity_log')
-        .select('*')
+        .select('*, profiles!activity_log_user_id_fkey(id, full_name, avatar_url)')
         .order('created_at', { ascending: false })
         .limit(limit);
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as ActivityLogEntry[];
     },
   });
 }
