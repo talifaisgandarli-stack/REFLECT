@@ -193,39 +193,7 @@ export function FinancePage() {
         </table>
       ) : null}
 
-      {tab === 'Forecast' ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {(forecasts.data ?? []).length === 0 ? (
-            <div className="card text-meta col-span-3">
-              Forecast hələ qurulmayıb. /api/cron/forecast cron-u işə düşəndən sonra görünəcək.
-            </div>
-          ) : null}
-          {(forecasts.data ?? []).map(
-            (f: {
-              id: string;
-              horizon_days: number;
-              projected_balance: number;
-              confidence_low: number;
-              confidence_high: number;
-            }) => (
-              <div key={f.id} className="card">
-                <div
-                  className="text-meta uppercase tracking-wider"
-                  style={{ color: 'var(--text-muted)' }}
-                >
-                  {f.horizon_days} gün
-                </div>
-                <div className="text-h2 mt-1" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  {formatAZN(f.projected_balance)}
-                </div>
-                <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                  {formatAZN(f.confidence_low)} – {formatAZN(f.confidence_high)}
-                </div>
-              </div>
-            ),
-          )}
-        </div>
-      ) : null}
+      {tab === 'Forecast' ? <ForecastPanel forecasts={forecasts.data ?? []} /> : null}
 
       {tab === 'Xərclər' ? <ExpensesTable /> : null}
       {tab === 'Sabit' ? <RecurringExpensesPanel /> : null}
@@ -502,6 +470,96 @@ function RecurringExpensesPanel() {
           Əlavə et
         </button>
       </form>
+    </div>
+  );
+}
+
+// ── Forecast panel (REQ-FIN-08 / US-FIN-07) ─────────────────────────────────
+
+type ForecastRow = {
+  id: string;
+  horizon_days: number;
+  projected_balance: number;
+  confidence_low: number;
+  confidence_high: number;
+  generated_at: string;
+};
+
+function ForecastPanel({ forecasts }: { forecasts: ForecastRow[] }) {
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshErr, setRefreshErr] = useState<string | null>(null);
+  const qc = useQueryClient();
+
+  // The latest generated_at across all rows tells us when the last refresh ran.
+  const latestGenerated = forecasts.length > 0
+    ? forecasts.reduce((a, b) => a.generated_at > b.generated_at ? a : b).generated_at
+    : null;
+
+  const canRefresh = !latestGenerated || (Date.now() - new Date(latestGenerated).getTime() > 24 * 3_600_000);
+
+  async function refresh() {
+    setRefreshing(true);
+    setRefreshErr(null);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) throw new Error('Sessiya tapılmadı');
+      const res = await fetch('/api/finance/refresh-forecast', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? `Xəta (${res.status})`);
+      qc.invalidateQueries({ queryKey: ['fin', 'forecast'] });
+    } catch (e) {
+      setRefreshErr(e instanceof Error ? e.message : 'Xəta baş verdi');
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+          Bu proqnoz son 6 ayın məlumatlarına əsaslanır.
+        </p>
+        <button
+          className="btn-outline"
+          onClick={refresh}
+          disabled={refreshing || !canRefresh}
+          title={!canRefresh ? 'Forecast 24 saatda 1 dəfə yenilənir' : undefined}
+        >
+          {refreshing ? 'Yenilənir…' : 'Yenilə'}
+        </button>
+      </div>
+      {refreshErr ? <p className="text-meta mb-3" style={{ color: '#EF4444' }}>{refreshErr}</p> : null}
+      {forecasts.length === 0 ? (
+        <div className="card text-meta col-span-3" style={{ color: 'var(--text-muted)' }}>
+          Forecast hələ hazır deyil. Cron sabah işə düşəcək.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {forecasts.map((f) => (
+            <div key={f.id} className="card">
+              <div className="text-meta uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                {f.horizon_days} gün
+              </div>
+              <div className="text-h2 mt-1" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                {formatAZN(f.projected_balance)}
+              </div>
+              <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                {formatAZN(f.confidence_low)} – {formatAZN(f.confidence_high)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {latestGenerated ? (
+        <p className="text-meta mt-3" style={{ color: 'var(--text-muted)' }}>
+          Son yeniləmə: {formatDate(latestGenerated)}
+        </p>
+      ) : null}
     </div>
   );
 }

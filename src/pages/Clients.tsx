@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import {
@@ -19,6 +20,14 @@ import {
 import type { Client, ClientPipelineStage, InteractionType } from '@/types/db';
 import { formatAZN, relativeTime } from '@/lib/format';
 import { useAuth } from '@/lib/store';
+import { supabase } from '@/lib/supabase';
+
+const ICP_COLOR: Record<string, string> = {
+  Excellent: '#22C55E',
+  Good: '#84CC16',
+  Medium: '#EAB308',
+  Low: '#EF4444',
+};
 
 type DragPayload = { id: string; from: ClientPipelineStage };
 type LostPrompt = { id: string; from: ClientPipelineStage };
@@ -202,19 +211,70 @@ function ClientPanel({ client, onClose }: { client: Client; onClose: () => void 
 }
 
 function OverviewTab({ client }: { client: Client }) {
+  const { isAdmin } = useAuth();
+  const qc = useQueryClient();
+  const [icpLoading, setIcpLoading] = useState(false);
+  const [icpError, setIcpError] = useState<string | null>(null);
+
+  async function runIcp() {
+    setIcpLoading(true);
+    setIcpError(null);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) throw new Error('Sessiya tapılmadı');
+      const res = await fetch('/api/crm/icp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ client_id: client.id }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? `Xəta (${res.status})`);
+      qc.invalidateQueries({ queryKey: ['clients'] });
+    } catch (e) {
+      setIcpError(e instanceof Error ? e.message : 'Xəta baş verdi');
+    } finally {
+      setIcpLoading(false);
+    }
+  }
+
   return (
-    <dl className="text-body space-y-2">
-      <Row label="Mərhələ" value={CLIENT_STAGE_LABEL[client.pipeline_stage]} />
-      <Row label="Etibar %" value={`${client.confidence_pct}%`} />
-      <Row label="Dəyər" value={formatAZN(client.expected_value)} />
-      <Row label="Email" value={client.email ?? '—'} />
-      <Row label="Telefon" value={client.phone ?? '—'} />
-      <Row label="Son əlaqə" value={relativeTime(client.last_interaction_at)} />
-      <Row
-        label="ICP uyğunluğu"
-        value={client.ai_icp_fit != null ? `${Math.round(client.ai_icp_fit)}%` : '—'}
-      />
-    </dl>
+    <div>
+      <dl className="text-body space-y-2 mb-4">
+        <Row label="Mərhələ" value={CLIENT_STAGE_LABEL[client.pipeline_stage]} />
+        <Row label="Etibar %" value={`${client.confidence_pct}%`} />
+        <Row label="Dəyər" value={formatAZN(client.expected_value)} />
+        <Row label="Email" value={client.email ?? '—'} />
+        <Row label="Telefon" value={client.phone ?? '—'} />
+        <Row label="Son əlaqə" value={relativeTime(client.last_interaction_at)} />
+        <div className="flex justify-between items-center">
+          <dt style={{ color: 'var(--text-muted)' }}>ICP uyğunluğu</dt>
+          <dd style={{ color: client.ai_icp_fit ? ICP_COLOR[client.ai_icp_fit] : undefined }}>
+            {client.ai_icp_fit ?? '—'}
+          </dd>
+        </div>
+      </dl>
+      {/* REQ-CRM-04: AI ICP enrichment button — admin only */}
+      {isAdmin ? (
+        <div>
+          <button
+            className="btn-outline w-full"
+            onClick={runIcp}
+            disabled={icpLoading}
+          >
+            {icpLoading ? 'AI analiz edir…' : 'AI analiz'}
+          </button>
+          {icpError ? (
+            <p className="text-meta mt-1" style={{ color: '#EF4444' }}>{icpError}</p>
+          ) : null}
+          {client.ai_icp_calculated_at ? (
+            <p className="text-meta mt-1 text-center" style={{ color: 'var(--text-muted)' }}>
+              Son analiz: {relativeTime(client.ai_icp_calculated_at)}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

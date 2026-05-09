@@ -4,14 +4,20 @@ import { Mascot } from '@/components/Mascot';
 import { supabase } from '@/lib/supabase';
 
 const SUGGESTIONS = [
-  'Bu həftəki tapşırıqları yığ',
+  'Bu həftəki tapşırıqlarımı göstər',
   'Hansı debitorlar gecikib?',
-  'Aksent kontraktının statusunu yoxla',
+  'Cari ay maliyyə icmalı',
   'Cash forecast 30 gün',
 ];
 
 type Source = { name: string; page?: number };
-type Msg = { role: 'user' | 'assistant'; content: string; sources?: Source[] };
+type Msg = {
+  role: 'user' | 'assistant';
+  content: string;
+  sources?: Source[];
+  message_id?: string | null;
+  thumb?: 'up' | 'down' | null;
+};
 type Usage = { spent_usd: number; cap_usd: number; pct: number; warning: string | null };
 
 export function MiraiPage() {
@@ -32,31 +38,20 @@ export function MiraiPage() {
     try {
       const { data: sess } = await supabase.auth.getSession();
       const token = sess.session?.access_token;
-      if (!token) {
-        throw new Error('Sessiya tapılmadı — yenidən daxil ol.');
-      }
+      if (!token) throw new Error('Sessiya tapılmadı — yenidən daxil ol.');
 
       const res = await fetch('/api/mirai/chat', {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          message: text,
-          persona: 'general',
-          conversation_id: conversationId,
-        }),
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ message: text, persona: 'general', conversation_id: conversationId }),
       });
 
       const data = await res.json().catch(() => null);
-      if (!res.ok) {
-        throw new Error(data?.error ?? `MIRAI xətası (${res.status})`);
-      }
+      if (!res.ok) throw new Error(data?.error ?? `MIRAI xətası (${res.status})`);
 
       const reply = data?.reply ?? 'Hazırda cavab verə bilmirəm.';
       const sources: Source[] = data?.sources ?? [];
-      setMsgs((m) => [...m, { role: 'assistant', content: reply, sources }]);
+      setMsgs((m) => [...m, { role: 'assistant', content: reply, sources, message_id: data?.message_id ?? null, thumb: null }]);
       if (data?.conversation_id) setConversationId(data.conversation_id);
       if (data?.usage) setUsage(data.usage as Usage);
     } catch (e) {
@@ -66,6 +61,23 @@ export function MiraiPage() {
     } finally {
       setThinking(false);
     }
+  }
+
+  async function submitFeedback(msgIdx: number, thumb: 'up' | 'down') {
+    const msg = msgs[msgIdx];
+    if (!msg || msg.role !== 'assistant' || msg.thumb) return;
+    setMsgs((prev) => prev.map((m, i) => i === msgIdx ? { ...m, thumb } : m));
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const uid = sess.session?.user?.id;
+      if (!uid) return;
+      await supabase.from('mirai_feedback').insert({
+        user_id: uid,
+        message_id: msg.message_id ?? null,
+        conversation_id: conversationId ?? null,
+        thumb,
+      });
+    } catch { /* feedback errors are non-fatal */ }
   }
 
   return (
@@ -80,6 +92,7 @@ export function MiraiPage() {
       </p>
 
       <div className="w-full max-w-[720px] mt-10">
+        {/* Budget warning — PRD §7.6 */}
         {usage?.warning === 'budget_80pct' ? (
           <div
             role="status"
@@ -98,13 +111,7 @@ export function MiraiPage() {
           </div>
         ) : null}
 
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            ask(q);
-          }}
-          className="flex gap-2"
-        >
+        <form onSubmit={(e) => { e.preventDefault(); ask(q); }} className="flex gap-2">
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -136,11 +143,7 @@ export function MiraiPage() {
           ))}
         </div>
 
-        {error ? (
-          <p className="text-meta mt-3" style={{ color: '#F87171' }}>
-            {error}
-          </p>
-        ) : null}
+        {error ? <p className="text-meta mt-3" style={{ color: '#F87171' }}>{error}</p> : null}
 
         <div className="mt-8 space-y-3">
           {thinking ? (
@@ -149,37 +152,58 @@ export function MiraiPage() {
               <span className="text-ui opacity-80">MIRAI düşünür…</span>
             </div>
           ) : null}
-          {msgs.slice().reverse().map((m, i) => (
-            <article
-              key={i}
-              className="rounded-card p-4"
-              style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                marginLeft: m.role === 'user' ? 'auto' : 0,
-                maxWidth: '85%',
-              }}
-            >
-              {m.role === 'assistant' ? (
-                <span
-                  className="inline-block mb-2 px-2 h-[22px] leading-[22px] rounded-chip text-tiny"
-                  style={{ background: 'rgba(173,251,73,0.08)', color: 'var(--brand-action)' }}
-                >
-                  MIRAI
-                </span>
-              ) : null}
-              <div className="text-body whitespace-pre-wrap">{m.content}</div>
-              {m.sources && m.sources.length ? (
-                <div className="flex flex-wrap gap-2 mt-3">
-                  {m.sources.map((s, j) => (
-                    <span key={j} className="chip" style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--canvas)' }}>
-                      {s.name}{s.page ? ` · s.${s.page}` : ''}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-            </article>
-          ))}
+          {msgs.slice().reverse().map((m, revIdx) => {
+            const idx = msgs.length - 1 - revIdx;
+            return (
+              <article
+                key={idx}
+                className="rounded-card p-4"
+                style={{
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  marginLeft: m.role === 'user' ? 'auto' : 0,
+                  maxWidth: '85%',
+                }}
+              >
+                {m.role === 'assistant' ? (
+                  <span
+                    className="inline-block mb-2 px-2 h-[22px] leading-[22px] rounded-chip text-tiny"
+                    style={{ background: 'rgba(173,251,73,0.08)', color: 'var(--brand-action)' }}
+                  >
+                    MIRAI
+                  </span>
+                ) : null}
+                <div className="text-body whitespace-pre-wrap">{m.content}</div>
+                {m.sources && m.sources.length ? (
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {m.sources.map((s, j) => (
+                      <span key={j} className="chip" style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--canvas)' }}>
+                        {s.name}{s.page ? ` · s.${s.page}` : ''}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                {/* PRD §7.9 — satisfaction thumbs */}
+                {m.role === 'assistant' ? (
+                  <div className="flex gap-2 mt-3">
+                    {(['up', 'down'] as const).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => submitFeedback(idx, t)}
+                        disabled={!!m.thumb}
+                        aria-label={t === 'up' ? 'Faydalı' : 'Faydasız'}
+                        className="text-meta opacity-50 hover:opacity-100 transition-opacity"
+                        style={{ color: m.thumb === t ? 'var(--brand-action)' : undefined }}
+                      >
+                        {t === 'up' ? '👍' : '👎'}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </article>
+            );
+          })}
         </div>
       </div>
     </div>

@@ -107,7 +107,9 @@ export interface Client {
   confidence_pct: number;
   expected_value: number | null;
   last_interaction_at: string | null;
-  ai_icp_fit: number | null;
+  /** Migration 0012: changed from numeric to text (PRD US-CRM-03: Excellent/Good/Medium/Low) */
+  ai_icp_fit: 'Excellent' | 'Good' | 'Medium' | 'Low' | null;
+  ai_icp_calculated_at: string | null;
   created_by: string | null;
   created_at: string;
 }
