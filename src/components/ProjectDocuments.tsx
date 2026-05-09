@@ -40,6 +40,22 @@ const CATEGORIES = [
 type Props = { projectId: string };
 
 const STORAGE_BUCKET = 'project-documents';
+const MAX_BYTES = 25 * 1024 * 1024; // 25 MB per file
+const ACCEPT_RE =
+  /^(application\/(pdf|msword|vnd\.openxmlformats-officedocument\.|vnd\.ms-excel|zip|json|rtf)|image\/(png|jpe?g|webp|gif|svg\+xml)|text\/(plain|csv))/i;
+const ACCEPT_ATTR =
+  '.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.webp,.svg,.zip,.json,.rtf';
+
+function describeFileError(file: File): string | null {
+  if (file.size > MAX_BYTES) {
+    const mb = (file.size / 1024 / 1024).toFixed(1);
+    return `${file.name}: ${mb}MB → 25MB həddini aşır`;
+  }
+  if (file.type && !ACCEPT_RE.test(file.type)) {
+    return `${file.name}: ${file.type} dəstəklənmir`;
+  }
+  return null;
+}
 
 export function ProjectDocuments({ projectId }: Props) {
   const { profile } = useAuth();
@@ -51,6 +67,15 @@ export function ProjectDocuments({ projectId }: Props) {
 
   async function uploadFiles(files: File[]) {
     if (files.length === 0) return;
+    // Pre-flight: size + content-type. Reject the whole batch if any file
+    // fails — partial uploads are confusing when the user dropped 5 docs
+    // expecting all-or-nothing.
+    const errors = files.map(describeFileError).filter(Boolean) as string[];
+    if (errors.length > 0) {
+      setUploadError(errors.join(' · '));
+      if (fileRef.current) fileRef.current.value = '';
+      return;
+    }
     setProgress({ done: 0, total: files.length });
     setUploadError(null);
     let i = 0;
@@ -155,6 +180,7 @@ export function ProjectDocuments({ projectId }: Props) {
             ref={fileRef}
             type="file"
             multiple
+            accept={ACCEPT_ATTR}
             className="sr-only"
             onChange={(e) => {
               const fs = Array.from(e.target.files ?? []);
