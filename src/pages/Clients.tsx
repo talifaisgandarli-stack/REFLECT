@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import {
@@ -19,6 +20,7 @@ import {
 import type { Client, ClientPipelineStage, InteractionType } from '@/types/db';
 import { formatAZN, relativeTime } from '@/lib/format';
 import { useAuth } from '@/lib/store';
+import { supabase } from '@/lib/supabase';
 
 type DragPayload = { id: string; from: ClientPipelineStage };
 type LostPrompt = { id: string; from: ClientPipelineStage };
@@ -158,10 +160,19 @@ export function ClientsPage() {
   );
 }
 
-type Tab = 'overview' | 'interactions' | 'history';
+type Tab = 'overview' | 'interactions' | 'history' | 'projects' | 'proposals';
+
+const TAB_LABEL: Record<Tab, string> = {
+  overview: 'Ümumi',
+  interactions: 'Əlaqələr',
+  history: 'Tarixçə',
+  projects: 'Layihələr',
+  proposals: 'Təkliflər',
+};
 
 function ClientPanel({ client, onClose }: { client: Client; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('overview');
+  const tabs: Tab[] = ['overview', 'interactions', 'projects', 'proposals', 'history'];
   return (
     <div
       className="fixed inset-0 z-40 flex justify-end"
@@ -169,7 +180,7 @@ function ClientPanel({ client, onClose }: { client: Client; onClose: () => void 
       onClick={onClose}
     >
       <aside
-        className="w-[480px] h-full bg-surface p-6 overflow-y-auto"
+        className="w-[520px] h-full bg-surface p-6 overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-h2">{client.name}</h2>
@@ -177,14 +188,14 @@ function ClientPanel({ client, onClose }: { client: Client; onClose: () => void 
           {client.company ?? '—'}
         </div>
 
-        <div className="flex gap-2 mb-4">
-          {(['overview', 'interactions', 'history'] as const).map((t) => (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {tabs.map((t) => (
             <button
               key={t}
               className={`chip ${tab === t ? 'chip-brand' : ''}`}
               onClick={() => setTab(t)}
             >
-              {t === 'overview' ? 'Ümumi' : t === 'interactions' ? 'Əlaqələr' : 'Tarixçə'}
+              {TAB_LABEL[t]}
             </button>
           ))}
         </div>
@@ -192,6 +203,8 @@ function ClientPanel({ client, onClose }: { client: Client; onClose: () => void 
         {tab === 'overview' ? <OverviewTab client={client} /> : null}
         {tab === 'interactions' ? <InteractionsTab clientId={client.id} /> : null}
         {tab === 'history' ? <HistoryTab clientId={client.id} /> : null}
+        {tab === 'projects' ? <ClientProjectsTab clientId={client.id} /> : null}
+        {tab === 'proposals' ? <ProposalsTab clientId={client.id} /> : null}
 
         <button className="btn-outline mt-6" onClick={onClose}>
           Bağla
@@ -202,19 +215,165 @@ function ClientPanel({ client, onClose }: { client: Client; onClose: () => void 
 }
 
 function OverviewTab({ client }: { client: Client }) {
+  const qc = useQueryClient();
+  const { session } = useAuth();
+
+  const refreshIcp = useMutation({
+    mutationFn: async () => {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      const res = await fetch('/api/mirai/icp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ client_id: client.id }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json() as Promise<{ icp_fit: number; cached: boolean }>;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['clients'] }),
+  });
+
+  const icpAge = client.ai_icp_calculated_at
+    ? Math.floor((Date.now() - new Date(client.ai_icp_calculated_at).getTime()) / 3600000)
+    : null;
+  const canRefresh = icpAge === null || icpAge >= 24;
+
   return (
-    <dl className="text-body space-y-2">
-      <Row label="Mərhələ" value={CLIENT_STAGE_LABEL[client.pipeline_stage]} />
-      <Row label="Etibar %" value={`${client.confidence_pct}%`} />
-      <Row label="Dəyər" value={formatAZN(client.expected_value)} />
-      <Row label="Email" value={client.email ?? '—'} />
-      <Row label="Telefon" value={client.phone ?? '—'} />
-      <Row label="Son əlaqə" value={relativeTime(client.last_interaction_at)} />
-      <Row
-        label="ICP uyğunluğu"
-        value={client.ai_icp_fit != null ? `${Math.round(client.ai_icp_fit)}%` : '—'}
-      />
-    </dl>
+    <div className="space-y-4">
+      <dl className="text-body space-y-2">
+        <Row label="Mərhələ" value={CLIENT_STAGE_LABEL[client.pipeline_stage]} />
+        <Row label="Etibar %" value={`${client.confidence_pct}%`} />
+        <Row label="Dəyər" value={formatAZN(client.expected_value)} />
+        <Row label="Email" value={client.email ?? '—'} />
+        <Row label="Telefon" value={client.phone ?? '—'} />
+        <Row label="Son əlaqə" value={relativeTime(client.last_interaction_at)} />
+      </dl>
+
+      {/* REQ-CRM-04 — ICP fit display + MIRAI refresh */}
+      <div
+        className="card"
+        style={{ padding: 12, background: 'var(--brand-mist)' }}
+      >
+        <div className="flex items-center justify-between">
+          <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+            MIRAI ICP uyğunluğu
+          </span>
+          <button
+            className="chip text-meta"
+            style={{ cursor: canRefresh ? 'pointer' : 'not-allowed', opacity: canRefresh ? 1 : 0.5 }}
+            disabled={!canRefresh || refreshIcp.isPending || !session}
+            onClick={() => refreshIcp.mutate()}
+            title={!canRefresh ? `Növbəti yeniləmə: ${24 - (icpAge ?? 0)} saat sonra` : 'MIRAI ilə hesabla'}
+          >
+            {refreshIcp.isPending ? 'Hesablanır…' : 'Yenilə'}
+          </button>
+        </div>
+        <div
+          className="text-h2 mt-1"
+          style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--brand-text)' }}
+        >
+          {refreshIcp.data?.icp_fit != null
+            ? `${Math.round(refreshIcp.data.icp_fit)}%`
+            : client.ai_icp_fit != null
+            ? `${Math.round(client.ai_icp_fit)}%`
+            : '—'}
+        </div>
+        {icpAge !== null && (
+          <div className="text-meta mt-1" style={{ color: 'var(--text-muted)' }}>
+            {icpAge < 1 ? 'Az öncə' : `${icpAge}s əvvəl`}
+            {refreshIcp.data?.cached ? ' · keşdən' : ''}
+          </div>
+        )}
+        {refreshIcp.error ? (
+          <div className="text-meta mt-1" style={{ color: '#B91C1C' }}>
+            {(refreshIcp.error as Error).message}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ClientProjectsTab({ clientId }: { clientId: string }) {
+  const projects = useQuery({
+    queryKey: ['client-projects', clientId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('id, name, status, deadline, phases')
+        .eq('client_id', clientId)
+        .is('archived_at', null)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  if (projects.isLoading) return <div className="text-meta">Yüklənir…</div>;
+  if (!projects.data?.length)
+    return <div className="text-meta" style={{ color: 'var(--text-muted)' }}>Bu müştəriyə aid layihə yoxdur.</div>;
+
+  return (
+    <ul className="space-y-2">
+      {projects.data.map((p) => (
+        <li key={p.id} className="card" style={{ padding: 12 }}>
+          <div className="font-medium text-body">{p.name}</div>
+          <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+            {p.status} · {p.deadline ?? 'tarixsiz'} · {(p.phases as string[]).join(', ')}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ProposalsTab({ clientId }: { clientId: string }) {
+  const proposals = useQuery({
+    queryKey: ['client-proposals', clientId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('project_documents')
+        .select('id, title, created_at, share_token, external_link')
+        .eq('client_id', clientId)
+        .eq('category', 'price_protocol')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  if (proposals.isLoading) return <div className="text-meta">Yüklənir…</div>;
+  if (!proposals.data?.length)
+    return <div className="text-meta" style={{ color: 'var(--text-muted)' }}>Qiymət protokolu yoxdur.</div>;
+
+  return (
+    <ul className="space-y-2">
+      {proposals.data.map((doc) => (
+        <li key={doc.id} className="card" style={{ padding: 12 }}>
+          <div className="font-medium text-body">{doc.title}</div>
+          <div className="flex items-center gap-3 mt-1">
+            <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+              {new Date(doc.created_at).toLocaleDateString('az-AZ')}
+            </span>
+            {doc.share_token ? (
+              <span className="chip" style={{ fontSize: 11 }}>
+                Paylaşıla bilər
+              </span>
+            ) : null}
+            {doc.external_link ? (
+              <a
+                href={doc.external_link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="chip"
+                style={{ fontSize: 11 }}
+              >
+                Aç
+              </a>
+            ) : null}
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }
 

@@ -108,6 +108,7 @@ export interface Client {
   expected_value: number | null;
   last_interaction_at: string | null;
   ai_icp_fit: number | null;
+  ai_icp_calculated_at: string | null;
   created_by: string | null;
   created_at: string;
 }
@@ -139,6 +140,55 @@ export interface UserPresence {
   last_heartbeat_at: string;
   current_page: string | null;
   session_type: 'desktop' | 'mobile';
+}
+
+export type LeaveKind = 'annual' | 'sick' | 'unpaid' | 'parental' | 'other';
+export type LeaveStatus = 'pending' | 'approved' | 'denied';
+export type ContentStatus = 'idea' | 'draft' | 'review' | 'published';
+export type ContentChannel = 'instagram' | 'linkedin' | 'telegram' | 'website' | 'email' | 'other';
+
+export interface PerformanceReview {
+  id: string;
+  employee_id: string;
+  year: number;
+  score: number;
+  ratings: Record<string, unknown>;
+  reviewer_id: string | null;
+  summary: string | null;
+  created_at: string;
+}
+
+export interface LeaveRequest {
+  id: string;
+  employee_id: string;
+  kind: LeaveKind;
+  starts_at: string;
+  ends_at: string;
+  days: number;
+  status: LeaveStatus;
+  approver_id: string | null;
+  note: string | null;
+  created_at: string;
+}
+
+export interface CareerLevel {
+  id: string;
+  name: string;
+  level_index: number;
+  requirements: string[];
+  created_at: string;
+}
+
+export interface ContentPlan {
+  id: string;
+  channel: ContentChannel;
+  scheduled_at: string;
+  topic: string;
+  owner_id: string | null;
+  status: ContentStatus;
+  body: string | null;
+  created_by: string | null;
+  created_at: string;
 }
 
 export interface Invitation {

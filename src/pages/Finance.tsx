@@ -6,6 +6,8 @@ import { formatAZN, formatDate, bakuMonthKey, bakuCurrentMonthRange } from '@/li
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { IncomeExpenseModal, type FinanceKind } from '@/components/IncomeExpenseModal';
 import { MarkPaidModal } from '@/components/MarkPaidModal';
+import { ProjectPnL } from '@/components/ProjectPnL';
+import { useProjects } from '@/lib/hooks';
 
 const TABS = ['Cash Cockpit', 'P&L', 'Outsource', 'Xərclər', 'Sabit', 'Debitor', 'Forecast'] as const;
 
@@ -29,6 +31,8 @@ type Receivable = {
 export function FinancePage() {
   const [tab, setTab] = useState<(typeof TABS)[number]>('Cash Cockpit');
   const [modal, setModal] = useState<FinanceKind | null>(null);
+  const [pnlProjectId, setPnlProjectId] = useState('');
+  const projects = useProjects();
   const [markPaid, setMarkPaid] = useState<Receivable | null>(null);
 
   const incomes = useQuery({
@@ -230,9 +234,38 @@ export function FinancePage() {
       {tab === 'Xərclər' ? <ExpensesTable /> : null}
       {tab === 'Sabit' ? <RecurringExpensesPanel /> : null}
 
-      {tab === 'P&L' || tab === 'Outsource' ? (
+      {tab === 'P&L' ? (
+        <div className="card space-y-4">
+          <div className="flex items-center gap-3">
+            <label className="text-meta" style={{ color: 'var(--text-muted)' }}>
+              Layihə:
+            </label>
+            <select
+              className="input max-w-xs"
+              value={pnlProjectId}
+              onChange={(e) => setPnlProjectId(e.target.value)}
+            >
+              <option value="">Layihə seçin…</option>
+              {(projects.data ?? []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          {pnlProjectId ? (
+            <ProjectPnL projectId={pnlProjectId} />
+          ) : (
+            <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+              P&L görmək üçün layihə seçin.
+            </p>
+          )}
+        </div>
+      ) : null}
+
+      {tab === 'Outsource' ? (
         <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
-          {tab} cədvəli — v1.5-də.
+          Outsource cədvəli — v1.5-də.
         </div>
       ) : null}
 
