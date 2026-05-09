@@ -98,7 +98,7 @@ function estimateCost(inTokens: number, outTokens: number): number {
 
 export default async function handler(req: Request) {
   try {
-    if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed');
+    if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'method_not_allowed');
     const user = await requireUser(req);
 
     const rl = await rateLimit({
@@ -107,7 +107,10 @@ export default async function handler(req: Request) {
     });
     if (!rl.allowed) {
       return new Response(
-        JSON.stringify({ error: 'Çox tez göndərilir — bir az gözlə.' }),
+        JSON.stringify({
+          error: 'Çox tez göndərilir — bir az gözlə.',
+          code: 'rate_limited',
+        }),
         {
           status: 429,
           headers: { 'content-type': 'application/json', ...rateLimitHeaders(rl) },
@@ -121,17 +124,18 @@ export default async function handler(req: Request) {
       conversation_id?: string;
     };
     const message = (body.message ?? '').trim();
-    if (!message) throw new HttpError(400, 'Missing message');
-    if (message.length > 4_000) throw new HttpError(400, 'Message too long (>4k chars)');
+    if (!message) throw new HttpError(400, 'Missing message', 'mirai_message_missing');
+    if (message.length > 4_000)
+      throw new HttpError(400, 'Message too long (>4k chars)', 'mirai_message_too_long');
 
     const personaKey: PersonaKey = body.persona && PERSONAS[body.persona] ? body.persona : 'general';
     const persona = PERSONAS[personaKey];
     if (persona.adminOnly && !user.isAdmin) {
-      throw new HttpError(403, 'Bu persona yalnız adminlər üçündür.');
+      throw new HttpError(403, 'Bu persona yalnız adminlər üçündür.', 'mirai_persona_admin_only');
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) throw new HttpError(500, 'ANTHROPIC_API_KEY not configured');
+    if (!apiKey) throw new HttpError(500, 'ANTHROPIC_API_KEY not configured', 'mirai_key_missing');
 
     const sb = admin();
 
@@ -170,6 +174,7 @@ export default async function handler(req: Request) {
       throw new HttpError(
         429,
         `Aylıq MIRAI limit dolub (${spent.toFixed(2)}$ / ${MONTHLY_CAP_USD}$). Növbəti ay yenilənəcək.`,
+        'mirai_budget_exceeded',
       );
     }
 

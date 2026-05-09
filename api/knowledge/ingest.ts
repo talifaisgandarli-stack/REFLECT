@@ -47,18 +47,22 @@ function placeholderEmbed(text: string): number[] {
 
 export default async function handler(req: Request) {
   try {
-    if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed');
+    if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed', 'method_not_allowed');
     const user = await requireUser(req);
-    if (!user.isAdmin) throw new HttpError(403, 'Admin only');
+    if (!user.isAdmin) throw new HttpError(403, 'Admin only', 'admin_only');
 
     const body = (await req.json()) as { source_pdf?: string; chunks?: string[] };
     const source = (body.source_pdf ?? '').trim();
     const chunks = Array.isArray(body.chunks) ? body.chunks : [];
 
-    if (!source) throw new HttpError(400, 'source_pdf required');
-    if (chunks.length === 0) throw new HttpError(400, 'chunks[] cannot be empty');
+    if (!source) throw new HttpError(400, 'source_pdf required', 'kb_source_required');
+    if (chunks.length === 0) throw new HttpError(400, 'chunks[] cannot be empty', 'kb_chunks_empty');
     if (chunks.length > MAX_CHUNKS_PER_REQUEST) {
-      throw new HttpError(400, `too many chunks (>${MAX_CHUNKS_PER_REQUEST}); split into batches`);
+      throw new HttpError(
+        400,
+        `too many chunks (>${MAX_CHUNKS_PER_REQUEST}); split into batches`,
+        'kb_chunks_too_many',
+      );
     }
 
     const sb = admin();
@@ -76,7 +80,7 @@ export default async function handler(req: Request) {
     // Replace strategy: delete prior chunks for this source, then insert fresh
     await sb.from('knowledge_base').delete().eq('source_pdf', source);
     const { error } = await sb.from('knowledge_base').insert(rows);
-    if (error) throw new HttpError(500, error.message);
+    if (error) throw new HttpError(500, error.message, 'kb_insert_failed');
 
     return jsonResponse({ ok: true, source_pdf: source, inserted: rows.length });
   } catch (e) {

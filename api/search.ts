@@ -32,7 +32,7 @@ export function escapeIlike(q: string): string {
 
 export default async function handler(req: Request) {
   try {
-    if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed');
+    if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed', 'method_not_allowed');
     const user = await requireUser(req);
 
     const url = new URL(req.url);
