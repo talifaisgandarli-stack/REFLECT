@@ -49,6 +49,11 @@
   "task.cancel.title": "Cancel task",
   "task.cancel.cta": "Cancel task",
   "task.cancel.saving": "Cancelling…",
+  "tasks.title": "Tasks",
+  "tasks.view.board": "Board",
+  "tasks.view.table": "Table",
+  "tasks.empty.title": "No tasks yet",
+  "tasks.empty.body": "Create the first task — the BU GÜN column lights up immediately.",
 
   "nav.work": "WORK",
   "nav.dashboard": "Dashboard",

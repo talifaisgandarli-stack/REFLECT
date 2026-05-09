@@ -49,6 +49,11 @@
   "task.cancel.title": "Tapşırığı ləğv et",
   "task.cancel.cta": "Ləğv et",
   "task.cancel.saving": "Ləğv olunur…",
+  "tasks.title": "Tapşırıqlar",
+  "tasks.view.board": "Lövhə",
+  "tasks.view.table": "Cədvəl",
+  "tasks.empty.title": "Hələ tapşırıq yoxdur",
+  "tasks.empty.body": "İlk tapşırığı yarat və BU GÜN sütunu canlanacaq.",
 
   "nav.work": "İŞ",
   "nav.dashboard": "Dashboard",

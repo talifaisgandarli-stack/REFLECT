@@ -49,6 +49,11 @@
   "task.cancel.title": "Отменить задачу",
   "task.cancel.cta": "Отменить",
   "task.cancel.saving": "Отмена…",
+  "tasks.title": "Задачи",
+  "tasks.view.board": "Доска",
+  "tasks.view.table": "Таблица",
+  "tasks.empty.title": "Задач пока нет",
+  "tasks.empty.body": "Создайте первую задачу — колонка BU GÜN сразу оживёт.",
 
   "nav.work": "РАБОТА",
   "nav.dashboard": "Дашборд",

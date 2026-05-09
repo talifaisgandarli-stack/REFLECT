@@ -9,8 +9,10 @@ import { useAuth } from '@/lib/store';
 import { SubtaskBlockingModal } from '@/components/SubtaskBlockingModal';
 import { TaskCreateModal } from '@/components/TaskCreateModal';
 import { CancelTaskModal } from '@/components/CancelTaskModal';
+import { useT } from '@/lib/i18n';
 
 export function TasksPage() {
+  const t = useT();
   const { profile } = useAuth();
   const { hash } = useLocation();
   const [view, setView] = useState<'board' | 'table'>('board');
@@ -73,18 +75,18 @@ export function TasksPage() {
     <>
       <PageHead
         meta={meta}
-        title="Tapşırıqlar"
+        title={t('tasks.title')}
         actions={
           <>
-            <input className="input max-w-[240px]" placeholder="Axtar…" />
+            <input className="input max-w-[240px]" placeholder={t('common.search')} />
             <button
               className={`btn-outline ${mineOnly ? 'border-brand-text' : ''}`}
               onClick={() => setMineOnly((v) => !v)}
             >
-              Mənim
+              {t('common.mine')}
             </button>
             <button className="btn-primary" onClick={() => setCreating(true)}>
-              + Yeni
+              {t('task.create.cta')}
             </button>
           </>
         }
@@ -97,7 +99,7 @@ export function TasksPage() {
             className={`chip ${view === v ? 'chip-brand' : ''}`}
             onClick={() => setView(v)}
           >
-            {v === 'board' ? 'Lövhə' : 'Cədvəl'}
+            {v === 'board' ? t('tasks.view.board') : t('tasks.view.table')}
           </button>
         ))}
       </div>
@@ -106,11 +108,11 @@ export function TasksPage() {
         <div className="card text-meta">Yüklənir…</div>
       ) : tasks.length === 0 ? (
         <EmptyState
-          title="Hələ tapşırıq yoxdur"
-          body="İlk tapşırığı yarat və BU GÜN sütunu canlanacaq."
+          title={t('tasks.empty.title')}
+          body={t('tasks.empty.body')}
           cta={
             <button className="btn-primary" onClick={() => setCreating(true)}>
-              + Yeni tapşırıq
+              {t('task.create.cta_first')}
             </button>
           }
         />
