@@ -111,6 +111,21 @@ export function useRealtimeSync(userId: string | undefined) {
       }),
     );
 
+    // task_comments — added to the realtime publication in 0023.
+    // Invalidates both the task-detail comment thread and the Cmd+K
+    // drawer's preview so a new comment shows up live in either
+    // surface (slice 134, follow-up to 121 + 132).
+    cleanups.push(
+      subscribeTable({
+        table: 'task_comments',
+        channelName: 'task_comments:all',
+        onChange: () => {
+          qc.invalidateQueries({ queryKey: ['task-comments'] });
+          qc.invalidateQueries({ queryKey: ['cmdk-task-comments'] });
+        },
+      }),
+    );
+
     return () => {
       for (const c of cleanups) c();
     };
