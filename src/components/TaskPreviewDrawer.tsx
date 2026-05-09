@@ -4,7 +4,7 @@
  * "Tam aç" navigates to /tapşırıqlar with the row deep-linked via hash
  * so the kanban scrolls + highlights the card.
  */
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -12,6 +12,7 @@ import { StatusChip } from './StatusChip';
 import { TaskCommentInput } from './TaskCommentInput';
 import { formatDate, relativeTime, taskHealth } from '@/lib/format';
 import { useT } from '@/lib/i18n';
+import { renderCommentSegments } from '@/lib/commentMentions';
 import type { TaskStatus } from '@/types/db';
 
 type TaskRow = {
@@ -80,6 +81,29 @@ export function TaskPreviewDrawer({ taskId, onClose }: Props) {
       return (data ?? []) as CommentRow[];
     },
   });
+
+  // Mentions render as @FullName chips — fetch every profile once and
+  // pass an id→label map into renderCommentSegments. Loaded lazily so
+  // the drawer renders fast when no comments exist.
+  const profiles = useQuery({
+    queryKey: ['comment-mention-profiles'],
+    enabled: (comments.data ?? []).some((c) => c.body.includes('@')),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, email');
+      if (error) throw error;
+      return data as Array<{ id: string; full_name: string | null; email: string }>;
+    },
+  });
+
+  const mentionLookup = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const p of profiles.data ?? []) {
+      byId.set(p.id, p.full_name ?? p.email);
+    }
+    return { byId };
+  }, [profiles.data]);
 
   const project = useQuery({
     queryKey: ['cmdk-task-project', task.data?.project_id],
@@ -195,14 +219,38 @@ export function TaskPreviewDrawer({ taskId, onClose }: Props) {
               </p>
             ) : (
               <ul className="card divide-y" style={{ borderColor: 'var(--line-soft)' }}>
-                {(comments.data ?? []).map((c) => (
-                  <li key={c.id} className="py-2">
-                    <p className="text-body whitespace-pre-wrap">{c.body}</p>
-                    <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                      {relativeTime(c.created_at)}
-                    </span>
-                  </li>
-                ))}
+                {(comments.data ?? []).map((c) => {
+                  const segments = renderCommentSegments(c.body, mentionLookup);
+                  return (
+                    <li key={c.id} className="py-2">
+                      <p className="text-body whitespace-pre-wrap">
+                        {segments.map((seg, i) =>
+                          seg.kind === 'text' ? (
+                            <span key={i}>{seg.text}</span>
+                          ) : (
+                            <span
+                              key={i}
+                              className="chip"
+                              style={{
+                                background: 'var(--brand-mist)',
+                                color: 'var(--brand-text)',
+                                padding: '1px 6px',
+                                marginRight: 2,
+                                fontSize: 'inherit',
+                                lineHeight: 'inherit',
+                              }}
+                            >
+                              @{seg.label}
+                            </span>
+                          ),
+                        )}
+                      </p>
+                      <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                        {relativeTime(c.created_at)}
+                      </span>
+                    </li>
+                  );
+                })}
               </ul>
             )}
 
