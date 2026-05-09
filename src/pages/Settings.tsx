@@ -5,19 +5,21 @@ import { TemplatesManager } from '@/components/TemplatesManager';
 import { KnowledgeBaseManager } from '@/components/KnowledgeBaseManager';
 import { GeneralSettingsForm } from '@/components/GeneralSettingsForm';
 import { MiraiPersonaEditor } from '@/components/MiraiPersonaEditor';
+import { useT } from '@/lib/i18n';
 
 const NAV = [
-  { to: 'umumi', label: 'Ümumi' },
-  { to: 'şablonlar', label: 'Şablonlar' },
-  { to: 'bilik', label: 'Bilik Bazası' },
-  { to: 'mirai', label: 'MIRAI personalar' },
-  { to: 'bildirişlər', label: 'Bildirişlər' },
+  { to: 'umumi', key: 'settings.tab.general' },
+  { to: 'şablonlar', key: 'settings.tab.templates' },
+  { to: 'bilik', key: 'settings.tab.knowledge' },
+  { to: 'mirai', key: 'settings.tab.mirai' },
+  { to: 'bildirişlər', key: 'settings.tab.notifications' },
 ];
 
 export function SettingsPage() {
+  const t = useT();
   return (
     <>
-      <PageHead meta="Yalnız admin" title="Parametrlər" />
+      <PageHead meta={t('settings.meta')} title={t('settings.title')} />
       <div className="grid grid-cols-1 lg:grid-cols-[200px,1fr] gap-6">
         <nav className="space-y-1">
           {NAV.map((n) => (
@@ -28,7 +30,7 @@ export function SettingsPage() {
                 `block px-3 py-2 rounded-btn text-ui ${isActive ? 'bg-surface-mist' : ''}`
               }
             >
-              {n.label}
+              {t(n.key)}
             </NavLink>
           ))}
         </nav>
