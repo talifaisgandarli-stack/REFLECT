@@ -4,11 +4,15 @@ import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import {
   isOpenChildrenError,
+  useProjects,
   useTasks,
   useTeamPresence,
   useUpdateTaskStatus,
 } from '@/lib/hooks';
 import { TASK_STATUS_LABEL, TASK_STATUS_ORDER, TASK_STATUS_TONE } from '@/lib/labels';
+import { filterTasks } from '@/lib/tasksFilter';
+import { supabase } from '@/lib/supabase';
+import { useQuery } from '@tanstack/react-query';
 import type { Task, TaskStatus } from '@/types/db';
 import { useAuth } from '@/lib/store';
 import { SubtaskBlockingModal } from '@/components/SubtaskBlockingModal';
@@ -62,8 +66,30 @@ export function TasksPage() {
       clearTimeout(clear);
     };
   }, [hash]);
-  const { data: tasks = [], isLoading } = useTasks(
-    mineOnly && profile?.id ? { assigneeId: profile.id } : undefined,
+  const [projectFilter, setProjectFilter] = useState<string>('');
+  const [assigneeFilter, setAssigneeFilter] = useState<string>('');
+  const projects = useProjects();
+  const teammates = useQuery({
+    queryKey: ['tasks-filter', 'teammates'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .order('full_name');
+      if (error) throw error;
+      return (data ?? []) as Array<{ id: string; full_name: string | null; email: string }>;
+    },
+  });
+  const { data: rawTasks = [], isLoading } = useTasks();
+  const tasks = useMemo(
+    () =>
+      filterTasks(rawTasks, {
+        mineOnly,
+        myUserId: profile?.id ?? null,
+        projectId: projectFilter || null,
+        assigneeId: assigneeFilter || null,
+      }),
+    [rawTasks, mineOnly, profile?.id, projectFilter, assigneeFilter],
   );
   const update = useUpdateTaskStatus();
   const [blocker, setBlocker] = useState<{ id: string; from?: TaskStatus } | null>(null);
@@ -157,7 +183,7 @@ export function TasksPage() {
         }
       />
 
-      <div className="flex gap-2 mb-4">
+      <div className="flex flex-wrap gap-2 mb-4 items-center">
         {(['board', 'table'] as const).map((v) => (
           <button
             key={v}
@@ -167,6 +193,57 @@ export function TasksPage() {
             {v === 'board' ? t('tasks.view.board') : t('tasks.view.table')}
           </button>
         ))}
+        <span className="ml-auto flex flex-wrap gap-2 items-center">
+          <select
+            className="input"
+            style={{ height: 32, paddingTop: 0, paddingBottom: 0, minWidth: 160 }}
+            value={projectFilter}
+            onChange={(e) => setProjectFilter(e.target.value)}
+            aria-label={t('tasks.filter.project_aria')}
+          >
+            <option value="">{t('tasks.filter.project_all')}</option>
+            {(projects.data ?? []).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          <select
+            className="input"
+            style={{ height: 32, paddingTop: 0, paddingBottom: 0, minWidth: 160 }}
+            value={assigneeFilter}
+            onChange={(e) => setAssigneeFilter(e.target.value)}
+            aria-label={t('tasks.filter.assignee_aria')}
+          >
+            <option value="">{t('tasks.filter.assignee_all')}</option>
+            {(teammates.data ?? []).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.full_name || p.email}
+              </option>
+            ))}
+          </select>
+          {projectFilter || assigneeFilter || mineOnly ? (
+            <button
+              type="button"
+              className="text-tiny"
+              style={{
+                background: 'transparent',
+                border: '1px solid var(--line)',
+                padding: '4px 10px',
+                borderRadius: 6,
+                color: 'var(--text-soft)',
+                cursor: 'pointer',
+              }}
+              onClick={() => {
+                setProjectFilter('');
+                setAssigneeFilter('');
+                setMineOnly(false);
+              }}
+            >
+              {t('tasks.filter.clear')}
+            </button>
+          ) : null}
+        </span>
       </div>
 
       {isLoading ? (
