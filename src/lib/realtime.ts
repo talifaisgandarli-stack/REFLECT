@@ -98,6 +98,19 @@ export function useRealtimeSync(userId: string | undefined) {
       }),
     );
 
+    // mirai_messages is in the realtime publication (migration 0008).
+    // RLS limits the rows the user actually receives to their own
+    // conversations, so an unfiltered subscribe is safe.
+    cleanups.push(
+      subscribeTable({
+        table: 'mirai_messages',
+        channelName: `mirai_messages:${userId}`,
+        onChange: () => {
+          qc.invalidateQueries({ queryKey: ['mirai-history'] });
+        },
+      }),
+    );
+
     return () => {
       for (const c of cleanups) c();
     };
