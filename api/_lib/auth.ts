@@ -24,18 +24,18 @@ export function admin() {
 export async function requireUser(req: Request): Promise<AuthedUser> {
   const auth = req.headers.get('authorization') ?? '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
-  if (!token) throw new HttpError(401, 'Missing bearer token');
+  if (!token) throw new HttpError(401, 'Missing bearer token', 'missing_bearer');
 
   const sb = admin();
   const { data, error } = await sb.auth.getUser(token);
-  if (error || !data?.user) throw new HttpError(401, 'Invalid token');
+  if (error || !data?.user) throw new HttpError(401, 'Invalid token', 'invalid_token');
 
   const { data: prof } = await sb
     .from('profiles')
     .select('id, email, is_creator, role_id')
     .eq('id', data.user.id)
     .maybeSingle();
-  if (!prof) throw new HttpError(403, 'No profile');
+  if (!prof) throw new HttpError(403, 'No profile', 'no_profile');
 
   let roleKey: string | null = null;
   let roleAdmin = false;
@@ -70,9 +70,40 @@ export function userClient(token: string) {
   });
 }
 
+/**
+ * Stable error code derived from HTTP status when a callsite doesn't
+ * provide one. Clients can branch on `code` instead of parsing the
+ * human message — see /api error envelope (slice 128).
+ */
+function defaultCodeForStatus(status: number): string {
+  switch (status) {
+    case 400:
+      return 'bad_request';
+    case 401:
+      return 'unauthenticated';
+    case 403:
+      return 'forbidden';
+    case 404:
+      return 'not_found';
+    case 405:
+      return 'method_not_allowed';
+    case 409:
+      return 'conflict';
+    case 413:
+      return 'payload_too_large';
+    case 429:
+      return 'rate_limited';
+    default:
+      return status >= 500 ? 'internal_error' : 'error';
+  }
+}
+
 export class HttpError extends Error {
-  constructor(public status: number, message: string) {
+  public readonly code: string;
+
+  constructor(public status: number, message: string, code?: string) {
     super(message);
+    this.code = code ?? defaultCodeForStatus(status);
   }
 }
 
@@ -83,9 +114,21 @@ export function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+/**
+ * Standardized error envelope (slice 128, PRD §11.3). Always returns
+ * `{ error: <human>, code: <stable_id> }`. Internal errors collapse to
+ * a generic message + code='internal_error'; the original throw is
+ * still console.errored for log forensics. HttpError keeps its
+ * caller-provided code so clients can branch on stable identifiers.
+ */
 export function errorResponse(e: unknown) {
-  if (e instanceof HttpError) return jsonResponse({ error: e.message }, e.status);
+  if (e instanceof HttpError) {
+    return jsonResponse({ error: e.message, code: e.code }, e.status);
+  }
   // eslint-disable-next-line no-console
   console.error('[api]', e);
-  return jsonResponse({ error: 'Internal error' }, 500);
+  return jsonResponse(
+    { error: 'Internal error', code: 'internal_error' },
+    500,
+  );
 }
