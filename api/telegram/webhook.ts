@@ -58,7 +58,10 @@ export default async function handler(req: Request) {
           '/start <kod> — hesabı bağla',
           '/tasks — açıq tapşırıqların siyahısı',
           '/today — bu gün üçün son tarixli tapşırıqlar',
+          '/projects — aktiv layihələrin xülasəsi',
+          '/mentions — sənə son müraciətlər',
           '/balance — cari balans (admin)',
+          '/forecast — 30/60/90 gün cash forecast (admin)',
         ].join('\n'),
       );
       return jsonResponse({ ok: true });
@@ -76,6 +79,21 @@ export default async function handler(req: Request) {
 
     if (text === '/balance') {
       await handleBalance(chatId);
+      return jsonResponse({ ok: true });
+    }
+
+    if (text === '/projects') {
+      await handleProjects(chatId);
+      return jsonResponse({ ok: true });
+    }
+
+    if (text === '/forecast') {
+      await handleForecast(chatId);
+      return jsonResponse({ ok: true });
+    }
+
+    if (text === '/mentions') {
+      await handleMentions(chatId);
       return jsonResponse({ ok: true });
     }
 
@@ -214,6 +232,108 @@ async function handleBalance(chatId: number) {
       `Debitor: ${fmt.format(debt)}`,
     ].join('\n'),
   );
+}
+
+async function handleProjects(chatId: number) {
+  const profile = await resolveProfile(chatId);
+  if (!profile) {
+    await sendMessage(chatId, 'Hesab bağlı deyil. /start <kod> ilə bağlamaq lazımdır.');
+    return;
+  }
+  const sb = admin();
+  const { data } = await sb
+    .from('projects')
+    .select('id, name, status, deadline, phases')
+    .eq('status', 'active')
+    .is('archived_at', null)
+    .order('deadline', { ascending: true, nullsFirst: false })
+    .limit(8);
+  const rows = (data ?? []) as Array<{
+    name: string;
+    deadline: string | null;
+    phases: string[];
+  }>;
+  if (rows.length === 0) {
+    await sendMessage(chatId, 'Aktiv layihə yoxdur.');
+    return;
+  }
+  const lines = rows.map((p) => {
+    const phase = p.phases?.length ? p.phases[p.phases.length - 1] : '—';
+    const dl = p.deadline ? ` · ${p.deadline}` : '';
+    return `• ${p.name} (${phase})${dl}`;
+  });
+  await sendMessage(chatId, [`Aktiv layihələr (${rows.length}):`, ...lines].join('\n'));
+}
+
+async function handleForecast(chatId: number) {
+  const profile = await resolveProfile(chatId);
+  if (!profile) {
+    await sendMessage(chatId, 'Hesab bağlı deyil.');
+    return;
+  }
+  if (!profile.isAdmin) {
+    await sendMessage(chatId, 'Bu komanda yalnız adminlər üçündür.');
+    return;
+  }
+  const sb = admin();
+  const { data } = await sb
+    .from('cash_forecasts')
+    .select('horizon_days, projected_balance, confidence_low, confidence_high')
+    .order('generated_at', { ascending: false })
+    .limit(3);
+  const rows = (data ?? []) as Array<{
+    horizon_days: number;
+    projected_balance: number;
+    confidence_low: number;
+    confidence_high: number;
+  }>;
+  if (rows.length === 0) {
+    await sendMessage(chatId, 'Hələ forecast yoxdur (cron işə düşməyib).');
+    return;
+  }
+  const fmt = new Intl.NumberFormat('az-AZ', {
+    style: 'currency',
+    currency: 'AZN',
+    maximumFractionDigits: 0,
+  });
+  const lines = rows
+    .sort((a, b) => a.horizon_days - b.horizon_days)
+    .map(
+      (r) =>
+        `${r.horizon_days} gün: ${fmt.format(Number(r.projected_balance))} (${fmt.format(
+          Number(r.confidence_low),
+        )} – ${fmt.format(Number(r.confidence_high))})`,
+    );
+  await sendMessage(chatId, ['Cash forecast', ...lines].join('\n'));
+}
+
+async function handleMentions(chatId: number) {
+  const profile = await resolveProfile(chatId);
+  if (!profile) {
+    await sendMessage(chatId, 'Hesab bağlı deyil.');
+    return;
+  }
+  const sb = admin();
+  const { data } = await sb
+    .from('notifications')
+    .select('payload, created_at')
+    .eq('user_id', profile.id)
+    .eq('kind', 'mention')
+    .order('created_at', { ascending: false })
+    .limit(5);
+  const rows = (data ?? []) as Array<{
+    payload: { task_id?: string };
+    created_at: string;
+  }>;
+  if (rows.length === 0) {
+    await sendMessage(chatId, 'Müraciət yoxdur ✓');
+    return;
+  }
+  const lines = rows.map((r) => {
+    const tid = r.payload?.task_id;
+    return `• ${r.created_at.slice(0, 10)} · tapşırıq #${tid ? tid.slice(0, 8) : '—'}`;
+  });
+  await sendMessage(chatId, [`Son ${rows.length} müraciət:`, ...lines].join('\n'));
 }
 
 async function sendMessage(chatId: number, text: string) {
