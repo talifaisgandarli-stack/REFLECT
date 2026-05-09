@@ -1,21 +1,33 @@
 # Reflect — sessiya gedişatı (`claude/create-done-list-Y8FuN`)
 
-PRD v3.8 + designstyle4 əsasında bu branch boyunca yığılmış 41 slice-ın xülasəsi.
-Hər bir slice atomar commit-dir; `git log --oneline main..` ilə tam tarixçə.
+PRD v3.8 + designstyle4 əsasında bu branch boyunca yığılmış 98 slice-ın
+xülasəsi. Hər bir slice atomar commit-dir; tam tarixçə üçün
+`git log --oneline main..`.
 
 ## Modul sıxlığı
 
 ```
-İŞ                     ●●●●●  task lifecycle, Done list, Arxiv, drag-drop, deadline reminders
-Müştərilər             ●●●●○  8-stage pipeline, slide-in detail (5 tab), Yeni müştəri, retro
-Maliyyə Mərkəzi        ●●●●○  +Gəlir/+Xərc, markPaid, P&L per-month, forecast (Claude+fallback)
-Komanda                ●●●●○  Salary / Leave / Performance / Equipment / Calendar / Announcements
-Şirkət                 ●●●●○  OKR (KR auto-progress + nudge candidate), Career, content stub
-MIRAI                  ●●●●●  cost guardian, persona switcher (5), RAG, NDJSON streaming
-Sistem                 ●●●○○  Şablon Mərkəzi, Bilik Bazası (PDF parsing), Bildiriş prefs, Audit log
-Cross-cutting          ●●●●●  Realtime, Cmd+K + drawer, notifications fan-out, observability,
-                              rate-limit, audit, Sentry shim, mobile drawer, i18n az/en/ru
-DoD                    ●●●●○  CI workflow, RLS audit, vitest suite (~80 tests), test infra
+İŞ                     ●●●●●  task lifecycle, Done list, Arxiv (i18n),
+                              drag-drop, deadline reminders, pull-to-refresh
+Müştərilər             ●●●●○  8-stage pipeline, slide-in detail, retro survey
+Maliyyə Mərkəzi        ●●●●●  +Gəlir/+Xərc, markPaid, P&L per-month + CSV,
+                              forecast (Claude+fallback), threshold alerts
+Komanda                ●●●●●  Salary / Leave / Performance / Equipment /
+                              Calendar (RSVP) / Roster / Announcements
+Şirkət                 ●●●●○  OKR (KR auto-progress), Career + promotion path
+                              + admin approval queue, content stub
+MIRAI                  ●●●●●  cost guardian, 5 personas + admin overrides,
+                              RAG, NDJSON streaming, history + archive,
+                              cost dashboard + CSV
+Sistem                 ●●●●○  Şablon Mərkəzi, Bilik Bazası (PDF parsing),
+                              Bildiriş prefs, Audit log + entity filter,
+                              Ümumi CRUD, MIRAI persona override
+Cross-cutting          ●●●●●  Realtime, Cmd+K + drawer, notifications fan-out,
+                              observability, rate-limit, audit, mobile drawer
+                              + swipe + pull-to-refresh, i18n az/en/ru
+                              everywhere, shortcut overlay
+DoD                    ●●●●●  CI workflow, RLS audit, vitest (~135 tests),
+                              Playwright skeleton + 12 specs
 ```
 
 ## Slice axını
@@ -41,7 +53,7 @@ DoD                    ●●●●○  CI workflow, RLS audit, vitest suite (~8
 |---|---|---|
 | 11 | `26a5779` | Dashboard health colors + announcement/meeting widgets |
 | 12 | `3b4f521` | Maliyyə +Gəlir/+Xərc + receivable markPaid |
-| 13 | `1c31f06` | Project P&L tab (totals) |
+| 13 | `1c31f06` | Project P&L tab |
 | 14 | `5dc9086` | Şablon Mərkəzi CRUD + variable registry |
 | 15 | `e50d75d` | Outsource hybrid workflow + advance-status RPC |
 | 16 | `e1e4748` | Project closeout flow + reopen |
@@ -50,29 +62,29 @@ DoD                    ●●●●○  CI workflow, RLS audit, vitest suite (~8
 | 19 | `4d0c9f7` | Elanlar approval queue + read tracking |
 | 20 | `2fd398c` | OKR (Şirkət + Şəxsi + KR progress + health) |
 
-### İncələmə (21–30)
+### İncələmə (21–34)
 
 | # | Commit | Mövzu |
 |---|---|---|
 | 21 | `b95a8e7` | Calendar Month/Week/Day + .ics + meet.new |
 | 22 | `6786efa` | Karyera Strukturu + promotion path |
-| 23 | `b9d7f12` | Müştəri detail panel — Layihələr/Sənədlər tab + Yeni müştəri |
+| 23 | `b9d7f12` | Müştəri detail panel — Layihələr/Sənədlər tab |
 | 24 | `f511746` | Retrospective survey + public share form |
-| 25 | `8338e38` | Bilik Bazası ingestion (chunk + embed pipeline) |
+| 25 | `8338e38` | Bilik Bazası ingestion (chunk + embed) |
 | 26 | `4d95681` | MIRAI search_knowledge_base RAG tool |
-| 27 | `ba545be` | Hesabatlar — phase donut + revenue bar + capacity heatmap |
-| 28 | `bac6baf` | Project documents tab (drive_link + share token) |
+| 27 | `ba545be` | Hesabatlar — phase donut + revenue bar + heatmap |
+| 28 | `bac6baf` | Project documents tab |
 | 29 | `6599817` | Award/portfolio submission UI |
 | 30 | `0cb23b5` | CSV + PDF (print) export |
+| 31 | `9dd920c` | Contract tests (templates / ics / export) |
+| 32 | `82af204` | i18n bootstrap (az/en/ru) |
+| 33 | `0c53986` | Production hardening (Sentry + audit + rate-limit) |
+| 34 | `d8d8d3d` | Cmd+K deep-links + g-chord nav + MIRAI shortcut |
 
-### Sərtləşdirmə (31–41)
+### Sərtləşdirmə (35–50)
 
 | # | Commit | Mövzu |
 |---|---|---|
-| 31 | `9dd920c` | Contract tests (templates / ics / export) |
-| 32 | `82af204` | i18n bootstrap (az/en/ru + useT) |
-| 33 | `0c53986` | Production hardening (Sentry shim + audit + rate-limit) |
-| 34 | `d8d8d3d` | Cmd+K deep-links + g-chord nav + MIRAI shortcut |
 | 35 | `c46107f` | Client-side PDF parsing for Bilik Bazası |
 | 36 | `11fce2b` | GH Actions CI + Postgres RLS audit |
 | 37 | `860ac3c` | Mobile responsive — drawer sidebar + table fade |
@@ -80,19 +92,82 @@ DoD                    ●●●●○  CI workflow, RLS audit, vitest suite (~8
 | 39 | `604712d` | Storage bucket upload for project documents |
 | 40 | `457e4d4` | Audit log viewer admin page |
 | 41 | `2f0dc6f` | Onboarding hero for new workspaces |
-| 42 | `33e41e1` | Telegram inbound commands (/tasks /today /balance /help) |
+| 42 | `33e41e1` | Telegram inbound commands (/tasks /today /balance) |
 | 43 | `8effdf7` | MIRAI streaming chat (NDJSON) |
 | 44 | `eee6ab9` | Workload helper extracted + tests |
 | 45 | `895ad05` | MIRAI persona switcher UI |
-| 46 | `77563ad` | Forecast cron uses Claude with deterministic fallback |
+| 46 | `77563ad` | Forecast cron uses Claude + deterministic fallback |
 | 47 | `fbb6fd0` | i18n consumed by Sidebar + locale switcher |
 | 48 | `95bfde5` | Branded Resend email templates |
 | 49 | `456324e` | Cmd+K project hits open preview drawer |
 | 50 | `25973ac` | Project P&L per-month chart + CSV |
 
+### Polish + Cərgələr (51–66)
+
+| # | Commit | Mövzu |
+|---|---|---|
+| 51 | `f225cb8` | docs/PROGRESS.md (initial 51-commit ledger) |
+| 52 | `b67f2a3` | i18n broader extraction (Cmd+K, EmptyState, exports) |
+| 53 | `f9d1c69` | Playwright E2E skeleton + smoke specs |
+| 54 | `dee5d8f` | Word/RTF template export |
+| 55 | `4ffbb53` | Cmd+K task preview drawer |
+| 56 | `a50bdfb` | Finance threshold alerts cron |
+| 57 | `52a5029` | A11y polish — skip-link + aria + main landmark |
+| 58 | `ce7d9c1` | Karyera promotion request + admin approval |
+| 59 | `853d647` | README + CONTRIBUTING refresh |
+| 60 | `a4eae0d` | MIRAI cost dashboard (admin) |
+| 61 | `1eea645` | Settings → Ümumi CRUD |
+| 62 | `f7b03a1` | Telegram /projects /forecast /mentions |
+| 63 | `5af8a2a` | Multi-file upload + progress for project docs |
+| 64 | `7fc4f93` | Task create/cancel modal i18n keys |
+| 65 | `2b24521` | Dark surface focus rings + forced-colors mode |
+| 66 | `57d85ff` | NotificationBell consumes i18n |
+
+### Genişlənmə II (67–82)
+
+| # | Commit | Mövzu |
+|---|---|---|
+| 67 | `8e3a601` | Playwright public reachability + a11y smoke |
+| 68 | `6baba3c` | `?` shortcut overlay |
+| 69 | `14291bf` | TasksPage i18n |
+| 70 | `fefb12e` | Performance review PDF (print) export |
+| 71 | `c8d94b5` | MIRAI persona admin overrides |
+| 72 | `87bd288` | Settings nav i18n |
+| 73 | `19d5870` | Mobile drawer swipe-to-close |
+| 74 | `d57897a` | Email helpers locale-aware (az/en/ru) |
+| 75 | `f708447` | notify-fanout cron localises emails |
+| 76 | `91ec938` | Activity log entity-type filter |
+| 77 | `35d1b15` | MIRAI conversation history sidebar |
+| 78 | `1fe76f6` | Telegram /leave /equipment /comments |
+| 79 | `2739400` | Layout topbar + OnboardingHero i18n |
+| 80 | `d3c9013` | Maliyyə Mərkəzi i18n |
+| 81 | `20fca64` | Pull-to-refresh kanban |
+| 82 | `c83ecf1` | Real-time presence dot on task cards |
+
+### Polish III (83–98)
+
+| # | Commit | Mövzu |
+|---|---|---|
+| 83 | `b5c1d6c` | Tasks remaining strings + shadow bug fix |
+| 84 | `65b5539` | Activity feed entity_type label dictionary |
+| 85 | `b17ad36` | Komanda 7 page-head locale labels |
+| 86 | `9c7a5d8` | Telegram bot locale-aware (az/en/ru) |
+| 87 | `51af48c` | MIRAI cost CSV export |
+| 88 | `83c5aea` | Notification bell collapses repeat-kind runs |
+| 89 | `b86b6ae` | i18n missing-key dev console warning |
+| 90 | `01564c3` | Realtime mirai-history invalidation |
+| 91 | `e0967d8` | Notification collapse extracted + tests |
+| 92 | `b96988b` | Calendar RSVP accept/decline |
+| 93 | `dc7424f` | Storage upload size limit + content-type whitelist |
+| 94 | `76fb9fb` | Activity action verb dictionary |
+| 95 | `edef085` | MIRAI conversation archive + restore |
+| 96 | `bd6f432` | NotificationPreferences page i18n |
+| 97 | `ef2c1be` | Archive + Roster empty states i18n |
+| 98 | this   | docs/PROGRESS.md ledger refresh |
+
 ## Migrasiya intizamı
 
-10 migrasiya, hər biri up + down:
+18 migrasiya, hər biri up + down:
 
 | Fayl | Mövzu |
 |---|---|
@@ -100,76 +175,80 @@ DoD                    ●●●●○  CI workflow, RLS audit, vitest suite (~8
 | `0002_rls` | Hər cədvəl üçün RLS policy + helper funksiyalar |
 | `0003_seed_awards` | 5 mükafat seed-i |
 | `0004_activity_triggers` | Universal activity log + mention parser + subtask blocker |
-| `0005_client_stage_rpc` | `set_client_stage(id, to, lost_reason)` |
+| `0005_client_stage_rpc` | `set_client_stage` |
 | `0006_task_lifecycle` | Cancel reason + workload + auto-archive triggerləri |
 | `0007_notifications` | `notification_preferences` + status fan-out |
 | `0008_realtime_publication` | Realtime publication-a cədvəl əlavə |
-| `0009_notification_dispatch` | `notifications.dispatched_channels` jsonb |
-| `0010_outsource_status_rpc` | `outsource_advance_status(id, next)` |
-| `0011_closeout_rpc` | `close_project(id)` + `reopen_project(id)` |
-| `0012_hr_tables` | `salaries` / `leave_requests` / `performance_reviews` + `leave_decide` |
+| `0009_notification_dispatch` | `notifications.dispatched_channels` |
+| `0010_outsource_status_rpc` | Outsource hybrid workflow advance |
+| `0011_closeout_rpc` | `close_project` + `reopen_project` |
+| `0012_hr_tables` | `salaries` / `leave_requests` / `performance_reviews` |
 | `0013_career_levels` | 4-tier ladder + `profiles.career_level_id` |
-| `0014_retrospective_public` | `retrospective_get/submit/send` security-definer üçlüyü |
-| `0015_knowledge_search` | `search_knowledge_base(embedding, limit)` + ivfflat index |
+| `0014_retrospective_public` | Public survey RPC üçlüyü |
+| `0015_knowledge_search` | `search_knowledge_base` + ivfflat index |
 | `0016_project_documents_bucket` | Storage bucket + RLS |
+| `0017_promotion_requests` | Promotion request + decide RPC |
+| `0018_calendar_rsvps` | Calendar RSVP + `calendar_rsvp` RPC |
 
 §10.2 qaydası boyu hər `down` script tabloları rename edir, drop etmir.
 
 ## Test infrastrukturu
 
 - `vitest.config.ts` — jsdom mühit, time-stable setup, src + api include.
-- ~80 unit + lib testi (`format`, `labels`, `templates`, `ics`, `export`,
-  `i18n`, `workload`, `rate-limit`, `audit`, `search`).
+- ~135 unit + lib testi (`format`, `labels`, `templates`, `ics`, `export`,
+  `i18n` (parity + missing-key warn), `workload`, `rate-limit`, `audit`,
+  `search`, `notificationGroup`, `rtf`, `activity`).
 - GitHub Actions: `npm ci → typecheck → vitest → vite build` + Postgres
   RLS audit (postgres:15 service container).
-- `supabase/rls_audit.sql` — public.* cədvəlində RLS söndürülmüşsə yaxud
-  policy sıfırdırsa CI fail edir (managed Supabase preview branch tələb
-  olunur — hazırda fail-tolerant).
+- Playwright skeleton + 3 specs (12 tests):
+  login chrome, redirect, public reachability, html lang/viewport.
 
-## Cross-cutting xidmətlər
+## Cron tapşırıqları
 
-- **Bildirişlər**: 7 növ (`mention`, `task_assigned`, `task_status_changed`,
-  `task_done`, `task_cancelled`, `deadline_reminder`, `finance_alert`).
-  DB triggerlər row insert edir; cron 10 dəq-dən bir Resend email +
-  Telegram bot vasitəsilə drainage edir; finance_alert yalnız admin
-  Telegram-larına gedir (PRD §8.1).
-- **Realtime**: tasks, notifications, activity_log, mirai_messages,
-  announcements — `useRealtimeSync(userId)` Layout-da quraşdırılıb.
-- **MIRAI**:
-  - Hard cap $5/user/ay (PRD §7.1), creator exempt
-  - 5 persona; admin-only personalar non-admin-ə qadağan
-  - RAG: KB_TRIGGER_RE → search_knowledge_base RPC → top-5 chunks
-  - NDJSON streaming endpoint + sync endpoint paralel
-  - Forecast cron real Claude call, JSON sanity check, deterministic fallback
-- **Audit**: `api/_lib/audit.ts` ilə audit_log row insert; `/audit` admin
-  səhifəsində audit_log + activity_log tabları.
-- **i18n**: az.json (mənbə) + en.json + ru.json — Sidebar bütünlüklə
-  istifadə edir; locale switcher profile.locale-i yeniləyir.
-- **Mobile**: drawer sidebar (lg-dən aşağıda hamburger trigger), table
-  edge-fade, page-head wrap.
+| Tapşırıq | Sıxlıq | Məzmun |
+|---|---|---|
+| `/api/cron/cmo` | Həftədə bir | RSS → mirai_feed_posts → drafts |
+| `/api/cron/forecast` | Gündə bir | Claude + fallback cash forecast (30/60/90) |
+| `/api/cron/notify-fanout` | 10 dəq | Resend email + Telegram drainage (locale-aware) |
+| `/api/cron/deadline-reminders` | Gündə bir | D-3 / D-1 / D-day notifications |
+| `/api/cron/finance-alerts` | Saatda bir | Income/expense threshold + overdue receivable |
+
+## i18n əhatəsi
+
+- 200+ açar `src/locales/{az,en,ru}.json` (parity test enforces).
+- Missing-key dev konsol xəbərdarlığı (PROD-da tree-shake olur).
+- Qoşulan səhifələr: Sidebar, Layout topbar, OnboardingHero, Tasks
+  (full), Settings (nav + Ümumi), Maliyyə tabs, Komanda page-heads,
+  Hesabatlar, Audit log entity/action, NotificationPreferences,
+  CmdK + bell + shortcut overlay, Archive empty, Roster empty,
+  Cancel modal, MIRAI persona switcher (sources stay AZ).
+- Email helpers (invite/share/MIRAI budget) + Telegram bot
+  (10 commands × 3 locales) consume `profile.locale`.
+
+## Mobile UX
+
+- Drawer sidebar (lg-dən aşağıda hamburger trigger + swipe-to-close).
+- Pull-to-refresh kanbanda.
+- Stronger focus rings on dark surfaces + forced-colors mode.
+- Touch-friendly RSVP / archive / cancel chips.
+- Skip-to-main link.
 
 ## Production blocker namizədləri
 
-Ship-ə qədər yoxlanılması vacib olan elementlər:
-
 1. Supabase Cloud project + auth + storage bucket provision.
 2. ANTHROPIC_API_KEY + RESEND_API_KEY + TELEGRAM_BOT_TOKEN +
-   CRON_SECRET + UPSTASH_REDIS_REST_URL/TOKEN env-lərinin Vercel-ə
-   yüklənməsi.
-3. Real Voyage / OpenAI / Cohere embedder swap (currently FNV-1a
-   placeholder — RAG yalnız exact-substring match edir).
-4. Sentry DSN provision + `@sentry/react` SDK swap (`src/lib/observability.ts`
-   bir-fayl dəyişikliyi).
-5. CI RLS audit blocking — Supabase preview branch ilə.
-6. Mobile cihazda iOS Safari 16+ smoke test (PRD §9.5).
-7. Lighthouse a11y ≥95, axe DevTools clean (PRD DoD §11.3).
+   CRON_SECRET + UPSTASH_REDIS_REST_URL/TOKEN env-lər.
+3. Real Voyage / OpenAI / Cohere embedder swap.
+4. Sentry DSN provision + `@sentry/react` SDK swap.
+5. CI RLS audit blocking — Supabase preview branch.
+6. Lighthouse a11y ≥95 final pass + iOS Safari 16+ smoke.
 
 ## Hələ qalan PRD-iddiası
 
-- Time tracking dictionary surface (PRD §11.1 Part 2 — out of v1 scope §12.1)
-- Şablonlar üçün native DOCX/XLSX render (Word/Excel)
-- Karyera Strukturu admin promotion approval workflow
-- Telegram outbound — finance threshold alerts (REQ-FIN üçün ad-hoc)
-- E2E (Playwright) test paketi
-- Locale extraction qalan komponentlərdə (hələlik yalnız Sidebar tam i18n)
-- Email locale-aware copy (hazırda yalnız AZ)
+- Time tracking dictionary surface (out of v1 scope §12.1)
+- Native DOCX render (RTF kifayətdir; .docx Word-friendly)
+- Notification body dictionary (event-specific copy beyond title)
+- Storage RLS / DB-trigger size limit mirror
+- E2E business flow (login → kanban → cancel) — needs seeded user
+- Locale extraction qalan komponentlərdə (Settings Ümumi form
+  field labels, project create/edit modals, finance modals)
