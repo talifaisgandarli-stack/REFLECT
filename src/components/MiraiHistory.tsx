@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { relativeTime } from '@/lib/format';
+import { useT } from '@/lib/i18n';
 
 type Persona = 'general' | 'project_manager' | 'finance_analyst' | 'cmo' | 'hr_partner';
 
@@ -23,13 +24,6 @@ type Conversation = {
 type Source = { name: string; page?: number };
 type Msg = { role: 'user' | 'assistant'; content: string; sources?: Source[] };
 
-const PERSONA_LABEL: Record<Persona, string> = {
-  general: 'Köməkçi',
-  project_manager: 'Layihə Mühəndisi',
-  finance_analyst: 'Maliyyə Analitiki',
-  cmo: 'CMO',
-  hr_partner: 'HR',
-};
 
 type Props = {
   userId: string;
@@ -39,6 +33,7 @@ type Props = {
 };
 
 export function MiraiHistory({ userId, open, onClose, onLoad }: Props) {
+  const t = useT();
   const qc = useQueryClient();
   const [showArchived, setShowArchived] = useState(false);
 
@@ -127,7 +122,7 @@ export function MiraiHistory({ userId, open, onClose, onLoad }: Props) {
   return (
     <div
       role="dialog"
-      aria-label="MIRAI tarixçə"
+      aria-label={t('mirai.history.dialog_label')}
       className="fixed inset-0 z-50"
       style={{ background: 'rgba(14,22,17,0.5)' }}
       onClick={onClose}
@@ -147,7 +142,7 @@ export function MiraiHistory({ userId, open, onClose, onLoad }: Props) {
         >
           <div className="flex items-center gap-2">
             <h2 className="text-h3" style={{ color: 'var(--canvas)' }}>
-              Tarixçə
+              {t('mirai.history.title')}
             </h2>
             <button
               type="button"
@@ -163,13 +158,13 @@ export function MiraiHistory({ userId, open, onClose, onLoad }: Props) {
                 opacity: showArchived ? 1 : 0.7,
               }}
             >
-              {showArchived ? 'Arxiv' : 'Aktiv'}
+              {showArchived ? t('mirai.history.show_archived') : t('mirai.history.show_active')}
             </button>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Bağla"
+            aria-label={t('common.close')}
             style={{
               color: 'var(--canvas)',
               opacity: 0.7,
@@ -184,9 +179,9 @@ export function MiraiHistory({ userId, open, onClose, onLoad }: Props) {
         </header>
 
         {conversations.isLoading ? (
-          <p className="px-5 py-4 opacity-70">Yüklənir…</p>
+          <p className="px-5 py-4 opacity-70">{t('common.loading')}</p>
         ) : (conversations.data ?? []).length === 0 ? (
-          <p className="px-5 py-4 opacity-70">Hələ söhbət yoxdur.</p>
+          <p className="px-5 py-4 opacity-70">{t('mirai.history.empty')}</p>
         ) : (
           <ul>
             {(conversations.data ?? []).map((c) => (
@@ -213,7 +208,7 @@ export function MiraiHistory({ userId, open, onClose, onLoad }: Props) {
                         borderRadius: 6,
                       }}
                     >
-                      {PERSONA_LABEL[c.persona]}
+                      {t(`mirai.persona.${c.persona}`)}
                     </span>
                     <span className="text-meta opacity-60">
                       {relativeTime(c.last_message_at ?? c.started_at)}
@@ -229,7 +224,7 @@ export function MiraiHistory({ userId, open, onClose, onLoad }: Props) {
                       overflow: 'hidden',
                     }}
                   >
-                    {c.preview ?? '— başlıq yoxdur —'}
+                    {c.preview ?? t('mirai.history.no_preview')}
                   </p>
                 </button>
                 <div className="px-5 pb-3 -mt-1 flex justify-end">
@@ -248,7 +243,7 @@ export function MiraiHistory({ userId, open, onClose, onLoad }: Props) {
                       cursor: 'pointer',
                     }}
                   >
-                    {showArchived ? 'Bərpa et' : 'Arxivə'}
+                    {showArchived ? t('mirai.history.restore') : t('mirai.history.archive')}
                   </button>
                 </div>
               </li>
