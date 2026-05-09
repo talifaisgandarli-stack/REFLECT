@@ -5,8 +5,8 @@
  * timestamp. Selecting a row loads its messages into the parent page so
  * the user can resume.
  */
-import { useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { relativeTime } from '@/lib/format';
 
@@ -39,6 +39,9 @@ type Props = {
 };
 
 export function MiraiHistory({ userId, open, onClose, onLoad }: Props) {
+  const qc = useQueryClient();
+  const [showArchived, setShowArchived] = useState(false);
+
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
@@ -49,16 +52,19 @@ export function MiraiHistory({ userId, open, onClose, onLoad }: Props) {
   }, [open, onClose]);
 
   const conversations = useQuery({
-    queryKey: ['mirai-history', userId],
+    queryKey: ['mirai-history', userId, showArchived ? 'archived' : 'active'],
     enabled: open && !!userId,
     queryFn: async (): Promise<Conversation[]> => {
-      const { data: convs, error } = await supabase
+      let q = supabase
         .from('mirai_conversations')
         .select('id, persona, started_at, last_message_at')
         .eq('user_id', userId)
-        .is('archived_at', null)
         .order('last_message_at', { ascending: false, nullsFirst: false })
         .limit(20);
+      q = showArchived
+        ? q.not('archived_at', 'is', null)
+        : q.is('archived_at', null);
+      const { data: convs, error } = await q;
       if (error) throw error;
       const list = (convs ?? []) as Array<Omit<Conversation, 'preview'>>;
       if (list.length === 0) return [];
@@ -85,6 +91,17 @@ export function MiraiHistory({ userId, open, onClose, onLoad }: Props) {
         preview: firstByConv.get(c.id) ?? null,
       }));
     },
+  });
+
+  const archiveToggle = useMutation({
+    mutationFn: async (input: { id: string; archive: boolean }) => {
+      const { error } = await supabase
+        .from('mirai_conversations')
+        .update({ archived_at: input.archive ? new Date().toISOString() : null })
+        .eq('id', input.id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['mirai-history'] }),
   });
 
   async function selectConversation(c: Conversation) {
@@ -124,11 +141,31 @@ export function MiraiHistory({ userId, open, onClose, onLoad }: Props) {
           borderRight: '1px solid rgba(255,255,255,0.08)',
         }}
       >
-        <header className="px-5 py-4 flex items-center justify-between"
-          style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-          <h2 className="text-h3" style={{ color: 'var(--canvas)' }}>
-            Tarixçə
-          </h2>
+        <header
+          className="px-5 py-4 flex items-center justify-between gap-3"
+          style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}
+        >
+          <div className="flex items-center gap-2">
+            <h2 className="text-h3" style={{ color: 'var(--canvas)' }}>
+              Tarixçə
+            </h2>
+            <button
+              type="button"
+              onClick={() => setShowArchived((v) => !v)}
+              className="text-tiny"
+              style={{
+                background: showArchived ? 'rgba(173,251,73,0.18)' : 'rgba(255,255,255,0.06)',
+                color: showArchived ? 'var(--brand-action)' : 'var(--canvas)',
+                padding: '4px 10px',
+                borderRadius: 6,
+                border: 0,
+                cursor: 'pointer',
+                opacity: showArchived ? 1 : 0.7,
+              }}
+            >
+              {showArchived ? 'Arxiv' : 'Aktiv'}
+            </button>
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -195,6 +232,25 @@ export function MiraiHistory({ userId, open, onClose, onLoad }: Props) {
                     {c.preview ?? '— başlıq yoxdur —'}
                   </p>
                 </button>
+                <div className="px-5 pb-3 -mt-1 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      archiveToggle.mutate({ id: c.id, archive: !showArchived })
+                    }
+                    disabled={archiveToggle.isPending}
+                    className="text-meta"
+                    style={{
+                      background: 'transparent',
+                      border: 0,
+                      color: 'var(--canvas)',
+                      opacity: 0.55,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {showArchived ? 'Bərpa et' : 'Arxivə'}
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
