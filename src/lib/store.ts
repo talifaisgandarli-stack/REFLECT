@@ -38,7 +38,9 @@ type UIState = {
 };
 
 export const useUI = create<UIState>((set) => ({
-  sidebarOpen: true,
+  // Closed by default — desktop ignores via CSS lg:translate-x-0,
+  // mobile shows the hamburger trigger that opens the drawer on demand.
+  sidebarOpen: false,
   miraiPanelOpen: false,
   cmdkOpen: false,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),

@@ -18,7 +18,7 @@ const CHORD_TARGETS: Record<string, string> = {
 };
 
 export function Layout() {
-  const { setCmdK, toggleMirai } = useUI();
+  const { setCmdK, toggleMirai, toggleSidebar } = useUI();
   const { session } = useAuth();
   const nav = useNavigate();
   const chordTimer = useRef<number | null>(null);
@@ -80,9 +80,21 @@ export function Layout() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <main className="flex-1 px-6 lg:px-10 py-6 max-w-[1600px] mx-auto w-full">
+      <main className="flex-1 px-4 lg:px-10 py-4 lg:py-6 max-w-[1600px] mx-auto w-full">
         {session ? (
-          <div className="flex justify-end mb-2">
+          <div className="flex justify-between items-center mb-3 lg:mb-2">
+            <button
+              type="button"
+              className="btn-ghost lg:hidden"
+              aria-label="Menyu"
+              onClick={toggleSidebar}
+              style={{ height: 40, width: 40, padding: 0 }}
+            >
+              <span aria-hidden style={{ fontSize: 20, lineHeight: 1 }}>
+                ☰
+              </span>
+            </button>
+            <span className="hidden lg:block" />
             <NotificationBell />
           </div>
         ) : null}

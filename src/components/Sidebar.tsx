@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { Mascot } from './Mascot';
-import { useAuth } from '@/lib/store';
+import { useAuth, useUI } from '@/lib/store';
 import { signOut } from '@/lib/auth';
 
 type NavItem = { to: string; label: string; admin?: boolean };
@@ -61,12 +61,31 @@ const NAV: NavGroup[] = [
 
 export function Sidebar() {
   const { isAdmin, profile } = useAuth();
+  const { sidebarOpen, toggleSidebar } = useUI();
 
   return (
-    <aside
-      className="m-5 w-60 shrink-0 hidden lg:flex flex-col rounded-capsule sticky top-5 self-start max-h-[calc(100vh-2.5rem)]"
-      style={{ background: 'var(--ink)' }}
-    >
+    <>
+      {/* Mobile backdrop */}
+      {sidebarOpen ? (
+        <div
+          aria-hidden
+          onClick={toggleSidebar}
+          className="lg:hidden fixed inset-0 z-30"
+          style={{ background: 'rgba(14,22,17,0.4)' }}
+        />
+      ) : null}
+
+      <aside
+        className={[
+          'flex flex-col rounded-capsule self-start',
+          // Desktop: stays in flow
+          'lg:m-5 lg:w-60 lg:shrink-0 lg:flex lg:sticky lg:top-5 lg:max-h-[calc(100vh-2.5rem)]',
+          // Mobile: drawer overlay
+          'fixed top-0 left-0 z-40 h-full w-[280px] m-3 transition-transform duration-300',
+          sidebarOpen ? 'translate-x-0' : '-translate-x-[110%] lg:translate-x-0',
+        ].join(' ')}
+        style={{ background: 'var(--ink)' }}
+      >
       {/* Header */}
       <div className="px-5 pt-5 pb-3 flex items-center gap-3">
         <div
@@ -82,7 +101,17 @@ export function Sidebar() {
         </span>
       </div>
 
-      <nav className="flex-1 overflow-y-auto py-2">
+      <nav
+        className="flex-1 overflow-y-auto py-2"
+        onClick={(e) => {
+          // Close drawer on mobile after a nav-link tap (desktop is no-op
+          // because lg:translate-x-0 overrides the closed state).
+          const target = e.target as HTMLElement;
+          if (target.closest('a') && window.innerWidth < 1024 && sidebarOpen) {
+            toggleSidebar();
+          }
+        }}
+      >
         {NAV.filter((g) => !(g.adminGroup && !isAdmin)).map((group) => {
           const items = group.items.filter((i) => !i.admin || isAdmin);
           if (items.length === 0) return null;
@@ -132,6 +161,7 @@ export function Sidebar() {
           </button>
         </div>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

@@ -184,6 +184,18 @@
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
   }
+
+  /* Mobile: tables inside cards stay scrollable but get an edge-fade hint
+     so the user sees content continues past the right edge. */
+  @media (max-width: 1024px) {
+    .card .overflow-x-auto {
+      mask-image: linear-gradient(to right, black calc(100% - 24px), transparent);
+      -webkit-mask-image: linear-gradient(to right, black calc(100% - 24px), transparent);
+    }
+    .card .overflow-x-auto:not(:hover) {
+      scrollbar-width: thin;
+    }
+  }
 }
 
 /* Print mode — body.print-active hides everything except an element marked
