@@ -1,9 +1,10 @@
 import { Outlet, useNavigate } from 'react-router-dom';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { MiraiDrawer } from './MiraiDrawer';
 import { CmdK } from './CmdK';
 import { NotificationBell } from './NotificationBell';
+import { ShortcutOverlay } from './ShortcutOverlay';
 import { useUI, useAuth } from '@/lib/store';
 import { useRealtimeSync } from '@/lib/realtime';
 
@@ -22,6 +23,7 @@ export function Layout() {
   const { session } = useAuth();
   const nav = useNavigate();
   const chordTimer = useRef<number | null>(null);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   useRealtimeSync(session?.userId);
 
   useEffect(() => {
@@ -48,6 +50,13 @@ export function Layout() {
         return;
       }
       if (isTextField(e.target)) return;
+
+      // "?" or Shift+/ opens the shortcut help overlay
+      if (e.key === '?' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        setShortcutsOpen(true);
+        return;
+      }
 
       // "g" then <letter> chord — PRD §6.3
       if (!chordActive && e.key.toLowerCase() === 'g' && !e.metaKey && !e.ctrlKey && !e.altKey) {
@@ -109,6 +118,7 @@ export function Layout() {
       </main>
       <MiraiDrawer />
       <CmdK />
+      <ShortcutOverlay open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   );
 }
