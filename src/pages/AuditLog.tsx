@@ -4,7 +4,7 @@
  * privileged actions (audit_log: role/policy changes via api/*) and
  * data-touch history (activity_log: trigger-emitted CRUD events).
  */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -12,6 +12,19 @@ import { PageHead } from '@/components/PageHead';
 import { formatDate, relativeTime } from '@/lib/format';
 import { actionLabelKey, activityHref, entityLabelKey } from '@/lib/activity';
 import { useT } from '@/lib/i18n';
+
+type ProfileLite = { id: string; full_name: string | null; email: string };
+
+function actorLabel(
+  id: string | null | undefined,
+  byId: Map<string, ProfileLite>,
+  systemLabel: string,
+): string {
+  if (!id) return systemLabel;
+  const p = byId.get(id);
+  if (!p) return id.slice(0, 8);
+  return p.full_name ?? p.email;
+}
 
 type AuditRow = {
   id: string;
@@ -37,18 +50,30 @@ type ActivityRow = {
 
 type EntityFilter = 'all' | 'task' | 'project' | 'client' | 'task_comment';
 
-const ENTITY_LABEL: Record<EntityFilter, string> = {
-  all: 'Hamısı',
-  task: 'Tapşırıq',
-  project: 'Layihə',
-  client: 'Müştəri',
-  task_comment: 'Şərh',
-};
-
 export function AuditLogPage() {
+  const t = useT();
   const [tab, setTab] = useState<'audit' | 'activity'>('audit');
   const [actionFilter, setActionFilter] = useState('');
   const [entityFilter, setEntityFilter] = useState<EntityFilter>('all');
+
+  const profiles = useQuery({
+    queryKey: ['audit', 'profiles'],
+    queryFn: async (): Promise<ProfileLite[]> => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, email');
+      if (error) throw error;
+      return (data ?? []) as ProfileLite[];
+    },
+  });
+
+  const profilesById = useMemo(() => {
+    const map = new Map<string, ProfileLite>();
+    for (const p of profiles.data ?? []) map.set(p.id, p);
+    return map;
+  }, [profiles.data]);
+
+  const entityFilters: EntityFilter[] = ['all', 'task', 'project', 'client', 'task_comment'];
 
   const audit = useQuery({
     queryKey: ['audit-log', actionFilter],
@@ -85,18 +110,18 @@ export function AuditLogPage() {
 
   const meta =
     tab === 'audit'
-      ? `${audit.data?.length ?? 0} privilegiyalı qeyd`
-      : `${activity.data?.length ?? 0} aktivlik qeydi`;
+      ? t('audit.meta.audit', { count: audit.data?.length ?? 0 })
+      : t('audit.meta.activity', { count: activity.data?.length ?? 0 });
 
   return (
     <>
       <PageHead
         meta={meta}
-        title="Audit jurnalı"
+        title={t('audit.title')}
         actions={
           <input
             className="input max-w-[200px]"
-            placeholder="Hadisəni filtrlə…"
+            placeholder={t('audit.action_filter')}
             value={actionFilter}
             onChange={(e) => setActionFilter(e.target.value)}
           />
@@ -110,7 +135,7 @@ export function AuditLogPage() {
             className={`chip ${tab === tname ? 'chip-brand' : ''}`}
             onClick={() => setTab(tname)}
           >
-            {tname === 'audit' ? 'Privilegiya (audit_log)' : 'CRUD (activity_log)'}
+            {t(`audit.tab.${tname}`)}
           </button>
         ))}
       </div>
@@ -119,9 +144,9 @@ export function AuditLogPage() {
         <div
           className="flex gap-2 mb-4 flex-wrap"
           role="tablist"
-          aria-label="Növ filteri"
+          aria-label={t('audit.entity_filter_aria')}
         >
-          {(Object.keys(ENTITY_LABEL) as EntityFilter[]).map((e) => (
+          {entityFilters.map((e) => (
             <button
               key={e}
               role="tab"
@@ -129,35 +154,61 @@ export function AuditLogPage() {
               className={`chip ${entityFilter === e ? 'chip-brand' : ''}`}
               onClick={() => setEntityFilter(e)}
             >
-              {ENTITY_LABEL[e]}
+              {e === 'all' ? t('audit.entity.all') : t(entityLabelKey(e))}
             </button>
           ))}
         </div>
       ) : null}
 
-      {tab === 'audit' ? <AuditTable rows={audit.data ?? []} loading={audit.isLoading} /> : null}
+      {tab === 'audit' ? (
+        <AuditTable
+          rows={audit.data ?? []}
+          loading={audit.isLoading}
+          profilesById={profilesById}
+        />
+      ) : null}
       {tab === 'activity' ? (
-        <ActivityTable rows={activity.data ?? []} loading={activity.isLoading} />
+        <ActivityTable
+          rows={activity.data ?? []}
+          loading={activity.isLoading}
+          profilesById={profilesById}
+        />
       ) : null}
     </>
   );
 }
 
-function AuditTable({ rows, loading }: { rows: AuditRow[]; loading: boolean }) {
-  if (loading) return <div className="card text-meta">Yüklənir…</div>;
+function AuditTable({
+  rows,
+  loading,
+  profilesById,
+}: {
+  rows: AuditRow[];
+  loading: boolean;
+  profilesById: Map<string, ProfileLite>;
+}) {
+  const t = useT();
+  if (loading) return <div className="card text-meta">{t('common.loading')}</div>;
   if (rows.length === 0) {
     return (
       <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
-        Privileged audit qeydi yoxdur.
+        {t('audit.empty.audit')}
       </div>
     );
   }
+  const headers = [
+    t('audit.col.time'),
+    t('audit.col.actor'),
+    t('audit.col.action'),
+    t('audit.col.resource'),
+    t('audit.col.ip'),
+  ];
   return (
     <div className="card overflow-x-auto">
       <table className="w-full text-body">
         <thead>
           <tr style={{ borderBottom: '1px solid var(--line)' }}>
-            {['Vaxt', 'Aktor', 'Hadisə', 'Resurs', 'IP'].map((h) => (
+            {headers.map((h) => (
               <th
                 key={h}
                 className="text-left py-3 px-3 text-meta"
@@ -179,7 +230,7 @@ function AuditTable({ rows, loading }: { rows: AuditRow[]; loading: boolean }) {
                 {formatDate(r.created_at, { hour: '2-digit', minute: '2-digit' })}
               </td>
               <td className="py-2 px-3 text-meta" style={{ color: 'var(--text-muted)' }}>
-                {r.actor_id ? r.actor_id.slice(0, 8) : 'sistem'}
+                {actorLabel(r.actor_id, profilesById, t('audit.actor.system'))}
               </td>
               <td className="py-2 px-3 font-medium">{r.action}</td>
               <td className="py-2 px-3 text-meta" style={{ color: 'var(--text-soft)' }}>
@@ -196,13 +247,21 @@ function AuditTable({ rows, loading }: { rows: AuditRow[]; loading: boolean }) {
   );
 }
 
-function ActivityTable({ rows, loading }: { rows: ActivityRow[]; loading: boolean }) {
+function ActivityTable({
+  rows,
+  loading,
+  profilesById,
+}: {
+  rows: ActivityRow[];
+  loading: boolean;
+  profilesById: Map<string, ProfileLite>;
+}) {
   const t = useT();
-  if (loading) return <div className="card text-meta">Yüklənir…</div>;
+  if (loading) return <div className="card text-meta">{t('common.loading')}</div>;
   if (rows.length === 0) {
     return (
       <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
-        Aktivlik qeydi yoxdur.
+        {t('audit.empty.activity')}
       </div>
     );
   }
@@ -210,6 +269,7 @@ function ActivityTable({ rows, loading }: { rows: ActivityRow[]; loading: boolea
     <ul className="card divide-y" style={{ borderColor: 'var(--line-soft)' }}>
       {rows.map((r) => {
         const href = activityHref(r.entity_type, r.entity_id);
+        const actor = actorLabel(r.user_id, profilesById, t('audit.actor.system'));
         return (
           <li key={r.id} className="py-3 first:pt-0 last:pb-0 flex items-start gap-3">
             <span
@@ -236,8 +296,7 @@ function ActivityTable({ rows, loading }: { rows: ActivityRow[]; loading: boolea
                 ) : null}
               </div>
               <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                {r.user_id ? `${r.user_id.slice(0, 8)} · ` : ''}
-                {relativeTime(r.created_at)}
+                {actor} · {relativeTime(r.created_at)}
               </div>
             </div>
           </li>
