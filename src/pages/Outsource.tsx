@@ -53,6 +53,7 @@ export function OutsourcePage() {
   const { isAdmin } = useAuth();
   const qc = useQueryClient();
   const [advancing, setAdvancing] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const view = isAdmin ? 'outsource_items' : 'outsource_user_view';
 
@@ -88,7 +89,13 @@ export function OutsourcePage() {
       <PageHead
         meta={isAdmin ? 'Admin görünüşü (məbləğlər var)' : 'Status güncəllənə bilər; məbləğlər gizlidir'}
         title="Podrat İşləri"
-        actions={isAdmin ? <button className="btn-primary">+ Yeni</button> : null}
+        actions={
+          isAdmin ? (
+            <button className="btn-primary" onClick={() => setCreateOpen(true)}>
+              + Yeni
+            </button>
+          ) : null
+        }
       />
       {(q.data ?? []).length === 0 ? (
         <EmptyState title="Podrat işi yoxdur" body="Sifariş yarat və icraçıya təhvil ver." />
@@ -157,6 +164,116 @@ export function OutsourcePage() {
           </table>
         </div>
       )}
+
+      {createOpen ? <OutsourceCreateModal onClose={() => setCreateOpen(false)} /> : null}
     </>
+  );
+}
+
+function OutsourceCreateModal({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient();
+  const [workTitle, setWorkTitle] = useState('');
+  const [contactPerson, setContactPerson] = useState('');
+  const [contactCompany, setContactCompany] = useState('');
+  const [amount, setAmount] = useState('');
+  const [deadline, setDeadline] = useState('');
+
+  const submit = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from('outsource_items').insert({
+        work_title: workTitle,
+        contact_person: contactPerson || null,
+        contact_company: contactCompany || null,
+        amount: amount ? Number(amount) : null,
+        deadline: deadline || null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['outsource'] });
+      onClose();
+    },
+  });
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 flex items-center justify-center z-50 p-4"
+      style={{ background: 'rgba(0,0,0,0.4)' }}
+    >
+      <div className="card max-w-md w-full space-y-3">
+        <h3 className="text-h3">Yeni podrat sifarişi</h3>
+        <label className="block">
+          <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+            İş başlığı
+          </span>
+          <input
+            className="input mt-1 w-full"
+            value={workTitle}
+            onChange={(e) => setWorkTitle(e.target.value)}
+          />
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+              İcraçı (şəxs)
+            </span>
+            <input
+              className="input mt-1 w-full"
+              value={contactPerson}
+              onChange={(e) => setContactPerson(e.target.value)}
+            />
+          </label>
+          <label className="block">
+            <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+              Şirkət
+            </span>
+            <input
+              className="input mt-1 w-full"
+              value={contactCompany}
+              onChange={(e) => setContactCompany(e.target.value)}
+            />
+          </label>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+              Məbləğ (AZN)
+            </span>
+            <input
+              type="number"
+              className="input mt-1 w-full"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              min={0}
+            />
+          </label>
+          <label className="block">
+            <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+              Deadline
+            </span>
+            <input
+              type="date"
+              className="input mt-1 w-full"
+              value={deadline}
+              onChange={(e) => setDeadline(e.target.value)}
+            />
+          </label>
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <button className="btn-outline" onClick={onClose}>
+            Ləğv et
+          </button>
+          <button
+            className="btn-primary"
+            disabled={!workTitle || submit.isPending}
+            onClick={() => submit.mutate()}
+          >
+            {submit.isPending ? '…' : 'Yadda saxla'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

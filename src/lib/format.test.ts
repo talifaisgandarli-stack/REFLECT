@@ -16,8 +16,10 @@ describe('formatAZN', () => {
 
   it('formats integers with AZN currency and no fraction digits', () => {
     const out = formatAZN(1500);
-    expect(out).toMatch(/1\s?500/);
-    expect(out.toLowerCase()).toMatch(/azn|man/);
+    // az-AZ uses dot as thousands separator: "1.500 ₼". Some Node ICU builds
+    // render "1 500 AZN" or "1500 AZN" — accept any of the documented forms.
+    expect(out).toMatch(/1[\s.]?500/);
+    expect(out.toLowerCase()).toMatch(/azn|man|₼/);
   });
 });
 

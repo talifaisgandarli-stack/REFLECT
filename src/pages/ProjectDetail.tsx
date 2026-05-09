@@ -1,4 +1,6 @@
 import { useParams, Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
 import { PageHead } from '@/components/PageHead';
 import { useProject, useTasks } from '@/lib/hooks';
 import { StatusChip } from '@/components/StatusChip';
@@ -8,6 +10,7 @@ import { PROJECT_PHASES } from '@/lib/labels';
 import { ProjectPnL } from '@/components/ProjectPnL';
 import { CloseoutPanel } from '@/components/CloseoutPanel';
 import { PortfolioPanel } from '@/components/PortfolioPanel';
+import { DocumentsPanel } from '@/components/DocumentsPanel';
 
 const TABS = ['Overview', 'Tasks', 'Documents', 'Closeout', 'Portfel', 'History'] as const;
 
@@ -109,11 +112,9 @@ export function ProjectDetailPage() {
 
       {tab === 'Portfel' && id ? <PortfolioPanel projectId={id} /> : null}
 
-      {tab === 'Documents' || tab === 'History' ? (
-        <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
-          {tab} bölməsi v1.5-də.
-        </div>
-      ) : null}
+      {tab === 'Documents' && id ? <DocumentsPanel projectId={id} /> : null}
+
+      {tab === 'History' && id ? <HistoryPanel projectId={id} /> : null}
     </>
   );
 }
@@ -124,5 +125,85 @@ function Row({ k, v }: { k: string; v: string }) {
       <dt style={{ color: 'var(--text-muted)' }}>{k}</dt>
       <dd>{v}</dd>
     </div>
+  );
+}
+
+/**
+ * Project history — filtered activity_log for this project.
+ * Pulls entries where entity_type='project' and entity_id matches OR
+ * any task entry whose project_id matches via the diff payload.
+ */
+function HistoryPanel({ projectId }: { projectId: string }) {
+  const log = useQuery({
+    queryKey: ['project-history', projectId],
+    queryFn: async () => {
+      // Pull project rows directly + task rows for tasks in this project.
+      const [direct, tasks] = await Promise.all([
+        supabase
+          .from('activity_log')
+          .select('id, action, entity_type, created_at')
+          .eq('entity_type', 'project')
+          .eq('entity_id', projectId)
+          .order('created_at', { ascending: false })
+          .limit(100),
+        supabase
+          .from('activity_log')
+          .select('id, action, entity_type, created_at, entity_id')
+          .eq('entity_type', 'task')
+          .order('created_at', { ascending: false })
+          .limit(200),
+      ]);
+      const taskRows = (tasks.data ?? []) as Array<{
+        id: string;
+        action: string;
+        entity_type: string;
+        created_at: string;
+        entity_id: string | null;
+      }>;
+      const taskIds = taskRows.map((r) => r.entity_id).filter(Boolean) as string[];
+      let projectTaskIds = new Set<string>();
+      if (taskIds.length > 0) {
+        const { data: proj } = await supabase
+          .from('tasks')
+          .select('id')
+          .in('id', taskIds)
+          .eq('project_id', projectId);
+        projectTaskIds = new Set((proj ?? []).map((t: { id: string }) => t.id));
+      }
+      const all = [
+        ...((direct.data ?? []) as Array<{
+          id: string;
+          action: string;
+          entity_type: string;
+          created_at: string;
+        }>),
+        ...taskRows.filter((r) => r.entity_id && projectTaskIds.has(r.entity_id)),
+      ];
+      return all
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 100);
+    },
+  });
+
+  if (!log.data || log.data.length === 0) {
+    return (
+      <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
+        Bu layihə üzrə tarixçə qeydi yoxdur.
+      </div>
+    );
+  }
+  return (
+    <ul className="card divide-y" style={{ borderColor: 'var(--line-soft)' }}>
+      {log.data.map((e) => (
+        <li key={e.id} className="py-2">
+          <div className="text-body">
+            {e.action} · {e.entity_type}
+          </div>
+          <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+            {new Date(e.created_at).toLocaleString('az-AZ')}
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }

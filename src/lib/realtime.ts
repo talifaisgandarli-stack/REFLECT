@@ -25,18 +25,21 @@ function subscribeTable(opts: {
   channelName: string;
   onChange: ChangeHandler;
 }) {
-  const ch = supabase
-    .channel(opts.channelName)
+  // The Supabase JS client overloads `.on()` per channel kind; the
+  // postgres_changes overload is real at runtime but the TS overload
+  // signatures are narrow. We bypass the typed wrapper via `any` here —
+  // confined to this single helper to keep the typed surface clean.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const channel = supabase.channel(opts.channelName) as any;
+  const ch = channel
     .on(
-      // postgres_changes is the documented event name; cast keeps the
-      // typed client happy when it lags Supabase's runtime catalogue.
-      'postgres_changes' as unknown as 'broadcast',
+      'postgres_changes',
       {
         event: '*',
         schema: 'public',
         table: opts.table,
         ...(opts.filter ? { filter: opts.filter } : {}),
-      } as never,
+      },
       (payload: { eventType: ChangeKind; new: unknown; old: unknown }) => {
         opts.onChange(payload);
       },
