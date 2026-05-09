@@ -18,6 +18,13 @@
   "common.this_week": "Эта неделя",
   "common.this_month": "Этот месяц",
   "common.earlier": "Ранее",
+  "common.close": "Закрыть",
+  "common.confirm": "Подтвердить",
+  "common.export.csv": "CSV / Excel",
+  "common.export.pdf": "PDF (печать)",
+  "empty.no_results": "Ничего не найдено",
+  "empty.cta.try_again": "Повторить",
+  "search.placeholder": "Поиск… (Cmd+K)",
 
   "nav.work": "РАБОТА",
   "nav.dashboard": "Дашборд",

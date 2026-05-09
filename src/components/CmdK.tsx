@@ -3,6 +3,7 @@ import { useUI } from '@/lib/store';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { ProjectPreviewDrawer } from './ProjectPreviewDrawer';
+import { useT } from '@/lib/i18n';
 
 const QUICK = [
   { label: 'Dashboard', to: '/' },
@@ -40,6 +41,7 @@ export function CmdK() {
   const [cursor, setCursor] = useState(0);
   const [previewProjectId, setPreviewProjectId] = useState<string | null>(null);
   const nav = useNavigate();
+  const t = useT();
 
   useEffect(() => {
     if (!cmdkOpen) {
@@ -147,7 +149,7 @@ export function CmdK() {
         <input
           autoFocus
           className="input border-0 rounded-none"
-          placeholder="Axtar… (Cmd+K)"
+          placeholder={t('search.placeholder')}
           value={q}
           onChange={(e) => {
             setQ(e.target.value);
@@ -223,7 +225,7 @@ export function CmdK() {
               className="px-4 py-6 text-meta text-center"
               style={{ color: 'var(--text-muted)' }}
             >
-              Heç nə tapılmadı
+              {t('empty.no_results')}
             </li>
           ) : null}
         </ul>

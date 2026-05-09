@@ -18,6 +18,13 @@
   "common.this_week": "Bu həftə",
   "common.this_month": "Bu ay",
   "common.earlier": "Daha əvvəl",
+  "common.close": "Bağla",
+  "common.confirm": "Təsdiqlə",
+  "common.export.csv": "CSV / Excel",
+  "common.export.pdf": "PDF (çap)",
+  "empty.no_results": "Heç nə tapılmadı",
+  "empty.cta.try_again": "Yenidən cəhd et",
+  "search.placeholder": "Axtar… (Cmd+K)",
 
   "nav.work": "İŞ",
   "nav.dashboard": "Dashboard",

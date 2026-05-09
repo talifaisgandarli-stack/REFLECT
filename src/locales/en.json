@@ -18,6 +18,13 @@
   "common.this_week": "This week",
   "common.this_month": "This month",
   "common.earlier": "Earlier",
+  "common.close": "Close",
+  "common.confirm": "Confirm",
+  "common.export.csv": "CSV / Excel",
+  "common.export.pdf": "PDF (print)",
+  "empty.no_results": "No results",
+  "empty.cta.try_again": "Try again",
+  "search.placeholder": "Search… (Cmd+K)",
 
   "nav.work": "WORK",
   "nav.dashboard": "Dashboard",

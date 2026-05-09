@@ -26,6 +26,7 @@ import { PageHead } from '@/components/PageHead';
 import { formatAZN } from '@/lib/format';
 import { PROJECT_PHASES } from '@/lib/labels';
 import { downloadCsv, printSection } from '@/lib/export';
+import { useT } from '@/lib/i18n';
 
 const PHASE_COLOR = ['#ADFB49', '#5CA87C', '#1A5140', '#84A6FF', '#A78BFA', '#D97706'];
 
@@ -55,6 +56,7 @@ function isoWeek(d: Date): string {
 }
 
 export function ReportsPage() {
+  const t = useT();
   const projects = useQuery({
     queryKey: ['reports', 'projects'],
     queryFn: async () => {
@@ -209,10 +211,10 @@ export function ReportsPage() {
         actions={
           <>
             <button className="btn-outline" onClick={exportCsv}>
-              CSV / Excel
+              {t('common.export.csv')}
             </button>
             <button className="btn-outline" onClick={() => printSection()}>
-              PDF (çap)
+              {t('common.export.pdf')}
             </button>
           </>
         }
