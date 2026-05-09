@@ -29,7 +29,7 @@ export function TeamRosterPage() {
         title={t('nav.team.roster')}
       />
       {ppl.length === 0 ? (
-        <EmptyState title="Komanda hələ formalaşmayıb" body="Admin işçi dəvət edə bilər." />
+        <EmptyState title={t('roster.empty.title')} body={t('roster.empty.body')} />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {ppl.map((p) => (

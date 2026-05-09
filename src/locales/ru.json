@@ -118,6 +118,11 @@
   "notif.channel.telegram": "Telegram",
   "notif.opt_out_note": "По умолчанию все каналы включены. Отключение сохраняется; cron notify-fanout пропускает канал.",
   "notif.saving": "Сохранение…",
+  "archive.title": "Архив",
+  "archive.empty.title": "Архив пуст",
+  "archive.empty.body": "Сюда попадают завершённые задачи и закрытые проекты.",
+  "roster.empty.title": "Команда ещё не сформирована",
+  "roster.empty.body": "Админ может пригласить первого участника.",
 
   "nav.work": "РАБОТА",
   "nav.dashboard": "Дашборд",

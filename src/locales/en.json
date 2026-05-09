@@ -118,6 +118,11 @@
   "notif.channel.telegram": "Telegram",
   "notif.opt_out_note": "All channels are on by default. Toggling off persists; the notify-fanout cron skips that channel from then on.",
   "notif.saving": "Saving…",
+  "archive.title": "Archive",
+  "archive.empty.title": "Archive is empty",
+  "archive.empty.body": "Completed tasks and closed projects land here.",
+  "roster.empty.title": "Team is empty",
+  "roster.empty.body": "An admin can invite the first member.",
 
   "nav.work": "WORK",
   "nav.dashboard": "Dashboard",

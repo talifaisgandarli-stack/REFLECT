@@ -118,6 +118,11 @@
   "notif.channel.telegram": "Telegram",
   "notif.opt_out_note": "Yeni hesablarda hər kanal aktivdir. Söndürmək seçimi yadda saxlanır; sonra notify-fanout cron-u həmin kanaldan ötürmür.",
   "notif.saving": "Yadda saxlanılır…",
+  "archive.title": "Arxiv",
+  "archive.empty.title": "Arxiv boşdur",
+  "archive.empty.body": "Tamamlanmış tapşırıqlar və bağlanmış layihələr burada görünəcək.",
+  "roster.empty.title": "Komanda hələ formalaşmayıb",
+  "roster.empty.body": "Admin işçi dəvət edə bilər.",
 
   "nav.work": "İŞ",
   "nav.dashboard": "Dashboard",

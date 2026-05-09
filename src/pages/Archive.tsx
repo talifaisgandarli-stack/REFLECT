@@ -3,9 +3,11 @@ import { supabase } from '@/lib/supabase';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import { TASK_STATUS_LABEL } from '@/lib/labels';
+import { useT } from '@/lib/i18n';
 import type { Project, Task } from '@/types/db';
 
 export function ArchivePage() {
+  const t = useT();
   const tasks = useQuery({
     queryKey: ['archive', 'tasks'],
     queryFn: async (): Promise<Task[]> => {
@@ -40,7 +42,7 @@ export function ArchivePage() {
     <>
       <PageHead
         meta="Yalnız oxunan görünüş"
-        title="Arxiv"
+        title={t('archive.title')}
         actions={
           <>
             <input className="input max-w-[240px]" placeholder="Layihə / icraçı / tarix…" />
@@ -48,7 +50,7 @@ export function ArchivePage() {
         }
       />
       {empty ? (
-        <EmptyState title="Arxiv boşdur" body="Tamamlanmış tapşırıqlar və bağlanmış layihələr burada görünəcək." />
+        <EmptyState title={t('archive.empty.title')} body={t('archive.empty.body')} />
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <section className="card">
