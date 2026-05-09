@@ -7,6 +7,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { formatAZN } from '@/lib/format';
+import { useT } from '@/lib/i18n';
 
 type Receivable = {
   id: string;
@@ -18,6 +19,7 @@ type Receivable = {
 type Props = { receivable: Receivable; onClose: () => void };
 
 export function MarkPaidModal({ receivable, onClose }: Props) {
+  const t = useT();
   const qc = useQueryClient();
   const remaining = Number(receivable.amount) - Number(receivable.paid_amount);
   const [delta, setDelta] = useState<string>(remaining.toString());
@@ -33,7 +35,7 @@ export function MarkPaidModal({ receivable, onClose }: Props) {
 
   const save = useMutation({
     mutationFn: async () => {
-      if (!valid) throw new Error('Məbləğ qalan borcdan çox ola bilməz');
+      if (!valid) throw new Error(t('markpaid.error.too_much'));
       const { error } = await supabase
         .from('receivables')
         .update({ paid_amount: newPaid, status: newStatus })
@@ -49,7 +51,7 @@ export function MarkPaidModal({ receivable, onClose }: Props) {
   return (
     <div
       role="dialog"
-      aria-label="Ödənişi qeyd et"
+      aria-label={t('markpaid.title')}
       className="fixed inset-0 z-50 flex items-center justify-center px-4"
       style={{ background: 'rgba(14,22,17,0.4)' }}
       onClick={onClose}
@@ -63,20 +65,20 @@ export function MarkPaidModal({ receivable, onClose }: Props) {
         }}
         style={{ padding: 24 }}
       >
-        <h2 className="text-h2">Ödənişi qeyd et</h2>
+        <h2 className="text-h2">{t('markpaid.title')}</h2>
         <dl
           className="mt-4 grid grid-cols-2 gap-y-2 text-meta"
           style={{ color: 'var(--text-muted)' }}
         >
-          <dt>Cəmi</dt>
+          <dt>{t('markpaid.row.total')}</dt>
           <dd className="text-right" style={{ color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
             {formatAZN(receivable.amount)}
           </dd>
-          <dt>Ödənilib</dt>
+          <dt>{t('markpaid.row.paid')}</dt>
           <dd className="text-right" style={{ color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
             {formatAZN(receivable.paid_amount)}
           </dd>
-          <dt>Qalır</dt>
+          <dt>{t('markpaid.row.remaining')}</dt>
           <dd
             className="text-right"
             style={{ color: 'var(--brand-text)', fontVariantNumeric: 'tabular-nums' }}
@@ -87,7 +89,7 @@ export function MarkPaidModal({ receivable, onClose }: Props) {
 
         <label className="block mt-5">
           <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-            Bu ödənişin məbləği (AZN)
+            {t('markpaid.delta_label')}
           </span>
           <input
             type="text"
@@ -102,7 +104,7 @@ export function MarkPaidModal({ receivable, onClose }: Props) {
 
         {!valid && delta ? (
           <p className="text-meta mt-2" style={{ color: 'var(--state-error)' }}>
-            Məbləğ qalan borcdan ({formatAZN(remaining)}) çox ola bilməz.
+            {t('markpaid.too_much', { remaining: formatAZN(remaining) })}
           </p>
         ) : null}
 
@@ -119,10 +121,14 @@ export function MarkPaidModal({ receivable, onClose }: Props) {
             onClick={onClose}
             disabled={save.isPending}
           >
-            Geri
+            {t('common.back')}
           </button>
           <button type="submit" className="btn-primary" disabled={!valid || save.isPending}>
-            {save.isPending ? 'Yadda saxlanılır…' : `Qeyd et${newStatus === 'paid' ? ' (tam)' : ' (qismən)'}`}
+            {save.isPending
+              ? t('markpaid.saving')
+              : newStatus === 'paid'
+                ? t('markpaid.submit_full')
+                : t('markpaid.submit_partial')}
           </button>
         </div>
       </form>

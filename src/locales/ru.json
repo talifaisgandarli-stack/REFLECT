@@ -223,6 +223,17 @@
   "outsource.modal.saving": "Сохранение…",
   "outsource.modal.submit": "Создать",
 
+  "markpaid.title": "Отметить оплату",
+  "markpaid.row.total": "Всего",
+  "markpaid.row.paid": "Оплачено",
+  "markpaid.row.remaining": "Остаток",
+  "markpaid.delta_label": "Сумма этой оплаты (AZN)",
+  "markpaid.too_much": "Сумма не может превышать остаток ({remaining}).",
+  "markpaid.error.too_much": "Сумма не может превышать остаток",
+  "markpaid.saving": "Сохранение…",
+  "markpaid.submit_full": "Отметить (полностью)",
+  "markpaid.submit_partial": "Отметить (частично)",
+
   "client.create.title": "+ Новый клиент",
   "client.create.dialog_label": "Новый клиент",
   "client.create.name": "Имя",

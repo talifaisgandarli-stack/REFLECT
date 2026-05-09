@@ -223,6 +223,17 @@
   "outsource.modal.saving": "Yadda saxlanılır…",
   "outsource.modal.submit": "Yarat",
 
+  "markpaid.title": "Ödənişi qeyd et",
+  "markpaid.row.total": "Cəmi",
+  "markpaid.row.paid": "Ödənilib",
+  "markpaid.row.remaining": "Qalır",
+  "markpaid.delta_label": "Bu ödənişin məbləği (AZN)",
+  "markpaid.too_much": "Məbləğ qalan borcdan ({remaining}) çox ola bilməz.",
+  "markpaid.error.too_much": "Məbləğ qalan borcdan çox ola bilməz",
+  "markpaid.saving": "Yadda saxlanılır…",
+  "markpaid.submit_full": "Qeyd et (tam)",
+  "markpaid.submit_partial": "Qeyd et (qismən)",
+
   "client.create.title": "+ Yeni müştəri",
   "client.create.dialog_label": "Yeni müştəri",
   "client.create.name": "Ad",

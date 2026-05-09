@@ -223,6 +223,17 @@
   "outsource.modal.saving": "Saving…",
   "outsource.modal.submit": "Create",
 
+  "markpaid.title": "Mark payment",
+  "markpaid.row.total": "Total",
+  "markpaid.row.paid": "Paid",
+  "markpaid.row.remaining": "Remaining",
+  "markpaid.delta_label": "Payment amount (AZN)",
+  "markpaid.too_much": "Amount can't exceed remaining balance ({remaining}).",
+  "markpaid.error.too_much": "Amount can't exceed remaining balance",
+  "markpaid.saving": "Saving…",
+  "markpaid.submit_full": "Mark (full)",
+  "markpaid.submit_partial": "Mark (partial)",
+
   "client.create.title": "+ New client",
   "client.create.dialog_label": "New client",
   "client.create.name": "Name",
