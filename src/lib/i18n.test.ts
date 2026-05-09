@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { t } from './i18n';
 import az from '@/locales/az.json';
 import en from '@/locales/en.json';
@@ -16,6 +16,24 @@ describe('t() module helper', () => {
   it('returns the key itself when missing (dev visibility)', () => {
     expect(t('this.key.does.not.exist')).toBe('this.key.does.not.exist');
   });
+
+  it('warns once per missing key in dev', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      t('missing.key.A');
+      t('missing.key.A'); // dedupe
+      t('missing.key.B');
+      // PROD short-circuit means 0 calls in production builds; in vitest
+      // PROD is false so we expect the two unique keys to log.
+      expect(warn).toHaveBeenCalledTimes(2);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe('locale dictionaries', () => {

@@ -37,6 +37,22 @@ function format(template: string, vars?: Record<string, string | number>): strin
 }
 
 /**
+ * Dev-only missing-key warning. Each unique key is logged once per session
+ * so a noisy missing translation doesn't flood the console. Production
+ * builds short-circuit to a no-op (Vite tree-shakes the call away).
+ */
+const warnedKeys = new Set<string>();
+function warnMissing(locale: Locale, key: string): void {
+  // Vite replaces import.meta.env.PROD at build time
+  if (import.meta.env.PROD) return;
+  const flag = `${locale}:${key}`;
+  if (warnedKeys.has(flag)) return;
+  warnedKeys.add(flag);
+  // eslint-disable-next-line no-console
+  console.warn(`[i18n] missing key "${key}" in ${locale} (and az fallback)`);
+}
+
+/**
  * Hook variant — re-renders when profile.locale changes (auth store update).
  * Use this in components.
  */
@@ -45,7 +61,11 @@ export function useT() {
   const locale = detectLocale(profile?.locale ?? null);
   return (key: string, vars?: Record<string, string | number>): string => {
     const dict = DICT[locale] ?? DICT.az;
-    const raw = dict[key] ?? DICT.az[key] ?? key;
+    const raw = dict[key] ?? DICT.az[key];
+    if (raw == null) {
+      warnMissing(locale, key);
+      return format(key, vars);
+    }
     return format(raw, vars);
   };
 }
@@ -56,7 +76,11 @@ export function useT() {
  * no profile in scope.
  */
 export function t(key: string, vars?: Record<string, string | number>): string {
-  const raw = DICT.az[key] ?? key;
+  const raw = DICT.az[key];
+  if (raw == null) {
+    warnMissing('az', key);
+    return format(key, vars);
+  }
   return format(raw, vars);
 }
 
