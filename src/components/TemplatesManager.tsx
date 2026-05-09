@@ -16,6 +16,7 @@ import {
 } from '@/lib/templates';
 import { downloadCsv, printSection } from '@/lib/export';
 import { buildRtf, downloadRtf } from '@/lib/rtf';
+import { useT } from '@/lib/i18n';
 
 type TemplateRow = {
   id: string;
@@ -37,6 +38,7 @@ Hörmətlə,
 {{firm_name}}`;
 
 export function TemplatesManager() {
+  const t = useT();
   const { profile } = useAuth();
   const qc = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -63,7 +65,7 @@ export function TemplatesManager() {
       const { data, error } = await supabase
         .from('templates')
         .insert({
-          name: 'Yeni şablon',
+          name: t('templates.new_default_name'),
           category: TEMPLATE_CATEGORIES[0],
           body: SAMPLE_BODY,
           variables: { sample: true },
@@ -95,21 +97,29 @@ export function TemplatesManager() {
     <div className="grid grid-cols-1 lg:grid-cols-[260px,1fr] gap-5">
       <aside>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-h3">Şablonlar</h3>
+          <h3 className="text-h3">{t('templates.aside.title')}</h3>
           <span className="flex gap-1">
             <button
               type="button"
               className="btn-ghost"
               onClick={() => {
-                const rows = (list.data ?? []).map((t) => [
-                  t.name,
-                  t.category,
-                  (t.body ?? '').replace(/\s+/g, ' ').slice(0, 200),
+                const rows = (list.data ?? []).map((row) => [
+                  row.name,
+                  row.category,
+                  (row.body ?? '').replace(/\s+/g, ' ').slice(0, 200),
                 ]);
-                downloadCsv('reflect-sablonlar', ['Ad', 'Kateqoriya', 'Mətn (qısa)'], rows);
+                downloadCsv(
+                  t('templates.export.csv_filename'),
+                  [
+                    t('templates.export.col.name'),
+                    t('templates.export.col.category'),
+                    t('templates.export.col.body'),
+                  ],
+                  rows,
+                );
               }}
               style={{ height: 32, padding: '0 10px' }}
-              title="Şablon siyahısını CSV/Excel kimi yüklə"
+              title={t('templates.csv.title')}
             >
               CSV
             </button>
@@ -126,28 +136,28 @@ export function TemplatesManager() {
         </div>
         {list.isLoading ? (
           <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
-            Yüklənir…
+            {t('common.loading')}
           </p>
         ) : (list.data ?? []).length === 0 ? (
           <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
-            Hələ şablon yoxdur. + ilə yarat.
+            {t('templates.empty')}
           </p>
         ) : (
           <ul className="space-y-1">
-            {(list.data ?? []).map((t) => (
-              <li key={t.id}>
+            {(list.data ?? []).map((row) => (
+              <li key={row.id}>
                 <button
                   type="button"
                   className="w-full text-left px-3 py-2 rounded-btn"
                   style={{
-                    background: selectedId === t.id ? 'var(--surface-mist)' : 'transparent',
+                    background: selectedId === row.id ? 'var(--surface-mist)' : 'transparent',
                     border: '1px solid var(--line-soft)',
                   }}
-                  onClick={() => setSelectedId(t.id)}
+                  onClick={() => setSelectedId(row.id)}
                 >
-                  <div className="text-body font-medium truncate">{t.name}</div>
+                  <div className="text-body font-medium truncate">{row.name}</div>
                   <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                    {t.category}
+                    {row.category}
                   </div>
                 </button>
               </li>
@@ -165,11 +175,7 @@ export function TemplatesManager() {
           />
         ) : (
           <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
-            Sol siyahıdan şablon seç və ya yeni yarat. Hər şablonun gövdəsi
-            <code className="mx-1 px-1.5 py-0.5 rounded" style={{ background: 'var(--surface-mist)' }}>
-              {'{{key}}'}
-            </code>
-            tokenlərini dəstəkləyir; reyestr aşağıda göstərilib.
+            {t('templates.placeholder_intro')}
           </div>
         )}
         <RegistryHelp />
@@ -187,6 +193,7 @@ function TemplateEditor({
   onDelete: () => void;
   deleting: boolean;
 }) {
+  const t = useT();
   const qc = useQueryClient();
   const [name, setName] = useState(template.name);
   const [category, setCategory] = useState(template.category);
@@ -210,7 +217,7 @@ function TemplateEditor({
       const { error } = await supabase
         .from('templates')
         .update({
-          name: name.trim() || 'Adsız şablon',
+          name: name.trim() || t('templates.untitled'),
           category,
           body,
           variables: { detected: usedVars },
@@ -226,13 +233,13 @@ function TemplateEditor({
       <div className="grid grid-cols-1 md:grid-cols-[1fr,200px] gap-3">
         <label className="block">
           <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-            Ad
+            {t('templates.editor.name')}
           </span>
           <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
         </label>
         <label className="block">
           <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-            Kateqoriya
+            {t('templates.editor.category')}
           </span>
           <select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>
             {TEMPLATE_CATEGORIES.map((c) => (
@@ -247,7 +254,7 @@ function TemplateEditor({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <label className="block">
           <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-            Gövdə
+            {t('templates.editor.body')}
           </span>
           <textarea
             className="input font-mono"
@@ -258,7 +265,7 @@ function TemplateEditor({
         </label>
         <div>
           <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-            Önbaxış (nümunə kontekst)
+            {t('templates.editor.preview')}
           </span>
           <div
             data-print-root
@@ -278,11 +285,11 @@ function TemplateEditor({
 
       <div className="flex flex-wrap gap-2 items-center">
         <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
-          İstifadə olunan dəyişənlər:
+          {t('templates.editor.used_vars')}
         </span>
         {usedVars.length === 0 ? (
           <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
-            yoxdur
+            {t('templates.editor.no_vars')}
           </span>
         ) : (
           usedVars.map((v) => {
@@ -292,10 +299,14 @@ function TemplateEditor({
                 key={v}
                 className="chip"
                 style={{
-                  background: known ? 'var(--brand-mist)' : '#FEEEED',
+                  background: known ? 'var(--brand-mist)' : 'var(--state-error-soft)',
                   color: known ? 'var(--brand-text)' : 'var(--state-error)',
                 }}
-                title={known ? VARIABLE_REGISTRY[v as VariableKey].label : 'Naməlum dəyişən'}
+                title={
+                  known
+                    ? VARIABLE_REGISTRY[v as VariableKey].label
+                    : t('templates.editor.unknown_tooltip')
+                }
               >
                 {`{{${v}}}`}
               </span>
@@ -305,7 +316,12 @@ function TemplateEditor({
       </div>
       {unknown.length > 0 ? (
         <p className="text-meta" style={{ color: 'var(--state-error)' }}>
-          Naməlum dəyişən{unknown.length > 1 ? 'lər' : ''}: {unknown.join(', ')} — render zamanı olduğu kimi qalacaq.
+          {t(
+            unknown.length > 1
+              ? 'templates.editor.unknown_var_many'
+              : 'templates.editor.unknown_var_one',
+            { names: unknown.join(', ') },
+          )}
         </p>
       ) : null}
 
@@ -317,7 +333,7 @@ function TemplateEditor({
           disabled={deleting}
           style={{ color: 'var(--state-error)' }}
         >
-          Sil
+          {t('templates.editor.delete')}
         </button>
         <span className="flex gap-2 flex-wrap">
           <button
@@ -325,23 +341,23 @@ function TemplateEditor({
             className="btn-outline"
             onClick={() => {
               const rtf = buildRtf({
-                title: name.trim() || 'Şablon',
+                title: name.trim() || t('templates.export.rtf_title'),
                 body: renderTemplate(body, sampleCtx),
                 firmName: 'Reflect',
               });
               downloadRtf(`reflect-${(name || 'sablon').replace(/\s+/g, '_')}`, rtf);
             }}
-            title="Word/Pages-də açılan RTF faylı"
+            title={t('templates.editor.export_word_tooltip')}
           >
-            Word (.rtf)
+            {t('templates.editor.export_word')}
           </button>
           <button
             type="button"
             className="btn-outline"
             onClick={() => printSection()}
-            title="Önbaxış nümunə kontekstlə çap olunur"
+            title={t('templates.editor.export_pdf_tooltip')}
           >
-            PDF (çap)
+            {t('templates.editor.export_pdf')}
           </button>
           <button
             type="button"
@@ -349,7 +365,7 @@ function TemplateEditor({
             onClick={() => save.mutate()}
             disabled={save.isPending}
           >
-            {save.isPending ? 'Yadda saxlanılır…' : 'Yadda saxla'}
+            {save.isPending ? t('templates.editor.saving') : t('templates.editor.save')}
           </button>
         </span>
       </div>
@@ -363,16 +379,22 @@ function TemplateEditor({
 }
 
 function RegistryHelp() {
+  const t = useT();
   const entries = Object.entries(VARIABLE_REGISTRY) as Array<
     [VariableKey, (typeof VARIABLE_REGISTRY)[VariableKey]]
   >;
+  const headers = [
+    t('templates.registry.col.token'),
+    t('templates.registry.col.label'),
+    t('templates.registry.col.example'),
+  ];
   return (
     <details className="card mt-4" open>
-      <summary className="text-h4 cursor-pointer">Dəyişən reyestri</summary>
+      <summary className="text-h4 cursor-pointer">{t('templates.registry.title')}</summary>
       <table className="w-full text-body mt-3">
         <thead>
           <tr style={{ borderBottom: '1px solid var(--line)' }}>
-            {['Token', 'Mənası', 'Nümunə'].map((h) => (
+            {headers.map((h) => (
               <th
                 key={h}
                 className="text-meta text-left py-2 px-3"
