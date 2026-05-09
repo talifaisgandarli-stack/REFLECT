@@ -204,6 +204,11 @@
   "task.create.duration.hours": "ч",
   "task.create.duration.days": "дн",
   "task.subtask.blocker": "Открытые подзадачи блокируют завершение",
+  "task.subtask.blocker.dialog_label": "Subtask blockers",
+  "task.subtask.blocker.intro": "Закройте перечисленные подзадачи, прежде чем переводить эту задачу в «Готово».",
+  "task.subtask.blocker.empty": "Открытых подзадач нет — попробуйте ещё раз.",
+  "task.subtask.blocker.complete_all": "Закрыть все",
+  "task.subtask.blocker.running": "Выполняется…",
 
   "projects.title": "Проекты",
   "projects.count": "{count} проектов",

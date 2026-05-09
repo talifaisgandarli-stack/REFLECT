@@ -204,6 +204,11 @@
   "task.create.duration.hours": "saat",
   "task.create.duration.days": "gün",
   "task.subtask.blocker": "Tamamlanmaq üçün açıq alt-tapşırıqlar var",
+  "task.subtask.blocker.dialog_label": "Subtask blockers",
+  "task.subtask.blocker.intro": "Bu tapşırığı Tamamlandı statusuna keçirməzdən əvvəl aşağıdakıları tamamla.",
+  "task.subtask.blocker.empty": "Açıq alt-tapşırıq yoxdur — yenidən cəhd et.",
+  "task.subtask.blocker.complete_all": "Hamısını tamamla",
+  "task.subtask.blocker.running": "İcra olunur…",
 
   "projects.title": "Layihələr",
   "projects.count": "{count} layihə",

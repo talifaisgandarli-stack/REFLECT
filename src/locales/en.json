@@ -204,6 +204,11 @@
   "task.create.duration.hours": "hours",
   "task.create.duration.days": "days",
   "task.subtask.blocker": "Open subtasks block completion",
+  "task.subtask.blocker.dialog_label": "Subtask blockers",
+  "task.subtask.blocker.intro": "Complete the following before moving this task to Done.",
+  "task.subtask.blocker.empty": "No open subtasks — try again.",
+  "task.subtask.blocker.complete_all": "Complete all",
+  "task.subtask.blocker.running": "Running…",
 
   "projects.title": "Projects",
   "projects.count": "{count} projects",

@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { Task } from '@/types/db';
-import { TASK_STATUS_LABEL } from '@/lib/labels';
+import { useT } from '@/lib/i18n';
 
 type Props = {
   parentTaskId: string;
@@ -17,6 +17,7 @@ type Props = {
 };
 
 export function SubtaskBlockingModal({ parentTaskId, onCancel, onResolved }: Props) {
+  const t = useT();
   const [children, setChildren] = useState<Task[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -58,7 +59,7 @@ export function SubtaskBlockingModal({ parentTaskId, onCancel, onResolved }: Pro
   return (
     <div
       role="dialog"
-      aria-label="Subtask blockers"
+      aria-label={t('task.subtask.blocker.dialog_label')}
       className="fixed inset-0 z-50 flex items-center justify-center px-4"
       style={{ background: 'rgba(14,22,17,0.4)' }}
       onClick={onCancel}
@@ -68,18 +69,18 @@ export function SubtaskBlockingModal({ parentTaskId, onCancel, onResolved }: Pro
         onClick={(e) => e.stopPropagation()}
         style={{ padding: 24 }}
       >
-        <h2 className="text-h2">Tamamlanmaq üçün açıq alt-tapşırıqlar var</h2>
+        <h2 className="text-h2">{t('task.subtask.blocker')}</h2>
         <p className="text-body mt-2" style={{ color: 'var(--text-soft)' }}>
-          Bu tapşırığı Tamamlandı statusuna keçirməzdən əvvəl aşağıdakıları tamamla.
+          {t('task.subtask.blocker.intro')}
         </p>
 
         {children == null ? (
           <p className="text-meta mt-4" style={{ color: 'var(--text-muted)' }}>
-            Yüklənir…
+            {t('common.loading')}
           </p>
         ) : children.length === 0 ? (
           <p className="text-meta mt-4" style={{ color: 'var(--text-muted)' }}>
-            Açıq alt-tapşırıq yoxdur — yenidən cəhd et.
+            {t('task.subtask.blocker.empty')}
           </p>
         ) : (
           <ul className="mt-4 divide-y divide-line-soft">
@@ -87,7 +88,7 @@ export function SubtaskBlockingModal({ parentTaskId, onCancel, onResolved }: Pro
               <li key={c.id} className="py-2 flex justify-between text-body">
                 <span className="truncate">{c.title}</span>
                 <span className="text-meta ml-3 shrink-0" style={{ color: 'var(--text-muted)' }}>
-                  {TASK_STATUS_LABEL[c.status]}
+                  {t(`task.status.${c.status}`)}
                 </span>
               </li>
             ))}
@@ -102,14 +103,14 @@ export function SubtaskBlockingModal({ parentTaskId, onCancel, onResolved }: Pro
 
         <div className="flex justify-end gap-2 mt-6">
           <button className="btn-outline" onClick={onCancel} disabled={busy}>
-            Ləğv et
+            {t('common.cancel')}
           </button>
           <button
             className="btn-primary"
             onClick={completeAll}
             disabled={busy || !children || children.length === 0}
           >
-            {busy ? 'İcra olunur…' : 'Hamısını tamamla'}
+            {busy ? t('task.subtask.blocker.running') : t('task.subtask.blocker.complete_all')}
           </button>
         </div>
       </div>
