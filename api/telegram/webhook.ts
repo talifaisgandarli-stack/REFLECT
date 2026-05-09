@@ -149,7 +149,7 @@ async function resolveProfile(chatId: number) {
   const sb = admin();
   const { data: profile } = await sb
     .from('profiles')
-    .select('id, full_name, email, is_creator, role_id')
+    .select('id, full_name, email, is_creator, role_id, locale')
     .eq('telegram_chat_id', String(chatId))
     .maybeSingle();
   if (!profile) return null;
@@ -162,15 +162,106 @@ async function resolveProfile(chatId: number) {
       .maybeSingle();
     isAdmin = !!role?.is_admin;
   }
-  return { ...profile, isAdmin };
+  const locale: 'az' | 'en' | 'ru' =
+    profile.locale === 'en' || profile.locale === 'ru' ? profile.locale : 'az';
+  return { ...profile, isAdmin, locale };
+}
+
+type TgLocale = 'az' | 'en' | 'ru';
+const TG_TEXT: Record<TgLocale, Record<string, string>> = {
+  az: {
+    not_linked: 'Hesab bağlı deyil. /start <kod> ilə bağlamaq lazımdır.',
+    admin_only: 'Bu komanda yalnız adminlər üçündür.',
+    no_open_tasks: 'Açıq tapşırığın yoxdur ✓',
+    no_today: 'Bu gün üçün açıq tapşırığın yoxdur ✓',
+    today: 'Bu gün:',
+    open_tasks: 'Açıq tapşırıqlar',
+    more: 'daha',
+    no_active_projects: 'Aktiv layihə yoxdur.',
+    active_projects: 'Aktiv layihələr',
+    forecast_missing: 'Hələ forecast yoxdur (cron işə düşməyib).',
+    forecast_title: 'Cash forecast',
+    no_mentions: 'Müraciət yoxdur ✓',
+    mentions_title: 'Son müraciətlər',
+    no_leaves: 'Məzuniyyət müraciətin yoxdur.',
+    leaves_title: 'Son məzuniyyətlər:',
+    no_equipment: 'Sənə təyin olunmuş avadanlıq yoxdur.',
+    equipment_title: 'Avadanlıqların',
+    no_comments: 'Hələ heç bir şərh yazmamısan.',
+    comments_title: 'Son şərhlər:',
+    balance_title: 'Reflect — cari balans',
+    bal_in: 'Gəlir',
+    bal_out: 'Xərc',
+    bal_balance: 'Balans',
+    bal_debt: 'Debitor',
+    unknown_command: 'Bilmədiyim komanda. /help yaz — siyahını göndərim.',
+  },
+  en: {
+    not_linked: 'Account not linked. Use /start <code> to bind.',
+    admin_only: 'This command is admin-only.',
+    no_open_tasks: 'No open tasks ✓',
+    no_today: 'Nothing due today ✓',
+    today: 'Today:',
+    open_tasks: 'Open tasks',
+    more: 'more',
+    no_active_projects: 'No active projects.',
+    active_projects: 'Active projects',
+    forecast_missing: 'No forecast yet (cron has not run).',
+    forecast_title: 'Cash forecast',
+    no_mentions: 'No mentions ✓',
+    mentions_title: 'Recent mentions',
+    no_leaves: 'No leave requests.',
+    leaves_title: 'Recent leave:',
+    no_equipment: 'No equipment assigned to you.',
+    equipment_title: 'Your equipment',
+    no_comments: 'No comments yet.',
+    comments_title: 'Recent comments:',
+    balance_title: 'Reflect — current balance',
+    bal_in: 'Income',
+    bal_out: 'Expense',
+    bal_balance: 'Balance',
+    bal_debt: 'Receivables',
+    unknown_command: 'Unknown command. Send /help for the list.',
+  },
+  ru: {
+    not_linked: 'Аккаунт не привязан. /start <код> для привязки.',
+    admin_only: 'Эта команда только для админов.',
+    no_open_tasks: 'Открытых задач нет ✓',
+    no_today: 'На сегодня задач нет ✓',
+    today: 'Сегодня:',
+    open_tasks: 'Открытые задачи',
+    more: 'ещё',
+    no_active_projects: 'Активных проектов нет.',
+    active_projects: 'Активные проекты',
+    forecast_missing: 'Прогноза пока нет (крон не сработал).',
+    forecast_title: 'Кэш-прогноз',
+    no_mentions: 'Упоминаний нет ✓',
+    mentions_title: 'Последние упоминания',
+    no_leaves: 'Заявок на отпуск нет.',
+    leaves_title: 'Последние отпуска:',
+    no_equipment: 'Оборудование за вами не закреплено.',
+    equipment_title: 'Ваше оборудование',
+    no_comments: 'Комментариев пока нет.',
+    comments_title: 'Последние комментарии:',
+    balance_title: 'Reflect — текущий баланс',
+    bal_in: 'Доход',
+    bal_out: 'Расход',
+    bal_balance: 'Баланс',
+    bal_debt: 'Дебиторы',
+    unknown_command: 'Неизвестная команда. /help — список.',
+  },
+};
+function tg(locale: TgLocale, key: string): string {
+  return TG_TEXT[locale][key] ?? TG_TEXT.az[key] ?? key;
 }
 
 async function handleTasks(chatId: number, mode: 'open' | 'today') {
   const profile = await resolveProfile(chatId);
   if (!profile) {
-    await sendMessage(chatId, 'Hesab bağlı deyil. /start <kod> ilə bağlamaq lazımdır.');
+    await sendMessage(chatId, tg('az', 'not_linked'));
     return;
   }
+  const L = profile.locale;
   const sb = admin();
   let q = sb
     .from('tasks')
@@ -190,30 +281,29 @@ async function handleTasks(chatId: number, mode: 'open' | 'today') {
   }
   const rows = data ?? [];
   if (rows.length === 0) {
-    await sendMessage(
-      chatId,
-      mode === 'today' ? 'Bu gün üçün açıq tapşırığın yoxdur ✓' : 'Açıq tapşırığın yoxdur ✓',
-    );
+    await sendMessage(chatId, tg(L, mode === 'today' ? 'no_today' : 'no_open_tasks'));
     return;
   }
-  const header = mode === 'today' ? 'Bu gün:' : `Açıq tapşırıqlar (${rows.length}):`;
+  const header =
+    mode === 'today' ? tg(L, 'today') : `${tg(L, 'open_tasks')} (${rows.length}):`;
   const lines = rows.slice(0, 5).map((t) => {
     const deadline = t.deadline ? ` · ${t.deadline}` : '';
     return `• ${t.title}${deadline}`;
   });
-  if (rows.length > 5) lines.push(`(daha ${rows.length - 5} ədəd)`);
+  if (rows.length > 5) lines.push(`(${rows.length - 5} ${tg(L, 'more')})`);
   await sendMessage(chatId, [header, ...lines].join('\n'));
 }
 
 async function handleBalance(chatId: number) {
   const profile = await resolveProfile(chatId);
   if (!profile) {
-    await sendMessage(chatId, 'Hesab bağlı deyil.');
+    await sendMessage(chatId, tg('az', 'not_linked'));
     return;
   }
+  const L = profile.locale;
   if (!profile.isAdmin) {
     // PRD §8.1 — finance routes admin-only
-    await sendMessage(chatId, 'Bu komanda yalnız adminlər üçündür.');
+    await sendMessage(chatId, tg(L, 'admin_only'));
     return;
   }
   const sb = admin();
@@ -243,11 +333,11 @@ async function handleBalance(chatId: number) {
   await sendMessage(
     chatId,
     [
-      'Reflect — cari balans',
-      `Gəlir: ${fmt.format(tIn)}`,
-      `Xərc: ${fmt.format(tOut)}`,
-      `Balans: ${fmt.format(tIn - tOut)}`,
-      `Debitor: ${fmt.format(debt)}`,
+      tg(L, 'balance_title'),
+      `${tg(L, 'bal_in')}: ${fmt.format(tIn)}`,
+      `${tg(L, 'bal_out')}: ${fmt.format(tOut)}`,
+      `${tg(L, 'bal_balance')}: ${fmt.format(tIn - tOut)}`,
+      `${tg(L, 'bal_debt')}: ${fmt.format(debt)}`,
     ].join('\n'),
   );
 }
@@ -255,9 +345,10 @@ async function handleBalance(chatId: number) {
 async function handleProjects(chatId: number) {
   const profile = await resolveProfile(chatId);
   if (!profile) {
-    await sendMessage(chatId, 'Hesab bağlı deyil. /start <kod> ilə bağlamaq lazımdır.');
+    await sendMessage(chatId, tg('az', 'not_linked'));
     return;
   }
+  const L = profile.locale;
   const sb = admin();
   const { data } = await sb
     .from('projects')
@@ -272,7 +363,7 @@ async function handleProjects(chatId: number) {
     phases: string[];
   }>;
   if (rows.length === 0) {
-    await sendMessage(chatId, 'Aktiv layihə yoxdur.');
+    await sendMessage(chatId, tg(L, 'no_active_projects'));
     return;
   }
   const lines = rows.map((p) => {
@@ -280,17 +371,21 @@ async function handleProjects(chatId: number) {
     const dl = p.deadline ? ` · ${p.deadline}` : '';
     return `• ${p.name} (${phase})${dl}`;
   });
-  await sendMessage(chatId, [`Aktiv layihələr (${rows.length}):`, ...lines].join('\n'));
+  await sendMessage(
+    chatId,
+    [`${tg(L, 'active_projects')} (${rows.length}):`, ...lines].join('\n'),
+  );
 }
 
 async function handleForecast(chatId: number) {
   const profile = await resolveProfile(chatId);
   if (!profile) {
-    await sendMessage(chatId, 'Hesab bağlı deyil.');
+    await sendMessage(chatId, tg('az', 'not_linked'));
     return;
   }
+  const L = profile.locale;
   if (!profile.isAdmin) {
-    await sendMessage(chatId, 'Bu komanda yalnız adminlər üçündür.');
+    await sendMessage(chatId, tg(L, 'admin_only'));
     return;
   }
   const sb = admin();
@@ -306,7 +401,7 @@ async function handleForecast(chatId: number) {
     confidence_high: number;
   }>;
   if (rows.length === 0) {
-    await sendMessage(chatId, 'Hələ forecast yoxdur (cron işə düşməyib).');
+    await sendMessage(chatId, tg(L, 'forecast_missing'));
     return;
   }
   const fmt = new Intl.NumberFormat('az-AZ', {
@@ -322,15 +417,16 @@ async function handleForecast(chatId: number) {
           Number(r.confidence_low),
         )} – ${fmt.format(Number(r.confidence_high))})`,
     );
-  await sendMessage(chatId, ['Cash forecast', ...lines].join('\n'));
+  await sendMessage(chatId, [tg(L, 'forecast_title'), ...lines].join('\n'));
 }
 
 async function handleMentions(chatId: number) {
   const profile = await resolveProfile(chatId);
   if (!profile) {
-    await sendMessage(chatId, 'Hesab bağlı deyil.');
+    await sendMessage(chatId, tg('az', 'not_linked'));
     return;
   }
+  const L = profile.locale;
   const sb = admin();
   const { data } = await sb
     .from('notifications')
@@ -344,22 +440,23 @@ async function handleMentions(chatId: number) {
     created_at: string;
   }>;
   if (rows.length === 0) {
-    await sendMessage(chatId, 'Müraciət yoxdur ✓');
+    await sendMessage(chatId, tg(L, 'no_mentions'));
     return;
   }
   const lines = rows.map((r) => {
     const tid = r.payload?.task_id;
-    return `• ${r.created_at.slice(0, 10)} · tapşırıq #${tid ? tid.slice(0, 8) : '—'}`;
+    return `• ${r.created_at.slice(0, 10)} · #${tid ? tid.slice(0, 8) : '—'}`;
   });
-  await sendMessage(chatId, [`Son ${rows.length} müraciət:`, ...lines].join('\n'));
+  await sendMessage(chatId, [`${tg(L, 'mentions_title')} (${rows.length}):`, ...lines].join('\n'));
 }
 
 async function handleLeave(chatId: number) {
   const profile = await resolveProfile(chatId);
   if (!profile) {
-    await sendMessage(chatId, 'Hesab bağlı deyil.');
+    await sendMessage(chatId, tg('az', 'not_linked'));
     return;
   }
+  const L = profile.locale;
   const sb = admin();
   const { data } = await sb
     .from('leave_requests')
@@ -375,22 +472,22 @@ async function handleLeave(chatId: number) {
     status: string;
   }>;
   if (rows.length === 0) {
-    await sendMessage(chatId, 'Məzuniyyət müraciətin yoxdur.');
+    await sendMessage(chatId, tg(L, 'no_leaves'));
     return;
   }
   const lines = rows.map(
-    (r) =>
-      `• ${r.starts_at} → ${r.ends_at} · ${r.days} gün · ${r.kind} · ${r.status}`,
+    (r) => `• ${r.starts_at} → ${r.ends_at} · ${r.days} · ${r.kind} · ${r.status}`,
   );
-  await sendMessage(chatId, ['Son məzuniyyətlər:', ...lines].join('\n'));
+  await sendMessage(chatId, [tg(L, 'leaves_title'), ...lines].join('\n'));
 }
 
 async function handleEquipment(chatId: number) {
   const profile = await resolveProfile(chatId);
   if (!profile) {
-    await sendMessage(chatId, 'Hesab bağlı deyil.');
+    await sendMessage(chatId, tg('az', 'not_linked'));
     return;
   }
+  const L = profile.locale;
   const sb = admin();
   const { data } = await sb
     .from('equipment')
@@ -404,22 +501,23 @@ async function handleEquipment(chatId: number) {
     condition: string | null;
   }>;
   if (rows.length === 0) {
-    await sendMessage(chatId, 'Sənə təyin olunmuş avadanlıq yoxdur.');
+    await sendMessage(chatId, tg(L, 'no_equipment'));
     return;
   }
   const lines = rows.map((r) => {
     const tail = [r.kind, r.serial, r.condition].filter(Boolean).join(' · ');
     return `• ${r.name}${tail ? ' — ' + tail : ''}`;
   });
-  await sendMessage(chatId, [`Avadanlıqların (${rows.length}):`, ...lines].join('\n'));
+  await sendMessage(chatId, [`${tg(L, 'equipment_title')} (${rows.length}):`, ...lines].join('\n'));
 }
 
 async function handleComments(chatId: number) {
   const profile = await resolveProfile(chatId);
   if (!profile) {
-    await sendMessage(chatId, 'Hesab bağlı deyil.');
+    await sendMessage(chatId, tg('az', 'not_linked'));
     return;
   }
+  const L = profile.locale;
   const sb = admin();
   const { data } = await sb
     .from('task_comments')
@@ -433,14 +531,14 @@ async function handleComments(chatId: number) {
     created_at: string;
   }>;
   if (rows.length === 0) {
-    await sendMessage(chatId, 'Hələ heç bir şərh yazmamısan.');
+    await sendMessage(chatId, tg(L, 'no_comments'));
     return;
   }
   const lines = rows.map((r) => {
     const trimmed = r.body.replace(/\s+/g, ' ').slice(0, 80);
     return `• ${r.created_at.slice(0, 10)} · ${trimmed}${r.body.length > 80 ? '…' : ''}`;
   });
-  await sendMessage(chatId, [`Son ${rows.length} şərh:`, ...lines].join('\n'));
+  await sendMessage(chatId, [`${tg(L, 'comments_title')} (${rows.length}):`, ...lines].join('\n'));
 }
 
 async function sendMessage(chatId: number, text: string) {
