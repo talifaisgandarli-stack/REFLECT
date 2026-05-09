@@ -141,6 +141,28 @@ export interface UserPresence {
   session_type: 'desktop' | 'mobile';
 }
 
+export interface Invitation {
+  id: string;
+  email: string;
+  role_id: string;
+  invited_by: string | null;
+  token: string;
+  expires_at: string;
+  accepted_at: string | null;
+  created_at: string;
+}
+
+export interface Salary {
+  id: string;
+  employee_id: string;
+  amount: number;
+  currency: string;
+  effective_from: string;
+  effective_to: string | null;
+  components: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface ActivityLogEntry {
   id: string;
   entity_type: string;
