@@ -12,17 +12,10 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { useProjects } from '@/lib/hooks';
+import { EXPERTISE_SUBTASKS, computeWorkload } from '@/lib/workload';
 import type { Task, TaskStatus } from '@/types/db';
 
 type Props = { onClose: () => void };
-
-const EXPERTISE_CHILDREN = [
-  'Çertyoj hazırlığı',
-  'Spesifikasiya',
-  'Möhür + imza',
-  'Çap + ciltləmə',
-  'Ekspertizaya təhvil',
-] as const;
 
 const DURATION_UNITS = ['hours', 'days'] as const;
 type DurationUnit = (typeof DURATION_UNITS)[number];
@@ -60,11 +53,10 @@ export function TaskCreateModal({ onClose }: Props) {
   const [withExpertise, setWithExpertise] = useState(false);
   const [assignSelf, setAssignSelf] = useState(true);
 
-  const workloadPreview = useMemo(() => {
-    const e = parseFloat(estimated);
-    if (Number.isNaN(e) || e <= 0) return null;
-    return Math.round(e * (1 + riskBuffer / 100) * 100) / 100;
-  }, [estimated, riskBuffer]);
+  const workloadPreview = useMemo(
+    () => computeWorkload(parseFloat(estimated), riskBuffer),
+    [estimated, riskBuffer],
+  );
 
   const create = useMutation({
     mutationFn: async () => {
@@ -88,7 +80,7 @@ export function TaskCreateModal({ onClose }: Props) {
       const parent = data as Task;
 
       if (withExpertise) {
-        const children = EXPERTISE_CHILDREN.map((t) => ({
+        const children = EXPERTISE_SUBTASKS.map((t) => ({
           title: t,
           status: 'queued' as TaskStatus,
           project_id: parent.project_id,
