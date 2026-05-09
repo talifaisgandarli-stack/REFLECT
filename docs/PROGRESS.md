@@ -1,6 +1,6 @@
 # Reflect — sessiya gedişatı (`claude/create-done-list-Y8FuN`)
 
-PRD v3.8 + designstyle4 əsasında bu branch boyunca yığılmış **148 slice-ın**
+PRD v3.8 + designstyle4 əsasında bu branch boyunca yığılmış **158 slice-ın**
 xülasəsi. Hər bir slice atomar commit-dir; tam tarixçə üçün
 `git log --oneline main..`.
 
@@ -242,7 +242,22 @@ DoD                    ●●●●●  CI workflow, RLS audit, vitest (~135 tes
 | 145 | `1655450` | docs/ENV.md production setup guide |
 | 146 | `8415d30` | React Query defaults documented + pinned (audit) |
 | 147 | `3558b3c` | commentMentions + activityDiffSummary tests (16 cases) |
-| 148 | this   | docs/PROGRESS.md ledger refresh |
+| 148 | `c7a7c82` | docs/PROGRESS.md ledger refresh |
+
+### Polish IX (149–158)
+
+| # | Commit | Mövzu |
+|---|---|---|
+| 149 | `dcd8fb6` | Inline subtask create form on task detail |
+| 150 | `82ff2bc` | Task detail Cancel + Status pick + blocker handling |
+| 151 | `0056ac6` | ProjectDetail tabs + Overview labels i18n (18 keys) |
+| 152 | `a475acd` | TaskPreviewDrawer \"Tam aç\" → /tapşırıqlar/:id |
+| 153 | `960dc06` | App-level ErrorBoundary + localized fallback |
+| 154 | `d340e3e` | Toast helper + ARIA-live ToastContainer |
+| 155 | `899049d` | Lazy-load 21 heavier route components |
+| 156 | `01d7f0c` | Activity feed on task detail (last 20 entries) |
+| 157 | `5bf229e` | ErrorBoundary + toast store unit tests (14 cases) |
+| 158 | this   | docs/PROGRESS.md ledger refresh |
 
 ## Migrasiya intizamı
 
@@ -299,7 +314,7 @@ DoD                    ●●●●●  CI workflow, RLS audit, vitest (~135 tes
 
 ## i18n əhatəsi
 
-- 620+ açar `src/locales/{az,en,ru}.json` (parity test enforces).
+- 660+ açar `src/locales/{az,en,ru}.json` (parity test enforces).
 - Missing-key dev konsol xəbərdarlığı (PROD-da tree-shake olur).
 - Qoşulan səhifələr: Sidebar, Layout topbar, OnboardingHero, Tasks
   (full), Projects (page-head + grid + ProjectCreateModal),
@@ -343,8 +358,6 @@ DoD                    ●●●●●  CI workflow, RLS audit, vitest (~135 tes
 - Time tracking dictionary surface (out of v1 scope §12.1)
 - Native DOCX render (RTF kifayətdir; .docx Word-friendly)
 - E2E business flow (login → kanban → cancel) — needs seeded user
-- Inline subtask create + cancel from task detail (slice 133 surfaces
-  the list, but adding a child still routes through TaskCreateModal)
 - Server-side enum codes for finance categories / payment methods +
   cancel reasons (closeout labels migrated in slice 126; finance
   categories still store AZ canonical strings — relabel doesn't
@@ -355,8 +368,15 @@ DoD                    ●●●●●  CI workflow, RLS audit, vitest (~135 tes
 - Per-throw-site error codes in /api — slice 128 added the envelope +
   defaults; widening from defaultCodeForStatus to explicit codes per
   callsite is a gradual migration as endpoints get touched
-- TaskPreviewDrawer's \"Tam aç\" still routes to /tapşırıqlar#task-<id>
-  (kanban hash anchor) instead of the new /tapşırıqlar/:id route from
-  slice 132 — both work, picking one is its own slice
+- Toast adoption — slice 146 wired NotificationPreferences first; the
+  rest of the mutations across the app still surface errors as inline
+  <p> tags. Migrating those is a per-component cleanup as each is
+  touched
+- ErrorBoundary fallback uses the AZ default — reading profile.locale
+  inside a class boundary needs a HOC wrapper or a second nested
+  boundary
+- Inline subtask create has only the title field — full TaskCreateModal
+  features (deadline, assignee, expertise) still route through the
+  modal
 - Test infra deps: vitest binary not in current env image; CI runs are
   green per workflow but local `npx vitest run` requires `npm i`
