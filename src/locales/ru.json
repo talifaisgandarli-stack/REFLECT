@@ -382,6 +382,15 @@
   "survey.submitting": "Отправка…",
   "survey.submit": "Отправить ответ",
 
+  "task.comments.title": "Последние комментарии",
+  "task.comments.empty": "Пока нет комментариев.",
+  "task.comments.placeholder": "Напишите комментарий… @ чтобы упомянуть.",
+  "task.comments.submit": "Отправить",
+  "task.comments.submitting": "Отправка…",
+  "task.comments.mention.empty": "Никто не найден",
+  "task.comments.mention.aria": "Выбрать человека",
+  "task.comments.open_full": "Открыть полностью",
+
   "outsource.modal.title": "+ Заказ подряда",
   "outsource.modal.dialog_label": "Новый заказ подряда",
   "outsource.modal.work_title": "Название работы",

@@ -382,6 +382,15 @@
   "survey.submitting": "Göndərilir…",
   "survey.submit": "Cavabı göndər",
 
+  "task.comments.title": "Son şərhlər",
+  "task.comments.empty": "Hələ şərh yoxdur.",
+  "task.comments.placeholder": "Şərh yaz… @ ilə adam çək.",
+  "task.comments.submit": "Göndər",
+  "task.comments.submitting": "Göndərilir…",
+  "task.comments.mention.empty": "Heç kim tapılmadı",
+  "task.comments.mention.aria": "Adam seç",
+  "task.comments.open_full": "Tam aç",
+
   "outsource.modal.title": "+ Outsource sifarişi",
   "outsource.modal.dialog_label": "Yeni outsource sifarişi",
   "outsource.modal.work_title": "İşin başlığı",

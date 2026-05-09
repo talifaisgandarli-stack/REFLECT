@@ -382,6 +382,15 @@
   "survey.submitting": "Submitting…",
   "survey.submit": "Send response",
 
+  "task.comments.title": "Recent comments",
+  "task.comments.empty": "No comments yet.",
+  "task.comments.placeholder": "Write a comment… use @ to mention someone.",
+  "task.comments.submit": "Send",
+  "task.comments.submitting": "Sending…",
+  "task.comments.mention.empty": "No matches",
+  "task.comments.mention.aria": "Pick a person",
+  "task.comments.open_full": "Open full",
+
   "outsource.modal.title": "+ Outsource order",
   "outsource.modal.dialog_label": "New outsource order",
   "outsource.modal.work_title": "Work title",

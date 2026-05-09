@@ -9,7 +9,9 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { StatusChip } from './StatusChip';
+import { TaskCommentInput } from './TaskCommentInput';
 import { formatDate, relativeTime, taskHealth } from '@/lib/format';
+import { useT } from '@/lib/i18n';
 import type { TaskStatus } from '@/types/db';
 
 type TaskRow = {
@@ -41,6 +43,7 @@ const HEALTH_COLOR: Record<ReturnType<typeof taskHealth>, string> = {
 type Props = { taskId: string; onClose: () => void };
 
 export function TaskPreviewDrawer({ taskId, onClose }: Props) {
+  const tr = useT();
   const nav = useNavigate();
 
   useEffect(() => {
@@ -180,15 +183,15 @@ export function TaskPreviewDrawer({ taskId, onClose }: Props) {
                 textTransform: 'uppercase',
               }}
             >
-              Son şərhlər
+              {tr('task.comments.title')}
             </h3>
             {comments.isLoading ? (
               <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                Yüklənir…
+                {tr('common.loading')}
               </p>
             ) : (comments.data ?? []).length === 0 ? (
               <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                Hələ şərh yoxdur.
+                {tr('task.comments.empty')}
               </p>
             ) : (
               <ul className="card divide-y" style={{ borderColor: 'var(--line-soft)' }}>
@@ -203,9 +206,11 @@ export function TaskPreviewDrawer({ taskId, onClose }: Props) {
               </ul>
             )}
 
+            <TaskCommentInput taskId={t.id} />
+
             <div className="flex justify-end gap-2 mt-6">
               <button type="button" className="btn-outline" onClick={onClose}>
-                Geri
+                {tr('common.back')}
               </button>
               <button
                 type="button"
@@ -215,7 +220,7 @@ export function TaskPreviewDrawer({ taskId, onClose }: Props) {
                   nav(`/tapşırıqlar#task-${t.id}`);
                 }}
               >
-                Tam aç
+                {tr('task.comments.open_full')}
               </button>
             </div>
           </>
