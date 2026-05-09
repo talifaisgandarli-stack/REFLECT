@@ -5,9 +5,21 @@
  * Admin-only surface (parent gates with isAdmin); each underlying table
  * has admin-only RLS so a non-admin call returns empty rows anyway.
  */
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { supabase } from '@/lib/supabase';
 import { formatAZN } from '@/lib/format';
+import { downloadCsv } from '@/lib/export';
 
 type Props = { projectId: string };
 
@@ -58,6 +70,45 @@ export function ProjectPnL({ projectId }: Props) {
   const net = incomeTotal - direct;
   const netCommitted = incomeTotal - expenseTotal - outsourceCommitted;
 
+  const monthly = useMemo(() => {
+    const map = new Map<string, { m: string; in: number; out: number; outsource: number }>();
+    function bucket(iso: string | null | undefined): string | null {
+      return iso ? iso.slice(0, 7) : null;
+    }
+    function ensure(k: string) {
+      if (!map.has(k)) map.set(k, { m: k, in: 0, out: 0, outsource: 0 });
+      return map.get(k)!;
+    }
+    for (const r of incomes.data ?? []) {
+      const k = bucket(r.occurred_at);
+      if (k) ensure(k).in += Number(r.amount ?? 0);
+    }
+    for (const r of expenses.data ?? []) {
+      const k = bucket(r.occurred_at);
+      if (k) ensure(k).out += Number(r.amount ?? 0);
+    }
+    for (const r of outsource.data ?? []) {
+      const k = bucket(r.paid_at);
+      if (k) ensure(k).outsource += Number(r.amount ?? 0);
+    }
+    return Array.from(map.values()).sort((a, b) => a.m.localeCompare(b.m));
+  }, [incomes.data, expenses.data, outsource.data]);
+
+  function exportCsv() {
+    const rows: Array<Array<unknown>> = [];
+    rows.push(['Cəmi', 'Layihə gəliri', incomeTotal]);
+    rows.push(['Cəmi', 'Birbaşa xərc', direct]);
+    rows.push(['Cəmi', 'Outsource (öhdəlik)', outsourceCommitted]);
+    rows.push(['Cəmi', 'Xalis', net]);
+    rows.push(['Cəmi', 'Xalis (öhdəliklə)', netCommitted]);
+    for (const m of monthly) {
+      rows.push([`Aylıq · ${m.m}`, 'Gəlir', m.in]);
+      rows.push([`Aylıq · ${m.m}`, 'Xərc', m.out]);
+      rows.push([`Aylıq · ${m.m}`, 'Outsource ödənilib', m.outsource]);
+    }
+    downloadCsv(`reflect-pnl-${projectId.slice(0, 8)}`, ['Bölmə', 'Açar', 'AZN'], rows);
+  }
+
   const loading = incomes.isLoading || expenses.isLoading || outsource.isLoading;
 
   return (
@@ -71,6 +122,37 @@ export function ProjectPnL({ projectId }: Props) {
           tone={net >= 0 ? 'positive' : 'negative'}
         />
       </div>
+
+      {monthly.length > 0 ? (
+        <div className="card">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h3 className="text-h3">Aylıq cash flow</h3>
+            <button type="button" className="btn-outline" onClick={exportCsv}>
+              CSV
+            </button>
+          </div>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={monthly}>
+              <CartesianGrid stroke="rgba(122,133,127,0.2)" vertical={false} />
+              <XAxis dataKey="m" stroke="#7A857F" />
+              <YAxis stroke="#7A857F" />
+              <Tooltip
+                formatter={(value: number, name: string) => [formatAZN(value), name]}
+                cursor={{ fill: 'rgba(173,251,73,0.06)' }}
+              />
+              <Legend />
+              <Bar dataKey="in" name="Gəlir" fill="#ADFB49" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="out" name="Xərc" fill="#1A5140" radius={[4, 4, 0, 0]} />
+              <Bar
+                dataKey="outsource"
+                name="Outsource"
+                fill="#5CA87C"
+                radius={[4, 4, 0, 0]}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      ) : null}
 
       <div className="card">
         <h3 className="text-h3 mb-3">Detallı bölgü</h3>
