@@ -1,4 +1,5 @@
 import { Outlet, useNavigate } from 'react-router-dom';
+import { LocaleErrorBoundary } from './LocaleErrorBoundary';
 import { useEffect, useRef, useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { MiraiDrawer } from './MiraiDrawer';
@@ -116,7 +117,9 @@ export function Layout() {
             <NotificationBell />
           </div>
         ) : null}
-        <Outlet />
+        <LocaleErrorBoundary>
+          <Outlet />
+        </LocaleErrorBoundary>
       </main>
       <MiraiDrawer />
       <CmdK />
