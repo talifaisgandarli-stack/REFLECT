@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from './supabase';
 import type {
@@ -321,10 +322,70 @@ export function useTeamPresence() {
   return useQuery({
     queryKey: ['presence'],
     refetchInterval: 30_000,
-    queryFn: async (): Promise<UserPresence[]> => {
-      const { data, error } = await supabase.from('user_presence').select('*');
+    queryFn: async (): Promise<(UserPresence & { full_name: string | null; email: string })[]> => {
+      // Join presence with profiles so the UI can show names — REQ-PRESENCE-01.
+      const { data, error } = await supabase
+        .from('user_presence')
+        .select('*, profiles(full_name, email)');
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []).map((row: UserPresence & { profiles: { full_name: string | null; email: string } | null }) => ({
+        ...row,
+        full_name: row.profiles?.full_name ?? null,
+        email: row.profiles?.email ?? '',
+      }));
     },
   });
+}
+
+/**
+ * Heartbeat hook — REQ-PRESENCE-02/05.
+ * Pings /api/presence/heartbeat every 30s with current page + session type.
+ * Detects mobile via UA string (coarse but sufficient for a desktop-first app).
+ * Sets status=away on visibilitychange hidden.
+ * The active session boolean is the dependency so the effect re-fires on login/logout.
+ */
+export function usePresenceHeartbeat(active: boolean) {
+  const sessionType = /Mobi|Android/i.test(navigator.userAgent) ? 'mobile' : 'desktop';
+
+  const beat = async (status: 'online' | 'away' | 'offline') => {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) return;
+    try {
+      await fetch('/api/presence/heartbeat', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          current_page: window.location.pathname,
+          status,
+          session_type: sessionType,
+        }),
+      });
+    } catch {
+      // Heartbeat failures are silent — network blips shouldn't break the app.
+    }
+  };
+
+  useEffect(() => {
+    if (!active) return;
+    beat('online');
+
+    const interval = setInterval(() => beat('online'), 30_000);
+
+    const onVisibility = () => beat(document.hidden ? 'away' : 'online');
+    document.addEventListener('visibilitychange', onVisibility);
+
+    const onUnload = () => beat('offline');
+    window.addEventListener('beforeunload', onUnload);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('beforeunload', onUnload);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
 }

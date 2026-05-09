@@ -200,20 +200,26 @@ export function FinancePage() {
               projected_balance: number;
               confidence_low: number;
               confidence_high: number;
+              narrative?: string | null;
             }) => (
-              <div key={f.id} className="card">
+              <div key={f.id} className="card flex flex-col gap-2">
                 <div
                   className="text-meta uppercase tracking-wider"
                   style={{ color: 'var(--text-muted)' }}
                 >
                   {f.horizon_days} gün
                 </div>
-                <div className="text-h2 mt-1" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                <div className="text-h2" style={{ fontVariantNumeric: 'tabular-nums' }}>
                   {formatAZN(f.projected_balance)}
                 </div>
                 <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
                   {formatAZN(f.confidence_low)} – {formatAZN(f.confidence_high)}
                 </div>
+                {f.narrative ? (
+                  <p className="text-meta mt-1" style={{ color: 'var(--text)', lineHeight: 1.5 }}>
+                    {f.narrative}
+                  </p>
+                ) : null}
               </div>
             ),
           )}

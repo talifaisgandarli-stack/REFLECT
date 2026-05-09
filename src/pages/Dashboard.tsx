@@ -10,6 +10,7 @@ import {
 } from '@/lib/hooks';
 import { useAuth } from '@/lib/store';
 import { formatDate, relativeTime, taskHealth } from '@/lib/format';
+import type { UserPresence } from '@/types/db';
 import { FocusWidget } from '@/components/FocusWidget';
 
 const HEALTH_COLOR: Record<'green' | 'amber' | 'red' | 'none', string> = {
@@ -194,20 +195,20 @@ export function DashboardPage() {
           )}
         </section>
 
-        {/* Presence — REQ-PRESENCE-* */}
+        {/* Presence — REQ-PRESENCE-01..05 */}
         <section className="lg:col-span-3 card">
           <h3 className="text-h3 mb-3">Komanda</h3>
-          <div className="flex flex-wrap gap-2">
-            {presence.length === 0 ? (
-              <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                Heç kim onlayn deyil.
-              </div>
-            ) : (
-              presence.slice(0, 12).map((p) => (
-                <Avatar key={p.user_id} name={p.user_id.slice(0, 4)} presence={p.status} size={36} />
-              ))
-            )}
-          </div>
+          {presence.length === 0 ? (
+            <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+              Heç kim onlayn deyil.
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {presence.slice(0, 12).map((p) => (
+                <PresenceRow key={p.user_id} p={p as UserPresence & { full_name: string | null }} />
+              ))}
+            </ul>
+          )}
           <div className="text-meta mt-3" style={{ color: 'var(--text-muted)' }}>
             {onlineCount} onlayn
           </div>
@@ -302,6 +303,36 @@ export function DashboardPage() {
         </section>
       </div>
     </>
+  );
+}
+
+/**
+ * Presence row — REQ-PRESENCE-04/05.
+ * Shows avatar + name + current page. For offline users shows last-seen
+ * relative time (within 7d) or absolute (older). Mobile sessions get 📱.
+ */
+function PresenceRow({ p }: { p: UserPresence & { full_name: string | null } }) {
+  const isMobile = p.session_type === 'mobile';
+  const displayName = p.full_name ?? p.user_id.slice(0, 8);
+  const lastSeen = p.status === 'offline' ? relativeTime(p.last_heartbeat_at) : null;
+
+  return (
+    <li className="flex items-center gap-2">
+      <Avatar name={displayName} presence={p.status} size={32} />
+      <div className="flex-1 min-w-0">
+        <div className="text-body truncate">
+          {displayName}
+          {isMobile ? <span className="ml-1" title="Mobil">📱</span> : null}
+        </div>
+        <div className="text-meta truncate" style={{ color: 'var(--text-muted)' }}>
+          {lastSeen
+            ? lastSeen
+            : p.current_page
+              ? p.current_page
+              : null}
+        </div>
+      </div>
+    </li>
   );
 }
 

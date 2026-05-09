@@ -21,6 +21,53 @@ const MAX_OUTPUT_TOKENS = 1024;
 
 type PersonaKey = 'general' | 'project_manager' | 'finance_analyst' | 'cmo' | 'hr_partner';
 
+type KbRow = { id: string; source_pdf: string; chunk_index: number; content: string };
+
+/**
+ * RAG retrieval — PRD §7.4.
+ *
+ * PRD specifies pgvector cosine top-5, but PRD §3.1 includes no embedding
+ * provider. We fall back to PostgreSQL full-text search (migration 0013)
+ * until an embedding model is wired in. Retrieval is identical in spirit:
+ * top-5 most relevant chunks injected into the system prompt with source labels.
+ */
+async function retrieveKnowledge(
+  sb: ReturnType<typeof admin>,
+  query: string,
+): Promise<KbRow[]> {
+  // Build a tsquery from the first 10 words to avoid overly broad queries.
+  const terms = query
+    .split(/\s+/)
+    .slice(0, 10)
+    .map((w) => w.replace(/[^a-zA-ZÀ-ÿ0-9]/g, ''))
+    .filter(Boolean)
+    .join(' | ');
+
+  if (!terms) return [];
+
+  const { data } = await sb
+    .from('knowledge_base')
+    .select('id, source_pdf, chunk_index, content')
+    .textSearch('content_tsv', terms, { type: 'plain' })
+    .limit(5);
+
+  return (data ?? []) as KbRow[];
+}
+
+function buildRagContext(chunks: KbRow[]): string {
+  if (chunks.length === 0) return '';
+  return (
+    '\n\n---\nBilik bazasından çıxarışlar:\n' +
+    chunks
+      .map(
+        (c) =>
+          `[Mənbə: ${c.source_pdf}, hissə ${c.chunk_index}]\n${c.content}`,
+      )
+      .join('\n\n') +
+    '\n---'
+  );
+}
+
 const PERSONAS: Record<PersonaKey, { system: string; adminOnly?: boolean }> = {
   general: {
     system:
@@ -146,11 +193,23 @@ export default async function handler(req: Request) {
       .filter(Boolean)
       .join(' ');
 
+    // --- RAG retrieval (PRD §7.4) -------------------------------------------
+    // search_knowledge_base runs for all personas so any user can query docs.
+    // If no relevant chunks found, MIRAI must respond with the standard phrase.
+    const ragChunks = await retrieveKnowledge(sb, message);
+    const ragContext = buildRagContext(ragChunks);
+    const emptyRagInstruction =
+      ragChunks.length === 0 && /sənəd|qayda|maddə|hüquq|şərt|müqavilə/i.test(message)
+        ? '\n\nEğer sual normativ sənəd və ya müqavilə şərtləri haqqındadırsa və bilik bazasında məlumat tapılmayıbsa, cavab ver: "Bu məsələ üzrə dəqiq məlumatım yoxdur."'
+        : '';
+
     const systemPrompt =
       contextPrefix +
       '\n\n' +
       persona.system +
-      (user.isAdmin ? '' : NON_ADMIN_GUARD_RAIL);
+      (user.isAdmin ? '' : NON_ADMIN_GUARD_RAIL) +
+      ragContext +
+      emptyRagInstruction;
 
     // --- Anthropic call -----------------------------------------------------
     const client = new Anthropic({ apiKey });
@@ -227,11 +286,18 @@ export default async function handler(req: Request) {
     const warning =
       !user.isCreator && usagePct >= SOFT_WARN_PCT ? 'budget_80pct' : null;
 
+    // Build source citations — PRD §7.4: "Mənbə: <pdf_name>, Maddə X.Y.Z"
+    const sources = ragChunks.map((c) => ({
+      pdf: c.source_pdf,
+      chunk: c.chunk_index,
+      label: `Mənbə: ${c.source_pdf}, hissə ${c.chunk_index}`,
+    }));
+
     return jsonResponse({
       reply,
       persona: personaKey,
       conversation_id: conversationId,
-      sources: [],
+      sources,
       usage: {
         spent_usd: Number(newSpent.toFixed(4)),
         cap_usd: MONTHLY_CAP_USD,

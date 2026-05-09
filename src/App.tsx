@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from '@/lib/store';
 import { useAuthBootstrap } from '@/lib/auth';
+import { usePresenceHeartbeat } from '@/lib/hooks';
 import { Layout } from '@/components/Layout';
 import { LoginPage } from '@/pages/Login';
 import { DashboardPage } from '@/pages/Dashboard';
@@ -43,6 +44,9 @@ function RequireAdmin({ children }: { children: JSX.Element }) {
 
 export default function App() {
   useAuthBootstrap();
+  const { session } = useAuth();
+  // Start presence heartbeat for all authenticated sessions — REQ-PRESENCE-02/05.
+  usePresenceHeartbeat(session !== null);
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
