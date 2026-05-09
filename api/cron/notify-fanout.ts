@@ -33,33 +33,73 @@ type ProfileRow = {
   telegram_chat_id: string | null;
   is_creator: boolean;
   role_id: string | null;
+  locale: 'az' | 'en' | 'ru' | string;
 };
 
 type RoleRow = { id: string; is_admin: boolean };
 
-const KIND_TITLE: Record<string, string> = {
-  mention: 'Sənə müraciət',
-  task_assigned: 'Yeni tapşırıq təyin edildi',
-  task_status_changed: 'Tapşırıq statusu dəyişdi',
-  task_done: 'Tapşırıq tamamlandı',
-  task_cancelled: 'Tapşırıq ləğv edildi',
-  deadline_reminder: 'Deadline yaxınlaşır',
-  finance_alert: 'Maliyyə xəbərdarlığı',
+type Locale = 'az' | 'en' | 'ru';
+
+const KIND_TITLE: Record<Locale, Record<string, string>> = {
+  az: {
+    mention: 'Sənə müraciət',
+    task_assigned: 'Yeni tapşırıq təyin edildi',
+    task_status_changed: 'Tapşırıq statusu dəyişdi',
+    task_done: 'Tapşırıq tamamlandı',
+    task_cancelled: 'Tapşırıq ləğv edildi',
+    deadline_reminder: 'Deadline yaxınlaşır',
+    finance_alert: 'Maliyyə xəbərdarlığı',
+    fallback: 'Bildiriş',
+    status: 'Status',
+    deadline: 'Deadline',
+  },
+  en: {
+    mention: 'You were mentioned',
+    task_assigned: 'New task assigned',
+    task_status_changed: 'Task status changed',
+    task_done: 'Task completed',
+    task_cancelled: 'Task cancelled',
+    deadline_reminder: 'Deadline approaching',
+    finance_alert: 'Finance alert',
+    fallback: 'Notification',
+    status: 'Status',
+    deadline: 'Deadline',
+  },
+  ru: {
+    mention: 'Вас упомянули',
+    task_assigned: 'Назначена новая задача',
+    task_status_changed: 'Статус задачи изменён',
+    task_done: 'Задача завершена',
+    task_cancelled: 'Задача отменена',
+    deadline_reminder: 'Приближается дедлайн',
+    finance_alert: 'Финансовое уведомление',
+    fallback: 'Уведомление',
+    status: 'Статус',
+    deadline: 'Срок',
+  },
 };
 
-function bodyFor(n: NotifRow): string {
+function pickLocale(raw: string | null | undefined): Locale {
+  if (raw === 'en' || raw === 'ru' || raw === 'az') return raw;
+  return 'az';
+}
+
+function bodyFor(n: NotifRow, locale: Locale): string {
   const p = n.payload ?? {};
   const lines: string[] = [];
   if (typeof p.title === 'string') lines.push(p.title);
   if (typeof p.from === 'string' && typeof p.to === 'string') {
-    lines.push(`Status: ${p.from} → ${p.to}`);
+    lines.push(`${KIND_TITLE[locale].status}: ${p.from} → ${p.to}`);
   }
-  if (typeof p.deadline === 'string') lines.push(`Deadline: ${p.deadline}`);
+  if (typeof p.deadline === 'string') {
+    lines.push(`${KIND_TITLE[locale].deadline}: ${p.deadline}`);
+  }
   return lines.join('\n');
 }
 
-function titleFor(kind: string): string {
-  return KIND_TITLE[kind] ?? 'Bildiriş';
+function titleFor(kind: string, locale: Locale): string {
+  const dict = KIND_TITLE[locale];
+  return dict[kind] ?? dict.fallback;
 }
 
 async function prefMap(
@@ -143,7 +183,7 @@ export default async function handler(req: Request) {
     const userIds = Array.from(new Set(notifs.map((n) => n.user_id)));
     const { data: profiles } = await sb
       .from('profiles')
-      .select('id, email, full_name, telegram_chat_id, is_creator, role_id')
+      .select('id, email, full_name, telegram_chat_id, is_creator, role_id, locale')
       .in('id', userIds);
     const profMap = new Map<string, ProfileRow>();
     for (const p of (profiles ?? []) as ProfileRow[]) profMap.set(p.id, p);
@@ -168,9 +208,10 @@ export default async function handler(req: Request) {
       const profile = profMap.get(n.user_id);
       if (!profile) continue;
       const isAdmin = profile.is_creator || (profile.role_id ? adminRoles.has(profile.role_id) : false);
+      const locale = pickLocale(profile.locale);
       const updates: Record<string, string> = {};
-      const subject = titleFor(n.kind);
-      const body = `${subject}\n\n${bodyFor(n)}`.trim();
+      const subject = titleFor(n.kind, locale);
+      const body = `${subject}\n\n${bodyFor(n, locale)}`.trim();
 
       // Email channel
       if (
