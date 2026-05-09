@@ -60,6 +60,9 @@ export default async function handler(req: Request) {
           '/today — bu gün üçün son tarixli tapşırıqlar',
           '/projects — aktiv layihələrin xülasəsi',
           '/mentions — sənə son müraciətlər',
+          '/leave — sənin son məzuniyyət müraciətlərin',
+          '/equipment — sənə təyin olunmuş avadanlıq',
+          '/comments — sənin son şərhlərin',
           '/balance — cari balans (admin)',
           '/forecast — 30/60/90 gün cash forecast (admin)',
         ].join('\n'),
@@ -94,6 +97,21 @@ export default async function handler(req: Request) {
 
     if (text === '/mentions') {
       await handleMentions(chatId);
+      return jsonResponse({ ok: true });
+    }
+
+    if (text === '/leave') {
+      await handleLeave(chatId);
+      return jsonResponse({ ok: true });
+    }
+
+    if (text === '/equipment') {
+      await handleEquipment(chatId);
+      return jsonResponse({ ok: true });
+    }
+
+    if (text === '/comments') {
+      await handleComments(chatId);
       return jsonResponse({ ok: true });
     }
 
@@ -334,6 +352,95 @@ async function handleMentions(chatId: number) {
     return `• ${r.created_at.slice(0, 10)} · tapşırıq #${tid ? tid.slice(0, 8) : '—'}`;
   });
   await sendMessage(chatId, [`Son ${rows.length} müraciət:`, ...lines].join('\n'));
+}
+
+async function handleLeave(chatId: number) {
+  const profile = await resolveProfile(chatId);
+  if (!profile) {
+    await sendMessage(chatId, 'Hesab bağlı deyil.');
+    return;
+  }
+  const sb = admin();
+  const { data } = await sb
+    .from('leave_requests')
+    .select('kind, starts_at, ends_at, days, status')
+    .eq('employee_id', profile.id)
+    .order('starts_at', { ascending: false })
+    .limit(5);
+  const rows = (data ?? []) as Array<{
+    kind: string;
+    starts_at: string;
+    ends_at: string;
+    days: number;
+    status: string;
+  }>;
+  if (rows.length === 0) {
+    await sendMessage(chatId, 'Məzuniyyət müraciətin yoxdur.');
+    return;
+  }
+  const lines = rows.map(
+    (r) =>
+      `• ${r.starts_at} → ${r.ends_at} · ${r.days} gün · ${r.kind} · ${r.status}`,
+  );
+  await sendMessage(chatId, ['Son məzuniyyətlər:', ...lines].join('\n'));
+}
+
+async function handleEquipment(chatId: number) {
+  const profile = await resolveProfile(chatId);
+  if (!profile) {
+    await sendMessage(chatId, 'Hesab bağlı deyil.');
+    return;
+  }
+  const sb = admin();
+  const { data } = await sb
+    .from('equipment')
+    .select('name, kind, serial, condition')
+    .eq('assigned_to', profile.id)
+    .order('name');
+  const rows = (data ?? []) as Array<{
+    name: string;
+    kind: string | null;
+    serial: string | null;
+    condition: string | null;
+  }>;
+  if (rows.length === 0) {
+    await sendMessage(chatId, 'Sənə təyin olunmuş avadanlıq yoxdur.');
+    return;
+  }
+  const lines = rows.map((r) => {
+    const tail = [r.kind, r.serial, r.condition].filter(Boolean).join(' · ');
+    return `• ${r.name}${tail ? ' — ' + tail : ''}`;
+  });
+  await sendMessage(chatId, [`Avadanlıqların (${rows.length}):`, ...lines].join('\n'));
+}
+
+async function handleComments(chatId: number) {
+  const profile = await resolveProfile(chatId);
+  if (!profile) {
+    await sendMessage(chatId, 'Hesab bağlı deyil.');
+    return;
+  }
+  const sb = admin();
+  const { data } = await sb
+    .from('task_comments')
+    .select('task_id, body, created_at')
+    .eq('user_id', profile.id)
+    .order('created_at', { ascending: false })
+    .limit(5);
+  const rows = (data ?? []) as Array<{
+    task_id: string;
+    body: string;
+    created_at: string;
+  }>;
+  if (rows.length === 0) {
+    await sendMessage(chatId, 'Hələ heç bir şərh yazmamısan.');
+    return;
+  }
+  const lines = rows.map((r) => {
+    const trimmed = r.body.replace(/\s+/g, ' ').slice(0, 80);
+    return `• ${r.created_at.slice(0, 10)} · ${trimmed}${r.body.length > 80 ? '…' : ''}`;
+  });
+  await sendMessage(chatId, [`Son ${rows.length} şərh:`, ...lines].join('\n'));
 }
 
 async function sendMessage(chatId: number, text: string) {
