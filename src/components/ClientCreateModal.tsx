@@ -6,9 +6,9 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
+import { useT } from '@/lib/i18n';
 import {
   CLIENT_STAGE_CONFIDENCE,
-  CLIENT_STAGE_LABEL,
   CLIENT_STAGE_ORDER,
 } from '@/lib/labels';
 import type { ClientPipelineStage } from '@/types/db';
@@ -16,6 +16,7 @@ import type { ClientPipelineStage } from '@/types/db';
 type Props = { onClose: () => void };
 
 export function ClientCreateModal({ onClose }: Props) {
+  const t = useT();
   const { profile } = useAuth();
   const qc = useQueryClient();
 
@@ -28,10 +29,10 @@ export function ClientCreateModal({ onClose }: Props) {
 
   const save = useMutation({
     mutationFn: async () => {
-      if (!name.trim()) throw new Error('Ad tələb olunur');
+      if (!name.trim()) throw new Error(t('client.create.name_required'));
       const ev = expectedValue ? Number(expectedValue.replace(',', '.')) : null;
       if (ev != null && (!Number.isFinite(ev) || ev < 0)) {
-        throw new Error('Dəyər mənfi ola bilməz');
+        throw new Error(t('client.create.value_negative'));
       }
       const { error } = await supabase.from('clients').insert({
         name: name.trim(),
@@ -54,7 +55,7 @@ export function ClientCreateModal({ onClose }: Props) {
   return (
     <div
       role="dialog"
-      aria-label="Yeni müştəri"
+      aria-label={t('client.create.dialog_label')}
       className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8 overflow-y-auto"
       style={{ background: 'rgba(14,22,17,0.4)' }}
       onClick={onClose}
@@ -68,12 +69,12 @@ export function ClientCreateModal({ onClose }: Props) {
         }}
         style={{ padding: 24 }}
       >
-        <h2 className="text-h2">+ Yeni müştəri</h2>
+        <h2 className="text-h2">{t('client.create.title')}</h2>
 
         <div className="mt-4 space-y-3">
           <label className="block">
             <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-              Ad
+              {t('client.create.name')}
             </span>
             <input
               className="input"
@@ -85,7 +86,7 @@ export function ClientCreateModal({ onClose }: Props) {
           </label>
           <label className="block">
             <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-              Şirkət
+              {t('client.create.company')}
             </span>
             <input
               className="input"
@@ -96,7 +97,7 @@ export function ClientCreateModal({ onClose }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
               <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-                Email
+                {t('client.create.email')}
               </span>
               <input
                 type="email"
@@ -107,7 +108,7 @@ export function ClientCreateModal({ onClose }: Props) {
             </label>
             <label className="block">
               <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-                Telefon
+                {t('client.create.phone')}
               </span>
               <input
                 className="input"
@@ -120,7 +121,7 @@ export function ClientCreateModal({ onClose }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
               <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-                Mərhələ
+                {t('client.create.stage')}
               </span>
               <select
                 className="input"
@@ -129,14 +130,14 @@ export function ClientCreateModal({ onClose }: Props) {
               >
                 {CLIENT_STAGE_ORDER.filter((s) => s !== 'archived' && s !== 'lost').map((s) => (
                   <option key={s} value={s}>
-                    {CLIENT_STAGE_LABEL[s]} ({CLIENT_STAGE_CONFIDENCE[s]}%)
+                    {t(`client.stage.${s}`)} ({CLIENT_STAGE_CONFIDENCE[s]}%)
                   </option>
                 ))}
               </select>
             </label>
             <label className="block">
               <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-                Gözlənilən dəyər (AZN)
+                {t('client.create.expected_value')}
               </span>
               <input
                 type="text"
@@ -158,10 +159,10 @@ export function ClientCreateModal({ onClose }: Props) {
 
         <div className="flex justify-end gap-2 mt-6">
           <button type="button" className="btn-outline" onClick={onClose} disabled={save.isPending}>
-            Geri
+            {t('common.back')}
           </button>
           <button type="submit" className="btn-primary" disabled={save.isPending || !name}>
-            {save.isPending ? 'Yadda saxlanılır…' : 'Yarat'}
+            {save.isPending ? t('client.create.saving') : t('client.create.submit')}
           </button>
         </div>
       </form>
