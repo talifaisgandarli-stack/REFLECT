@@ -97,11 +97,38 @@ export function NotificationPreferencesPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notification-preferences'] }),
   });
 
+  const bulkChannel = useMutation({
+    mutationFn: async (input: { channel: Channel; enabled: boolean }) => {
+      if (!profile?.id) throw new Error('Profile not ready');
+      const rows = EVENT_KINDS.map((kind) => ({
+        user_id: profile.id,
+        channel: input.channel,
+        event_kind: kind,
+        enabled: input.enabled,
+      }));
+      const { error } = await supabase
+        .from('notification_preferences')
+        .upsert(rows, { onConflict: 'user_id,channel,event_kind' });
+      if (error) throw error;
+      // Optimistic local update so the UI reflects instantly.
+      setGrid((prev) => {
+        const next = { ...prev };
+        for (const kind of EVENT_KINDS) next[`${input.channel}:${kind}`] = input.enabled;
+        return next;
+      });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notification-preferences'] }),
+  });
+
   function toggle(channel: Channel, event: EventKind) {
     const key = `${channel}:${event}`;
     const next = !(grid[key] ?? true);
     setGrid((g) => ({ ...g, [key]: next }));
     save.mutate({ channel, event, enabled: next });
+  }
+
+  function channelAllChecked(channel: Channel): boolean {
+    return EVENT_KINDS.every((kind) => (grid[`${channel}:${kind}`] ?? true));
   }
 
   return (
@@ -132,19 +159,49 @@ export function NotificationPreferencesPage() {
               >
                 {t('notif.col.event')}
               </th>
-              {CHANNELS.map((c) => (
-                <th
-                  key={c.key}
-                  className="text-meta text-center py-3 px-4"
-                  style={{
-                    color: 'var(--text-muted)',
-                    letterSpacing: '0.05em',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  {t(c.labelKey)}
-                </th>
-              ))}
+              {CHANNELS.map((c) => {
+                const allOn = channelAllChecked(c.key);
+                return (
+                  <th
+                    key={c.key}
+                    className="text-meta text-center py-3 px-4"
+                    style={{
+                      color: 'var(--text-muted)',
+                      letterSpacing: '0.05em',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    <div className="flex flex-col items-center gap-1">
+                      <span>{t(c.labelKey)}</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          bulkChannel.mutate({ channel: c.key, enabled: !allOn })
+                        }
+                        disabled={bulkChannel.isPending || !profile?.id}
+                        className="text-tiny"
+                        style={{
+                          background: 'transparent',
+                          border: '1px solid var(--line)',
+                          padding: '2px 8px',
+                          borderRadius: 6,
+                          color: 'var(--text-soft)',
+                          cursor: 'pointer',
+                          textTransform: 'none',
+                          letterSpacing: 0,
+                        }}
+                        aria-label={
+                          allOn
+                            ? t('notif.bulk.all_off_aria', { channel: t(c.labelKey) })
+                            : t('notif.bulk.all_on_aria', { channel: t(c.labelKey) })
+                        }
+                      >
+                        {allOn ? t('notif.bulk.all_off') : t('notif.bulk.all_on')}
+                      </button>
+                    </div>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
