@@ -6,8 +6,17 @@ import { formatAZN, formatDate } from '@/lib/format';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { IncomeExpenseModal, type FinanceKind } from '@/components/IncomeExpenseModal';
 import { MarkPaidModal } from '@/components/MarkPaidModal';
+import { useT } from '@/lib/i18n';
 
-const TABS = ['Cash Cockpit', 'P&L', 'Outsource', 'Xərclər', 'Debitor', 'Forecast'] as const;
+type TabKey = 'cockpit' | 'pnl' | 'outsource' | 'expenses' | 'debtors' | 'forecast';
+const TAB_KEYS: Array<{ id: TabKey; labelKey: string }> = [
+  { id: 'cockpit', labelKey: 'finance.tab.cockpit' },
+  { id: 'pnl', labelKey: 'finance.tab.pnl' },
+  { id: 'outsource', labelKey: 'finance.tab.outsource' },
+  { id: 'expenses', labelKey: 'finance.tab.expenses' },
+  { id: 'debtors', labelKey: 'finance.tab.debtors' },
+  { id: 'forecast', labelKey: 'finance.tab.forecast' },
+];
 
 type Receivable = {
   id: string;
@@ -20,7 +29,8 @@ type Receivable = {
 };
 
 export function FinancePage() {
-  const [tab, setTab] = useState<(typeof TABS)[number]>('Cash Cockpit');
+  const t = useT();
+  const [tab, setTab] = useState<TabKey>('cockpit');
   const [modal, setModal] = useState<FinanceKind | null>(null);
   const [markPaid, setMarkPaid] = useState<Receivable | null>(null);
 
@@ -66,8 +76,8 @@ export function FinancePage() {
   return (
     <>
       <PageHead
-        meta="Admin yalnız"
-        title="Maliyyə Mərkəzi"
+        meta={t('finance.meta_admin')}
+        title={t('finance.title')}
         actions={
           <>
             <button className="btn-outline" onClick={() => setModal('expense')}>
@@ -85,25 +95,25 @@ export function FinancePage() {
         className="card mb-5 flex flex-wrap gap-6 sticky top-0 z-10"
         style={{ background: 'var(--surface)' }}
       >
-        <Stat label="Cari balans" value={formatAZN(balance)} accent />
-        <Stat label="Gəlir (cari ay)" value={formatAZN(totalIn)} />
-        <Stat label="Xərc (cari ay)" value={formatAZN(totalOut)} />
-        <Stat label="Debitor" value={formatAZN(debtor)} />
+        <Stat label={t('finance.balance')} value={formatAZN(balance)} accent />
+        <Stat label={t('finance.income_month')} value={formatAZN(totalIn)} />
+        <Stat label={t('finance.expense_month')} value={formatAZN(totalOut)} />
+        <Stat label={t('finance.debtors_total')} value={formatAZN(debtor)} />
       </div>
 
       <nav className="flex flex-wrap gap-2 mb-5">
-        {TABS.map((t) => (
+        {TAB_KEYS.map((tk) => (
           <button
-            key={t}
-            className={`chip ${tab === t ? 'chip-brand' : ''}`}
-            onClick={() => setTab(t)}
+            key={tk.id}
+            className={`chip ${tab === tk.id ? 'chip-brand' : ''}`}
+            onClick={() => setTab(tk.id)}
           >
-            {t}
+            {t(tk.labelKey)}
           </button>
         ))}
       </nav>
 
-      {tab === 'Cash Cockpit' ? (
+      {tab === 'cockpit' ? (
         <div className="card" style={{ height: 320 }}>
           <h3 className="text-h3 mb-3">Aylıq cash flow</h3>
           <ResponsiveContainer width="100%" height={260}>
@@ -118,7 +128,7 @@ export function FinancePage() {
         </div>
       ) : null}
 
-      {tab === 'Debitor' ? (
+      {tab === 'debtors' ? (
         <table className="w-full text-body">
           <thead>
             <tr style={{ borderBottom: '1px solid var(--line)' }}>
@@ -181,7 +191,7 @@ export function FinancePage() {
         </table>
       ) : null}
 
-      {tab === 'Forecast' ? (
+      {tab === 'forecast' ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {(forecasts.data ?? []).length === 0 ? (
             <div className="card text-meta col-span-3">
@@ -215,9 +225,9 @@ export function FinancePage() {
         </div>
       ) : null}
 
-      {tab === 'P&L' || tab === 'Outsource' || tab === 'Xərclər' ? (
+      {tab === 'pnl' || tab === 'outsource' || tab === 'expenses' ? (
         <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
-          {tab} cədvəli — v1.5-də.
+          {t(`finance.tab.${tab}`)} — v1.5-də.
         </div>
       ) : null}
 
