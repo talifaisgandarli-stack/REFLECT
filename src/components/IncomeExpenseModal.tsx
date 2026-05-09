@@ -7,24 +7,31 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
+import { useT } from '@/lib/i18n';
 
 export type FinanceKind = 'income' | 'expense';
 
-const PAYMENT_METHODS = ['Bank köçürməsi', 'Nağd', 'Kart', 'Digər'] as const;
+const PAYMENT_METHODS = [
+  { value: 'Bank köçürməsi', labelKey: 'finance.method.bank_transfer' },
+  { value: 'Nağd', labelKey: 'finance.method.cash' },
+  { value: 'Kart', labelKey: 'finance.method.card' },
+  { value: 'Digər', labelKey: 'finance.method.other' },
+] as const;
 const EXPENSE_CATEGORIES = [
-  'Ofis kirayəsi',
-  'Kommunal',
-  'Maaş',
-  'Outsource',
-  'Marketinq',
-  'Texnika',
-  'Səfər',
-  'Digər',
+  { value: 'Ofis kirayəsi', labelKey: 'finance.category.rent' },
+  { value: 'Kommunal', labelKey: 'finance.category.utilities' },
+  { value: 'Maaş', labelKey: 'finance.category.salary' },
+  { value: 'Outsource', labelKey: 'finance.category.outsource' },
+  { value: 'Marketinq', labelKey: 'finance.category.marketing' },
+  { value: 'Texnika', labelKey: 'finance.category.equipment' },
+  { value: 'Səfər', labelKey: 'finance.category.travel' },
+  { value: 'Digər', labelKey: 'finance.category.other' },
 ] as const;
 
 type Props = { kind: FinanceKind; onClose: () => void };
 
 export function IncomeExpenseModal({ kind, onClose }: Props) {
+  const t = useT();
   const { profile } = useAuth();
   const qc = useQueryClient();
 
@@ -46,8 +53,8 @@ export function IncomeExpenseModal({ kind, onClose }: Props) {
   });
 
   const [amount, setAmount] = useState('');
-  const [method, setMethod] = useState<string>(PAYMENT_METHODS[0]);
-  const [category, setCategory] = useState<string>(EXPENSE_CATEGORIES[0]);
+  const [method, setMethod] = useState<string>(PAYMENT_METHODS[0].value);
+  const [category, setCategory] = useState<string>(EXPENSE_CATEGORIES[0].value);
   const [vendor, setVendor] = useState('');
   const [projectId, setProjectId] = useState('');
   const [clientId, setClientId] = useState('');
@@ -56,14 +63,16 @@ export function IncomeExpenseModal({ kind, onClose }: Props) {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   const isIncome = kind === 'income';
-  const title = isIncome ? '+ Gəlir' : '+ Xərc';
-  const submitLabel = isIncome ? 'Gəliri qeyd et' : 'Xərci qeyd et';
+  const title = isIncome ? t('finance.income.add') : t('finance.expense.add');
+  const submitLabel = isIncome
+    ? t('finance.modal.submit_income')
+    : t('finance.modal.submit_expense');
 
   const save = useMutation({
     mutationFn: async () => {
       const n = Number(amount.replace(',', '.'));
       if (!Number.isFinite(n) || n <= 0) {
-        throw new Error('Məbləğ müsbət olmalıdır');
+        throw new Error(t('finance.modal.amount_invalid'));
       }
       const occurred_at = new Date(`${date}T12:00:00+04:00`).toISOString();
 
@@ -118,7 +127,7 @@ export function IncomeExpenseModal({ kind, onClose }: Props) {
         <h2 className="text-h2">{title}</h2>
 
         <div className="mt-4 space-y-3">
-          <Field label="Məbləğ (AZN)" required>
+          <Field label={t('finance.modal.amount')} required>
             <input
               type="text"
               inputMode="decimal"
@@ -133,7 +142,7 @@ export function IncomeExpenseModal({ kind, onClose }: Props) {
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Tarix">
+            <Field label={t('finance.modal.date')}>
               <input
                 type="date"
                 className="input"
@@ -142,25 +151,25 @@ export function IncomeExpenseModal({ kind, onClose }: Props) {
               />
             </Field>
             {isIncome ? (
-              <Field label="Ödəniş üsulu">
+              <Field label={t('finance.modal.payment_method')}>
                 <select className="input" value={method} onChange={(e) => setMethod(e.target.value)}>
                   {PAYMENT_METHODS.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
+                    <option key={p.value} value={p.value}>
+                      {t(p.labelKey)}
                     </option>
                   ))}
                 </select>
               </Field>
             ) : (
-              <Field label="Kateqoriya">
+              <Field label={t('finance.modal.category')}>
                 <select
                   className="input"
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
                 >
                   {EXPENSE_CATEGORIES.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
+                    <option key={c.value} value={c.value}>
+                      {t(c.labelKey)}
                     </option>
                   ))}
                 </select>
@@ -168,13 +177,13 @@ export function IncomeExpenseModal({ kind, onClose }: Props) {
             )}
           </div>
 
-          <Field label="Layihə">
+          <Field label={t('finance.modal.project')}>
             <select
               className="input"
               value={projectId}
               onChange={(e) => setProjectId(e.target.value)}
             >
-              <option value="">— layihəsiz —</option>
+              <option value="">{t('finance.modal.project_none')}</option>
               {(projects.data ?? []).map((p: { id: string; name: string }) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -185,13 +194,13 @@ export function IncomeExpenseModal({ kind, onClose }: Props) {
 
           {isIncome ? (
             <>
-              <Field label="Müştəri">
+              <Field label={t('finance.modal.client')}>
                 <select
                   className="input"
                   value={clientId}
                   onChange={(e) => setClientId(e.target.value)}
                 >
-                  <option value="">— müştərisiz —</option>
+                  <option value="">{t('finance.modal.client_none')}</option>
                   {(clients.data ?? []).map((c: { id: string; name: string }) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -199,7 +208,7 @@ export function IncomeExpenseModal({ kind, onClose }: Props) {
                   ))}
                 </select>
               </Field>
-              <Field label="Faktura nömrəsi">
+              <Field label={t('finance.modal.invoice')}>
                 <input
                   className="input"
                   value={invoice}
@@ -209,23 +218,23 @@ export function IncomeExpenseModal({ kind, onClose }: Props) {
               </Field>
             </>
           ) : (
-            <Field label="Vendor">
+            <Field label={t('finance.modal.vendor')}>
               <input
                 className="input"
                 value={vendor}
                 onChange={(e) => setVendor(e.target.value)}
-                placeholder="Şirkətin adı"
+                placeholder={t('finance.modal.vendor_placeholder')}
               />
             </Field>
           )}
 
-          <Field label="Qeyd">
+          <Field label={t('finance.modal.note')}>
             <textarea
               className="input"
               value={note}
               onChange={(e) => setNote(e.target.value)}
               style={{ minHeight: 72, padding: '12px 14px' }}
-              placeholder="Detal, kontekst…"
+              placeholder={t('finance.modal.note_placeholder')}
             />
           </Field>
         </div>
@@ -243,10 +252,10 @@ export function IncomeExpenseModal({ kind, onClose }: Props) {
             onClick={onClose}
             disabled={save.isPending}
           >
-            Geri
+            {t('common.back')}
           </button>
           <button type="submit" className="btn-primary" disabled={save.isPending || !amount}>
-            {save.isPending ? 'Yadda saxlanılır…' : submitLabel}
+            {save.isPending ? t('finance.modal.saving') : submitLabel}
           </button>
         </div>
       </form>
