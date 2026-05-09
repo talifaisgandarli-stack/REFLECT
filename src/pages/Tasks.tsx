@@ -205,26 +205,26 @@ export function TasksPage() {
                   {isToday ? 'BU GÜN' : TASK_STATUS_LABEL[s]} · {grouped[s].length}
                 </h3>
                 <div className="space-y-2">
-                  {grouped[s].map((t) => (
+                  {grouped[s].map((task) => (
                     <article
-                      key={t.id}
-                      id={`task-${t.id}`}
+                      key={task.id}
+                      id={`task-${task.id}`}
                       draggable
                       onDragStart={(e) =>
                         e.dataTransfer.setData(
                           'text/plain',
-                          JSON.stringify({ id: t.id, from: t.status }),
+                          JSON.stringify({ id: task.id, from: task.status }),
                         )
                       }
                       className="rounded-card p-3 text-body"
                       style={{
                         background: isToday ? '#1F2925' : 'var(--surface)',
                         border:
-                          highlightId === t.id
+                          highlightId === task.id
                             ? '2px solid var(--brand-action)'
                             : `1px solid ${isToday ? '#2D3833' : 'var(--line)'}`,
                         boxShadow:
-                          highlightId === t.id
+                          highlightId === task.id
                             ? '0 0 0 4px rgba(173,251,73,0.18)'
                             : undefined,
                         transition: 'border-color var(--dur-base), box-shadow var(--dur-base)',
@@ -232,14 +232,20 @@ export function TasksPage() {
                     >
                       <div className="font-medium flex items-center gap-2">
                         {(() => {
-                          const live = aggregatePresence(t.assignee_ids);
+                          const live = aggregatePresence(task.assignee_ids);
                           if (!live) return null;
                           return (
                             <span
                               aria-label={
-                                live === 'online' ? 'İcraçı onlayn' : 'İcraçı uzaqda'
+                                live === 'online'
+                                  ? t('tasks.presence.online')
+                                  : t('tasks.presence.away')
                               }
-                              title={live === 'online' ? 'İcraçı onlayn' : 'İcraçı uzaqda'}
+                              title={
+                                live === 'online'
+                                  ? t('tasks.presence.online')
+                                  : t('tasks.presence.away')
+                              }
                               className="inline-block rounded-full shrink-0"
                               style={{
                                 width: 7,
@@ -250,10 +256,10 @@ export function TasksPage() {
                             />
                           );
                         })()}
-                        <span className="truncate">{t.title}</span>
+                        <span className="truncate">{task.title}</span>
                       </div>
                       <div className="flex items-center justify-between mt-1">
-                        {t.deadline ? (
+                        {task.deadline ? (
                           <span
                             className="text-meta"
                             style={{
@@ -261,25 +267,25 @@ export function TasksPage() {
                               fontVariantNumeric: 'tabular-nums',
                             }}
                           >
-                            {t.deadline}
+                            {task.deadline}
                           </span>
                         ) : (
                           <span />
                         )}
-                        {t.status !== 'done' && t.status !== 'cancelled' ? (
+                        {task.status !== 'done' && task.status !== 'cancelled' ? (
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setCancelling({ id: t.id, title: t.title });
+                              setCancelling({ id: task.id, title: task.title });
                             }}
                             className="text-meta opacity-60 hover:opacity-100"
                             style={{
                               color: isToday ? 'var(--text-faint)' : 'var(--text-muted)',
                             }}
-                            aria-label={`Tapşırığı ləğv et: ${t.title}`}
+                            aria-label={t('tasks.cancel_aria', { title: task.title })}
                           >
-                            Ləğv et
+                            {t('tasks.cancel_link')}
                           </button>
                         ) : null}
                       </div>
@@ -294,7 +300,12 @@ export function TasksPage() {
         <table className="w-full text-body">
           <thead>
             <tr style={{ borderBottom: '1px solid var(--line)' }}>
-              {['Tapşırıq', 'Status', 'İcraçı', 'Deadline'].map((h) => (
+              {[
+                t('tasks.col.task'),
+                t('tasks.col.status'),
+                t('tasks.col.assignee'),
+                t('tasks.col.deadline'),
+              ].map((h) => (
                 <th
                   key={h}
                   className="text-meta text-left py-3 px-3"
@@ -310,12 +321,14 @@ export function TasksPage() {
             </tr>
           </thead>
           <tbody>
-            {tasks.map((t) => (
-              <tr key={t.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
-                <td className="py-3 px-3">{t.title}</td>
-                <td className="py-3 px-3">{TASK_STATUS_LABEL[t.status]}</td>
-                <td className="py-3 px-3">{t.assignee_ids.length} nəfər</td>
-                <td className="py-3 px-3">{t.deadline ?? '—'}</td>
+            {tasks.map((task) => (
+              <tr key={task.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                <td className="py-3 px-3">{task.title}</td>
+                <td className="py-3 px-3">{TASK_STATUS_LABEL[task.status]}</td>
+                <td className="py-3 px-3">
+                  {t('tasks.assignees_count', { count: task.assignee_ids.length })}
+                </td>
+                <td className="py-3 px-3">{task.deadline ?? '—'}</td>
               </tr>
             ))}
           </tbody>
