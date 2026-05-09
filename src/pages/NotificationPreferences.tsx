@@ -10,6 +10,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { PageHead } from '@/components/PageHead';
+import { useT } from '@/lib/i18n';
 
 type Channel = 'inapp' | 'email' | 'telegram';
 type EventKind =
@@ -21,10 +22,10 @@ type EventKind =
   | 'deadline_reminder'
   | 'finance_alert';
 
-const CHANNELS: Array<{ key: Channel; label: string; hint?: string }> = [
-  { key: 'inapp', label: 'Tətbiqdə' },
-  { key: 'email', label: 'Email' },
-  { key: 'telegram', label: 'Telegram', hint: 'Bağlamaq üçün /telegram səhifəsi' },
+const CHANNELS: Array<{ key: Channel; labelKey: string }> = [
+  { key: 'inapp', labelKey: 'notif.channel.inapp' },
+  { key: 'email', labelKey: 'notif.channel.email' },
+  { key: 'telegram', labelKey: 'notif.channel.telegram' },
 ];
 
 const EVENTS: Array<{ key: EventKind; label: string; description?: string }> = [
@@ -53,6 +54,7 @@ type PrefRow = {
 };
 
 export function NotificationPreferencesPage() {
+  const t = useT();
   const { profile } = useAuth();
   const qc = useQueryClient();
   const [grid, setGrid] = useState<Record<string, boolean>>({});
@@ -112,11 +114,11 @@ export function NotificationPreferencesPage() {
     <>
       <PageHead
         meta={profile?.full_name ?? profile?.email ?? '—'}
-        title="Bildirişlər"
+        title={t('notif.title')}
         actions={
           save.isPending ? (
             <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
-              Yadda saxlanılır…
+              {t('notif.saving')}
             </span>
           ) : null
         }
@@ -134,7 +136,7 @@ export function NotificationPreferencesPage() {
                   textTransform: 'uppercase',
                 }}
               >
-                Hadisə
+                {t('notif.col.event')}
               </th>
               {CHANNELS.map((c) => (
                 <th
@@ -146,7 +148,7 @@ export function NotificationPreferencesPage() {
                     textTransform: 'uppercase',
                   }}
                 >
-                  {c.label}
+                  {t(c.labelKey)}
                 </th>
               ))}
             </tr>
@@ -174,7 +176,7 @@ export function NotificationPreferencesPage() {
                     <td key={c.key} className="py-3 px-4 text-center">
                       <label
                         className="inline-flex items-center cursor-pointer"
-                        aria-label={`${e.label} — ${c.label}`}
+                        aria-label={`${e.label} — ${t(c.labelKey)}`}
                       >
                         <input
                           type="checkbox"
@@ -212,8 +214,7 @@ export function NotificationPreferencesPage() {
         </table>
 
         <p className="text-meta mt-4" style={{ color: 'var(--text-muted)' }}>
-          Yeni hesablarda hər kanal aktivdir. Söndürmək seçimi yadda saxlanır;
-          sonra notify-fanout cron-u həmin kanaldan ötürmür.
+          {t('notif.opt_out_note')}
         </p>
       </div>
     </>

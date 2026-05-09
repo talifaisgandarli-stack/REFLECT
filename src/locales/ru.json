@@ -111,6 +111,13 @@
   "action.stage_changed": "этап изменён",
   "action.phases_changed": "фазы изменены",
   "action.closeout": "проект закрыт",
+  "notif.title": "Уведомления",
+  "notif.col.event": "Событие",
+  "notif.channel.inapp": "В приложении",
+  "notif.channel.email": "Email",
+  "notif.channel.telegram": "Telegram",
+  "notif.opt_out_note": "По умолчанию все каналы включены. Отключение сохраняется; cron notify-fanout пропускает канал.",
+  "notif.saving": "Сохранение…",
 
   "nav.work": "РАБОТА",
   "nav.dashboard": "Дашборд",

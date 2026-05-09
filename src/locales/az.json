@@ -111,6 +111,13 @@
   "action.stage_changed": "mərhələ dəyişdi",
   "action.phases_changed": "fazalar dəyişdi",
   "action.closeout": "bağlama qeydi",
+  "notif.title": "Bildirişlər",
+  "notif.col.event": "Hadisə",
+  "notif.channel.inapp": "Tətbiqdə",
+  "notif.channel.email": "Email",
+  "notif.channel.telegram": "Telegram",
+  "notif.opt_out_note": "Yeni hesablarda hər kanal aktivdir. Söndürmək seçimi yadda saxlanır; sonra notify-fanout cron-u həmin kanaldan ötürmür.",
+  "notif.saving": "Yadda saxlanılır…",
 
   "nav.work": "İŞ",
   "nav.dashboard": "Dashboard",

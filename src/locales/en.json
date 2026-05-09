@@ -111,6 +111,13 @@
   "action.stage_changed": "stage changed",
   "action.phases_changed": "phases changed",
   "action.closeout": "closed out",
+  "notif.title": "Notifications",
+  "notif.col.event": "Event",
+  "notif.channel.inapp": "In-app",
+  "notif.channel.email": "Email",
+  "notif.channel.telegram": "Telegram",
+  "notif.opt_out_note": "All channels are on by default. Toggling off persists; the notify-fanout cron skips that channel from then on.",
+  "notif.saving": "Saving…",
 
   "nav.work": "WORK",
   "nav.dashboard": "Dashboard",
