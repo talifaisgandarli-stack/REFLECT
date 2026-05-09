@@ -55,7 +55,10 @@ const NAV: NavGroup[] = [
   {
     label: 'SİSTEM',
     adminGroup: true,
-    items: [{ to: '/parametrlər', label: 'Parametrlər', admin: true }],
+    items: [
+      { to: '/parametrlər', label: 'Parametrlər', admin: true },
+      { to: '/audit', label: 'Audit jurnalı', admin: true },
+    ],
   },
 ];
 

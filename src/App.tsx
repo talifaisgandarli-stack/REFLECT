@@ -28,6 +28,7 @@ import { MiraiPage } from '@/pages/Mirai';
 import { TelegramLinkPage } from '@/pages/TelegramLink';
 import { SurveyPublicPage } from '@/pages/SurveyPublic';
 import { ReportsPage } from '@/pages/Reports';
+import { AuditLogPage } from '@/pages/AuditLog';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { session, hydrated } = useAuth();
@@ -91,6 +92,16 @@ export default function App() {
           element={
             <RequireAdmin>
               <ReportsPage />
+            </RequireAdmin>
+          }
+        />
+
+        {/* AUDIT (admin) */}
+        <Route
+          path="/audit"
+          element={
+            <RequireAdmin>
+              <AuditLogPage />
             </RequireAdmin>
           }
         />
