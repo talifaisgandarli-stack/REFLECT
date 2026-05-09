@@ -1,0 +1,233 @@
+/**
+ * Task detail page (slice 132) — full route at /tapşırıqlar/:id.
+ *
+ * Until this slice the only "task detail" surface was the Cmd+K
+ * preview drawer + a kanban hash anchor. /tapşırıqlar#task-<id>
+ * works for highlighting a card but doesn't deep-link from email or
+ * Telegram. This route is bookmarkable, screen-reader-friendly, and
+ * shows the same data the drawer does plus subtasks (slice 133).
+ *
+ * Reuses StatusChip + TaskCommentInput so the surface is consistent
+ * with the drawer; comments render with the mention chip from slice
+ * 131. RLS restricts what the user can see at the DB layer.
+ */
+import { Link, useParams } from 'react-router-dom';
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
+import { PageHead } from '@/components/PageHead';
+import { StatusChip } from '@/components/StatusChip';
+import { TaskCommentInput } from '@/components/TaskCommentInput';
+import { renderCommentSegments } from '@/lib/commentMentions';
+import { formatDate, relativeTime } from '@/lib/format';
+import { useT } from '@/lib/i18n';
+import type { Task } from '@/types/db';
+
+type CommentRow = {
+  id: string;
+  body: string;
+  created_at: string;
+  user_id: string;
+};
+
+export function TaskDetailPage() {
+  const t = useT();
+  const { id = '' } = useParams();
+
+  const task = useQuery({
+    queryKey: ['task-detail', id],
+    enabled: !!id,
+    queryFn: async (): Promise<Task | null> => {
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+      if (error) throw error;
+      return (data as Task | null) ?? null;
+    },
+  });
+
+  const project = useQuery({
+    queryKey: ['task-detail', id, 'project'],
+    enabled: !!task.data?.project_id,
+    queryFn: async () => {
+      if (!task.data?.project_id) return null;
+      const { data } = await supabase
+        .from('projects')
+        .select('id, name')
+        .eq('id', task.data.project_id)
+        .maybeSingle();
+      return data as { id: string; name: string } | null;
+    },
+  });
+
+  const comments = useQuery({
+    queryKey: ['task-comments', id],
+    enabled: !!id,
+    queryFn: async (): Promise<CommentRow[]> => {
+      const { data, error } = await supabase
+        .from('task_comments')
+        .select('id, body, created_at, user_id')
+        .eq('task_id', id)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as CommentRow[];
+    },
+  });
+
+  const profiles = useQuery({
+    queryKey: ['comment-mention-profiles'],
+    enabled: (comments.data ?? []).some((c) => c.body.includes('@')),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, email');
+      if (error) throw error;
+      return data as Array<{ id: string; full_name: string | null; email: string }>;
+    },
+  });
+
+  const mentionLookup = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const p of profiles.data ?? []) {
+      byId.set(p.id, p.full_name ?? p.email);
+    }
+    return { byId };
+  }, [profiles.data]);
+
+  if (task.isLoading) {
+    return <div className="card text-meta">{t('common.loading')}</div>;
+  }
+  if (!task.data) {
+    return (
+      <div className="card text-meta">
+        {t('task.detail.not_found')}{' '}
+        <Link to="/tapşırıqlar">{t('common.back')}</Link>
+      </div>
+    );
+  }
+
+  const tk = task.data;
+
+  return (
+    <>
+      <PageHead
+        meta={project.data?.name ?? tk.project_id ?? ''}
+        title={tk.title}
+        actions={<StatusChip status={tk.status} />}
+      />
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <section className="card lg:col-span-2">
+          {tk.description ? (
+            <p className="text-body whitespace-pre-wrap">{tk.description}</p>
+          ) : (
+            <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+              {t('task.detail.no_description')}
+            </p>
+          )}
+        </section>
+
+        <aside className="card">
+          <h3 className="text-h4 mb-3">{t('task.detail.facts_title')}</h3>
+          <dl className="text-body space-y-2">
+            <Row k={t('tasks.col.deadline')} v={tk.deadline ? formatDate(tk.deadline) : '—'} />
+            <Row
+              k={t('task.create.start_field')}
+              v={tk.start_date ? formatDate(tk.start_date) : '—'}
+            />
+            <Row
+              k={t('task.create.duration_field')}
+              v={
+                tk.estimated_duration != null
+                  ? `${tk.estimated_duration} ${tk.duration_unit}`
+                  : '—'
+              }
+            />
+            <Row
+              k={t('task.create.risk_label', { pct: tk.risk_buffer_pct ?? 0 })}
+              v={tk.workload != null ? String(tk.workload) : '—'}
+            />
+            <Row
+              k={t('tasks.col.assignee')}
+              v={
+                (tk.assignee_ids?.length ?? 0) > 0
+                  ? t('tasks.assignees_count', { count: tk.assignee_ids?.length ?? 0 })
+                  : '—'
+              }
+            />
+          </dl>
+        </aside>
+      </div>
+
+      <section className="mt-6">
+        <h3
+          className="text-meta mb-2"
+          style={{
+            color: 'var(--text-muted)',
+            letterSpacing: '0.05em',
+            textTransform: 'uppercase',
+          }}
+        >
+          {t('task.comments.title')}
+        </h3>
+        {comments.isLoading ? (
+          <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+            {t('common.loading')}
+          </p>
+        ) : (comments.data ?? []).length === 0 ? (
+          <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+            {t('task.comments.empty')}
+          </p>
+        ) : (
+          <ul className="card divide-y" style={{ borderColor: 'var(--line-soft)' }}>
+            {(comments.data ?? []).map((c) => {
+              const segments = renderCommentSegments(c.body, mentionLookup);
+              return (
+                <li key={c.id} className="py-2">
+                  <p className="text-body whitespace-pre-wrap">
+                    {segments.map((seg, i) =>
+                      seg.kind === 'text' ? (
+                        <span key={i}>{seg.text}</span>
+                      ) : (
+                        <span
+                          key={i}
+                          className="chip"
+                          style={{
+                            background: 'var(--brand-mist)',
+                            color: 'var(--brand-text)',
+                            padding: '1px 6px',
+                            marginRight: 2,
+                            fontSize: 'inherit',
+                            lineHeight: 'inherit',
+                          }}
+                        >
+                          @{seg.label}
+                        </span>
+                      ),
+                    )}
+                  </p>
+                  <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                    {relativeTime(c.created_at)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        <TaskCommentInput taskId={tk.id} />
+      </section>
+    </>
+  );
+}
+
+function Row({ k, v }: { k: string; v: string }) {
+  return (
+    <div className="flex justify-between gap-4">
+      <dt style={{ color: 'var(--text-muted)' }}>{k}</dt>
+      <dd>{v}</dd>
+    </div>
+  );
+}

@@ -421,6 +421,9 @@
   "task.comments.mention.empty": "Никто не найден",
   "task.comments.mention.aria": "Выбрать человека",
   "task.comments.open_full": "Открыть полностью",
+  "task.detail.not_found": "Задача не найдена.",
+  "task.detail.no_description": "Описания нет.",
+  "task.detail.facts_title": "Ключевые факты",
 
   "outsource.modal.title": "+ Заказ подряда",
   "outsource.modal.dialog_label": "Новый заказ подряда",

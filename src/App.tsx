@@ -7,6 +7,7 @@ import { DashboardPage } from '@/pages/Dashboard';
 import { ProjectsPage } from '@/pages/Projects';
 import { ProjectDetailPage } from '@/pages/ProjectDetail';
 import { TasksPage } from '@/pages/Tasks';
+import { TaskDetailPage } from '@/pages/TaskDetail';
 import { ArchivePage } from '@/pages/Archive';
 import { DoneListPage } from '@/pages/DoneList';
 import { NotificationPreferencesPage } from '@/pages/NotificationPreferences';
@@ -63,6 +64,7 @@ export default function App() {
         <Route path="/layihelər" element={<ProjectsPage />} />
         <Route path="/layihelər/:id" element={<ProjectDetailPage />} />
         <Route path="/tapşırıqlar" element={<TasksPage />} />
+        <Route path="/tapşırıqlar/:id" element={<TaskDetailPage />} />
         <Route path="/tamamlandı" element={<DoneListPage />} />
         <Route path="/arxiv" element={<ArchivePage />} />
         <Route path="/podrat" element={<OutsourcePage />} />

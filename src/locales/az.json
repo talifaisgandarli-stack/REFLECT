@@ -421,6 +421,9 @@
   "task.comments.mention.empty": "Heç kim tapılmadı",
   "task.comments.mention.aria": "Adam seç",
   "task.comments.open_full": "Tam aç",
+  "task.detail.not_found": "Tapşırıq tapılmadı.",
+  "task.detail.no_description": "Təsvir əlavə olunmayıb.",
+  "task.detail.facts_title": "Əsas məlumat",
 
   "outsource.modal.title": "+ Outsource sifarişi",
   "outsource.modal.dialog_label": "Yeni outsource sifarişi",
