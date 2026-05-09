@@ -7,6 +7,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { useT } from '@/lib/i18n';
+import { toast } from '@/lib/toast';
 import {
   CLIENT_STAGE_CONFIDENCE,
   CLIENT_STAGE_ORDER,
@@ -49,6 +50,9 @@ export function ClientCreateModal({ onClose }: Props) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['clients'] });
       onClose();
+    },
+    onError: (e) => {
+      toast.error((e as Error).message);
     },
   });
 
@@ -150,12 +154,6 @@ export function ClientCreateModal({ onClose }: Props) {
             </label>
           </div>
         </div>
-
-        {save.error ? (
-          <p className="text-meta mt-3" style={{ color: 'var(--state-error)' }}>
-            {(save.error as Error).message}
-          </p>
-        ) : null}
 
         <div className="flex justify-end gap-2 mt-6">
           <button type="button" className="btn-outline" onClick={onClose} disabled={save.isPending}>

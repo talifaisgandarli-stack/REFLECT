@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { useT } from '@/lib/i18n';
+import { toast } from '@/lib/toast';
 
 export type FinanceKind = 'income' | 'expense';
 
@@ -104,6 +105,9 @@ export function IncomeExpenseModal({ kind, onClose }: Props) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['fin'] });
       onClose();
+    },
+    onError: (e) => {
+      toast.error((e as Error).message);
     },
   });
 
@@ -239,11 +243,6 @@ export function IncomeExpenseModal({ kind, onClose }: Props) {
           </Field>
         </div>
 
-        {save.error ? (
-          <p className="text-meta mt-3" style={{ color: 'var(--state-error)' }}>
-            {(save.error as Error).message}
-          </p>
-        ) : null}
 
         <div className="flex justify-end gap-2 mt-6">
           <button

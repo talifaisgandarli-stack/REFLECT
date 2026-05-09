@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useT } from '@/lib/i18n';
+import { toast } from '@/lib/toast';
 import type { Project, ProjectStatus } from '@/types/db';
 
 const STATUS_OPTIONS: ProjectStatus[] = ['active', 'on_hold', 'closed', 'cancelled'];
@@ -65,6 +66,9 @@ export function ProjectEditModal({ project, onClose }: Props) {
       qc.invalidateQueries({ queryKey: ['projects'] });
       qc.invalidateQueries({ queryKey: ['project', project.id] });
       onClose();
+    },
+    onError: (e) => {
+      toast.error((e as Error).message);
     },
   });
 
@@ -189,12 +193,6 @@ export function ProjectEditModal({ project, onClose }: Props) {
             />
           </Field>
         </div>
-
-        {save.error ? (
-          <p className="text-meta mt-3" style={{ color: 'var(--state-error)' }}>
-            {(save.error as Error).message}
-          </p>
-        ) : null}
 
         <div className="flex justify-end gap-2 mt-6">
           <button

@@ -13,6 +13,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { useProjects } from '@/lib/hooks';
 import { useT } from '@/lib/i18n';
+import { toast } from '@/lib/toast';
 import { EXPERTISE_SUBTASKS, computeWorkload } from '@/lib/workload';
 import type { Task, TaskStatus } from '@/types/db';
 
@@ -86,6 +87,9 @@ export function TaskCreateModal({ onClose }: Props) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] });
       onClose();
+    },
+    onError: (e) => {
+      toast.error((e as Error).message);
     },
   });
 
@@ -254,11 +258,6 @@ export function TaskCreateModal({ onClose }: Props) {
           </label>
         </div>
 
-        {create.error ? (
-          <p className="text-meta mt-3" style={{ color: 'var(--state-error)' }}>
-            {(create.error as Error).message}
-          </p>
-        ) : null}
 
         <div className="flex justify-end gap-2 mt-6">
           <button type="button" className="btn-outline" onClick={onClose} disabled={create.isPending}>
