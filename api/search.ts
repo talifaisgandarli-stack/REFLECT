@@ -21,8 +21,12 @@ type Hit = {
   href: string;
 };
 
-function escapeIlike(q: string): string {
-  // Escape PostgreSQL ILIKE wildcards and ? operator characters.
+/**
+ * Escape PostgreSQL ILIKE wildcards (% _) and the escape char itself
+ * so user input "100%" doesn't accidentally match every row.
+ * Exported for tests.
+ */
+export function escapeIlike(q: string): string {
   return q.replace(/[%_\\]/g, (c) => `\\${c}`);
 }
 
