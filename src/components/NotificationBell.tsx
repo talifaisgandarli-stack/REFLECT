@@ -15,6 +15,7 @@ import {
 import { relativeTime } from '@/lib/format';
 import { useT } from '@/lib/i18n';
 import { collapse } from '@/lib/notificationGroup';
+import { notifBodyFor } from '@/lib/notificationBody';
 
 const KIND_KEY: Record<NotificationKind | 'fallback', string> = {
   mention: 'notif.kind.mention',
@@ -27,13 +28,6 @@ const KIND_KEY: Record<NotificationKind | 'fallback', string> = {
   calendar_event_rsvp: 'notif.kind.calendar_event_rsvp',
   fallback: 'notif.kind.mention', // unused; useT() falls back to the key itself
 };
-
-function bodyFor(n: NotificationRow): string {
-  const p = n.payload ?? {};
-  if (typeof p.title === 'string') return p.title;
-  if (typeof p.task_id === 'string') return `Tapşırıq #${p.task_id.slice(0, 8)}`;
-  return '';
-}
 
 export function NotificationBell() {
   const t = useT();
@@ -75,7 +69,7 @@ export function NotificationBell() {
         type="button"
         className="btn-ghost relative"
         aria-label={
-          unreadCount > 0 ? t('notif.bell.unread', { count: unreadCount }) : 'Bildirişlər'
+          unreadCount > 0 ? t('notif.bell.unread', { count: unreadCount }) : t('notif.bell.label')
         }
         aria-expanded={open}
         aria-haspopup="dialog"
@@ -100,7 +94,7 @@ export function NotificationBell() {
       {open ? (
         <div
           role="dialog"
-          aria-label="Bildirişlər"
+          aria-label={t('notif.bell.label')}
           className="absolute right-0 mt-2 w-[360px] max-w-[92vw] rounded-card z-40"
           style={{
             background: 'var(--surface)',
@@ -114,7 +108,7 @@ export function NotificationBell() {
             className="flex items-center justify-between px-4 py-3"
             style={{ borderBottom: '1px solid var(--line-soft)' }}
           >
-            <span className="text-h4">Bildirişlər</span>
+            <span className="text-h4">{t('notif.bell.label')}</span>
             <button
               type="button"
               className="text-meta hover:underline disabled:opacity-50"
@@ -197,14 +191,17 @@ export function NotificationBell() {
                       >
                         {labelFor(n.kind)}
                       </div>
-                      {bodyFor(n) ? (
-                        <div
-                          className="text-meta truncate"
-                          style={{ color: 'var(--text-soft)' }}
-                        >
-                          {bodyFor(n)}
-                        </div>
-                      ) : null}
+                      {(() => {
+                        const body = notifBodyFor(n, t);
+                        return body ? (
+                          <div
+                            className="text-meta truncate"
+                            style={{ color: 'var(--text-soft)' }}
+                          >
+                            {body}
+                          </div>
+                        ) : null;
+                      })()}
                       <time
                         dateTime={n.created_at}
                         className="text-tiny"
