@@ -41,6 +41,57 @@ export function useProject(id: string | undefined) {
   });
 }
 
+/**
+ * REQ-PROJ-04 Closeout: when all 5 checklist items are checked, flip the
+ * project to status='closed' and create a portfolio_workflows row. Trigger
+ * `projects_activity_trg` (0004) emits the activity_log entry on status change.
+ */
+export function useCompleteProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (projectId: string) => {
+      const { error: upErr } = await supabase
+        .from('projects')
+        .update({ status: 'closed' })
+        .eq('id', projectId);
+      if (upErr) throw upErr;
+      // Idempotent: only insert a workflow row if one doesn't exist yet.
+      const { data: existing } = await supabase
+        .from('portfolio_workflows')
+        .select('id')
+        .eq('project_id', projectId)
+        .maybeSingle();
+      if (!existing) {
+        const { error: pwErr } = await supabase
+          .from('portfolio_workflows')
+          .insert({ project_id: projectId });
+        if (pwErr) throw pwErr;
+      }
+    },
+    onSuccess: (_d, projectId) => {
+      qc.invalidateQueries({ queryKey: ['project', projectId] });
+      qc.invalidateQueries({ queryKey: ['projects'] });
+      qc.invalidateQueries({ queryKey: ['portfolio', projectId] });
+    },
+  });
+}
+
+export function usePortfolioWorkflow(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ['portfolio', projectId],
+    enabled: !!projectId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('portfolio_workflows')
+        .select('*')
+        .eq('project_id', projectId!)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
 // ---------------- Tasks ----------------
 export function useTasks(filter?: { projectId?: string; assigneeId?: string }) {
   return useQuery({
