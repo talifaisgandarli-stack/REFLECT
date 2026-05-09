@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { PageHead } from '@/components/PageHead';
+import { useT } from '@/lib/i18n';
 import { formatAZN, formatDate } from '@/lib/format';
 
 type SalaryRow = {
@@ -22,6 +23,7 @@ type SalaryRow = {
 };
 
 export function SalaryPage() {
+  const t = useT();
   const { isAdmin, profile } = useAuth();
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
@@ -65,7 +67,7 @@ export function SalaryPage() {
     <>
       <PageHead
         meta={isAdmin ? 'Bütün heyət' : 'Yalnız sizin'}
-        title="Əmək Haqqı"
+        title={t('nav.team.salary')}
         actions={
           isAdmin ? (
             <button className="btn-primary" onClick={() => setCreating(true)}>

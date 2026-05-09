@@ -3,9 +3,11 @@ import { supabase } from '@/lib/supabase';
 import { PageHead } from '@/components/PageHead';
 import { Avatar } from '@/components/Avatar';
 import { EmptyState } from '@/components/EmptyState';
+import { useT } from '@/lib/i18n';
 import type { Profile, UserPresence } from '@/types/db';
 
 export function TeamRosterPage() {
+  const t = useT();
   const profiles = useQuery({
     queryKey: ['profiles'],
     queryFn: async (): Promise<Profile[]> =>
@@ -22,7 +24,10 @@ export function TeamRosterPage() {
 
   return (
     <>
-      <PageHead meta={`${ppl.length} nəfər`} title="İşçi Heyəti" />
+      <PageHead
+        meta={t('tasks.assignees_count', { count: ppl.length })}
+        title={t('nav.team.roster')}
+      />
       {ppl.length === 0 ? (
         <EmptyState title="Komanda hələ formalaşmayıb" body="Admin işçi dəvət edə bilər." />
       ) : (

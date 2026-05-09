@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { PageHead } from '@/components/PageHead';
+import { useT } from '@/lib/i18n';
 import { EmptyState } from '@/components/EmptyState';
 import { formatDate } from '@/lib/format';
 
@@ -44,6 +45,7 @@ type EquipmentRow = {
 };
 
 export function EquipmentPage() {
+  const t = useT();
   const { isAdmin } = useAuth();
   const qc = useQueryClient();
   const [editing, setEditing] = useState<EquipmentRow | null>(null);
@@ -82,7 +84,7 @@ export function EquipmentPage() {
     <>
       <PageHead
         meta={`${items.data?.length ?? 0} avadanlıq`}
-        title="Avadanlıq"
+        title={t('nav.team.equipment')}
         actions={
           isAdmin ? (
             <button

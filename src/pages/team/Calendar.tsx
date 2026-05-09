@@ -7,6 +7,7 @@
  */
 import { useMemo, useState } from 'react';
 import { PageHead } from '@/components/PageHead';
+import { useT } from '@/lib/i18n';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { formatDate } from '@/lib/format';
@@ -100,6 +101,7 @@ function periodLabel(view: 'month' | 'week' | 'day', anchor: Date): string {
 }
 
 export function CalendarPage() {
+  const t = useT();
   const [view, setView] = useState<'month' | 'week' | 'day'>('month');
   const [anchor, setAnchor] = useState<Date>(new Date());
   const [creating, setCreating] = useState(false);
@@ -148,7 +150,7 @@ export function CalendarPage() {
     <>
       <PageHead
         meta={`Asia/Baku · ${periodLabel(view, anchor)}`}
-        title="Təqvim"
+        title={t('nav.team.calendar')}
         actions={
           <>
             {(['month', 'week', 'day'] as const).map((v) => (

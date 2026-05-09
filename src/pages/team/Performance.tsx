@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { PageHead } from '@/components/PageHead';
 import { printSection } from '@/lib/export';
+import { useT } from '@/lib/i18n';
 
 type ReviewRow = {
   id: string;
@@ -48,6 +49,7 @@ const YEARS_AVAILABLE: number[] = (() => {
 })();
 
 export function PerformancePage() {
+  const t = useT();
   const { isAdmin, profile } = useAuth();
   const qc = useQueryClient();
   const [year, setYear] = useState<number>(YEARS_AVAILABLE[0]);
@@ -87,7 +89,7 @@ export function PerformancePage() {
     <>
       <PageHead
         meta={isAdmin ? 'Bütün heyət' : 'Yalnız sizin'}
-        title="Performans"
+        title={t('nav.team.performance')}
         actions={
           <>
             <select

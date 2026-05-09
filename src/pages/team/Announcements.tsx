@@ -11,6 +11,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { PageHead } from '@/components/PageHead';
+import { useT } from '@/lib/i18n';
 import { EmptyState } from '@/components/EmptyState';
 import { relativeTime } from '@/lib/format';
 
@@ -32,6 +33,7 @@ type AnnouncementRow = {
 const CATEGORIES = ['Xəbər', 'Hadisə', 'Siyasət', 'Layihə', 'Trend', 'Opportunity', 'Digər'] as const;
 
 export function AnnouncementsPage() {
+  const t = useT();
   const { isAdmin, profile } = useAuth();
   const qc = useQueryClient();
   const [tab, setTab] = useState<'approved' | 'pending'>('approved');
@@ -117,7 +119,7 @@ export function AnnouncementsPage() {
     <>
       <PageHead
         meta="MIRAI feed + manual"
-        title="Elanlar"
+        title={t('nav.team.announcements')}
         actions={
           <>
             {tab === 'approved' && unreadIds.length > 0 ? (
