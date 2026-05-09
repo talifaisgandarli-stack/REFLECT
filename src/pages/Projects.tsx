@@ -1,9 +1,10 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
+import { ProjectCreateModal } from '@/components/ProjectCreateModal';
 import { useProjects } from '@/lib/hooks';
 import { Mascot } from '@/components/Mascot';
-import { PROJECT_STATUS_LABEL } from '@/lib/labels';
 import { useT } from '@/lib/i18n';
 
 const FOLDER_TONE = ['bg-grad-folder-sage', 'bg-grad-folder-lime', 'bg-grad-folder-forest', 'bg-grad-folder-peach', 'bg-grad-folder-lavender'];
@@ -11,6 +12,7 @@ const FOLDER_TONE = ['bg-grad-folder-sage', 'bg-grad-folder-lime', 'bg-grad-fold
 export function ProjectsPage() {
   const t = useT();
   const { data: projects = [], isLoading } = useProjects();
+  const [creating, setCreating] = useState(false);
 
   return (
     <>
@@ -20,7 +22,9 @@ export function ProjectsPage() {
         actions={
           <>
             <input className="input max-w-[240px]" placeholder={t('projects.search')} />
-            <button className="btn-primary">{t('projects.create')}</button>
+            <button className="btn-primary" onClick={() => setCreating(true)}>
+              {t('projects.create')}
+            </button>
           </>
         }
       />
@@ -31,7 +35,11 @@ export function ProjectsPage() {
         <EmptyState
           title={t('projects.empty.title')}
           body={t('projects.empty.body')}
-          cta={<button className="btn-primary">{t('projects.create')}</button>}
+          cta={
+            <button className="btn-primary" onClick={() => setCreating(true)}>
+              {t('projects.create')}
+            </button>
+          }
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -59,13 +67,15 @@ export function ProjectsPage() {
                 <div>
                   <h3 className="text-h3 font-bold">{p.name}</h3>
                   <div className="text-meta mt-1 opacity-80">
-                    {PROJECT_STATUS_LABEL[p.status]} · {p.deadline ?? t('projects.no_deadline')}
+                    {t(`projects.status.${p.status}`)} · {p.deadline ?? t('projects.no_deadline')}
                   </div>
                 </div>
               </Link>
             );
           })}
           <button
+            type="button"
+            onClick={() => setCreating(true)}
             className="rounded-card p-5 min-h-[180px] flex flex-col items-center justify-center gap-2 card-interactive"
             style={{ background: 'transparent', border: '1px dashed var(--line)' }}
           >
@@ -74,6 +84,8 @@ export function ProjectsPage() {
           </button>
         </div>
       )}
+
+      {creating ? <ProjectCreateModal onClose={() => setCreating(false)} /> : null}
     </>
   );
 }
