@@ -12,6 +12,32 @@ import { useAuth } from '@/lib/store';
 import { formatDate, relativeTime, taskHealth } from '@/lib/format';
 import { FocusWidget } from '@/components/FocusWidget';
 
+const ENTITY_LABELS: Record<string, string> = {
+  task: 'tapşırıq',
+  project: 'layihə',
+  client: 'müştəri',
+  income: 'gəlir',
+  expense: 'xərc',
+  outsource_item: 'autsorsinq',
+  calendar_event: 'görüş',
+};
+
+const ACTION_LABELS: Record<string, string> = {
+  created: 'yaratdı',
+  updated: 'yenilədi',
+  deleted: 'sildi',
+  status_changed: 'statusu dəyişdi',
+  archived: 'arxivləşdirdi',
+  restored: 'bərpa etdi',
+  stage_changed: 'mərhələni dəyişdi',
+};
+
+function activityLabel(action: string, entityType: string): string {
+  const a = ACTION_LABELS[action] ?? action;
+  const e = ENTITY_LABELS[entityType] ?? entityType;
+  return `${a} — ${e}`;
+}
+
 const HEALTH_COLOR: Record<'green' | 'amber' | 'red' | 'none', string> = {
   green: '#22C55E',
   amber: '#D97706',
@@ -165,7 +191,7 @@ export function DashboardPage() {
           <Kpi label="Bu həftə bitirilən" value={tasks.filter((t) => t.status === 'done').length} />
         </section>
 
-        {/* Activity */}
+        {/* Activity — PRD §6.1 + US-DASH-04: avatar, action, entity link, timestamp */}
         <section className="lg:col-span-4 card">
           <h3 className="text-h3 mb-3">Yenilənmiş</h3>
           {activity.length === 0 ? (
@@ -174,22 +200,26 @@ export function DashboardPage() {
             </div>
           ) : (
             <ul className="space-y-3">
-              {activity.slice(0, 6).map((a) => (
-                <li key={a.id} className="text-body flex items-start gap-2">
-                  <span
-                    className="w-1.5 h-1.5 rounded-full mt-2 shrink-0"
-                    style={{ background: 'var(--brand-action)' }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="truncate">
-                      {a.action} · {a.entity_type}
+              {activity.slice(0, 6).map((a) => {
+                const actor = a.profiles;
+                const name = actor?.full_name ?? 'Sistem';
+                const actionLabel = activityLabel(a.action, a.entity_type);
+                return (
+                  <li key={a.id} className="flex items-start gap-2">
+                    <span className="shrink-0 mt-0.5"><Avatar name={name} size={28} /></span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-body truncate">
+                        <span className="font-medium">{name}</span>
+                        {' '}
+                        <span style={{ color: 'var(--text-muted)' }}>{actionLabel}</span>
+                      </div>
+                      <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                        {relativeTime(a.created_at)}
+                      </div>
                     </div>
-                    <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                      {relativeTime(a.created_at)}
-                    </div>
-                  </div>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>
