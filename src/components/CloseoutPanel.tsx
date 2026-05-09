@@ -14,7 +14,10 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
+import { useT } from '@/lib/i18n';
 
+// id stored canonically; label derived via t('closeout.item.<id>') so an
+// existing checklist row keeps the same id even if display copy changes.
 const DEFAULT_ITEMS = [
   { id: 'act_signed', label: 'Akt imzalandı' },
   { id: 'final_docs', label: 'Final sənədlər təhvil verildi' },
@@ -41,6 +44,7 @@ type ChecklistRow = {
 type Props = { projectId: string; projectStatus: string };
 
 export function CloseoutPanel({ projectId, projectStatus }: Props) {
+  const t = useT();
   const { profile, isAdmin } = useAuth();
   const qc = useQueryClient();
 
@@ -152,7 +156,7 @@ export function CloseoutPanel({ projectId, projectStatus }: Props) {
   return (
     <div className="space-y-4">
       <div className="card">
-        <h3 className="text-h3 mb-3">Bağlama yoxlama siyahısı</h3>
+        <h3 className="text-h3 mb-3">{t('closeout.title')}</h3>
         <ul className="divide-y" style={{ borderColor: 'var(--line-soft)' }}>
           {items.map((it) => (
             <li key={it.id} className="py-3 flex items-center gap-3">
@@ -170,7 +174,7 @@ export function CloseoutPanel({ projectId, projectStatus }: Props) {
                 className="flex-1 cursor-pointer"
                 style={{ color: it.done ? 'var(--text-muted)' : 'var(--text)' }}
               >
-                {it.label}
+                {t(`closeout.item.${it.id}`)}
                 {it.done && it.at ? (
                   <span className="text-meta ml-2" style={{ color: 'var(--text-muted)' }}>
                     {new Date(it.at).toISOString().slice(0, 10)}
@@ -188,9 +192,9 @@ export function CloseoutPanel({ projectId, projectStatus }: Props) {
           style={{ background: 'var(--brand-mist)' }}
         >
           <div>
-            <h4 className="text-h4">Layihə bağlanılıb</h4>
+            <h4 className="text-h4">{t('closeout.closed_title')}</h4>
             <p className="text-meta" style={{ color: 'var(--text-soft)' }}>
-              Yenidən açmaq adminin səlahiyyətindədir.
+              {t('closeout.closed_body')}
             </p>
           </div>
           {isAdmin ? (
@@ -202,7 +206,7 @@ export function CloseoutPanel({ projectId, projectStatus }: Props) {
                 if (!error) qc.invalidateQueries({ queryKey: ['project', projectId] });
               }}
             >
-              Yenidən aç
+              {t('closeout.reopen')}
             </button>
           ) : null}
         </div>
@@ -210,9 +214,9 @@ export function CloseoutPanel({ projectId, projectStatus }: Props) {
         <>
           <div className="card flex items-center justify-between">
             <div>
-              <h4 className="text-h4">Retrospektiv sorğu</h4>
+              <h4 className="text-h4">{t('closeout.retro.title')}</h4>
               <p className="text-meta" style={{ color: 'var(--text-soft)' }}>
-                Müştəri üçün anonim NPS sorğusu yarat — paylaşım linki kopyalanır.
+                {t('closeout.retro.body')}
               </p>
             </div>
             <button
@@ -221,17 +225,15 @@ export function CloseoutPanel({ projectId, projectStatus }: Props) {
               onClick={() => sendSurvey.mutate()}
               disabled={sendSurvey.isPending}
             >
-              {sendSurvey.isPending ? 'Yaradılır…' : 'Sorğu yarat + linki kopyala'}
+              {sendSurvey.isPending ? t('closeout.retro.creating') : t('closeout.retro.cta')}
             </button>
           </div>
 
           <div className="card flex items-center justify-between">
             <div>
-              <h4 className="text-h4">Hazırsan?</h4>
+              <h4 className="text-h4">{t('closeout.ready.title')}</h4>
               <p className="text-meta" style={{ color: 'var(--text-soft)' }}>
-                {allDone
-                  ? 'Bütün addımlar tamamlandı — Layihəni bağla.'
-                  : 'Yaxşı vərdişdir hamısını işarələmək, amma bağlama hər zaman mümkündür.'}
+                {allDone ? t('closeout.ready.all_done') : t('closeout.ready.optional')}
               </p>
             </div>
             <button
@@ -240,7 +242,7 @@ export function CloseoutPanel({ projectId, projectStatus }: Props) {
               onClick={() => close.mutate()}
               disabled={close.isPending}
             >
-              {close.isPending ? 'Bağlanır…' : 'Layihəni bağla'}
+              {close.isPending ? t('closeout.closing') : t('closeout.close')}
             </button>
           </div>
 
