@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
+import { useT } from '@/lib/i18n';
 
 type Props = {
   initial?: Partial<{
@@ -35,6 +36,7 @@ function defaultEnd(start: string): string {
 }
 
 export function EventModal({ initial, onClose }: Props) {
+  const t = useT();
   const { profile } = useAuth();
   const qc = useQueryClient();
   const [title, setTitle] = useState(initial?.title ?? '');
@@ -48,9 +50,9 @@ export function EventModal({ initial, onClose }: Props) {
 
   const save = useMutation({
     mutationFn: async () => {
-      if (!title.trim()) throw new Error('Başlıq tələb olunur');
-      if (!start || !end) throw new Error('Başlama/bitiş tarixi tələb olunur');
-      if (new Date(end) < new Date(start)) throw new Error('Bitiş başlanğıcdan əvvəl ola bilməz');
+      if (!title.trim()) throw new Error(t('event.modal.title_required'));
+      if (!start || !end) throw new Error(t('event.modal.range_required'));
+      if (new Date(end) < new Date(start)) throw new Error(t('event.modal.range_invalid'));
 
       const emails = externalEmails
         .split(/[,;\s]+/)
@@ -80,7 +82,7 @@ export function EventModal({ initial, onClose }: Props) {
   return (
     <div
       role="dialog"
-      aria-label="Yeni görüş"
+      aria-label={t('event.modal.dialog_label')}
       className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8 overflow-y-auto"
       style={{ background: 'rgba(14,22,17,0.4)' }}
       onClick={onClose}
@@ -94,12 +96,12 @@ export function EventModal({ initial, onClose }: Props) {
         }}
         style={{ padding: 24 }}
       >
-        <h2 className="text-h2">+ Görüş</h2>
+        <h2 className="text-h2">{t('event.modal.title')}</h2>
 
         <div className="mt-4 space-y-3">
           <label className="block">
             <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-              Başlıq
+              {t('event.modal.field.title')}
             </span>
             <input
               className="input"
@@ -116,13 +118,13 @@ export function EventModal({ initial, onClose }: Props) {
               checked={allDay}
               onChange={(e) => setAllDay(e.target.checked)}
             />
-            <span className="text-body">Bütün gün</span>
+            <span className="text-body">{t('event.modal.all_day')}</span>
           </label>
 
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
               <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-                Başlama
+                {t('event.modal.start')}
               </span>
               <input
                 type={allDay ? 'date' : 'datetime-local'}
@@ -133,7 +135,7 @@ export function EventModal({ initial, onClose }: Props) {
             </label>
             <label className="block">
               <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-                Bitiş
+                {t('event.modal.end')}
               </span>
               <input
                 type={allDay ? 'date' : 'datetime-local'}
@@ -146,19 +148,19 @@ export function EventModal({ initial, onClose }: Props) {
 
           <label className="block">
             <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-              Yer
+              {t('event.modal.location')}
             </span>
             <input
               className="input"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
-              placeholder="Ofis, otaq, ünvan…"
+              placeholder={t('event.modal.location_placeholder')}
             />
           </label>
 
           <label className="block">
             <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-              Meet linki
+              {t('event.modal.meet_url')}
             </span>
             <div className="flex gap-2">
               <input
@@ -180,7 +182,7 @@ export function EventModal({ initial, onClose }: Props) {
 
           <label className="block">
             <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-              Xarici iştirakçılar (vergüllə)
+              {t('event.modal.external_emails')}
             </span>
             <input
               className="input"
@@ -192,7 +194,7 @@ export function EventModal({ initial, onClose }: Props) {
 
           <label className="block">
             <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-              Təsvir
+              {t('event.modal.description')}
             </span>
             <textarea
               className="input"
@@ -211,10 +213,10 @@ export function EventModal({ initial, onClose }: Props) {
 
         <div className="flex justify-end gap-2 mt-6">
           <button type="button" className="btn-outline" onClick={onClose} disabled={save.isPending}>
-            Geri
+            {t('common.back')}
           </button>
           <button type="submit" className="btn-primary" disabled={save.isPending || !title}>
-            {save.isPending ? 'Yadda saxlanılır…' : 'Yarat'}
+            {save.isPending ? t('event.modal.saving') : t('event.modal.submit')}
           </button>
         </div>
       </form>
