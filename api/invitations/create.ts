@@ -3,6 +3,7 @@
  * REQ-AUTH-02.
  */
 import { admin, errorResponse, HttpError, jsonResponse, requireUser } from '../_lib/auth';
+import { inviteEmail, sendEmail } from '../_lib/email';
 
 export const config = { runtime: 'edge' };
 
@@ -16,8 +17,18 @@ export default async function handler(req: Request) {
     if (!email || !role_key) throw new HttpError(400, 'email + role_key required');
 
     const sb = admin();
-    const { data: role } = await sb.from('roles').select('id').eq('key', role_key).maybeSingle();
+    const { data: role } = await sb
+      .from('roles')
+      .select('id, name')
+      .eq('key', role_key)
+      .maybeSingle();
     if (!role) throw new HttpError(400, 'Unknown role');
+
+    const { data: inviter } = await sb
+      .from('profiles')
+      .select('full_name')
+      .eq('id', user.id)
+      .maybeSingle();
 
     const token = crypto.randomUUID();
     const expires = new Date(Date.now() + 48 * 3600_000).toISOString();
@@ -29,22 +40,14 @@ export default async function handler(req: Request) {
         { onConflict: 'email' },
       );
 
-    const resendKey = process.env.RESEND_API_KEY;
-    if (resendKey) {
-      await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${resendKey}`,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: 'Reflect <noreply@reflect.az>',
-          to: email,
-          subject: 'Reflect-ə dəvətnamə',
-          html: `<p>Salam,</p><p>Reflect-ə qoşulmaq üçün <a href="${process.env.PUBLIC_APP_URL ?? ''}/login?invite=${token}">linki aç</a>. Müddət: 48 saat.</p>`,
-        }),
-      }).catch(() => null);
-    }
+    await sendEmail(
+      inviteEmail({
+        to: email,
+        inviteToken: token,
+        inviterName: inviter?.full_name ?? null,
+        roleName: role.name,
+      }),
+    );
 
     return jsonResponse({ ok: true, token });
   } catch (e) {
