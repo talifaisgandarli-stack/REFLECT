@@ -14,6 +14,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { useT } from '@/lib/i18n';
 
 type SettingRow = { key: string; value: { v: unknown } | null };
 
@@ -45,6 +46,7 @@ const DEFAULTS: SettingsState = {
 };
 
 export function GeneralSettingsForm() {
+  const t = useT();
   const qc = useQueryClient();
   const [state, setState] = useState<SettingsState>(DEFAULTS);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -127,19 +129,19 @@ export function GeneralSettingsForm() {
       className="space-y-5"
     >
       <section>
-        <h3 className="text-h3 mb-3">Şirkət</h3>
+        <h3 className="text-h3 mb-3">{t('settings.general.firm')}</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Field label="Şirkət adı">
+          <Field label={t('settings.general.firm_name')}>
             <input
               className="input"
               value={state.firmName}
               onChange={(e) => setState((s) => ({ ...s, firmName: e.target.value }))}
             />
           </Field>
-          <Field label="Region / Saat qurşağı">
+          <Field label={t('settings.general.timezone')}>
             <input className="input" value="Asia/Baku" disabled />
           </Field>
-          <Field label="İş saatları (məs. 09:00-18:00)">
+          <Field label={t('settings.general.hours')}>
             <input
               className="input"
               value={state.workingHours}
@@ -148,7 +150,7 @@ export function GeneralSettingsForm() {
               }
             />
           </Field>
-          <Field label="Default valyuta">
+          <Field label={t('settings.general.currency')}>
             <input
               className="input"
               value={state.currency}
@@ -159,10 +161,9 @@ export function GeneralSettingsForm() {
       </section>
 
       <section>
-        <h3 className="text-h3 mb-3">AZ rəsmi bayramları</h3>
+        <h3 className="text-h3 mb-3">{t('settings.general.holidays_title')}</h3>
         <p className="text-meta mb-2" style={{ color: 'var(--text-muted)' }}>
-          YYYY-MM-DD — hər sətir bir tarix. Gələcəkdə working-day expertise
-          hesablamasında istifadə olunacaq (PRD §M3 v2).
+          {t('settings.general.holidays_note')}
         </p>
         <textarea
           className="input font-mono"
@@ -174,9 +175,9 @@ export function GeneralSettingsForm() {
       </section>
 
       <section>
-        <h3 className="text-h3 mb-3">Maliyyə xəbərdarlığı (PRD §8.1)</h3>
+        <h3 className="text-h3 mb-3">{t('settings.general.alerts_title')}</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Field label="Böyük gəlir həddi (AZN)">
+          <Field label={t('settings.general.income_threshold')}>
             <input
               type="text"
               inputMode="numeric"
@@ -188,7 +189,7 @@ export function GeneralSettingsForm() {
               style={{ fontVariantNumeric: 'tabular-nums' }}
             />
           </Field>
-          <Field label="Böyük xərc həddi (AZN)">
+          <Field label={t('settings.general.expense_threshold')}>
             <input
               type="text"
               inputMode="numeric"
@@ -217,13 +218,13 @@ export function GeneralSettingsForm() {
             role="status"
             aria-live="polite"
           >
-            Yadda saxlanıldı ✓
+            {t('settings.general.saved')}
           </span>
         ) : (
           <span />
         )}
         <button type="submit" className="btn-primary" disabled={save.isPending}>
-          {save.isPending ? 'Yadda saxlanılır…' : 'Yadda saxla'}
+          {save.isPending ? t('notif.saving') : t('common.save')}
         </button>
       </div>
     </form>
