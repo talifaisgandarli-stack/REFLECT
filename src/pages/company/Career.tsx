@@ -8,6 +8,18 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { PageHead } from '@/components/PageHead';
+import { relativeTime } from '@/lib/format';
+
+type PromotionRow = {
+  id: string;
+  employee_id: string;
+  target_level_id: string;
+  status: 'pending' | 'approved' | 'denied' | 'cancelled';
+  rationale: string | null;
+  decision_note: string | null;
+  created_at: string;
+  decided_at: string | null;
+};
 
 type LevelRow = {
   id: string;
@@ -79,35 +91,17 @@ export function CareerPage() {
       />
 
       {myLevel && nextLevel ? (
-        <div
-          className="card-feature mb-5"
-          style={{ background: 'var(--brand-mist)', color: 'var(--ink)' }}
-        >
-          <div
-            className="text-tiny font-medium"
-            style={{ letterSpacing: '0.08em', textTransform: 'uppercase' }}
-          >
-            Promosyon yolu
-          </div>
-          <h2 className="text-h2 mt-1">
-            {myLevel.name} → {nextLevel.name}
-          </h2>
-          {nextLevel.requirements.length > 0 ? (
-            <ul className="mt-3 space-y-1 text-body">
-              {nextLevel.requirements.map((r, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <span
-                    aria-hidden
-                    className="mt-2 w-1.5 h-1.5 rounded-full shrink-0"
-                    style={{ background: 'var(--brand-text)' }}
-                  />
-                  <span>{r}</span>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
+        <PromotionPath
+          myLevelName={myLevel.name}
+          nextLevelId={nextLevel.id}
+          nextLevelName={nextLevel.name}
+          requirements={nextLevel.requirements}
+          employeeId={profile?.id ?? null}
+          isAdminView={isAdmin}
+        />
       ) : null}
+
+      {isAdmin ? <AdminQueue levels={levels.data ?? []} /> : null}
 
       <ol className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
         {(levels.data ?? []).map((l) => {
@@ -325,6 +319,256 @@ function LevelModal({ level, onClose }: { level: LevelRow; onClose: () => void }
           </span>
         </div>
       </form>
+    </div>
+  );
+}
+
+function PromotionPath({
+  myLevelName,
+  nextLevelId,
+  nextLevelName,
+  requirements,
+  employeeId,
+  isAdminView,
+}: {
+  myLevelName: string;
+  nextLevelId: string;
+  nextLevelName: string;
+  requirements: string[];
+  employeeId: string | null;
+  isAdminView: boolean;
+}) {
+  const qc = useQueryClient();
+  const [showForm, setShowForm] = useState(false);
+  const [rationale, setRationale] = useState('');
+
+  const myRequest = useQuery({
+    queryKey: ['promotion-mine', employeeId],
+    enabled: !!employeeId && !isAdminView,
+    queryFn: async (): Promise<PromotionRow | null> => {
+      const { data, error } = await supabase
+        .from('promotion_requests')
+        .select('*')
+        .eq('employee_id', employeeId!)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data as PromotionRow | null;
+    },
+  });
+
+  const submit = useMutation({
+    mutationFn: async () => {
+      if (!employeeId) throw new Error('Profil hazır deyil');
+      const { error } = await supabase.from('promotion_requests').insert({
+        employee_id: employeeId,
+        target_level_id: nextLevelId,
+        rationale: rationale.trim() || null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setShowForm(false);
+      setRationale('');
+      qc.invalidateQueries({ queryKey: ['promotion-mine'] });
+    },
+  });
+
+  const cancelOwn = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('promotion_requests')
+        .update({ status: 'cancelled' })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['promotion-mine'] }),
+  });
+
+  const pending = myRequest.data?.status === 'pending' ? myRequest.data : null;
+
+  return (
+    <div
+      className="card-feature mb-5"
+      style={{ background: 'var(--brand-mist)', color: 'var(--ink)' }}
+    >
+      <div
+        className="text-tiny font-medium"
+        style={{ letterSpacing: '0.08em', textTransform: 'uppercase' }}
+      >
+        Promosyon yolu
+      </div>
+      <h2 className="text-h2 mt-1">
+        {myLevelName} → {nextLevelName}
+      </h2>
+      {requirements.length > 0 ? (
+        <ul className="mt-3 space-y-1 text-body">
+          {requirements.map((r, i) => (
+            <li key={i} className="flex items-start gap-2">
+              <span
+                aria-hidden
+                className="mt-2 w-1.5 h-1.5 rounded-full shrink-0"
+                style={{ background: 'var(--brand-text)' }}
+              />
+              <span>{r}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {!isAdminView && employeeId ? (
+        pending ? (
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <span
+              className="chip"
+              style={{ background: '#FFF6E5', color: '#92400E' }}
+            >
+              Gözləmədə · {relativeTime(pending.created_at)}
+            </span>
+            <button
+              type="button"
+              className="text-meta hover:underline"
+              style={{ color: 'var(--ink)', opacity: 0.7 }}
+              onClick={() => cancelOwn.mutate(pending.id)}
+            >
+              Müraciəti ləğv et
+            </button>
+          </div>
+        ) : showForm ? (
+          <form
+            className="mt-4 flex flex-wrap items-end gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              submit.mutate();
+            }}
+          >
+            <textarea
+              className="input flex-1 min-w-[240px]"
+              value={rationale}
+              onChange={(e) => setRationale(e.target.value)}
+              placeholder="Niyə artıq hazır olduğunu qısa yaz…"
+              style={{ minHeight: 60, padding: '8px 12px' }}
+            />
+            <button type="submit" className="btn-primary" disabled={submit.isPending}>
+              {submit.isPending ? 'Göndərilir…' : 'Müraciət göndər'}
+            </button>
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={() => setShowForm(false)}
+            >
+              Geri
+            </button>
+          </form>
+        ) : (
+          <button
+            type="button"
+            className="btn-primary mt-4"
+            onClick={() => setShowForm(true)}
+          >
+            Promosyona müraciət et
+          </button>
+        )
+      ) : null}
+    </div>
+  );
+}
+
+function AdminQueue({
+  levels,
+}: {
+  levels: Array<{ id: string; name: string; level_index: number }>;
+}) {
+  const qc = useQueryClient();
+  const requests = useQuery({
+    queryKey: ['promotion-queue'],
+    queryFn: async (): Promise<PromotionRow[]> => {
+      const { data, error } = await supabase
+        .from('promotion_requests')
+        .select('*')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as PromotionRow[];
+    },
+  });
+
+  const decide = useMutation({
+    mutationFn: async (input: { id: string; status: 'approved' | 'denied' }) => {
+      const { error } = await supabase.rpc('promotion_decide', {
+        p_id: input.id,
+        p_status: input.status,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['promotion-queue'] });
+      qc.invalidateQueries({ queryKey: ['career-levels'] });
+    },
+  });
+
+  const list = requests.data ?? [];
+  const levelMap = new Map(levels.map((l) => [l.id, l.name]));
+
+  if (list.length === 0) {
+    return (
+      <div
+        className="card mb-5 text-meta"
+        style={{ color: 'var(--text-muted)' }}
+      >
+        Gözləyən promosyon müraciəti yoxdur.
+      </div>
+    );
+  }
+
+  return (
+    <div className="card mb-5">
+      <h3 className="text-h3 mb-3">Promosyon növbəsi · {list.length}</h3>
+      <ul className="divide-y" style={{ borderColor: 'var(--line-soft)' }}>
+        {list.map((r) => (
+          <li key={r.id} className="py-3 flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-body">
+                <code style={{ background: 'var(--surface-mist)', padding: '1px 6px' }}>
+                  {r.employee_id.slice(0, 8)}
+                </code>{' '}
+                → <strong>{levelMap.get(r.target_level_id) ?? '—'}</strong>
+              </div>
+              {r.rationale ? (
+                <p className="text-meta mt-1" style={{ color: 'var(--text-soft)' }}>
+                  {r.rationale}
+                </p>
+              ) : null}
+              <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                {relativeTime(r.created_at)}
+              </div>
+            </div>
+            <span className="flex gap-1 shrink-0">
+              <button
+                type="button"
+                className="chip chip-brand"
+                onClick={() => decide.mutate({ id: r.id, status: 'approved' })}
+              >
+                Təsdiqlə
+              </button>
+              <button
+                type="button"
+                className="chip"
+                style={{ background: '#FEEEED', color: '#B91C1C' }}
+                onClick={() => decide.mutate({ id: r.id, status: 'denied' })}
+              >
+                Rədd
+              </button>
+            </span>
+          </li>
+        ))}
+      </ul>
+      {decide.error ? (
+        <p className="text-meta mt-3" style={{ color: '#B91C1C' }}>
+          {(decide.error as Error).message}
+        </p>
+      ) : null}
     </div>
   );
 }
