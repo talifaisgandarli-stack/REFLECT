@@ -13,7 +13,11 @@ export default async function handler(req: Request) {
     const user = await requireUser(req);
     if (!user.isAdmin) throw new HttpError(403, 'Admin only');
 
-    const { email, role_key } = (await req.json()) as { email?: string; role_key?: string };
+    const { email, role_key, locale } = (await req.json()) as {
+      email?: string;
+      role_key?: string;
+      locale?: 'az' | 'en' | 'ru';
+    };
     if (!email || !role_key) throw new HttpError(400, 'email + role_key required');
 
     const sb = admin();
@@ -46,6 +50,7 @@ export default async function handler(req: Request) {
         inviteToken: token,
         inviterName: inviter?.full_name ?? null,
         roleName: role.name,
+        locale,
       }),
     );
 

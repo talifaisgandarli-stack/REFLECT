@@ -88,67 +88,157 @@ function btn(label: string, href: string): string {
 
 // ---------------- Templates ----------------
 
+export type EmailLocale = 'az' | 'en' | 'ru';
+
+type InviteCopy = {
+  subject: string;
+  hello: string;
+  intro: (inviter: string, role: string) => string;
+  cta: string;
+  footer: string;
+  textTitle: (inviter: string, role: string) => string;
+  textTtl: string;
+  defaultInviter: string;
+};
+const INVITE: Record<EmailLocale, InviteCopy> = {
+  az: {
+    subject: 'Reflect-ə dəvətnamə',
+    hello: 'Salam,',
+    intro: (i, r) =>
+      `${escape(i)} sizi Reflect arxitektura studiyası platformasına <strong>${escape(r)}</strong> rolu ilə dəvət edir.`,
+    cta: 'Dəvəti qəbul et',
+    footer:
+      'Linkin müddəti 48 saatdır. Açılmırsa, bu ünvanı brauzerə yapışdır:',
+    textTitle: (i, r) => `${i} sizi Reflect-ə ${r} rolu ilə dəvət edir.`,
+    textTtl: 'Müddət: 48 saat.',
+    defaultInviter: 'Reflect studiyası',
+  },
+  en: {
+    subject: 'Reflect — invitation',
+    hello: 'Hi,',
+    intro: (i, r) =>
+      `${escape(i)} invites you to join the Reflect studio platform as <strong>${escape(r)}</strong>.`,
+    cta: 'Accept invitation',
+    footer: 'The link expires in 48 hours. If the button is dead, paste this URL:',
+    textTitle: (i, r) => `${i} invites you to Reflect as ${r}.`,
+    textTtl: 'Expires in 48 hours.',
+    defaultInviter: 'Reflect studio',
+  },
+  ru: {
+    subject: 'Reflect — приглашение',
+    hello: 'Здравствуйте,',
+    intro: (i, r) =>
+      `${escape(i)} приглашает вас в платформу Reflect как <strong>${escape(r)}</strong>.`,
+    cta: 'Принять приглашение',
+    footer:
+      'Ссылка действительна 48 часов. Если кнопка не работает, вставьте адрес в браузер:',
+    textTitle: (i, r) => `${i} приглашает вас в Reflect (роль: ${r}).`,
+    textTtl: 'Срок: 48 часов.',
+    defaultInviter: 'Reflect',
+  },
+};
+
 export function inviteEmail(opts: {
   to: string;
   inviteToken: string;
   inviterName: string | null;
   roleName: string;
+  locale?: EmailLocale;
 }): EmailEnvelope {
+  const c = INVITE[opts.locale ?? 'az'];
   const link = `${APP_URL}/login?invite=${opts.inviteToken}`;
-  const inviter = opts.inviterName ?? 'Reflect studiyası';
+  const inviter = opts.inviterName ?? c.defaultInviter;
   const html = shell(
-    'Reflect-ə dəvətnamə',
-    `<p style="margin:0 0 12px 0;">Salam,</p>
-     <p style="margin:0 0 12px 0;">${escape(inviter)} sizi Reflect arxitektura
-       studiyası platformasına <strong>${escape(opts.roleName)}</strong> rolu ilə dəvət edir.</p>
-     ${btn('Dəvəti qəbul et', link)}
-     <p style="margin:0;font-size:13px;color:#4F5A55;">Linkin müddəti 48 saatdır. Açılmırsa, bu ünvanı brauzerə yapışdır:<br>
+    c.subject,
+    `<p style="margin:0 0 12px 0;">${c.hello}</p>
+     <p style="margin:0 0 12px 0;">${c.intro(inviter, opts.roleName)}</p>
+     ${btn(c.cta, link)}
+     <p style="margin:0;font-size:13px;color:#4F5A55;">${c.footer}<br>
        <code style="font-size:12px;color:#1A5140;">${escape(link)}</code>
      </p>`,
   );
-  const text = [
-    `Salam,`,
-    `${inviter} sizi Reflect-ə ${opts.roleName} rolu ilə dəvət edir.`,
-    ``,
-    `Dəvəti qəbul et: ${link}`,
-    `Müddət: 48 saat.`,
-  ].join('\n');
-  return { to: opts.to, subject: 'Reflect-ə dəvətnamə', html, text };
+  const text = [c.hello, c.textTitle(inviter, opts.roleName), '', `→ ${link}`, c.textTtl].join(
+    '\n',
+  );
+  return { to: opts.to, subject: c.subject, html, text };
 }
+
+const SHARE: Record<EmailLocale, { subject: string; intro: (s: string, t: string) => string; cta: string; secret: string; defaultSender: string }> = {
+  az: {
+    subject: 'Reflect — sənəd',
+    intro: (s, t) =>
+      `${escape(s)} sizinlə bir sənəd paylaşdı: <strong>${escape(t)}</strong>.`,
+    cta: 'Sənədi aç',
+    secret: 'Link gizlidir — yalnız sizinlə paylaşılıb.',
+    defaultSender: 'Reflect',
+  },
+  en: {
+    subject: 'Reflect — shared document',
+    intro: (s, t) => `${escape(s)} shared a document with you: <strong>${escape(t)}</strong>.`,
+    cta: 'Open document',
+    secret: 'This link is private — shared only with you.',
+    defaultSender: 'Reflect',
+  },
+  ru: {
+    subject: 'Reflect — документ',
+    intro: (s, t) =>
+      `${escape(s)} поделился(ась) с вами документом: <strong>${escape(t)}</strong>.`,
+    cta: 'Открыть документ',
+    secret: 'Ссылка приватная — отправлена только вам.',
+    defaultSender: 'Reflect',
+  },
+};
 
 export function shareTokenEmail(opts: {
   to: string;
   documentTitle: string;
   shareUrl: string;
   fromName: string | null;
+  locale?: EmailLocale;
 }): EmailEnvelope {
-  const sender = opts.fromName ?? 'Reflect';
+  const c = SHARE[opts.locale ?? 'az'];
+  const sender = opts.fromName ?? c.defaultSender;
   const html = shell(
-    'Sənəd sizinlə paylaşıldı',
-    `<p style="margin:0 0 12px 0;">Salam,</p>
-     <p style="margin:0 0 12px 0;">${escape(sender)} sizinlə bir sənəd paylaşdı:
-       <strong>${escape(opts.documentTitle)}</strong>.</p>
-     ${btn('Sənədi aç', opts.shareUrl)}
-     <p style="margin:0;font-size:13px;color:#4F5A55;">Link gizlidir — yalnız sizinlə paylaşılıb.</p>`,
+    c.subject,
+    `<p style="margin:0 0 12px 0;">${c.intro(sender, opts.documentTitle)}</p>
+     ${btn(c.cta, opts.shareUrl)}
+     <p style="margin:0;font-size:13px;color:#4F5A55;">${c.secret}</p>`,
   );
-  const text = `${sender} sizinlə paylaşdı: ${opts.documentTitle}\n\n${opts.shareUrl}`;
-  return { to: opts.to, subject: `Reflect — ${opts.documentTitle}`, html, text };
+  const text = `${sender} → ${opts.documentTitle}\n\n${opts.shareUrl}`;
+  return { to: opts.to, subject: `${c.subject} — ${opts.documentTitle}`, html, text };
 }
+
+const BUDGET: Record<EmailLocale, { subject: (p: number) => string; body: (p: number, s: number, c: number) => string }> = {
+  az: {
+    subject: (p) => `Reflect — MIRAI büdcəsi ${p}%`,
+    body: (p, s, c) =>
+      `Sənin aylıq MIRAI istifadən <strong>${p}%</strong>-ə çatıb (${s.toFixed(2)}$ / ${c}$).`,
+  },
+  en: {
+    subject: (p) => `Reflect — MIRAI budget ${p}%`,
+    body: (p, s, c) =>
+      `Your monthly MIRAI usage is at <strong>${p}%</strong> (${s.toFixed(2)}$ / ${c}$).`,
+  },
+  ru: {
+    subject: (p) => `Reflect — бюджет MIRAI ${p}%`,
+    body: (p, s, c) =>
+      `Ваш месячный лимит MIRAI: <strong>${p}%</strong> (${s.toFixed(2)}$ / ${c}$).`,
+  },
+};
 
 export function miraiBudgetEmail(opts: {
   to: string;
   pct: number;
   spent: number;
   cap: number;
+  locale?: EmailLocale;
 }): EmailEnvelope {
   const pct = Math.round(opts.pct * 100);
+  const c = BUDGET[opts.locale ?? 'az'];
   const html = shell(
-    `MIRAI büdcəsi ${pct}%`,
-    `<p style="margin:0 0 12px 0;">Sənin aylıq MIRAI istifadən
-       <strong>${pct}%</strong>-ə çatıb (${opts.spent.toFixed(2)}$ / ${opts.cap}$).</p>
-     <p style="margin:0 0 12px 0;">Limit dolanda chat dayanır və növbəti
-       ay yenilənir. Sual budgetə uyğun qalsın deyə qısa şəkildə soruşmağa dəyər.</p>`,
+    c.subject(pct),
+    `<p style="margin:0 0 12px 0;">${c.body(pct, opts.spent, opts.cap)}</p>`,
   );
-  const text = `MIRAI büdcəsi ${pct}% (${opts.spent.toFixed(2)}$ / ${opts.cap}$).`;
-  return { to: opts.to, subject: 'Reflect — MIRAI büdcə xəbərdarlığı', html, text };
+  const text = c.subject(pct);
+  return { to: opts.to, subject: c.subject(pct), html, text };
 }
