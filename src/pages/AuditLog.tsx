@@ -10,7 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { PageHead } from '@/components/PageHead';
 import { formatDate, relativeTime } from '@/lib/format';
-import { activityHref, entityLabelKey } from '@/lib/activity';
+import { actionLabelKey, activityHref, entityLabelKey } from '@/lib/activity';
 import { useT } from '@/lib/i18n';
 
 type AuditRow = {
@@ -219,7 +219,7 @@ function ActivityTable({ rows, loading }: { rows: ActivityRow[]; loading: boolea
             />
             <div className="flex-1 min-w-0">
               <div className="text-body">
-                <span className="font-medium">{r.action}</span>{' '}
+                <span className="font-medium">{t(actionLabelKey(r.action))}</span>{' '}
                 {href ? (
                   <Link to={href} style={{ color: 'var(--brand-text)' }}>
                     ({t(entityLabelKey(r.entity_type))})

@@ -15,7 +15,7 @@ import { OnboardingHero } from '@/components/OnboardingHero';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { Link } from 'react-router-dom';
-import { activityHref, entityLabelKey } from '@/lib/activity';
+import { actionLabelKey, activityHref, entityLabelKey } from '@/lib/activity';
 import { useT } from '@/lib/i18n';
 
 const HEALTH_COLOR: Record<'green' | 'amber' | 'red' | 'none', string> = {
@@ -209,7 +209,7 @@ export function DashboardPage() {
                     />
                     <div className="flex-1 min-w-0">
                       <div className="truncate">
-                        {a.action} · {t(entityLabelKey(a.entity_type))}
+                        {t(actionLabelKey(a.action))} · {t(entityLabelKey(a.entity_type))}
                       </div>
                       <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
                         {relativeTime(a.created_at)}

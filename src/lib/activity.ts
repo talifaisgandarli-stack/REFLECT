@@ -7,6 +7,14 @@ export function entityLabelKey(entity_type: string): string {
   return `entity.${entity_type}`;
 }
 
+/** Translate an activity_log.action verb (snake_case DB column) into a
+ *  user-facing locale key. Same fallback semantics as entityLabelKey:
+ *  unknown actions surface "action.<raw>" so the dev console warning
+ *  catches them. */
+export function actionLabelKey(action: string): string {
+  return `action.${action}`;
+}
+
 /**
  * Map activity_log row → user-facing route.
  *
