@@ -10,6 +10,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { extractPdfText } from '@/lib/pdf';
+import { useT } from '@/lib/i18n';
 
 type GroupRow = { source_pdf: string; chunks: number; latest: string | null };
 
@@ -50,6 +51,7 @@ function chunkText(raw: string): string[] {
 }
 
 export function KnowledgeBaseManager() {
+  const t = useT();
   const qc = useQueryClient();
   const [source, setSource] = useState('');
   const [text, setText] = useState('');
@@ -63,15 +65,13 @@ export function KnowledgeBaseManager() {
     try {
       const extracted = await extractPdfText(file);
       if (!extracted.trim()) {
-        setParseError(
-          'Bu PDF-dən mətn çıxarmaq mümkün olmadı (skan/şəkil ola bilər). Əl ilə yapışdır.',
-        );
+        setParseError(t('kb.pdf.empty'));
         return;
       }
       if (!source) setSource(file.name);
       setText(extracted);
     } catch (e) {
-      setParseError(e instanceof Error ? e.message : 'PDF oxunması alınmadı');
+      setParseError(e instanceof Error ? e.message : t('kb.pdf.failed'));
     } finally {
       setParsing(false);
       if (fileRef.current) fileRef.current.value = '';
@@ -108,11 +108,11 @@ export function KnowledgeBaseManager() {
 
   const ingest = useMutation({
     mutationFn: async () => {
-      if (!source.trim()) throw new Error('Mənbə adı tələb olunur');
-      if (previewChunks.length === 0) throw new Error('Mətn boşdur');
+      if (!source.trim()) throw new Error(t('kb.source_required'));
+      if (previewChunks.length === 0) throw new Error(t('kb.text_empty'));
       const { data: sess } = await supabase.auth.getSession();
       const token = sess.session?.access_token;
-      if (!token) throw new Error('Sessiya tapılmadı');
+      if (!token) throw new Error(t('kb.session_missing'));
 
       const res = await fetch('/api/knowledge/ingest', {
         method: 'POST',
@@ -124,7 +124,7 @@ export function KnowledgeBaseManager() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        throw new Error(data?.error ?? `Server xətası (${res.status})`);
+        throw new Error(data?.error ?? t('kb.server_error', { code: res.status }));
       }
     },
     onSuccess: () => {
@@ -147,14 +147,14 @@ export function KnowledgeBaseManager() {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[280px,1fr] gap-5">
       <aside>
-        <h3 className="text-h3 mb-3">Mənbələr</h3>
+        <h3 className="text-h3 mb-3">{t('kb.sources_title')}</h3>
         {groups.isLoading ? (
           <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
-            Yüklənir…
+            {t('common.loading')}
           </p>
         ) : (groups.data ?? []).length === 0 ? (
           <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
-            Hələ yüklənmiş mənbə yoxdur.
+            {t('kb.sources_empty')}
           </p>
         ) : (
           <ul className="space-y-2">
@@ -167,20 +167,20 @@ export function KnowledgeBaseManager() {
                 <div className="min-w-0 flex-1">
                   <div className="text-body font-medium truncate">{g.source_pdf}</div>
                   <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                    {g.chunks} chunk
+                    {t('kb.chunks_count', { count: g.chunks })}
                   </div>
                 </div>
                 <button
                   type="button"
                   className="btn-ghost"
                   onClick={() => {
-                    if (confirm(`${g.source_pdf} silinsin?`)) {
+                    if (confirm(t('kb.delete_confirm', { name: g.source_pdf }))) {
                       remove.mutate(g.source_pdf);
                     }
                   }}
                   style={{ height: 28, padding: '0 10px', color: 'var(--state-error)' }}
                 >
-                  Sil
+                  {t('kb.delete')}
                 </button>
               </li>
             ))}
@@ -189,10 +189,9 @@ export function KnowledgeBaseManager() {
       </aside>
 
       <section className="card">
-        <h3 className="text-h3 mb-3">Yeni mənbə əlavə et</h3>
+        <h3 className="text-h3 mb-3">{t('kb.add_title')}</h3>
         <p className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
-          PDF faylını seç və ya mətnini birbaşa yapışdır — server chunk-laşdırıb
-          embed edəcək. Eyni mənbə adı yenidən yüklənərsə əvvəlki chunk-lar əvəz olunur.
+          {t('kb.intro')}
         </p>
 
         <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -212,10 +211,10 @@ export function KnowledgeBaseManager() {
             onClick={() => fileRef.current?.click()}
             disabled={parsing}
           >
-            {parsing ? 'PDF oxunur…' : 'PDF seç'}
+            {parsing ? t('kb.pdf.parsing') : t('kb.pdf.pick')}
           </button>
           <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
-            scan deyil, mətn-əsaslı PDF işləyir
+            {t('kb.pdf.note')}
           </span>
         </div>
         {parseError ? (
@@ -226,7 +225,7 @@ export function KnowledgeBaseManager() {
 
         <label className="block">
           <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-            Mənbə adı (məs. AZDNT_2.04-2017.pdf)
+            {t('kb.source_label')}
           </span>
           <input
             className="input"
@@ -238,14 +237,14 @@ export function KnowledgeBaseManager() {
 
         <label className="block mt-3">
           <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-            Mətn ({previewChunks.length} chunk olacaq)
+            {t('kb.text_label', { count: previewChunks.length })}
           </span>
           <textarea
             className="input font-mono"
             value={text}
             onChange={(e) => setText(e.target.value)}
             style={{ minHeight: 220, padding: '12px 14px', whiteSpace: 'pre-wrap' }}
-            placeholder="PDF məzmununu kopyalayıb buraya yapışdır…"
+            placeholder={t('kb.text_placeholder')}
           />
         </label>
 
@@ -263,16 +262,16 @@ export function KnowledgeBaseManager() {
             disabled={ingest.isPending || !source || previewChunks.length === 0}
           >
             {ingest.isPending
-              ? 'Embed olunur…'
-              : `Yüklə (${previewChunks.length} chunk)`}
+              ? t('kb.embedding')
+              : t('kb.upload', { count: previewChunks.length })}
           </button>
         </div>
 
         <details className="mt-4">
-          <summary className="text-h4 cursor-pointer">Chunk önbaxışı</summary>
+          <summary className="text-h4 cursor-pointer">{t('kb.preview_title')}</summary>
           {previewChunks.length === 0 ? (
             <p className="text-meta mt-2" style={{ color: 'var(--text-muted)' }}>
-              Mətn yazıldıqca chunk-lar burada görünəcək.
+              {t('kb.preview_empty')}
             </p>
           ) : (
             <ol className="mt-2 space-y-2">
@@ -291,14 +290,14 @@ export function KnowledgeBaseManager() {
                     className="text-tiny mb-1"
                     style={{ color: 'var(--text-muted)' }}
                   >
-                    Chunk {i + 1} · {c.length} simvol
+                    {t('kb.preview_chunk_label', { n: i + 1, chars: c.length })}
                   </div>
                   {c.length > 240 ? `${c.slice(0, 240)}…` : c}
                 </li>
               ))}
               {previewChunks.length > 8 ? (
                 <li className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                  +{previewChunks.length - 8} chunk daha
+                  {t('kb.preview_more', { count: previewChunks.length - 8 })}
                 </li>
               ) : null}
             </ol>
