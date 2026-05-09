@@ -11,6 +11,7 @@ import { supabase } from '@/lib/supabase';
 import { PageHead } from '@/components/PageHead';
 import { formatDate, relativeTime } from '@/lib/format';
 import { actionLabelKey, activityDiffSummary, activityHref, entityLabelKey } from '@/lib/activity';
+import { downloadCsv } from '@/lib/export';
 import { useT } from '@/lib/i18n';
 
 type ProfileLite = { id: string; full_name: string | null; email: string };
@@ -113,18 +114,78 @@ export function AuditLogPage() {
       ? t('audit.meta.audit', { count: audit.data?.length ?? 0 })
       : t('audit.meta.activity', { count: activity.data?.length ?? 0 });
 
+  function exportCsv() {
+    if (tab === 'audit') {
+      const rows = (audit.data ?? []).map((r) => [
+        r.created_at,
+        actorLabel(r.actor_id, profilesById, t('audit.actor.system')),
+        r.action,
+        r.resource ?? '',
+        r.ip ?? '',
+      ]);
+      downloadCsv(
+        'reflect-audit-log',
+        [
+          t('audit.col.time'),
+          t('audit.col.actor'),
+          t('audit.col.action'),
+          t('audit.col.resource'),
+          t('audit.col.ip'),
+        ],
+        rows,
+      );
+    } else {
+      const rows = (activity.data ?? []).map((r) => [
+        r.created_at,
+        actorLabel(r.user_id, profilesById, t('audit.actor.system')),
+        t(actionLabelKey(r.action)),
+        t(entityLabelKey(r.entity_type)),
+        r.entity_id ?? '',
+        r.field_name ?? '',
+        activityDiffSummary(r.field_name, r.old_value, r.new_value, t) ?? '',
+      ]);
+      downloadCsv(
+        'reflect-activity-log',
+        [
+          t('audit.col.time'),
+          t('audit.col.actor'),
+          t('audit.col.action'),
+          t('audit.csv.entity'),
+          t('audit.csv.entity_id'),
+          t('audit.csv.field'),
+          t('audit.csv.diff'),
+        ],
+        rows,
+      );
+    }
+  }
+
   return (
     <>
       <PageHead
         meta={meta}
         title={t('audit.title')}
         actions={
-          <input
-            className="input max-w-[200px]"
-            placeholder={t('audit.action_filter')}
-            value={actionFilter}
-            onChange={(e) => setActionFilter(e.target.value)}
-          />
+          <span className="flex items-center gap-2 flex-wrap">
+            <input
+              className="input max-w-[200px]"
+              placeholder={t('audit.action_filter')}
+              value={actionFilter}
+              onChange={(e) => setActionFilter(e.target.value)}
+            />
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={exportCsv}
+              disabled={
+                tab === 'audit'
+                  ? (audit.data ?? []).length === 0
+                  : (activity.data ?? []).length === 0
+              }
+            >
+              {t('common.export.csv')}
+            </button>
+          </span>
         }
       />
 
