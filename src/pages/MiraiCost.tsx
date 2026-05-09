@@ -23,6 +23,7 @@ import {
 } from 'recharts';
 import { supabase } from '@/lib/supabase';
 import { PageHead } from '@/components/PageHead';
+import { downloadCsv } from '@/lib/export';
 
 type UsageRow = {
   user_id: string;
@@ -100,11 +101,57 @@ export function MiraiCostPage() {
       .slice(0, 10);
   }, [thisMonth]);
 
+  function exportCsv() {
+    const rows: Array<Array<unknown>> = [];
+    // KPI section
+    rows.push(['KPI', 'Cəm xərc (cari ay)', monthTotal.toFixed(4)]);
+    rows.push(['KPI', 'Aktiv istifadəçi', thisMonth.length]);
+    rows.push([
+      'KPI',
+      'Sərhədə yaxın',
+      thisMonth.filter((r) => Number(r.cost_usd) >= CAP_USD * WARN_PCT).length,
+    ]);
+    // Monthly totals
+    for (const m of monthly) rows.push(['Aylıq', m.m, m.total.toFixed(4)]);
+    // Per-user × period (current month rows from thisMonth, then everything else)
+    const all = (usage.data ?? [])
+      .slice()
+      .sort((a, b) =>
+        a.period_yyyymm === b.period_yyyymm
+          ? Number(b.cost_usd) - Number(a.cost_usd)
+          : b.period_yyyymm - a.period_yyyymm,
+      );
+    for (const r of all) {
+      const p = profileMap.get(r.user_id);
+      const who = p?.full_name || p?.email || r.user_id.slice(0, 8);
+      rows.push([
+        `Detal · ${periodLabel(r.period_yyyymm)}`,
+        who,
+        Number(r.cost_usd).toFixed(4),
+      ]);
+    }
+    downloadCsv(
+      `reflect-mirai-${periodLabel(period)}`,
+      ['Bölmə', 'Açar', 'USD'],
+      rows,
+    );
+  }
+
   return (
     <>
       <PageHead
         meta={`Cari ay: ${periodLabel(period)} · Cəm: $${monthTotal.toFixed(2)}`}
         title="MIRAI istifadə"
+        actions={
+          <button
+            type="button"
+            className="btn-outline"
+            onClick={exportCsv}
+            disabled={(usage.data ?? []).length === 0}
+          >
+            CSV / Excel
+          </button>
+        }
       />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
