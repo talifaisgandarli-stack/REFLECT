@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { useT } from '@/lib/i18n';
 
 type PersonaKey =
   | 'general'
@@ -18,34 +19,33 @@ type PersonaKey =
   | 'cmo'
   | 'hr_partner';
 
-const PERSONAS: Array<{ key: PersonaKey; label: string; defaultPrompt: string }> = [
+// Default prompts stay AZ — they're the system instruction the LLM
+// receives, not display copy. The studio admin who lands on this
+// editor can override them in their preferred language; the chat
+// surface itself is locale-aware via api/mirai/{chat,stream}.ts.
+const PERSONAS: Array<{ key: PersonaKey; defaultPrompt: string }> = [
   {
     key: 'general',
-    label: 'Köməkçi',
     defaultPrompt:
       'Sən MIRAI-sən — Bakıdakı Reflect arxitektura studiyasının daxili köməkçisi. Qısa cavab ver. Mənbə göstərə bilməyəndə açıq de.',
   },
   {
     key: 'project_manager',
-    label: 'Layihə Mühəndisi',
     defaultPrompt:
       'Sən MIRAI-nin "Layihə Mühəndisi" şəxsiyyətisən. Tapşırıq, deadline və faza koordinasiyasında kömək et.',
   },
   {
     key: 'finance_analyst',
-    label: 'Maliyyə Analitiki',
     defaultPrompt:
       'Sən MIRAI-nin "Maliyyə Analitiki" şəxsiyyətisən. Cash flow, P&L, forecast. Fərdi maaşları əsla göstərmə.',
   },
   {
     key: 'cmo',
-    label: 'CMO',
     defaultPrompt:
       'Sən MIRAI-nin CMO şəxsiyyətisən. Trend, mükafat və məzmun fürsətlərini sürface elə.',
   },
   {
     key: 'hr_partner',
-    label: 'HR',
     defaultPrompt:
       'Sən MIRAI-nin HR şəxsiyyətisən. Karyera, performans, məzuniyyət.',
   },
@@ -54,6 +54,7 @@ const PERSONAS: Array<{ key: PersonaKey; label: string; defaultPrompt: string }>
 type SettingRow = { key: string; value: { v: unknown } | null };
 
 export function MiraiPersonaEditor() {
+  const t = useT();
   const qc = useQueryClient();
   const [active, setActive] = useState<PersonaKey>('general');
   const [text, setText] = useState('');
@@ -113,7 +114,7 @@ export function MiraiPersonaEditor() {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[220px,1fr] gap-5">
       <aside>
-        <h3 className="text-h3 mb-3">Personalar</h3>
+        <h3 className="text-h3 mb-3">{t('mirai.persona_editor.aside_title')}</h3>
         <ul className="space-y-1">
           {PERSONAS.map((p) => {
             const has = overrides.has(`mirai.persona.${p.key}`);
@@ -129,7 +130,7 @@ export function MiraiPersonaEditor() {
                     border: '1px solid var(--line-soft)',
                   }}
                 >
-                  <span>{p.label}</span>
+                  <span>{t(`mirai.persona.${p.key}`)}</span>
                   {has ? (
                     <span
                       className="text-tiny"
@@ -140,7 +141,7 @@ export function MiraiPersonaEditor() {
                         borderRadius: 6,
                       }}
                     >
-                      override
+                      {t('mirai.persona_editor.override_chip')}
                     </span>
                   ) : null}
                 </button>
@@ -151,10 +152,9 @@ export function MiraiPersonaEditor() {
       </aside>
 
       <section>
-        <h3 className="text-h3 mb-1">{persona.label}</h3>
+        <h3 className="text-h3 mb-1">{t(`mirai.persona.${persona.key}`)}</h3>
         <p className="text-meta mb-3" style={{ color: 'var(--text-muted)' }}>
-          Boş saxla → standart prompt istifadə olunacaq. Override edirsənsə,
-          əvvəlcədən qoşulan kontekst (tarix, rol, RAG) yenə əlavə olunacaq.
+          {t('mirai.persona_editor.intro')}
         </p>
 
         <textarea
@@ -170,7 +170,7 @@ export function MiraiPersonaEditor() {
             className="text-meta cursor-pointer"
             style={{ color: 'var(--text-muted)' }}
           >
-            Faktiki istifadə olunan prompt (önbaxış)
+            {t('mirai.persona_editor.preview_summary')}
           </summary>
           <pre
             className="text-meta mt-2"
@@ -200,7 +200,7 @@ export function MiraiPersonaEditor() {
               role="status"
               aria-live="polite"
             >
-              Yadda saxlanıldı ✓
+              {t('mirai.persona_editor.saved')}
             </span>
           ) : (
             <span />
@@ -212,7 +212,7 @@ export function MiraiPersonaEditor() {
               onClick={() => setText('')}
               disabled={!text}
             >
-              Standartı bərpa et
+              {t('mirai.persona_editor.reset')}
             </button>
             <button
               type="button"
@@ -220,7 +220,9 @@ export function MiraiPersonaEditor() {
               onClick={() => save.mutate()}
               disabled={save.isPending}
             >
-              {save.isPending ? 'Yadda saxlanılır…' : 'Yadda saxla'}
+              {save.isPending
+                ? t('mirai.persona_editor.saving')
+                : t('mirai.persona_editor.save')}
             </button>
           </span>
         </div>

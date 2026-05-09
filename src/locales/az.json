@@ -325,6 +325,15 @@
   "portfolio.submitted": "Müraciət göndərildi",
   "portfolio.award_link": "Mükafat səhifəsi ↗",
 
+  "mirai.persona_editor.aside_title": "Personalar",
+  "mirai.persona_editor.override_chip": "override",
+  "mirai.persona_editor.intro": "Boş saxla → standart prompt istifadə olunacaq. Override edirsənsə, əvvəlcədən qoşulan kontekst (tarix, rol, RAG) yenə əlavə olunacaq.",
+  "mirai.persona_editor.preview_summary": "Faktiki istifadə olunan prompt (önbaxış)",
+  "mirai.persona_editor.saved": "Yadda saxlanıldı ✓",
+  "mirai.persona_editor.reset": "Standartı bərpa et",
+  "mirai.persona_editor.saving": "Yadda saxlanılır…",
+  "mirai.persona_editor.save": "Yadda saxla",
+
   "outsource.modal.title": "+ Outsource sifarişi",
   "outsource.modal.dialog_label": "Yeni outsource sifarişi",
   "outsource.modal.work_title": "İşin başlığı",

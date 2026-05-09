@@ -325,6 +325,15 @@
   "portfolio.submitted": "Заявка отправлена",
   "portfolio.award_link": "Страница премии ↗",
 
+  "mirai.persona_editor.aside_title": "Персоны",
+  "mirai.persona_editor.override_chip": "override",
+  "mirai.persona_editor.intro": "Оставьте пустым → используется дефолтный prompt. При override автоматический контекст (дата, роль, RAG) всё равно добавляется.",
+  "mirai.persona_editor.preview_summary": "Действующий prompt (предпросмотр)",
+  "mirai.persona_editor.saved": "Сохранено ✓",
+  "mirai.persona_editor.reset": "Восстановить дефолт",
+  "mirai.persona_editor.saving": "Сохранение…",
+  "mirai.persona_editor.save": "Сохранить",
+
   "outsource.modal.title": "+ Заказ подряда",
   "outsource.modal.dialog_label": "Новый заказ подряда",
   "outsource.modal.work_title": "Название работы",

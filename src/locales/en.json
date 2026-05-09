@@ -325,6 +325,15 @@
   "portfolio.submitted": "Application submitted",
   "portfolio.award_link": "Award page ↗",
 
+  "mirai.persona_editor.aside_title": "Personas",
+  "mirai.persona_editor.override_chip": "override",
+  "mirai.persona_editor.intro": "Leave blank → built-in default is used. When you override, the auto-attached context (date, role, RAG) is still appended.",
+  "mirai.persona_editor.preview_summary": "Effective prompt (preview)",
+  "mirai.persona_editor.saved": "Saved ✓",
+  "mirai.persona_editor.reset": "Restore default",
+  "mirai.persona_editor.saving": "Saving…",
+  "mirai.persona_editor.save": "Save",
+
   "outsource.modal.title": "+ Outsource order",
   "outsource.modal.dialog_label": "New outsource order",
   "outsource.modal.work_title": "Work title",
