@@ -28,7 +28,13 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Tests
+      - name: Locale parity (az/en/ru)
+        run: npx vitest run src/lib/i18n.test.ts
+
+      - name: Migration pairs
+        run: npx vitest run src/lib/migrations.test.ts
+
+      - name: Tests (full suite)
         run: npm test
 
       - name: Build
