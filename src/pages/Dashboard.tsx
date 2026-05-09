@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { PageHead } from '@/components/PageHead';
 import { Avatar } from '@/components/Avatar';
 import { StatusChip } from '@/components/StatusChip';
@@ -66,14 +67,34 @@ export function DashboardPage() {
 
   // Active + review = "today's work"; sort red first then amber so the
   // featured card spotlights what actually needs attention (REQ-DASH-04).
-  const today = tasks
-    .filter((t) => t.status === 'active' || t.status === 'review')
-    .sort((a, b) => {
-      const order = { red: 0, amber: 1, green: 2, none: 3 } as const;
-      return order[taskHealth(a.deadline)] - order[taskHealth(b.deadline)];
-    });
-  const overdue = tasks.filter((t) => taskHealth(t.deadline) === 'red');
-  const onlineCount = presence.filter((p) => p.status === 'online').length;
+  // Memoized so realtime task updates don't re-sort the full list on
+  // every render — only on actual data changes (slice 157).
+  const today = useMemo(
+    () =>
+      tasks
+        .filter((task) => task.status === 'active' || task.status === 'review')
+        .sort((a, b) => {
+          const order = { red: 0, amber: 1, green: 2, none: 3 } as const;
+          return order[taskHealth(a.deadline)] - order[taskHealth(b.deadline)];
+        }),
+    [tasks],
+  );
+  const overdue = useMemo(
+    () => tasks.filter((task) => taskHealth(task.deadline) === 'red'),
+    [tasks],
+  );
+  const onlineCount = useMemo(
+    () => presence.filter((p) => p.status === 'online').length,
+    [presence],
+  );
+  const inProgressCount = useMemo(
+    () => tasks.filter((task) => !['done', 'cancelled'].includes(task.status)).length,
+    [tasks],
+  );
+  const doneCount = useMemo(
+    () => tasks.filter((task) => task.status === 'done').length,
+    [tasks],
+  );
 
   // Workspace-empty signal — only ping the server when the local task list is
   // empty; avoids a round-trip in the steady state.
@@ -184,10 +205,10 @@ export function DashboardPage() {
         <section className="lg:col-span-5 grid grid-cols-3 gap-3">
           <Kpi
             label="Açıq"
-            value={tasks.filter((t) => !['done', 'cancelled'].includes(t.status)).length}
+            value={inProgressCount}
           />
           <Kpi label="Gecikmiş" value={overdue.length} red />
-          <Kpi label="Bu həftə bitirilən" value={tasks.filter((t) => t.status === 'done').length} />
+          <Kpi label="Bu həftə bitirilən" value={doneCount} />
         </section>
 
         {/* Activity */}
