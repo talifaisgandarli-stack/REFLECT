@@ -1,14 +1,13 @@
 /**
  * Project documents tab (REQ-PROJ-03 + Module 5 absorbed Sənəd Arxivi).
- * Sources supported in v1: drive_link (URL paste) and auto_generated
- * (created elsewhere). Direct uploads are storage-bucket work and
- * deferred; for now the tab is a registry of links and generated docs.
+ * Sources supported in v1: drive_link, auto_generated, and now upload via
+ * the `project-documents` Supabase storage bucket (migration 0016).
  *
  * Public sharing uses share_token (unique on project_documents); the
  * existing /share/* path (used by retrospective surveys) is a sibling
  * route — we expose copy-to-clipboard so authors can hand the URL out.
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
@@ -40,9 +39,61 @@ const CATEGORIES = [
 
 type Props = { projectId: string };
 
+const STORAGE_BUCKET = 'project-documents';
+
 export function ProjectDocuments({ projectId }: Props) {
+  const { profile } = useAuth();
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  async function uploadFile(file: File) {
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const safe = file.name.replace(/[^A-Za-z0-9._-]+/g, '_');
+      const path = `${projectId}/${Date.now()}-${safe}`;
+      const { error: upErr } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .upload(path, file, {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: file.type || 'application/octet-stream',
+        });
+      if (upErr) throw upErr;
+
+      const { error: insErr } = await supabase.from('project_documents').insert({
+        project_id: projectId,
+        title: file.name,
+        category: null,
+        source: 'upload',
+        storage_path: path,
+        created_by: profile?.id ?? null,
+      });
+      if (insErr) throw insErr;
+
+      qc.invalidateQueries({ queryKey: ['project-docs', projectId] });
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : 'Yükləmə alınmadı');
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  }
+
+  async function openUpload(d: Doc) {
+    if (!d.storage_path) return;
+    const { data, error } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .createSignedUrl(d.storage_path, 60 * 5);
+    if (error || !data?.signedUrl) {
+      alert(error?.message ?? 'Link yaradılmadı');
+      return;
+    }
+    window.open(data.signedUrl, '_blank', 'noreferrer,noopener');
+  }
 
   const docs = useQuery({
     queryKey: ['project-docs', projectId],
@@ -88,15 +139,39 @@ export function ProjectDocuments({ projectId }: Props) {
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap justify-between items-center gap-3">
         <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
-          Sənədlər — Drive linki, avtomat-yaradılanlar (məsələn, akt
-          şablonu) və paylaşım tokenləri burada toplanır.
+          Sənədlər — Drive linki, faktiki yüklənmiş fayllar və paylaşım
+          tokenləri burada toplanır.
         </p>
-        <button className="btn-primary" onClick={() => setAdding(true)}>
-          + Sənəd
-        </button>
+        <span className="flex flex-wrap gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            className="sr-only"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) uploadFile(f);
+            }}
+          />
+          <button
+            type="button"
+            className="btn-outline"
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+          >
+            {uploading ? 'Yüklənir…' : 'Fayl yüklə'}
+          </button>
+          <button className="btn-primary" onClick={() => setAdding(true)}>
+            + Drive linki
+          </button>
+        </span>
       </div>
+      {uploadError ? (
+        <p className="text-meta" style={{ color: '#B91C1C' }}>
+          {uploadError}
+        </p>
+      ) : null}
 
       {docs.isLoading ? (
         <div className="card text-meta">Yüklənir…</div>
@@ -153,6 +228,14 @@ export function ProjectDocuments({ projectId }: Props) {
                   >
                     Aç
                   </a>
+                ) : d.storage_path ? (
+                  <button
+                    type="button"
+                    className="chip chip-brand"
+                    onClick={() => openUpload(d)}
+                  >
+                    Aç
+                  </button>
                 ) : null}
                 {d.share_token ? (
                   <button
