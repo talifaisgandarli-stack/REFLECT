@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { PageHead } from '@/components/PageHead';
+import { printSection } from '@/lib/export';
 
 type ReviewRow = {
   id: string;
@@ -88,18 +89,29 @@ export function PerformancePage() {
         meta={isAdmin ? 'Bütün heyət' : 'Yalnız sizin'}
         title="Performans"
         actions={
-          <select
-            className="input"
-            value={year}
-            onChange={(e) => setYear(Number(e.target.value))}
-            style={{ width: 120 }}
-          >
-            {YEARS_AVAILABLE.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
+          <>
+            <select
+              className="input"
+              value={year}
+              onChange={(e) => setYear(Number(e.target.value))}
+              style={{ width: 120 }}
+            >
+              {YEARS_AVAILABLE.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={() => printSection()}
+              title="Cari ilin qiymətləndirmələrini çap üçün hazırla"
+              disabled={(reviews.data ?? []).length === 0}
+            >
+              PDF (çap)
+            </button>
+          </>
         }
       />
 
@@ -128,7 +140,10 @@ export function PerformancePage() {
           ) : null}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div
+          data-print-root
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+        >
           {(reviews.data ?? []).map((r) => {
             const p = profileMap.get(r.employee_id);
             const score = r.score ?? 0;
