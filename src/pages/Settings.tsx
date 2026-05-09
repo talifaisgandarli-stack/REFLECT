@@ -3,6 +3,7 @@ import { PageHead } from '@/components/PageHead';
 import { NotificationPreferencesPage } from './NotificationPreferences';
 import { TemplatesManager } from '@/components/TemplatesManager';
 import { KnowledgeBaseManager } from '@/components/KnowledgeBaseManager';
+import { GeneralSettingsForm } from '@/components/GeneralSettingsForm';
 
 const NAV = [
   { to: 'umumi', label: 'Ümumi' },
@@ -44,19 +45,7 @@ export function SettingsPage() {
 }
 
 function GeneralSettings() {
-  return (
-    <div className="space-y-3">
-      <h3 className="text-h3">Şirkət</h3>
-      <label className="block">
-        <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Şirkət adı</span>
-        <input className="input mt-1 max-w-md" defaultValue="Reflect" />
-      </label>
-      <label className="block">
-        <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Region / Saat qurşağı</span>
-        <input className="input mt-1 max-w-md" defaultValue="Asia/Baku" disabled />
-      </label>
-    </div>
-  );
+  return <GeneralSettingsForm />;
 }
 
 function TemplatesSettings() {
