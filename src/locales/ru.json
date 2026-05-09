@@ -315,6 +315,16 @@
   "closeout.closing": "Закрывается…",
   "closeout.close": "Закрыть проект",
 
+  "portfolio.title": "Портфолио — шаги",
+  "portfolio.intro": "Этот поток открывается после закрытия проекта. Публикация на сайте и пресс-релиз — общие шаги; заявки на премии трекаются отдельно.",
+  "portfolio.website_published": "Опубликовано на сайте",
+  "portfolio.press_sent": "Пресс-релиз отправлен",
+  "portfolio.deadline_overdue": "Просрочено",
+  "portfolio.deadline_days": "{days} дн.",
+  "portfolio.start_prep": "Начать подготовку к этой премии",
+  "portfolio.submitted": "Заявка отправлена",
+  "portfolio.award_link": "Страница премии ↗",
+
   "outsource.modal.title": "+ Заказ подряда",
   "outsource.modal.dialog_label": "Новый заказ подряда",
   "outsource.modal.work_title": "Название работы",

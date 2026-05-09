@@ -315,6 +315,16 @@
   "closeout.closing": "Bağlanır…",
   "closeout.close": "Layihəni bağla",
 
+  "portfolio.title": "Portfolio addımları",
+  "portfolio.intro": "Layihə bağlanandan sonra bu axın açılır. Saytda yayım və press release ümumi addımlardır; mükafat müraciətləri hər mükafat üçün ayrıca izlənir.",
+  "portfolio.website_published": "Saytda yayımlandı",
+  "portfolio.press_sent": "Press release göndərildi",
+  "portfolio.deadline_overdue": "Keçib",
+  "portfolio.deadline_days": "{days} gün",
+  "portfolio.start_prep": "Bu mükafat üçün hazırlığa başla",
+  "portfolio.submitted": "Müraciət göndərildi",
+  "portfolio.award_link": "Mükafat səhifəsi ↗",
+
   "outsource.modal.title": "+ Outsource sifarişi",
   "outsource.modal.dialog_label": "Yeni outsource sifarişi",
   "outsource.modal.work_title": "İşin başlığı",

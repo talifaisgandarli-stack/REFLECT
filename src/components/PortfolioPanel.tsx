@@ -10,6 +10,7 @@
 import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { useT } from '@/lib/i18n';
 
 type Award = {
   id: string;
@@ -46,6 +47,7 @@ function nextDeadline(month: number | null): { date: Date; days: number } | null
 }
 
 export function PortfolioPanel({ projectId }: Props) {
+  const t = useT();
   const qc = useQueryClient();
 
   const awards = useQuery({
@@ -129,11 +131,9 @@ export function PortfolioPanel({ projectId }: Props) {
     <div className="space-y-3">
       <div className="card flex flex-wrap gap-4 items-start justify-between">
         <div className="min-w-0 flex-1">
-          <h3 className="text-h3">Portfolio addımları</h3>
+          <h3 className="text-h3">{t('portfolio.title')}</h3>
           <p className="text-meta mt-1" style={{ color: 'var(--text-muted)' }}>
-            Layihə bağlanandan sonra bu axın açılır. Saytda yayım və press
-            release ümumi addımlardır; mükafat müraciətləri hər mükafat üçün
-            ayrıca izlənir.
+            {t('portfolio.intro')}
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -149,7 +149,7 @@ export function PortfolioPanel({ projectId }: Props) {
                 })
               }
             />
-            Saytda yayımlandı
+            {t('portfolio.website_published')}
           </label>
           <label className="flex items-center gap-2 text-body cursor-pointer">
             <input
@@ -157,7 +157,7 @@ export function PortfolioPanel({ projectId }: Props) {
               checked={!!workflow.data?.press_release_sent}
               onChange={(e) => upsert.mutate({ press_release_sent: e.target.checked })}
             />
-            Press release göndərildi
+            {t('portfolio.press_sent')}
           </label>
         </div>
       </div>
@@ -199,7 +199,9 @@ export function PortfolioPanel({ projectId }: Props) {
                     className="chip shrink-0"
                     style={{ background: `${tone}1f`, color: tone }}
                   >
-                    {dl.days < 0 ? 'Keçib' : `${dl.days} gün`}
+                    {dl.days < 0
+                      ? t('portfolio.deadline_overdue')
+                      : t('portfolio.deadline_days', { days: dl.days })}
                   </span>
                 ) : null}
               </header>
@@ -217,7 +219,7 @@ export function PortfolioPanel({ projectId }: Props) {
                     checked={sel}
                     onChange={() => toggleAward(a.id)}
                   />
-                  Bu mükafat üçün hazırlığa başla
+                  {t('portfolio.start_prep')}
                 </label>
                 {sel ? (
                   <label className="flex items-center gap-2 text-body cursor-pointer">
@@ -226,7 +228,7 @@ export function PortfolioPanel({ projectId }: Props) {
                       checked={cl.submitted}
                       onChange={(e) => toggleSubmission(a.id, e.target.checked)}
                     />
-                    Müraciət göndərildi
+                    {t('portfolio.submitted')}
                     {cl.submittedAt ? (
                       <span className="text-meta ml-1" style={{ color: 'var(--text-muted)' }}>
                         {cl.submittedAt.slice(0, 10)}
@@ -242,7 +244,7 @@ export function PortfolioPanel({ projectId }: Props) {
                     className="text-meta"
                     style={{ color: 'var(--brand-text)' }}
                   >
-                    Mükafat səhifəsi ↗
+                    {t('portfolio.award_link')}
                   </a>
                 ) : null}
               </div>

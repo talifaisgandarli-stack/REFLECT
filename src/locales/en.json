@@ -315,6 +315,16 @@
   "closeout.closing": "Closing…",
   "closeout.close": "Close project",
 
+  "portfolio.title": "Portfolio steps",
+  "portfolio.intro": "This flow opens once the project is closed. Website + press release are common steps; award applications are tracked per award.",
+  "portfolio.website_published": "Published on website",
+  "portfolio.press_sent": "Press release sent",
+  "portfolio.deadline_overdue": "Past due",
+  "portfolio.deadline_days": "{days}d",
+  "portfolio.start_prep": "Start preparing for this award",
+  "portfolio.submitted": "Application submitted",
+  "portfolio.award_link": "Award page ↗",
+
   "outsource.modal.title": "+ Outsource order",
   "outsource.modal.dialog_label": "New outsource order",
   "outsource.modal.work_title": "Work title",
