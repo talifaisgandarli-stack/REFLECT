@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { CANCEL_REASONS } from '@/lib/labels';
+import { useT } from '@/lib/i18n';
 
 type Props = {
   taskId: string;
@@ -17,6 +18,7 @@ type Props = {
 
 export function CancelTaskModal({ taskId, taskTitle, onCancel, onCancelled }: Props) {
   const qc = useQueryClient();
+  const t = useT();
   const [picked, setPicked] = useState<(typeof CANCEL_REASONS)[number] | null>(null);
   const [other, setOther] = useState('');
   const [busy, setBusy] = useState(false);
@@ -48,7 +50,7 @@ export function CancelTaskModal({ taskId, taskTitle, onCancel, onCancelled }: Pr
   return (
     <div
       role="dialog"
-      aria-label="Tapşırığı ləğv et"
+      aria-label={t('task.cancel.title')}
       className="fixed inset-0 z-50 flex items-center justify-center px-4"
       style={{ background: 'rgba(14,22,17,0.4)' }}
       onClick={onCancel}
@@ -58,7 +60,7 @@ export function CancelTaskModal({ taskId, taskTitle, onCancel, onCancelled }: Pr
         onClick={(e) => e.stopPropagation()}
         style={{ padding: 24 }}
       >
-        <h2 className="text-h2">Tapşırığı ləğv et</h2>
+        <h2 className="text-h2">{t('task.cancel.title')}</h2>
         {taskTitle ? (
           <p className="text-body mt-1" style={{ color: 'var(--text-soft)' }}>
             {taskTitle}
@@ -111,7 +113,7 @@ export function CancelTaskModal({ taskId, taskTitle, onCancel, onCancelled }: Pr
 
         <div className="flex justify-end gap-2 mt-6">
           <button className="btn-outline" onClick={onCancel} disabled={busy}>
-            Geri
+            {t('common.back')}
           </button>
           <button
             className="btn-primary"
@@ -119,7 +121,7 @@ export function CancelTaskModal({ taskId, taskTitle, onCancel, onCancelled }: Pr
             disabled={!canSubmit}
             aria-disabled={!canSubmit}
           >
-            {busy ? 'Ləğv olunur…' : 'Ləğv et'}
+            {busy ? t('task.cancel.saving') : t('task.cancel.cta')}
           </button>
         </div>
       </div>
