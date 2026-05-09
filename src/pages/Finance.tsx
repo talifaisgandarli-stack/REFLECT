@@ -1,13 +1,20 @@
 import { useState } from 'react';
 import { PageHead } from '@/components/PageHead';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { formatAZN, formatDate, bakuMonthKey, bakuCurrentMonthRange } from '@/lib/format';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { IncomeExpenseModal, type FinanceKind } from '@/components/IncomeExpenseModal';
 import { MarkPaidModal } from '@/components/MarkPaidModal';
 
-const TABS = ['Cash Cockpit', 'P&L', 'Outsource', 'Xərclər', 'Debitor', 'Forecast'] as const;
+const TABS = ['Cash Cockpit', 'P&L', 'Outsource', 'Xərclər', 'Sabit', 'Debitor', 'Forecast'] as const;
+
+const PERIOD_LABEL: Record<string, string> = {
+  weekly: 'Həftəlik',
+  monthly: 'Aylıq',
+  quarterly: 'Rüblük',
+  yearly: 'İllik',
+};
 
 type Receivable = {
   id: string;
@@ -220,7 +227,10 @@ export function FinancePage() {
         </div>
       ) : null}
 
-      {tab === 'P&L' || tab === 'Outsource' || tab === 'Xərclər' ? (
+      {tab === 'Xərclər' ? <ExpensesTable /> : null}
+      {tab === 'Sabit' ? <RecurringExpensesPanel /> : null}
+
+      {tab === 'P&L' || tab === 'Outsource' ? (
         <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
           {tab} cədvəli — v1.5-də.
         </div>
@@ -249,6 +259,249 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
       >
         {value}
       </div>
+    </div>
+  );
+}
+
+type ExpenseRow = {
+  id: string;
+  amount: number;
+  category: string | null;
+  vendor: string | null;
+  note: string | null;
+  occurred_at: string | null;
+  recurring_rule_id: string | null;
+};
+
+function ExpensesTable() {
+  // Recent expenses, including auto-materialized recurring rows (REQ-FIN-05).
+  const q = useQuery({
+    queryKey: ['fin', 'expenses', 'recent'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('expenses')
+        .select('id, amount, category, vendor, note, occurred_at, recurring_rule_id')
+        .order('occurred_at', { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return (data ?? []) as ExpenseRow[];
+    },
+  });
+  const rows = q.data ?? [];
+  return (
+    <div className="card overflow-x-auto">
+      <table className="w-full text-body">
+        <thead>
+          <tr style={{ borderBottom: '1px solid var(--line)' }}>
+            {['Tarix', 'Kateqoriya', 'Qeyd', 'Mənbə', 'Məbləğ'].map((h) => (
+              <th
+                key={h}
+                className="text-left py-3 px-3 text-meta"
+                style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+              <td className="py-3 px-3">{formatDate(r.occurred_at)}</td>
+              <td className="py-3 px-3">{r.category ?? '—'}</td>
+              <td className="py-3 px-3">{r.note ?? r.vendor ?? '—'}</td>
+              <td className="py-3 px-3">
+                {r.recurring_rule_id ? (
+                  <span className="chip chip-brand">Sabit</span>
+                ) : (
+                  <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Manual</span>
+                )}
+              </td>
+              <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                {formatAZN(r.amount)}
+              </td>
+            </tr>
+          ))}
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={5} className="py-6 text-center text-meta" style={{ color: 'var(--text-muted)' }}>
+                Xərc yazılmayıb.
+              </td>
+            </tr>
+          ) : null}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+type RecurringRow = {
+  id: string;
+  label: string;
+  amount: number;
+  period: 'weekly' | 'monthly' | 'quarterly' | 'yearly';
+  next_run_at: string;
+};
+
+function RecurringExpensesPanel() {
+  // REQ-FIN-05: admin manages recurring expense rules; cron materializes them.
+  const qc = useQueryClient();
+  const q = useQuery({
+    queryKey: ['fin', 'recurring'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('recurring_expenses')
+        .select('id, label, amount, period, next_run_at')
+        .order('next_run_at', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as RecurringRow[];
+    },
+  });
+  const [label, setLabel] = useState('');
+  const [amount, setAmount] = useState('');
+  const [period, setPeriod] = useState<RecurringRow['period']>('monthly');
+  const [nextRun, setNextRun] = useState(() => new Date().toISOString().slice(0, 10));
+  const [error, setError] = useState<string | null>(null);
+
+  const create = useMutation({
+    mutationFn: async () => {
+      const num = Number(amount);
+      if (!label.trim()) throw new Error('Ad daxil edin');
+      if (!Number.isFinite(num) || num <= 0) throw new Error('Məbləğ müsbət olmalıdır');
+      const { error: e } = await supabase.from('recurring_expenses').insert({
+        label: label.trim(),
+        amount: num,
+        period,
+        next_run_at: new Date(nextRun).toISOString(),
+      });
+      if (e) throw e;
+    },
+    onSuccess: () => {
+      setLabel('');
+      setAmount('');
+      setError(null);
+      qc.invalidateQueries({ queryKey: ['fin', 'recurring'] });
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
+  const remove = useMutation({
+    mutationFn: async (id: string) => {
+      const { error: e } = await supabase.from('recurring_expenses').delete().eq('id', id);
+      if (e) throw e;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['fin', 'recurring'] }),
+  });
+
+  const rows = q.data ?? [];
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="card md:col-span-2 overflow-x-auto">
+        <h3 className="text-h3 mb-3">Sabit xərclər</h3>
+        <table className="w-full text-body">
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--line)' }}>
+              {['Ad', 'Dövr', 'Növbəti', 'Məbləğ', ''].map((h) => (
+                <th
+                  key={h}
+                  className="text-left py-3 px-3 text-meta"
+                  style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                <td className="py-3 px-3">{r.label}</td>
+                <td className="py-3 px-3">{PERIOD_LABEL[r.period] ?? r.period}</td>
+                <td className="py-3 px-3">{formatDate(r.next_run_at)}</td>
+                <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {formatAZN(r.amount)}
+                </td>
+                <td className="py-3 px-3 text-right">
+                  <button
+                    type="button"
+                    className="chip"
+                    onClick={() => remove.mutate(r.id)}
+                    disabled={remove.isPending}
+                  >
+                    Sil
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="py-6 text-center text-meta" style={{ color: 'var(--text-muted)' }}>
+                  Sabit xərc qaydası yoxdur.
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+      <form
+        className="card flex flex-col gap-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          create.mutate();
+        }}
+      >
+        <h3 className="text-h3">Yeni qayda</h3>
+        <label className="text-meta" style={{ color: 'var(--text-muted)' }}>
+          Ad
+          <input
+            className="input mt-1 w-full"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="Ofis kirayəsi"
+          />
+        </label>
+        <label className="text-meta" style={{ color: 'var(--text-muted)' }}>
+          Məbləğ (AZN)
+          <input
+            className="input mt-1 w-full"
+            type="number"
+            step="0.01"
+            min="0.01"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+        </label>
+        <label className="text-meta" style={{ color: 'var(--text-muted)' }}>
+          Dövr
+          <select
+            className="input mt-1 w-full"
+            value={period}
+            onChange={(e) => setPeriod(e.target.value as RecurringRow['period'])}
+          >
+            <option value="weekly">Həftəlik</option>
+            <option value="monthly">Aylıq</option>
+            <option value="quarterly">Rüblük</option>
+            <option value="yearly">İllik</option>
+          </select>
+        </label>
+        <label className="text-meta" style={{ color: 'var(--text-muted)' }}>
+          Növbəti tarix
+          <input
+            className="input mt-1 w-full"
+            type="date"
+            value={nextRun}
+            onChange={(e) => setNextRun(e.target.value)}
+          />
+        </label>
+        {error ? (
+          <div className="text-meta" style={{ color: 'var(--danger, #c33)' }}>
+            {error}
+          </div>
+        ) : null}
+        <button type="submit" className="btn-primary" disabled={create.isPending}>
+          Əlavə et
+        </button>
+      </form>
     </div>
   );
 }
