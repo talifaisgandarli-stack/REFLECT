@@ -24,6 +24,7 @@ const KIND_KEY: Record<NotificationKind | 'fallback', string> = {
   task_cancelled: 'notif.kind.task_cancelled',
   deadline_reminder: 'notif.kind.deadline_reminder',
   finance_alert: 'notif.kind.finance_alert',
+  calendar_event_rsvp: 'notif.kind.calendar_event_rsvp',
   fallback: 'notif.kind.mention', // unused; useT() falls back to the key itself
 };
 

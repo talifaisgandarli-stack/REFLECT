@@ -270,5 +270,8 @@
   "notif.kind.task_done": "Задача завершена",
   "notif.kind.task_cancelled": "Задача отменена",
   "notif.kind.deadline_reminder": "Приближается дедлайн",
-  "notif.kind.finance_alert": "Финансовое уведомление"
+  "notif.kind.finance_alert": "Финансовое уведомление",
+  "notif.kind.calendar_event_rsvp": "Ответ RSVP",
+  "notif.event.calendar_event_rsvp.label": "Ответ RSVP",
+  "notif.event.calendar_event_rsvp.desc": "Когда вы организатор и приглашённый отвечает"
 }

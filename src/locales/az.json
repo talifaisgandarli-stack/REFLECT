@@ -270,5 +270,8 @@
   "notif.kind.task_done": "Tapşırıq tamamlandı",
   "notif.kind.task_cancelled": "Tapşırıq ləğv edildi",
   "notif.kind.deadline_reminder": "Deadline yaxınlaşır",
-  "notif.kind.finance_alert": "Maliyyə xəbərdarlığı"
+  "notif.kind.finance_alert": "Maliyyə xəbərdarlığı",
+  "notif.kind.calendar_event_rsvp": "RSVP cavabı",
+  "notif.event.calendar_event_rsvp.label": "RSVP cavabı",
+  "notif.event.calendar_event_rsvp.desc": "Görüşə təşkilatçı kimi RSVP toplayanda"
 }

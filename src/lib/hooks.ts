@@ -266,7 +266,8 @@ export type NotificationKind =
   | 'task_done'
   | 'task_cancelled'
   | 'deadline_reminder'
-  | 'finance_alert';
+  | 'finance_alert'
+  | 'calendar_event_rsvp';
 
 export interface NotificationRow {
   id: string;

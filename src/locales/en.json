@@ -270,5 +270,8 @@
   "notif.kind.task_done": "Task completed",
   "notif.kind.task_cancelled": "Task cancelled",
   "notif.kind.deadline_reminder": "Deadline approaching",
-  "notif.kind.finance_alert": "Finance alert"
+  "notif.kind.finance_alert": "Finance alert",
+  "notif.kind.calendar_event_rsvp": "RSVP response",
+  "notif.event.calendar_event_rsvp.label": "RSVP response",
+  "notif.event.calendar_event_rsvp.desc": "When you organize an event and an attendee responds"
 }

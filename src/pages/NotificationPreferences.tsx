@@ -20,7 +20,8 @@ type EventKind =
   | 'task_done'
   | 'task_cancelled'
   | 'deadline_reminder'
-  | 'finance_alert';
+  | 'finance_alert'
+  | 'calendar_event_rsvp';
 
 const CHANNELS: Array<{ key: Channel; labelKey: string }> = [
   { key: 'inapp', labelKey: 'notif.channel.inapp' },
@@ -36,6 +37,7 @@ const EVENT_KINDS: EventKind[] = [
   'task_cancelled',
   'deadline_reminder',
   'finance_alert',
+  'calendar_event_rsvp',
 ];
 
 type PrefRow = {
