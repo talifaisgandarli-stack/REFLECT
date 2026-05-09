@@ -10,6 +10,7 @@ import {
   useUpcomingMeetings,
 } from '@/lib/hooks';
 import { useAuth } from '@/lib/store';
+import { useT } from '@/lib/i18n';
 import { formatDate, relativeTime, taskHealth } from '@/lib/format';
 import { FocusWidget } from '@/components/FocusWidget';
 import { OnboardingHero } from '@/components/OnboardingHero';
@@ -38,9 +39,10 @@ function HealthDot({ deadline }: { deadline: string | null | undefined }) {
 }
 
 function HealthLabel({ deadline }: { deadline: string | null | undefined }) {
+  const tr = useT();
   const h = taskHealth(deadline);
   if (h === 'none' || !deadline) {
-    return <span className="text-meta opacity-70">Müddət yoxdur</span>;
+    return <span className="text-meta opacity-70">{tr('dashboard.no_due')}</span>;
   }
   return (
     <span
@@ -115,8 +117,10 @@ export function DashboardPage() {
   return (
     <>
       <PageHead
-        meta={isAdmin ? 'Admin görünüşü' : 'Sizin görünüşünüz'}
-        title={`Salam, ${profile?.full_name?.split(' ')[0] ?? 'arxitekt'}`}
+        meta={isAdmin ? t('dashboard.meta.admin') : t('dashboard.meta.user')}
+        title={t('dashboard.greeting', {
+          name: profile?.full_name?.split(' ')[0] ?? t('dashboard.greeting_fallback'),
+        })}
       />
 
       <OnboardingHero visible={showOnboarding} />
@@ -128,7 +132,7 @@ export function DashboardPage() {
             BU GÜN
           </span>
           <h2 className="text-h2 mt-3" style={{ color: 'var(--ink)' }}>
-            {today[0]?.title ?? 'Bu gün üçün aktiv tapşırıq yoxdur'}
+            {today[0]?.title ?? t('dashboard.no_active_today')}
           </h2>
           {today[0]?.deadline ? (
             <div className="mt-2">
@@ -155,11 +159,11 @@ export function DashboardPage() {
             </a>
           </div>
           <ul className="space-y-2">
-            {today.slice(0, 5).map((t) => {
-              const h = taskHealth(t.deadline);
+            {today.slice(0, 5).map((task) => {
+              const h = taskHealth(task.deadline);
               return (
                 <li
-                  key={t.id}
+                  key={task.id}
                   className="rounded-card px-4 py-3 flex items-center justify-between"
                   style={{
                     background: '#1F2925',
@@ -168,17 +172,21 @@ export function DashboardPage() {
                   }}
                 >
                   <div>
-                    <div className="text-body font-medium">{t.title}</div>
+                    <div className="text-body font-medium">{task.title}</div>
                     <div className="text-meta opacity-70">
-                      {t.deadline ? `Son: ${t.deadline}` : 'Müddət yoxdur'}
+                      {task.deadline
+                        ? t('dashboard.due_label', { date: task.deadline })
+                        : t('dashboard.no_due')}
                     </div>
                   </div>
-                  <StatusChip status={t.status} />
+                  <StatusChip status={task.status} />
                 </li>
               );
             })}
             {today.length === 0 ? (
-              <li className="opacity-70 text-meta py-4 text-center">Aktiv tapşırıq yoxdur.</li>
+              <li className="opacity-70 text-meta py-4 text-center">
+                {t('dashboard.no_active_today')}
+              </li>
             ) : null}
           </ul>
         </section>
@@ -213,7 +221,7 @@ export function DashboardPage() {
 
         {/* Activity */}
         <section className="lg:col-span-4 card">
-          <h3 className="text-h3 mb-3">Yenilənmiş</h3>
+          <h3 className="text-h3 mb-3">{t('dashboard.section.recent')}</h3>
           {activity.length === 0 ? (
             <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
               Aktivlik yoxdur.
@@ -256,7 +264,7 @@ export function DashboardPage() {
 
         {/* Presence — REQ-PRESENCE-* */}
         <section className="lg:col-span-3 card">
-          <h3 className="text-h3 mb-3">Komanda</h3>
+          <h3 className="text-h3 mb-3">{t('dashboard.section.team')}</h3>
           <div className="flex flex-wrap gap-2">
             {presence.length === 0 ? (
               <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
@@ -276,7 +284,7 @@ export function DashboardPage() {
         {/* Upcoming meetings — REQ-CAL-* (week ahead) */}
         <section className="lg:col-span-6 card">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-h3">Yaxınlaşan görüşlər</h3>
+            <h3 className="text-h3">{t('dashboard.section.meetings')}</h3>
             <a
               href="/komanda/təqvim"
               className="text-meta"
@@ -319,7 +327,7 @@ export function DashboardPage() {
         {/* Latest announcements */}
         <section className="lg:col-span-6 card">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-h3">Son elanlar</h3>
+            <h3 className="text-h3">{t('dashboard.section.announcements')}</h3>
             <a
               href="/komanda/elanlar"
               className="text-meta"
