@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useUI } from '@/lib/store';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
+import { ProjectPreviewDrawer } from './ProjectPreviewDrawer';
 
 const QUICK = [
   { label: 'Dashboard', to: '/' },
@@ -37,6 +38,7 @@ export function CmdK() {
   const [serverHits, setServerHits] = useState<Hit[]>([]);
   const [loading, setLoading] = useState(false);
   const [cursor, setCursor] = useState(0);
+  const [previewProjectId, setPreviewProjectId] = useState<string | null>(null);
   const nav = useNavigate();
 
   useEffect(() => {
@@ -105,12 +107,28 @@ export function CmdK() {
     return list;
   }, [navHits, serverHits]);
 
-  if (!cmdkOpen) return null;
-
   function activate(item: ListItem) {
+    // Project hits open the preview drawer instead of navigating away
+    // immediately — feels closer to Linear/Slack quick-peek and avoids
+    // a full route change for a glance.
+    if (item.kind === 'hit' && item.hit.type === 'project') {
+      setPreviewProjectId(item.hit.id);
+      setCmdK(false);
+      return;
+    }
     const to = item.kind === 'nav' ? item.to : item.hit.href;
     nav(to);
     setCmdK(false);
+  }
+
+  if (!cmdkOpen) {
+    // Palette closed but a preview drawer may still be open
+    return previewProjectId ? (
+      <ProjectPreviewDrawer
+        projectId={previewProjectId}
+        onClose={() => setPreviewProjectId(null)}
+      />
+    ) : null;
   }
 
   return (
