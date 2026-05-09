@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
-import { isOpenChildrenError, useTasks, useUpdateTaskStatus } from '@/lib/hooks';
+import {
+  isOpenChildrenError,
+  useTasks,
+  useTeamPresence,
+  useUpdateTaskStatus,
+} from '@/lib/hooks';
 import { TASK_STATUS_LABEL, TASK_STATUS_ORDER, TASK_STATUS_TONE } from '@/lib/labels';
 import type { Task, TaskStatus } from '@/types/db';
 import { useAuth } from '@/lib/store';
@@ -24,6 +29,22 @@ export function TasksPage() {
   const ptr = usePullToRefresh(async () => {
     await qc.invalidateQueries({ queryKey: ['tasks'] });
   });
+  const { data: presenceRows = [] } = useTeamPresence();
+  const presenceById = useMemo(() => {
+    const m = new Map<string, 'online' | 'away' | 'offline'>();
+    for (const p of presenceRows) m.set(p.user_id, p.status);
+    return m;
+  }, [presenceRows]);
+  function aggregatePresence(uids: string[]): 'online' | 'away' | null {
+    if (!uids?.length) return null;
+    let any = false;
+    for (const id of uids) {
+      const s = presenceById.get(id);
+      if (s === 'online') return 'online';
+      if (s === 'away') any = true;
+    }
+    return any ? 'away' : null;
+  }
 
   useEffect(() => {
     const m = hash.match(/^#task-([0-9a-f-]+)/i);
@@ -209,7 +230,28 @@ export function TasksPage() {
                         transition: 'border-color var(--dur-base), box-shadow var(--dur-base)',
                       }}
                     >
-                      <div className="font-medium">{t.title}</div>
+                      <div className="font-medium flex items-center gap-2">
+                        {(() => {
+                          const live = aggregatePresence(t.assignee_ids);
+                          if (!live) return null;
+                          return (
+                            <span
+                              aria-label={
+                                live === 'online' ? 'İcraçı onlayn' : 'İcraçı uzaqda'
+                              }
+                              title={live === 'online' ? 'İcraçı onlayn' : 'İcraçı uzaqda'}
+                              className="inline-block rounded-full shrink-0"
+                              style={{
+                                width: 7,
+                                height: 7,
+                                background: live === 'online' ? '#22C55E' : '#F59E0B',
+                                boxShadow: '0 0 0 2px var(--surface)',
+                              }}
+                            />
+                          );
+                        })()}
+                        <span className="truncate">{t.title}</span>
+                      </div>
                       <div className="flex items-center justify-between mt-1">
                         {t.deadline ? (
                           <span
