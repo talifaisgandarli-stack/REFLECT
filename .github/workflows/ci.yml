@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Build + typecheck + test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  rls-audit:
+    name: Postgres RLS audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply migrations
+        env:
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGUSER: postgres
+        run: |
+          set -e
+          for f in supabase/migrations/*.sql; do
+            case "$f" in
+              *.down.sql) continue ;;
+            esac
+            echo "→ $f"
+            psql -v ON_ERROR_STOP=on -d postgres -f "$f" || {
+              # Skip Supabase-only constructs (auth.* tables, vector ext) on a vanilla pg image.
+              echo "  (continuing despite error — vanilla pg lacks auth schema)"
+            }
+          done
+
+      - name: Audit policies
+        env:
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGUSER: postgres
+        run: psql -v ON_ERROR_STOP=on -d postgres -f supabase/rls_audit.sql || true
+        # Non-blocking until the schema is hosted on a real Supabase
+        # CI environment with auth.* + vector available. Tracked as
+        # follow-up: provision a managed Supabase preview branch for
+        # full RLS audit gating.
