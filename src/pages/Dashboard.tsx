@@ -15,7 +15,8 @@ import { OnboardingHero } from '@/components/OnboardingHero';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { Link } from 'react-router-dom';
-import { activityHref } from '@/lib/activity';
+import { activityHref, entityLabelKey } from '@/lib/activity';
+import { useT } from '@/lib/i18n';
 
 const HEALTH_COLOR: Record<'green' | 'amber' | 'red' | 'none', string> = {
   green: '#22C55E',
@@ -55,6 +56,7 @@ function HealthLabel({ deadline }: { deadline: string | null | undefined }) {
 }
 
 export function DashboardPage() {
+  const t = useT();
   const { profile, isAdmin } = useAuth();
   const { data: tasks = [] } = useTasks(profile?.id ? { assigneeId: profile.id } : undefined);
   const { data: presence = [] } = useTeamPresence();
@@ -207,7 +209,7 @@ export function DashboardPage() {
                     />
                     <div className="flex-1 min-w-0">
                       <div className="truncate">
-                        {a.action} · {a.entity_type}
+                        {a.action} · {t(entityLabelKey(a.entity_type))}
                       </div>
                       <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
                         {relativeTime(a.created_at)}

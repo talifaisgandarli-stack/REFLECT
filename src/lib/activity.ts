@@ -1,4 +1,13 @@
 /**
+ * Translate an entity_type DB string into a user-facing locale key
+ * understood by the i18n dictionaries (`entity.<type>`). Unknown types
+ * fall back to the raw type string so admins still see *something*.
+ */
+export function entityLabelKey(entity_type: string): string {
+  return `entity.${entity_type}`;
+}
+
+/**
  * Map activity_log row → user-facing route.
  *
  * Used by the dashboard activity feed (slice 11) and audit log

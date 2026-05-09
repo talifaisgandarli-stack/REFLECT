@@ -10,7 +10,8 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { PageHead } from '@/components/PageHead';
 import { formatDate, relativeTime } from '@/lib/format';
-import { activityHref } from '@/lib/activity';
+import { activityHref, entityLabelKey } from '@/lib/activity';
+import { useT } from '@/lib/i18n';
 
 type AuditRow = {
   id: string;
@@ -196,6 +197,7 @@ function AuditTable({ rows, loading }: { rows: AuditRow[]; loading: boolean }) {
 }
 
 function ActivityTable({ rows, loading }: { rows: ActivityRow[]; loading: boolean }) {
+  const t = useT();
   if (loading) return <div className="card text-meta">Yüklənir…</div>;
   if (rows.length === 0) {
     return (
@@ -220,10 +222,12 @@ function ActivityTable({ rows, loading }: { rows: ActivityRow[]; loading: boolea
                 <span className="font-medium">{r.action}</span>{' '}
                 {href ? (
                   <Link to={href} style={{ color: 'var(--brand-text)' }}>
-                    ({r.entity_type})
+                    ({t(entityLabelKey(r.entity_type))})
                   </Link>
                 ) : (
-                  <span style={{ color: 'var(--text-muted)' }}>({r.entity_type})</span>
+                  <span style={{ color: 'var(--text-muted)' }}>
+                    ({t(entityLabelKey(r.entity_type))})
+                  </span>
                 )}
                 {r.field_name ? (
                   <span className="text-meta ml-2" style={{ color: 'var(--text-muted)' }}>
