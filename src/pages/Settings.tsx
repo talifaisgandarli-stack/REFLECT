@@ -492,6 +492,12 @@ function KnowledgeBaseSettings() {
       <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
         AZ inşaat normaları, AZDNT sənədlərini yükləyin. MIRAI Hüquqşünas bu mənbələrə istinad edər.
       </p>
+      <div
+        className="rounded-card px-3 py-2 text-meta"
+        style={{ background: 'rgba(217,119,6,0.08)', color: '#92400E', border: '1px solid rgba(217,119,6,0.25)' }}
+      >
+        ⓘ Bu funksiya OpenAI API açarı tələb edir (embedding-lər üçün). Vercel-də <code>OPENAI_API_KEY</code> təyin edilməyibsə, yükləmə xətası verəcək.
+      </div>
 
       <label className="flex items-center gap-3 cursor-pointer">
         <input

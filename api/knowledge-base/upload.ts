@@ -57,7 +57,12 @@ export default async function handler(req: Request) {
     if (!user.isAdmin) throw new HttpError(403, 'Admin only');
 
     const openaiKey = process.env.OPENAI_API_KEY;
-    if (!openaiKey) throw new HttpError(500, 'OPENAI_API_KEY not configured');
+    if (!openaiKey) {
+      throw new HttpError(
+        503,
+        'Embedding xidməti açılmayıb. OPENAI_API_KEY Vercel-də təyin edilməlidir (RAG funksiyası bunsuz işləmir).',
+      );
+    }
 
     const form = await req.formData();
     const file = form.get('file');
