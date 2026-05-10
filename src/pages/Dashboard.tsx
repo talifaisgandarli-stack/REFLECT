@@ -133,8 +133,31 @@ export function DashboardPage() {
         .from('tasks')
         .select('id, assignee_ids, status')
         .is('archived_at', null)
-        .not('status', 'in', '("done","cancelled")');
+        .not('status', 'in', '("done","cancelled")')
+        .limit(500);
       return data ?? [];
+    },
+  });
+
+  // REQ-DASH-01 — admin active project health widget
+  const { data: activeProjects = [] } = useQuery({
+    queryKey: ['projects-active-health'],
+    enabled: isAdmin,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('projects')
+        .select('id, name, current_phase, deadline, status')
+        .eq('status', 'active')
+        .is('archived_at', null)
+        .order('deadline', { ascending: true, nullsFirst: false })
+        .limit(8);
+      return (data ?? []) as Array<{
+        id: string;
+        name: string;
+        current_phase: string | null;
+        deadline: string | null;
+        status: string;
+      }>;
     },
   });
 
@@ -285,14 +308,14 @@ export function DashboardPage() {
             <Kpi label="Tamamlandı" value={tasks.filter((t) => t.status === 'done').length} />
           </div>
 
-          {/* Folder nav grid */}
+          {/* Folder nav grid — admin-only cards filtered for users */}
           <div className="grid grid-cols-2 gap-3">
             {[
-              { label: 'Layihələr', href: '/layihelər', cls: 'bg-grad-folder-sage' },
-              { label: 'Müştərilər', href: '/müştərilər', cls: 'bg-grad-folder-lime' },
-              { label: 'Maliyyə', href: '/maliyyə', cls: 'bg-grad-folder-forest' },
-              { label: 'Komanda', href: '/komanda/heyət', cls: 'bg-grad-folder-peach' },
-            ].map((f) => (
+              { label: 'Layihələr', href: '/layihelər', cls: 'bg-grad-folder-sage', adminOnly: false },
+              { label: 'Müştərilər', href: '/müştərilər', cls: 'bg-grad-folder-lime', adminOnly: true },
+              { label: 'Maliyyə', href: '/maliyyə', cls: 'bg-grad-folder-forest', adminOnly: true },
+              { label: 'Komanda', href: '/komanda/heyət', cls: 'bg-grad-folder-peach', adminOnly: false },
+            ].filter((f) => isAdmin || !f.adminOnly).map((f) => (
               <a
                 key={f.label}
                 href={f.href}
@@ -304,6 +327,38 @@ export function DashboardPage() {
             ))}
           </div>
         </section>
+
+        {/* REQ-DASH-01 — admin active project health */}
+        {isAdmin ? (
+          <section className="lg:col-span-12 card">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-h3">Aktiv layihələr</h3>
+              <a href="/layihelər" className="text-meta" style={{ color: 'var(--text-muted)' }}>Hamısına bax →</a>
+            </div>
+            {activeProjects.length === 0 ? (
+              <p className="text-meta" style={{ color: 'var(--text-muted)' }}>Aktiv layihə yoxdur.</p>
+            ) : (
+              <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                {activeProjects.map((p) => {
+                  const h = taskHealth(p.deadline);
+                  return (
+                    <li key={p.id} className="rounded-card p-3" style={{ background: 'var(--surface-mist)', borderLeft: `3px solid ${HEALTH_COLOR[h]}` }}>
+                      <a href={`/layihelər/${p.id}`} className="block" style={{ textDecoration: 'none', color: 'inherit' }}>
+                        <div className="text-body font-medium truncate">{p.name}</div>
+                        <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                          {p.current_phase ?? 'Faza yoxdur'}
+                        </div>
+                        <div className="text-meta mt-1" style={{ color: HEALTH_COLOR[h] }}>
+                          {p.deadline ? `Son: ${formatDate(p.deadline)}` : 'Müddət yoxdur'}
+                        </div>
+                      </a>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        ) : null}
 
         {/* Activity feed — REQ-DASH-03 filter pills */}
         <section className="lg:col-span-5 card">

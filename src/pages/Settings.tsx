@@ -57,24 +57,50 @@ function GeneralSettings() {
     queryKey: ['system_settings'],
     queryFn: async () => {
       const { data } = await supabase.from('system_settings').select('key, value');
-      return Object.fromEntries((data ?? []).map((r: { key: string; value: string }) => [r.key, r.value]));
+      return Object.fromEntries((data ?? []).map((r: { key: string; value: unknown }) => [r.key, r.value]));
     },
   });
 
   const [incomeAlert, setIncomeAlert] = useState('');
   const [expenseAlert, setExpenseAlert] = useState('');
+  const [miraiBudget, setMiraiBudget] = useState('');
   const [saved, setSaved] = useState(false);
 
-  // populate once loaded
+  // PRD §8.1 / REQ-TG-03: cron reads `finance_alert_income_threshold` and
+  // `finance_alert_expense_threshold` (jsonb { azn: number }). Stay aligned.
   const loaded = settings.data;
-  if (loaded && incomeAlert === '' && loaded.income_alert) setIncomeAlert(loaded.income_alert);
-  if (loaded && expenseAlert === '' && loaded.expense_alert) setExpenseAlert(loaded.expense_alert);
+  const readAzn = (v: unknown): string => {
+    if (v && typeof v === 'object' && 'azn' in v) {
+      const n = (v as { azn?: number }).azn;
+      return typeof n === 'number' ? String(n) : '';
+    }
+    return '';
+  };
+  if (loaded && incomeAlert === '') {
+    const v = readAzn(loaded.finance_alert_income_threshold);
+    if (v) setIncomeAlert(v);
+  }
+  if (loaded && expenseAlert === '') {
+    const v = readAzn(loaded.finance_alert_expense_threshold);
+    if (v) setExpenseAlert(v);
+  }
+  if (loaded && miraiBudget === '') {
+    const raw = loaded.mirai_monthly_budget;
+    if (raw && typeof raw === 'object' && 'usd' in raw) {
+      const n = (raw as { usd?: number }).usd;
+      if (typeof n === 'number') setMiraiBudget(String(n));
+    }
+  }
 
   const save = useMutation({
     mutationFn: async () => {
-      const rows = [
-        { key: 'income_alert', value: incomeAlert || '5000' },
-        { key: 'expense_alert', value: expenseAlert || '2000' },
+      const incomeNum = Number(incomeAlert) || 5000;
+      const expenseNum = Number(expenseAlert) || 2000;
+      const budgetNum = Number(miraiBudget) || 5;
+      const rows: Array<{ key: string; value: Record<string, number> }> = [
+        { key: 'finance_alert_income_threshold', value: { azn: incomeNum } },
+        { key: 'finance_alert_expense_threshold', value: { azn: expenseNum } },
+        { key: 'mirai_monthly_budget', value: { usd: budgetNum } },
       ];
       for (const row of rows) {
         const { error } = await supabase.from('system_settings').upsert(row, { onConflict: 'key' });
@@ -139,6 +165,26 @@ function GeneralSettings() {
         </div>
       </div>
 
+      {/* PRD §7.6 — MIRAI monthly budget per user (USD). Default $5. */}
+      <div className="space-y-3" style={{ paddingTop: 12, borderTop: '1px solid var(--line)' }}>
+        <h3 className="text-h3">MIRAI aylıq büdcə</h3>
+        <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+          Hər istifadəçinin aylıq MIRAI sərf limiti (USD). Limit dolanda istifadəçi 429 alır. Yaradıcı bu hədddən azaddır.
+        </p>
+        <label className="block">
+          <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Limit (USD)</span>
+          <input
+            type="number"
+            min="0.5"
+            step="0.5"
+            className="input max-w-[140px]"
+            value={miraiBudget}
+            onChange={(e) => setMiraiBudget(e.target.value)}
+            placeholder="5"
+          />
+        </label>
+      </div>
+
       {/* PRD §8.5 — MIRAI CMO RSS feed sources stored in system_settings */}
       <RssFeedSettings settings={settings.data} onSaved={() => qc.invalidateQueries({ queryKey: ['system_settings'] })} />
     </div>
@@ -148,7 +194,7 @@ function GeneralSettings() {
 // PRD §8.5 — Admin configures custom RSS feeds for MIRAI CMO weekly cron
 // Default feeds (ArchDaily, Dezeen, Architizer, WAF) are hardcoded in the backend cron.
 // Custom feeds stored as JSON array in system_settings[mirai_rss_feeds].
-function RssFeedSettings({ settings, onSaved }: { settings: Record<string, string> | undefined; onSaved: () => void }) {
+function RssFeedSettings({ settings, onSaved }: { settings: Record<string, unknown> | undefined; onSaved: () => void }) {
   const qc = useQueryClient();
   const defaultFeeds = ['https://www.archdaily.com/feed', 'https://www.dezeen.com/feed', 'https://www.architizer.com/feed'];
   const [feeds, setFeeds] = useState<string[]>([]);
@@ -159,8 +205,9 @@ function RssFeedSettings({ settings, onSaved }: { settings: Record<string, strin
   useEffect(() => {
     if (!settings) return;
     try {
-      const parsed = JSON.parse(settings.mirai_rss_feeds ?? '[]');
-      if (Array.isArray(parsed) && parsed.length) setFeeds(parsed);
+      const raw = settings.mirai_rss_feeds;
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (Array.isArray(parsed) && parsed.length) setFeeds(parsed as string[]);
       else setFeeds([...defaultFeeds]);
     } catch {
       setFeeds([...defaultFeeds]);

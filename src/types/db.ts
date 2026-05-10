@@ -108,6 +108,7 @@ export interface Client {
   expected_value: number | null;
   last_interaction_at: string | null;
   ai_icp_fit: number | null;
+  ai_icp_calculated_at: string | null;
   created_by: string | null;
   created_at: string;
 }

@@ -2,7 +2,7 @@ import { FormEvent, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Mascot } from '@/components/Mascot';
 import { useAuth } from '@/lib/store';
-import { sendMagicLink, signInWithPassword } from '@/lib/auth';
+import { sendMagicLink, sendPasswordReset, signInWithPassword } from '@/lib/auth';
 
 export function LoginPage() {
   const { session, hydrated } = useAuth();
@@ -15,6 +15,10 @@ export function LoginPage() {
   if (!hydrated) return null;
   if (session) return <Navigate to="/" replace />;
 
+  // PRD §5 / OWASP — never echo Supabase auth errors verbatim. Distinct
+  // messages for "user not found" vs. "wrong password" let an attacker
+  // enumerate which emails have accounts. Collapse everything to one generic
+  // string; the user can still tell on the next attempt with correct creds.
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setErr(null);
@@ -22,7 +26,7 @@ export function LoginPage() {
     setBusy(true);
     const { error } = await signInWithPassword(email, password);
     setBusy(false);
-    if (error) setErr(error.message);
+    if (error) setErr('Email və ya şifrə yanlışdır.');
   }
 
   async function onMagic() {
@@ -30,8 +34,27 @@ export function LoginPage() {
     setBusy(true);
     const { error } = await sendMagicLink(email);
     setBusy(false);
-    if (error) setErr(error.message);
-    else setInfo('Linki email-də yoxla.');
+    setInfo('Əgər bu email Reflect-də qeydiyyatdadırsa, linki göndərdik.');
+    if (error && import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.warn('[magic-link]', error.message);
+    }
+  }
+
+  async function onReset() {
+    if (!email) {
+      setErr('Email daxil et.');
+      return;
+    }
+    setErr(null);
+    setBusy(true);
+    const { error } = await sendPasswordReset(email);
+    setBusy(false);
+    setInfo('Əgər bu email qeydiyyatdadırsa, şifrə bərpa linki göndərdik.');
+    if (error && import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.warn('[password-reset]', error.message);
+    }
   }
 
   return (
@@ -90,6 +113,15 @@ export function LoginPage() {
           </button>
           <button type="button" className="btn-ghost w-full" onClick={onMagic} disabled={busy || !email}>
             Magic link göndər
+          </button>
+          <button
+            type="button"
+            className="text-meta w-full text-center hover:underline pt-1"
+            style={{ color: 'var(--text-muted)', background: 'transparent' }}
+            onClick={onReset}
+            disabled={busy}
+          >
+            Şifrəni unutmusan?
           </button>
         </form>
         <div className="flex flex-col items-center mt-6">

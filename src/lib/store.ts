@@ -38,7 +38,7 @@ type UIState = {
 };
 
 export const useUI = create<UIState>((set) => ({
-  sidebarOpen: true,
+  sidebarOpen: false,
   miraiPanelOpen: false,
   cmdkOpen: false,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),

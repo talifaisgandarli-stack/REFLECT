@@ -30,7 +30,14 @@ export function AnnouncementsPage() {
   const pending = useQuery({
     queryKey: ['mirai_feed_posts', 'pending'],
     queryFn: async () =>
-      (await supabase.from('mirai_feed_posts').select('*').is('posted_announcement_id', null).order('fetched_at', { ascending: false }).limit(50)).data ?? [],
+      (await supabase
+        .from('mirai_feed_posts')
+        .select('*')
+        .is('posted_announcement_id', null)
+        .is('rejected_at', null)
+        .order('fetched_at', { ascending: false })
+        .limit(50)
+      ).data ?? [],
     enabled: !!isAdmin,
   });
 
@@ -56,7 +63,10 @@ export function AnnouncementsPage() {
 
   const reject = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('mirai_feed_posts').update({ posted_announcement_id: 'rejected' }).eq('id', id);
+      const { error } = await supabase
+        .from('mirai_feed_posts')
+        .update({ rejected_at: new Date().toISOString(), rejected_by: profile?.id ?? null })
+        .eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['mirai_feed_posts', 'pending'] }),
@@ -65,6 +75,33 @@ export function AnnouncementsPage() {
   const filtered = (announcements.data ?? []).filter(
     (a: any) => catFilter === 'Hamısı' || a.category === catFilter,
   );
+
+  const unreadIds = filtered
+    .filter((a: any) => profile?.id && !(a.read_by ?? {})[profile.id])
+    .map((a: any) => a.id);
+
+  const markAllRead = useMutation({
+    mutationFn: async () => {
+      if (!profile?.id || unreadIds.length === 0) return;
+      const ts = new Date().toISOString();
+      await Promise.all(
+        unreadIds.map((id: string) => {
+          const current = filtered.find((a: any) => a.id === id);
+          const next = { ...(current?.read_by ?? {}), [profile.id]: ts };
+          return supabase.from('announcements').update({ read_by: next }).eq('id', id);
+        }),
+      );
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['announcements'] }),
+  });
+
+  const toggleFeatured = useMutation({
+    mutationFn: async ({ id, featured }: { id: string; featured: boolean }) => {
+      const { error } = await supabase.from('announcements').update({ is_featured: featured }).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['announcements'] }),
+  });
 
   return (
     <>
@@ -137,16 +174,28 @@ export function AnnouncementsPage() {
       {tab === 'published' ? (
         <>
           {/* US-ELAN-03 — category pills */}
-          <div className="flex flex-wrap gap-2 mb-4">
-            {CATEGORIES.map((c) => (
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+            <div className="flex flex-wrap gap-2">
+              {CATEGORIES.map((c) => (
+                <button
+                  key={c}
+                  className={`chip ${catFilter === c ? 'chip-brand' : ''}`}
+                  onClick={() => setCatFilter(c)}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+            {unreadIds.length > 0 ? (
               <button
-                key={c}
-                className={`chip ${catFilter === c ? 'chip-brand' : ''}`}
-                onClick={() => setCatFilter(c)}
+                className="text-meta"
+                style={{ color: 'var(--brand-text)' }}
+                onClick={() => markAllRead.mutate()}
+                disabled={markAllRead.isPending}
               >
-                {c}
+                Hamısını oxunmuş işarələ ({unreadIds.length})
               </button>
-            ))}
+            ) : null}
           </div>
 
           {filtered.length === 0 ? (
@@ -162,7 +211,19 @@ export function AnnouncementsPage() {
                   </div>
                   <h3 className="text-h3">{a.title}</h3>
                   <p className="text-body mt-1">{a.body}</p>
-                  <div className="text-meta mt-2" style={{ color: 'var(--text-muted)' }}>{relativeTime(a.published_at)}</div>
+                  <div className="flex items-center justify-between mt-2 gap-3">
+                    <span className="text-meta" style={{ color: 'var(--text-muted)' }}>{relativeTime(a.published_at)}</span>
+                    {isAdmin ? (
+                      <label className="text-meta flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={!!a.is_featured}
+                          onChange={(e) => toggleFeatured.mutate({ id: a.id, featured: e.target.checked })}
+                        />
+                        Featured
+                      </label>
+                    ) : null}
+                  </div>
                 </article>
               ))}
             </div>

@@ -1,9 +1,14 @@
 /**
  * PRD §9.2 — US-CAREER-01
  * career_levels (id, name, level_index, requirements jsonb)
- * Admin edits; users read + see promotion path from current level → next.
+ * profiles.career_level_id = current; profiles.career_progress.criteria = self-ticked.
+ *
+ * Layout:
+ *  - Top banner: "Cari → Növbəti" personal card with criteria checkboxes
+ *  - Below: full ladder grid (read-only for non-admins)
+ *  - Admins can edit levels and assign career_level_id from each user's row
  */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
 import { supabase } from '@/lib/supabase';
@@ -17,8 +22,14 @@ type CareerLevel = {
   created_at: string;
 };
 
+type ProfileCareer = {
+  id: string;
+  career_level_id: string | null;
+  career_progress: { criteria?: string[] } | null;
+};
+
 export function CareerPage() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, profile } = useAuth();
   const qc = useQueryClient();
   const [editing, setEditing] = useState<CareerLevel | null>(null);
   const [creating, setCreating] = useState(false);
@@ -35,6 +46,54 @@ export function CareerPage() {
     },
   });
 
+  const me = useQuery({
+    queryKey: ['profile_career', profile?.id],
+    enabled: !!profile?.id,
+    queryFn: async (): Promise<ProfileCareer | null> => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, career_level_id, career_progress')
+        .eq('id', profile!.id)
+        .maybeSingle();
+      return (data ?? null) as ProfileCareer | null;
+    },
+  });
+
+  const current = useMemo(
+    () => levels.find((l) => l.id === me.data?.career_level_id) ?? null,
+    [levels, me.data?.career_level_id],
+  );
+  const next = useMemo(() => {
+    if (!current) return levels[0] ?? null;
+    return levels.find((l) => l.level_index > current.level_index) ?? null;
+  }, [levels, current]);
+
+  const ticked = new Set<string>(me.data?.career_progress?.criteria ?? []);
+
+  const toggleCriterion = useMutation({
+    mutationFn: async (criteria: string[]) => {
+      if (!profile?.id) return;
+      const { error } = await supabase
+        .from('profiles')
+        .update({ career_progress: { criteria } })
+        .eq('id', profile.id);
+      if (error) throw error;
+    },
+    onMutate: async (criteria) => {
+      await qc.cancelQueries({ queryKey: ['profile_career', profile?.id] });
+      const prev = qc.getQueryData(['profile_career', profile?.id]);
+      qc.setQueryData(['profile_career', profile?.id], {
+        ...(me.data ?? { id: profile?.id, career_level_id: null }),
+        career_progress: { criteria },
+      });
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['profile_career', profile?.id], ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['profile_career', profile?.id] }),
+  });
+
   return (
     <>
       <PageHead
@@ -49,6 +108,68 @@ export function CareerPage() {
         }
       />
 
+      {/* Personalized "current → next" panel */}
+      {!isLoading && levels.length > 0 ? (
+        <section className="card mb-5" style={{ padding: 20 }}>
+          <div className="flex flex-wrap items-baseline gap-3 mb-3">
+            <div>
+              <div className="text-meta uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                Cari səviyyə
+              </div>
+              <h2 className="text-h2">{current?.name ?? 'Hələ təyin edilməyib'}</h2>
+            </div>
+            <span className="text-h3" style={{ color: 'var(--text-muted)' }}>→</span>
+            <div>
+              <div className="text-meta uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                Növbəti hədəf
+              </div>
+              <h2 className="text-h2" style={{ color: 'var(--brand-text)' }}>
+                {next?.name ?? 'Yoxdur'}
+              </h2>
+            </div>
+          </div>
+          {next && (next.requirements.criteria ?? []).length > 0 ? (
+            <ul className="space-y-2">
+              {(next.requirements.criteria ?? []).map((c) => (
+                <li key={c}>
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={ticked.has(c)}
+                      onChange={(e) => {
+                        const set = new Set(ticked);
+                        if (e.target.checked) set.add(c);
+                        else set.delete(c);
+                        toggleCriterion.mutate(Array.from(set));
+                      }}
+                    />
+                    <span
+                      className="text-body"
+                      style={{
+                        color: ticked.has(c) ? 'var(--text-muted)' : 'var(--text)',
+                        textDecoration: ticked.has(c) ? 'line-through' : 'none',
+                      }}
+                    >
+                      {c}
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+              {next ? 'Bu səviyyə üçün kriteriya hələ qurulmayıb.' : 'Tövsiyələr üçün admin ilə əlaqə saxla.'}
+            </p>
+          )}
+          {next && (next.requirements.criteria ?? []).length > 0 ? (
+            <div className="mt-3 text-meta" style={{ color: 'var(--text-muted)' }}>
+              {ticked.size} / {(next.requirements.criteria ?? []).length} tamamlandı
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
       {isLoading ? (
         <div className="card text-meta">Yüklənir…</div>
       ) : levels.length === 0 ? (
@@ -60,55 +181,62 @@ export function CareerPage() {
         </div>
       ) : (
         <ol className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-          {levels.map((l, i) => (
-            <li key={l.id} className="card relative">
-              <div
-                className="text-meta uppercase tracking-wider mb-1"
-                style={{ color: 'var(--text-muted)' }}
+          {levels.map((l, i) => {
+            const isCurrent = l.id === me.data?.career_level_id;
+            return (
+              <li
+                key={l.id}
+                className="card relative"
+                style={isCurrent ? { borderColor: 'var(--brand-text)', borderWidth: 2 } : undefined}
               >
-                Səviyyə {l.level_index}
-              </div>
-              <h3 className="text-h3">{l.name}</h3>
-
-              {(l.requirements?.criteria ?? []).length > 0 ? (
-                <ul className="mt-3 space-y-1">
-                  {(l.requirements.criteria ?? []).map((c, j) => (
-                    <li
-                      key={j}
-                      className="flex items-start gap-2 text-body"
-                      style={{ color: 'var(--text-soft)' }}
-                    >
-                      <span style={{ color: 'var(--brand-text)', flexShrink: 0 }}>·</span>
-                      {c}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-
-              <div className="mt-3 pt-3" style={{ borderTop: '1px dashed var(--line)' }}>
-                {i < levels.length - 1 ? (
-                  <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                    → {levels[i + 1].name}
-                  </p>
-                ) : (
-                  <p className="text-meta" style={{ color: 'var(--brand-text)' }}>
-                    Ən yüksək səviyyə
-                  </p>
-                )}
-              </div>
-
-              {isAdmin ? (
-                <button
-                  type="button"
-                  className="absolute top-3 right-3 text-meta"
+                <div
+                  className="text-meta uppercase tracking-wider mb-1"
                   style={{ color: 'var(--text-muted)' }}
-                  onClick={() => setEditing(l)}
                 >
-                  Düzəlt
-                </button>
-              ) : null}
-            </li>
-          ))}
+                  Səviyyə {l.level_index} {isCurrent ? '· cari' : ''}
+                </div>
+                <h3 className="text-h3">{l.name}</h3>
+
+                {(l.requirements?.criteria ?? []).length > 0 ? (
+                  <ul className="mt-3 space-y-1">
+                    {(l.requirements.criteria ?? []).map((c, j) => (
+                      <li
+                        key={j}
+                        className="flex items-start gap-2 text-body"
+                        style={{ color: 'var(--text-soft)' }}
+                      >
+                        <span style={{ color: 'var(--brand-text)', flexShrink: 0 }}>·</span>
+                        {c}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+
+                <div className="mt-3 pt-3" style={{ borderTop: '1px dashed var(--line)' }}>
+                  {i < levels.length - 1 ? (
+                    <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                      → {levels[i + 1].name}
+                    </p>
+                  ) : (
+                    <p className="text-meta" style={{ color: 'var(--brand-text)' }}>
+                      Ən yüksək səviyyə
+                    </p>
+                  )}
+                </div>
+
+                {isAdmin ? (
+                  <button
+                    type="button"
+                    className="absolute top-3 right-3 text-meta"
+                    style={{ color: 'var(--text-muted)' }}
+                    onClick={() => setEditing(l)}
+                  >
+                    Düzəlt
+                  </button>
+                ) : null}
+              </li>
+            );
+          })}
         </ol>
       )}
 

@@ -10,6 +10,8 @@
     { "path": "/api/cron/cmo", "schedule": "0 7 * * 1" },
     { "path": "/api/cron/notify-fanout", "schedule": "0 8 * * *" },
     { "path": "/api/cron/deadline-reminders", "schedule": "0 5 * * *" },
-    { "path": "/api/cron/finance-alerts", "schedule": "0 6 * * *" }
+    { "path": "/api/cron/finance-alerts", "schedule": "0 6 * * *" },
+    { "path": "/api/cron/okr-nudge", "schedule": "0 9 * * 1" },
+    { "path": "/api/cron/content-reminders", "schedule": "30 8 * * *" }
   ]
 }

@@ -1,6 +1,6 @@
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useEffect, useRef } from 'react';
-import { Sidebar } from './Sidebar';
+import { Sidebar, MobileNavToggle } from './Sidebar';
 import { MiraiDrawer } from './MiraiDrawer';
 import { CmdK } from './CmdK';
 import { NotificationBell } from './NotificationBell';
@@ -63,9 +63,10 @@ export function Layout() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <main className="flex-1 px-6 lg:px-10 py-6 max-w-[1600px] mx-auto w-full">
+      <main className="flex-1 px-4 sm:px-6 lg:px-10 py-6 max-w-[1600px] mx-auto w-full">
         {session ? (
-          <div className="flex justify-end mb-2">
+          <div className="flex items-center justify-between mb-2 gap-3">
+            <MobileNavToggle />
             <NotificationBell />
           </div>
         ) : null}

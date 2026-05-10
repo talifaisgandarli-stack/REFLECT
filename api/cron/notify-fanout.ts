@@ -45,6 +45,13 @@ const KIND_TITLE: Record<string, string> = {
   task_cancelled: 'Tapşırıq ləğv edildi',
   deadline_reminder: 'Deadline yaxınlaşır',
   finance_alert: 'Maliyyə xəbərdarlığı',
+  performance_review: 'Performans qiymətləndirməsi',
+  leave_request: 'Yeni məzuniyyət sorğusu',
+  leave_approved: 'Məzuniyyət təsdiqləndi',
+  leave_denied: 'Məzuniyyət rədd edildi',
+  okr_nudge: 'Həftəlik OKR yenilənməsi',
+  content_due_soon: 'Məzmun planı yaxınlaşır',
+  announcement: 'Yeni elan',
 };
 
 function bodyFor(n: NotifRow): string {
@@ -55,6 +62,8 @@ function bodyFor(n: NotifRow): string {
     lines.push(`Status: ${p.from} → ${p.to}`);
   }
   if (typeof p.deadline === 'string') lines.push(`Deadline: ${p.deadline}`);
+  if (typeof p.scheduled_at === 'string') lines.push(`Tarix: ${p.scheduled_at}`);
+  if (typeof p.reason === 'string') lines.push(p.reason);
   return lines.join('\n');
 }
 

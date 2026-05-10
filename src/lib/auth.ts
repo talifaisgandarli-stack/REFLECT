@@ -16,6 +16,17 @@ export function useAuthBootstrap() {
         .select('*')
         .eq('id', userId)
         .maybeSingle<Profile>();
+
+      // REQ-AUTH-03 — deactivated profiles must not have a session.
+      if (profile && profile.is_active === false) {
+        await supabase.auth.signOut();
+        if (!cancelled) {
+          setSession(null);
+          setProfile(null, null);
+        }
+        return;
+      }
+
       let role: Role | null = null;
       if (profile?.role_id) {
         const { data } = await supabase
@@ -60,4 +71,11 @@ export async function signOut() {
 
 export async function sendMagicLink(email: string) {
   return supabase.auth.signInWithOtp({ email });
+}
+
+export async function sendPasswordReset(email: string) {
+  // Uses Supabase's hosted password-reset email (configurable in dashboard).
+  return supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}/login`,
+  });
 }

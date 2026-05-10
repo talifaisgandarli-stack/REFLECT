@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(node_modules\\\\.bin\\\\tsc --noEmit)",
-      "PowerShell(git config --get credential.helper; [System.Environment]::GetEnvironmentVariable\\(\"GITHUB_TOKEN\"\\); [System.Environment]::GetEnvironmentVariable\\(\"GH_TOKEN\"\\))"
+      "PowerShell(git config --get credential.helper; [System.Environment]::GetEnvironmentVariable\\(\"GITHUB_TOKEN\"\\); [System.Environment]::GetEnvironmentVariable\\(\"GH_TOKEN\"\\))",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
     ]
   }
 }

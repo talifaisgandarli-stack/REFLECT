@@ -21,11 +21,17 @@ type Comment = {
 type Profile = { id: string; full_name: string | null };
 
 function parseMentions(body: string, profiles: Profile[]): string[] {
-  const words = body.match(/@[\wЀ-ӿ]+/g) ?? [];
+  // Match @ followed by a word (Latin or Cyrillic). Resolve to first profile
+  // whose full_name starts with the captured token (case-insensitive). Fall
+  // back to substring match only if no prefix hit. This keeps `@ali` from
+  // ambiguously matching both "Aliyev" and "Allahverdiyev" — the prefix wins.
+  const tokens = body.match(/@[\wЀ-ӿ]+/g) ?? [];
   const ids: string[] = [];
-  for (const word of words) {
-    const name = word.slice(1).toLowerCase();
-    const match = profiles.find((p) => p.full_name?.toLowerCase().includes(name));
+  for (const token of tokens) {
+    const name = token.slice(1).toLowerCase();
+    if (!name) continue;
+    const byPrefix = profiles.find((p) => p.full_name?.toLowerCase().startsWith(name));
+    const match = byPrefix ?? profiles.find((p) => p.full_name?.toLowerCase().includes(name));
     if (match && !ids.includes(match.id)) ids.push(match.id);
   }
   return ids;
@@ -79,6 +85,8 @@ export function TaskCommentsModal({
       if (!trimmed) return;
       const mentions = parseMentions(trimmed, profiles.data ?? []);
 
+      // task_comments_notify_mentions trigger (migration 0004 + 0019) handles
+      // both the activity_log entry and notification fan-out for each mention.
       const { error } = await supabase.from('task_comments').insert({
         task_id: taskId,
         user_id: profile?.id,
@@ -86,17 +94,6 @@ export function TaskCommentsModal({
         mentions,
       });
       if (error) throw error;
-
-      // notify mentioned users
-      if (mentions.length && profile?.id) {
-        await supabase.from('notifications').insert(
-          mentions.map((uid) => ({
-            user_id: uid,
-            kind: 'mention',
-            payload: { task_id: taskId, task_title: taskTitle, from: profile.id, body: trimmed },
-          })),
-        );
-      }
     },
     onSuccess: () => {
       setBody('');
