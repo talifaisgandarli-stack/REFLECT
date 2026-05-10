@@ -1,10 +1,17 @@
 /**
  * REQ-TASK-07: Post a task comment, parse @userId mentions server-side,
  * populate mentions[], and notify mentioned users (in-app + Telegram if linked).
+ * PRD §9.1: Zod schema at API boundary.
  */
+import { z } from 'zod';
 import { admin, errorResponse, HttpError, jsonResponse, requireUser, rateLimit } from '../_lib/auth';
 
 export const config = { runtime: 'edge' };
+
+const CommentSchema = z.object({
+  task_id: z.string().uuid({ message: 'task_id düzgün UUID deyil' }),
+  body: z.string().min(1, 'body tələb olunur').max(4000, 'Maksimum 4000 simvol'),
+});
 
 // Matches @<uuid-v4> in comment body (REQ-TASK-07: "@userId format").
 const MENTION_RE = /@([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
@@ -25,23 +32,21 @@ export default async function handler(req: Request) {
 
     const user = await requireUser(req);
     await rateLimit(user, user.id);
-    const body = await req.json().catch(() => null);
-    const taskId = body?.task_id as string | undefined;
-    const text = body?.body as string | undefined;
 
-    if (!taskId || typeof taskId !== 'string') throw new HttpError(400, 'task_id tələb olunur');
-    if (!text || typeof text !== 'string' || !text.trim()) throw new HttpError(400, 'body tələb olunur');
-    if (text.length > 4000) throw new HttpError(400, 'Maksimum 4000 simvol');
+    const raw = await req.json().catch(() => null);
+    const parsed = CommentSchema.safeParse(raw);
+    if (!parsed.success) {
+      throw new HttpError(400, parsed.error.issues.map((e) => e.message).join('; '));
+    }
+    const { task_id: taskId, body: text } = parsed.data;
 
     const sb = admin();
 
-    // Verify task exists (RLS does not apply server-side, so we confirm the row exists).
     const { data: task } = await sb.from('tasks').select('id, title').eq('id', taskId).maybeSingle();
     if (!task) throw new HttpError(404, 'Tapşırıq tapılmadı');
 
     const mentions = parseMentions(text);
 
-    // Insert comment
     const { data: comment, error: ce } = await sb.from('task_comments').insert({
       task_id: taskId,
       user_id: user.id,
@@ -50,16 +55,13 @@ export default async function handler(req: Request) {
     }).select('id').single();
     if (ce) throw ce;
 
-    // Notify mentioned users — skip the author themselves
     const targets = mentions.filter((id) => id !== user.id);
     if (targets.length > 0) {
-      // Resolve profiles (full_name + telegram_chat_id) for targets
       const { data: profiles } = await sb
         .from('profiles')
         .select('id, full_name, telegram_chat_id')
         .in('id', targets);
 
-      // Insert in-app notifications
       const notifRows = (profiles ?? []).map((p) => ({
         user_id: p.id,
         type: 'mention',
@@ -70,7 +72,6 @@ export default async function handler(req: Request) {
         await sb.from('notifications').insert(notifRows);
       }
 
-      // Telegram notifications for users who have linked their account
       const botToken = process.env.TELEGRAM_BOT_TOKEN;
       if (botToken) {
         const telegramTargets = (profiles ?? []).filter((p) => p.telegram_chat_id);
@@ -80,7 +81,7 @@ export default async function handler(req: Request) {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ chat_id: p.telegram_chat_id, text: msg }),
-          }).catch(() => null); // best-effort
+          }).catch(() => null);
         }
       }
     }

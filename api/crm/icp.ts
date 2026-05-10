@@ -5,8 +5,13 @@
  * Admin only. Uses Claude Haiku to score ai_icp_fit ∈ {Excellent/Good/Medium/Low}.
  * Rate-limited: 1 call per client per 24h (ai_icp_calculated_at guard).
  */
+import { z } from 'zod';
 import Anthropic from '@anthropic-ai/sdk';
 import { admin, errorResponse, HttpError, jsonResponse, requireUser, rateLimit } from '../_lib/auth';
+
+const IcpSchema = z.object({
+  client_id: z.string().uuid('client_id düzgün UUID deyil'),
+});
 
 export const config = { runtime: 'edge' };
 
@@ -21,9 +26,10 @@ export default async function handler(req: Request) {
     await rateLimit(user, user.id);
     if (!user.isAdmin) throw new HttpError(403, 'Yalnız adminlər üçündür.');
 
-    const body = (await req.json()) as { client_id?: string };
-    const clientId = body.client_id?.trim();
-    if (!clientId) throw new HttpError(400, 'client_id tələb olunur');
+    const reqBody = await req.json().catch(() => null);
+    const parsed = IcpSchema.safeParse(reqBody);
+    if (!parsed.success) throw new HttpError(400, parsed.error.issues.map((e) => e.message).join('; '));
+    const { client_id: clientId } = parsed.data;
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) throw new HttpError(500, 'ANTHROPIC_API_KEY not configured');
@@ -89,14 +95,14 @@ Low`;
       messages: [{ role: 'user', content: prompt }],
     });
 
-    const raw = completion.content
+    const rawText = completion.content
       .filter((b) => b.type === 'text')
       .map((b) => (b as { text: string }).text)
       .join('')
       .trim();
 
-    const fit = FIT_VALUES.find((v) => raw.startsWith(v));
-    if (!fit) throw new HttpError(500, `MIRAI gözlənilməz cavab verdi: ${raw}`);
+    const fit = FIT_VALUES.find((v) => rawText.startsWith(v));
+    if (!fit) throw new HttpError(500, `MIRAI gözlənilməz cavab verdi: ${rawText}`);
 
     await sb
       .from('clients')

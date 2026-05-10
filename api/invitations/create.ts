@@ -2,7 +2,13 @@
  * Admin-only invite. Issues a 48h token, sends magic-link email via Resend.
  * REQ-AUTH-02.
  */
+import { z } from 'zod';
 import { admin, errorResponse, HttpError, jsonResponse, requireUser, writeAuditLog } from '../_lib/auth';
+
+const InviteSchema = z.object({
+  email: z.string().email('Düzgün email daxil edin'),
+  role_key: z.string().min(1, 'role_key tələb olunur'),
+});
 
 export const config = { runtime: 'edge' };
 
@@ -12,8 +18,10 @@ export default async function handler(req: Request) {
     const user = await requireUser(req);
     if (!user.isAdmin) throw new HttpError(403, 'Admin only');
 
-    const { email, role_key } = (await req.json()) as { email?: string; role_key?: string };
-    if (!email || !role_key) throw new HttpError(400, 'email + role_key required');
+    const raw = await req.json().catch(() => null);
+    const parsed = InviteSchema.safeParse(raw);
+    if (!parsed.success) throw new HttpError(400, parsed.error.issues.map((e) => e.message).join('; '));
+    const { email, role_key } = parsed.data;
 
     const sb = admin();
     const { data: role } = await sb.from('roles').select('id').eq('key', role_key).maybeSingle();

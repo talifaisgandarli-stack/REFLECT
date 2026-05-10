@@ -1,10 +1,20 @@
 /**
  * REQ-CRM-07: Public survey response endpoint — no auth required.
- * Validates share_token, records NPS 0-10, per-category ratings 1-5, and free comment.
+ * PRD §9.1: Zod schema at API boundary.
  */
+import { z } from 'zod';
 import { admin, errorResponse, HttpError, jsonResponse, rateLimit } from '../_lib/auth';
 
 export const config = { runtime: 'edge' };
+
+const RespondSchema = z.object({
+  share_token: z.string().min(1, 'share_token tələb olunur'),
+  nps_score: z.number().int().min(0, 'nps_score 0–10 tam ədəd olmalıdır').max(10, 'nps_score 0–10 tam ədəd olmalıdır'),
+  ratings: z
+    .record(z.string(), z.number().int().min(1).max(5, 'Hər reytinq 1–5 tam ədəd olmalıdır'))
+    .optional(),
+  comment: z.string().max(2000).optional(),
+});
 
 export default async function handler(req: Request) {
   try {
@@ -12,26 +22,13 @@ export default async function handler(req: Request) {
 
     const ip = req.headers.get('cf-connecting-ip') ?? req.headers.get('x-forwarded-for') ?? 'unknown';
     await rateLimit(null, ip);
-    const body = await req.json().catch(() => null);
-    const token = body?.share_token as string | undefined;
-    const nps = body?.nps_score;
-    const ratings = body?.ratings;
-    const comment = body?.comment;
 
-    if (!token || typeof token !== 'string') throw new HttpError(400, 'share_token tələb olunur');
-    if (typeof nps !== 'number' || nps < 0 || nps > 10 || !Number.isInteger(nps)) {
-      throw new HttpError(400, 'nps_score 0–10 tam ədəd olmalıdır');
+    const raw = await req.json().catch(() => null);
+    const parsed = RespondSchema.safeParse(raw);
+    if (!parsed.success) {
+      throw new HttpError(400, parsed.error.issues.map((e) => e.message).join('; '));
     }
-    if (ratings !== undefined && (typeof ratings !== 'object' || Array.isArray(ratings) || ratings === null)) {
-      throw new HttpError(400, 'ratings JSON obyekt olmalıdır');
-    }
-    if (ratings) {
-      for (const [, v] of Object.entries(ratings)) {
-        if (typeof v !== 'number' || v < 1 || v > 5 || !Number.isInteger(v)) {
-          throw new HttpError(400, 'Hər reytinq 1–5 tam ədəd olmalıdır');
-        }
-      }
-    }
+    const { share_token: token, nps_score: nps, ratings, comment } = parsed.data;
 
     const sb = admin();
 
@@ -47,7 +44,7 @@ export default async function handler(req: Request) {
     await sb.from('retrospective_surveys').update({
       nps_score: nps,
       ratings: ratings ?? null,
-      comment: typeof comment === 'string' ? comment.trim().slice(0, 2000) : null,
+      comment: comment?.trim() ?? null,
       responded_at: new Date().toISOString(),
     }).eq('id', survey.id);
 
