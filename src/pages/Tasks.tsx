@@ -10,6 +10,7 @@ import { supabase } from '@/lib/supabase';
 import { SubtaskBlockingModal } from '@/components/SubtaskBlockingModal';
 import { TaskCreateModal } from '@/components/TaskCreateModal';
 import { CancelTaskModal } from '@/components/CancelTaskModal';
+import { TaskCommentsModal } from '@/components/TaskCommentsModal';
 
 export function TasksPage() {
   const { profile, isAdmin } = useAuth();
@@ -24,6 +25,7 @@ export function TasksPage() {
   const [creating, setCreating] = useState(false);
   const [cancelling, setCancelling] = useState<{ id: string; title: string } | null>(null);
   const [confirmArchive, setConfirmArchive] = useState(false);
+  const [commenting, setCommenting] = useState<{ id: string; title: string } | null>(null);
 
   const archivableCount = useMemo(
     () => tasks.filter((t) => t.status === 'done' || t.status === 'cancelled').length,
@@ -173,7 +175,12 @@ export function TasksPage() {
                         border: `1px solid ${isToday ? '#2D3833' : 'var(--line)'}`,
                       }}
                     >
-                      <div className="font-medium">{t.title}</div>
+                      <div
+                        className="font-medium cursor-pointer"
+                        onClick={(e) => { e.stopPropagation(); setCommenting({ id: t.id, title: t.title }); }}
+                      >
+                        {t.title}
+                      </div>
                       <div className="flex items-center justify-between mt-1">
                         {t.deadline ? (
                           <span
@@ -188,22 +195,33 @@ export function TasksPage() {
                         ) : (
                           <span />
                         )}
-                        {t.status !== 'done' && t.status !== 'cancelled' ? (
+                        <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setCancelling({ id: t.id, title: t.title });
-                            }}
+                            onClick={(e) => { e.stopPropagation(); setCommenting({ id: t.id, title: t.title }); }}
                             className="text-meta opacity-60 hover:opacity-100"
-                            style={{
-                              color: isToday ? 'var(--text-faint)' : 'var(--text-muted)',
-                            }}
-                            aria-label={`Tapşırığı ləğv et: ${t.title}`}
+                            style={{ color: isToday ? 'var(--text-faint)' : 'var(--text-muted)', fontSize: 13 }}
+                            aria-label="Şərhlər"
                           >
-                            Ləğv et
+                            💬
                           </button>
-                        ) : null}
+                          {t.status !== 'done' && t.status !== 'cancelled' ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCancelling({ id: t.id, title: t.title });
+                              }}
+                              className="text-meta opacity-60 hover:opacity-100"
+                              style={{
+                                color: isToday ? 'var(--text-faint)' : 'var(--text-muted)',
+                              }}
+                              aria-label={`Tapşırığı ləğv et: ${t.title}`}
+                            >
+                              Ləğv et
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
                     </article>
                   ))}
@@ -267,6 +285,14 @@ export function TasksPage() {
             setCancelling(null);
             update.reset();
           }}
+        />
+      ) : null}
+
+      {commenting ? (
+        <TaskCommentsModal
+          taskId={commenting.id}
+          taskTitle={commenting.title}
+          onClose={() => setCommenting(null)}
         />
       ) : null}
 

@@ -49,18 +49,95 @@ export function SettingsPage() {
   );
 }
 
+// §10.1 / REQ-TG-03 — General settings incl. Telegram finance alert thresholds
 function GeneralSettings() {
+  const qc = useQueryClient();
+
+  const settings = useQuery({
+    queryKey: ['system_settings'],
+    queryFn: async () => {
+      const { data } = await supabase.from('system_settings').select('key, value');
+      return Object.fromEntries((data ?? []).map((r: { key: string; value: string }) => [r.key, r.value]));
+    },
+  });
+
+  const [incomeAlert, setIncomeAlert] = useState('');
+  const [expenseAlert, setExpenseAlert] = useState('');
+  const [saved, setSaved] = useState(false);
+
+  // populate once loaded
+  const loaded = settings.data;
+  if (loaded && incomeAlert === '' && loaded.income_alert) setIncomeAlert(loaded.income_alert);
+  if (loaded && expenseAlert === '' && loaded.expense_alert) setExpenseAlert(loaded.expense_alert);
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const rows = [
+        { key: 'income_alert', value: incomeAlert || '5000' },
+        { key: 'expense_alert', value: expenseAlert || '2000' },
+      ];
+      for (const row of rows) {
+        const { error } = await supabase.from('system_settings').upsert(row, { onConflict: 'key' });
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['system_settings'] });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    },
+  });
+
   return (
-    <div className="space-y-3">
-      <h3 className="text-h3">Şirkət</h3>
-      <label className="block">
-        <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Şirkət adı</span>
-        <input className="input mt-1 max-w-md" defaultValue="Reflect" />
-      </label>
-      <label className="block">
-        <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Region / Saat qurşağı</span>
-        <input className="input mt-1 max-w-md" defaultValue="Asia/Baku" disabled />
-      </label>
+    <div className="space-y-5">
+      <div className="space-y-3">
+        <h3 className="text-h3">Şirkət</h3>
+        <label className="block">
+          <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Şirkət adı</span>
+          <input className="input mt-1 max-w-md" defaultValue="Reflect" />
+        </label>
+        <label className="block">
+          <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Region / Saat qurşağı</span>
+          <input className="input mt-1 max-w-md" defaultValue="Asia/Baku" disabled />
+        </label>
+      </div>
+
+      {/* REQ-TG-03 — Finance alert thresholds stored in system_settings */}
+      <div className="space-y-3" style={{ paddingTop: 12, borderTop: '1px solid var(--line)' }}>
+        <h3 className="text-h3">Telegram maliyyə bildirişləri</h3>
+        <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+          Bu məbləğləri keçən gəlir / xərc hadisələri yalnız admin Telegram-ına göndərilir.
+        </p>
+        <div className="flex gap-4 flex-wrap">
+          <label className="block">
+            <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Gəlir hədd (AZN)</span>
+            <input
+              type="number"
+              className="input max-w-[140px]"
+              value={incomeAlert}
+              onChange={(e) => setIncomeAlert(e.target.value)}
+              placeholder="5000"
+            />
+          </label>
+          <label className="block">
+            <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Xərc hədd (AZN)</span>
+            <input
+              type="number"
+              className="input max-w-[140px]"
+              value={expenseAlert}
+              onChange={(e) => setExpenseAlert(e.target.value)}
+              placeholder="2000"
+            />
+          </label>
+        </div>
+        <div className="flex items-center gap-3">
+          <button className="btn-primary" disabled={save.isPending} onClick={() => save.mutate()}>
+            {save.isPending ? 'Saxlanılır…' : 'Saxla'}
+          </button>
+          {saved ? <span className="text-meta" style={{ color: 'var(--brand-text)' }}>Saxlandı ✓</span> : null}
+          {save.error ? <span className="text-meta" style={{ color: '#B91C1C' }}>{(save.error as Error).message}</span> : null}
+        </div>
+      </div>
     </div>
   );
 }
