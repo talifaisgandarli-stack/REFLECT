@@ -222,7 +222,7 @@ export function CalendarPage() {
                       }}
                       onClick={(e) => { e.stopPropagation(); setSelected(ev); }}
                     >
-                      {ev.title}
+                      {ev.recurrence_rule ? '↻ ' : ''}{ev.title}
                     </div>
                   ))}
                   {dayEvents.length > 2 ? (
@@ -381,6 +381,11 @@ function EventModal({ event, onClose }: { event: CalEvent; onClose: () => void }
           {' '}{fmtTime(event.starts_at)} – {fmtTime(event.ends_at)}
         </p>
         {event.location ? <p className="mt-2 text-body">📍 {event.location}</p> : null}
+        {event.recurrence_rule ? (
+          <p className="mt-2 text-meta" style={{ color: 'var(--brand-text)' }}>
+            ↻ {rruleLabel(event.recurrence_rule)}
+          </p>
+        ) : null}
         {event.meet_url ? (
           <a
             href={event.meet_url}
@@ -406,6 +411,24 @@ type CreateProps = {
   onClose: () => void;
   onCreated: () => void;
 };
+// RFC 5545 recurrence options (§8.2 — recurrence_rule field)
+type RecurFreq = 'none' | 'DAILY' | 'WEEKDAYS' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+
+const RECUR_LABELS: Record<RecurFreq, string> = {
+  none: 'Təkrarlanmır',
+  DAILY: 'Hər gün',
+  WEEKDAYS: 'İş günləri (B.e.–C.)',
+  WEEKLY: 'Hər həftə',
+  MONTHLY: 'Hər ay',
+  YEARLY: 'Hər il',
+};
+
+function buildRRule(freq: RecurFreq): string | null {
+  if (freq === 'none') return null;
+  if (freq === 'WEEKDAYS') return 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR';
+  return `FREQ=${freq}`;
+}
+
 function CreateEventModal({ defaultDate, userId, onClose, onCreated }: CreateProps) {
   const defaultDateStr = defaultDate.toISOString().slice(0, 10);
   const [title, setTitle] = useState('');
@@ -416,6 +439,7 @@ function CreateEventModal({ defaultDate, userId, onClose, onCreated }: CreatePro
   const [meetUrl, setMeetUrl] = useState('');
   const [externalEmails, setExternalEmails] = useState('');
   const [allDay, setAllDay] = useState(false);
+  const [recur, setRecur] = useState<RecurFreq>('none');
 
   const create = useMutation({
     mutationFn: async () => {
@@ -433,6 +457,7 @@ function CreateEventModal({ defaultDate, userId, onClose, onCreated }: CreatePro
         all_day: allDay,
         location: location.trim() || null,
         meet_url: meetUrl.trim() || null,
+        recurrence_rule: buildRRule(recur),
         organizer_id: userId,
         attendees: [userId],
         external_emails: extEmails.length ? extEmails : null,
@@ -441,7 +466,7 @@ function CreateEventModal({ defaultDate, userId, onClose, onCreated }: CreatePro
 
       // Send .ics to external emails via mailto (§8.2 v1 approach)
       if (extEmails.length && title.trim()) {
-        const icsBody = buildIcs({ title: title.trim(), startsAt, endsAt, location: location.trim(), meetUrl: meetUrl.trim() });
+        const icsBody = buildIcs({ title: title.trim(), startsAt, endsAt, location: location.trim(), meetUrl: meetUrl.trim(), rrule: buildRRule(recur) });
         const mailto = `mailto:${extEmails.join(',')}?subject=${encodeURIComponent(title.trim())}&body=${encodeURIComponent('Dəvət təqvim faylı (ICS) əlavə edilib.\n\n' + icsBody)}`;
         window.open(mailto);
       }
@@ -519,6 +544,29 @@ function CreateEventModal({ defaultDate, userId, onClose, onCreated }: CreatePro
               placeholder="ad@firma.com, ad2@firma.com"
             />
           </Field>
+
+          {/* Recurrence — RFC 5545 (PRD §8.2 recurrence_rule field) */}
+          <Field label="Təkrarlama">
+            <select
+              className="input"
+              value={recur}
+              onChange={(e) => setRecur(e.target.value as RecurFreq)}
+            >
+              {(Object.keys(RECUR_LABELS) as RecurFreq[]).map((k) => (
+                <option key={k} value={k}>{RECUR_LABELS[k]}</option>
+              ))}
+            </select>
+          </Field>
+
+          {recur !== 'none' ? (
+            <div
+              className="rounded-card px-3 py-2 text-meta flex items-center gap-2"
+              style={{ background: 'rgba(173,251,73,0.06)', border: '1px solid rgba(173,251,73,0.15)', color: 'var(--brand-text)' }}
+            >
+              <span style={{ fontSize: 14 }}>↻</span>
+              <span>{RECUR_LABELS[recur]} · RFC 5545: <code style={{ fontSize: 11, opacity: 0.8 }}>{buildRRule(recur)}</code></span>
+            </div>
+          ) : null}
         </div>
 
         {create.error ? (
@@ -538,13 +586,23 @@ function CreateEventModal({ defaultDate, userId, onClose, onCreated }: CreatePro
   );
 }
 
-function buildIcs(opts: { title: string; startsAt: string; endsAt: string; location: string; meetUrl: string }): string {
+function rruleLabel(rule: string): string {
+  if (rule === 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR') return 'İş günləri (B.e.–C.)';
+  if (rule.startsWith('FREQ=DAILY')) return 'Hər gün';
+  if (rule.startsWith('FREQ=WEEKLY')) return 'Hər həftə';
+  if (rule.startsWith('FREQ=MONTHLY')) return 'Hər ay';
+  if (rule.startsWith('FREQ=YEARLY')) return 'Hər il';
+  return rule;
+}
+
+function buildIcs(opts: { title: string; startsAt: string; endsAt: string; location: string; meetUrl: string; rrule?: string | null }): string {
   const fmt = (s: string) => s.replace(/[-:]/g, '').replace('T', 'T').slice(0, 15) + 'Z';
   return [
     'BEGIN:VCALENDAR', 'VERSION:2.0', 'BEGIN:VEVENT',
     `SUMMARY:${opts.title}`,
     `DTSTART:${fmt(opts.startsAt)}`,
     `DTEND:${fmt(opts.endsAt)}`,
+    opts.rrule ? `RRULE:${opts.rrule}` : null,
     opts.location ? `LOCATION:${opts.location}` : null,
     opts.meetUrl ? `URL:${opts.meetUrl}` : null,
     'END:VEVENT', 'END:VCALENDAR',

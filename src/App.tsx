@@ -28,6 +28,7 @@ import { SettingsPage } from '@/pages/Settings';
 import { MiraiPage } from '@/pages/Mirai';
 import { TelegramLinkPage } from '@/pages/TelegramLink';
 import { RetroSurveyPage } from '@/pages/RetroSurvey';
+import { SharedDocPage } from '@/pages/SharedDoc';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { session, hydrated } = useAuth();
@@ -50,6 +51,7 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       {/* PUBLIC — no auth required */}
       <Route path="/retro/:token" element={<RetroSurveyPage />} />
+      <Route path="/docs/:token" element={<SharedDocPage />} />
       <Route
         element={
           <RequireAuth>

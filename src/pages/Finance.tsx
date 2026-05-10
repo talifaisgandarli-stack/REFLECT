@@ -6,6 +6,7 @@ import { formatAZN, formatDate, bakuMonthKey, bakuCurrentMonthRange } from '@/li
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { IncomeExpenseModal, type FinanceKind } from '@/components/IncomeExpenseModal';
 import { MarkPaidModal } from '@/components/MarkPaidModal';
+import { InvoiceFromTemplateModal } from '@/components/InvoiceFromTemplateModal';
 
 const TABS = ['Cash Cockpit', 'P&L', 'Outsource', 'Xərclər', 'Sabit', 'Debitor', 'Forecast'] as const;
 
@@ -30,6 +31,7 @@ export function FinancePage() {
   const [tab, setTab] = useState<(typeof TABS)[number]>('Cash Cockpit');
   const [modal, setModal] = useState<FinanceKind | null>(null);
   const [markPaid, setMarkPaid] = useState<Receivable | null>(null);
+  const [invoiceModal, setInvoiceModal] = useState(false);
 
   const incomes = useQuery({
     queryKey: ['fin', 'incomes'],
@@ -82,6 +84,9 @@ export function FinancePage() {
         title="Maliyyə Mərkəzi"
         actions={
           <>
+            <button className="btn-outline" onClick={() => setInvoiceModal(true)}>
+              + Faktura
+            </button>
             <button className="btn-outline" onClick={() => setModal('expense')}>
               + Xərc
             </button>
@@ -237,6 +242,7 @@ export function FinancePage() {
       {markPaid ? (
         <MarkPaidModal receivable={markPaid} onClose={() => setMarkPaid(null)} />
       ) : null}
+      {invoiceModal ? <InvoiceFromTemplateModal onClose={() => setInvoiceModal(false)} /> : null}
     </>
   );
 }
