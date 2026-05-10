@@ -4,6 +4,7 @@ import { useAuthBootstrap } from '@/lib/auth';
 import { Layout } from '@/components/Layout';
 import { LoginPage } from '@/pages/Login';
 import { DashboardPage } from '@/pages/Dashboard';
+import { ProfilePage } from '@/pages/Profile';
 import { ProjectsPage } from '@/pages/Projects';
 import { ProjectDetailPage } from '@/pages/ProjectDetail';
 import { TasksPage } from '@/pages/Tasks';
@@ -119,6 +120,7 @@ export default function App() {
 
         {/* Personal — accessible to every authenticated user */}
         <Route path="/bildirişlər" element={<NotificationPreferencesPage />} />
+        <Route path="/profil" element={<ProfilePage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

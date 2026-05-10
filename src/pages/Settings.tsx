@@ -65,11 +65,257 @@ function GeneralSettings() {
   );
 }
 
+// §10.2 / US-SYS-01 — Templates CRUD with {{variable}} extraction + preview
 function TemplatesSettings() {
-  return <p className="text-body">Sənəd şablonları (kontrakt, akt, faktura) — v1.5-də.</p>;
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState<null | { id?: string; category: string; name: string; body: string; mime_type: string }>(null);
+  const [preview, setPreview] = useState(false);
+
+  const templates = useQuery({
+    queryKey: ['templates'],
+    queryFn: async () => (await supabase.from('templates').select('*').order('created_at', { ascending: false })).data ?? [],
+  });
+
+  function extractVars(body: string): string[] {
+    return [...new Set([...body.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]))];
+  }
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!editing) return;
+      const vars = extractVars(editing.body);
+      const payload = {
+        category: editing.category,
+        name: editing.name,
+        body: editing.body,
+        mime_type: editing.mime_type || 'text/plain',
+        variables: Object.fromEntries(vars.map((v) => [v, ''])),
+      };
+      if (editing.id) {
+        const { error } = await supabase.from('templates').update(payload).eq('id', editing.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('templates').insert(payload);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['templates'] }); setEditing(null); },
+  });
+
+  const del = useMutation({
+    mutationFn: async (id: string) => { await supabase.from('templates').update({ name: `_deprecated_${Date.now()}` }).eq('id', id); },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['templates'] }),
+  });
+
+  if (editing) {
+    const vars = extractVars(editing.body);
+    return (
+      <div className="space-y-4">
+        <h3 className="text-h3">{editing.id ? 'Şablonu redaktə et' : 'Yeni şablon'}</h3>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Ad</span>
+            <input className="input" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
+          </label>
+          <label className="block">
+            <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Kateqoriya</span>
+            <select className="input" value={editing.category} onChange={(e) => setEditing({ ...editing, category: e.target.value })}>
+              {['letter', 'invoice', 'act', 'survey', 'contract', 'other'].map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <label className="block">
+          <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
+            Mətn (&#123;&#123;dəyişən_adı&#125;&#125; formatı)
+          </span>
+          <textarea
+            className="input w-full font-mono"
+            style={{ minHeight: 200, fontSize: 13 }}
+            value={editing.body}
+            onChange={(e) => setEditing({ ...editing, body: e.target.value })}
+          />
+        </label>
+        {vars.length ? (
+          <div>
+            <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Dəyişənlər:</span>
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {vars.map((v) => (
+                <span key={v} className="chip" style={{ background: 'rgba(173,251,73,0.1)', color: 'var(--brand-text)' }}>
+                  {`{{${v}}}`}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {vars.length && preview ? (
+          <div className="card p-4 font-mono text-body whitespace-pre-wrap" style={{ fontSize: 13, background: 'var(--surface-mist)' }}>
+            {editing.body.replace(/\{\{(\w+)\}\}/g, (_, k) => `[${k}]`)}
+          </div>
+        ) : null}
+        {save.error ? <p className="text-meta" style={{ color: '#B91C1C' }}>{(save.error as Error).message}</p> : null}
+        <div className="flex gap-2">
+          <button className="btn-primary" disabled={save.isPending} onClick={() => save.mutate()}>
+            {save.isPending ? 'Saxlanılır…' : 'Saxla'}
+          </button>
+          {vars.length ? (
+            <button className="btn-outline" onClick={() => setPreview((p) => !p)}>
+              {preview ? 'Önizləməni gizlət' : 'Önizlə'}
+            </button>
+          ) : null}
+          <button className="btn-outline" onClick={() => setEditing(null)}>Ləğv</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <h3 className="text-h3">Şablonlar</h3>
+        <button className="btn-primary" onClick={() => setEditing({ category: 'letter', name: '', body: '', mime_type: 'text/plain' })}>
+          + Yeni şablon
+        </button>
+      </div>
+      {templates.isLoading ? <p className="text-meta">Yüklənir…</p> : null}
+      {!templates.isLoading && (templates.data ?? []).length === 0 ? (
+        <p className="text-meta" style={{ color: 'var(--text-muted)' }}>Hələ şablon yoxdur.</p>
+      ) : null}
+      <ul className="space-y-2">
+        {(templates.data ?? []).map((t: { id: string; name: string; category: string; body: string; mime_type: string }) => (
+          <li key={t.id} className="flex items-center justify-between gap-3 py-2 border-b" style={{ borderColor: 'var(--line-soft)' }}>
+            <div>
+              <div className="text-body font-medium">{t.name}</div>
+              <div className="text-meta" style={{ color: 'var(--text-muted)' }}>{t.category}</div>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button className="chip" onClick={() => setEditing({ id: t.id, category: t.category, name: t.name, body: t.body, mime_type: t.mime_type })}>
+                Redaktə
+              </button>
+              <button className="chip" style={{ color: '#B91C1C' }} onClick={() => del.mutate(t.id)}>
+                Sil
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
+
+// §10.3 / US-SYS-02 — Knowledge Base PDF upload + chunk + embed pipeline
 function KnowledgeBaseSettings() {
-  return <p className="text-body">Yüklənmiş PDF-lər və MIRAI RAG mənbələri — burada idarə olunur.</p>;
+  const qc = useQueryClient();
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState<string | null>(null);
+  const [uploadOk, setUploadOk] = useState<string | null>(null);
+
+  const chunks = useQuery({
+    queryKey: ['knowledge-base'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('knowledge_base')
+        .select('id, source_pdf, chunk_index, uploaded_at')
+        .order('uploaded_at', { ascending: false });
+      const byPdf: Record<string, { count: number; uploaded_at: string }> = {};
+      for (const row of data ?? []) {
+        if (!byPdf[row.source_pdf]) byPdf[row.source_pdf] = { count: 0, uploaded_at: row.uploaded_at };
+        byPdf[row.source_pdf].count++;
+      }
+      return byPdf;
+    },
+  });
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      setUploadErr('Yalnız PDF fayllar qəbul edilir.');
+      return;
+    }
+    setUploading(true);
+    setUploadErr(null);
+    setUploadOk(null);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) throw new Error('Sessiya yoxdur');
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/knowledge-base/upload', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? `Yükləmə xətası (${res.status})`);
+
+      setUploadOk(`"${file.name}" uğurla yükləndi — ${data?.chunks ?? '?'} hissəyə bölündü.`);
+      qc.invalidateQueries({ queryKey: ['knowledge-base'] });
+    } catch (err) {
+      setUploadErr((err as Error).message);
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  }
+
+  const pdfs = Object.entries(chunks.data ?? {});
+
+  return (
+    <div className="space-y-5">
+      <h3 className="text-h3">Bilik Bazası (MIRAI RAG)</h3>
+      <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+        AZ inşaat normaları, AZDNT sənədlərini yükləyin. MIRAI Hüquqşünas bu mənbələrə istinad edər.
+      </p>
+
+      <label className="flex items-center gap-3 cursor-pointer">
+        <input
+          type="file"
+          accept=".pdf"
+          className="hidden"
+          onChange={handleUpload}
+          disabled={uploading}
+        />
+        <span className="btn-primary">{uploading ? 'Yüklənir…' : 'PDF yüklə'}</span>
+        <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Maks. 50 MB</span>
+      </label>
+
+      {uploadOk ? <p className="text-meta" style={{ color: 'var(--brand-text)' }}>{uploadOk}</p> : null}
+      {uploadErr ? <p className="text-meta" style={{ color: '#B91C1C' }}>{uploadErr}</p> : null}
+
+      {chunks.isLoading ? <p className="text-meta">Yüklənir…</p> : null}
+
+      {pdfs.length === 0 && !chunks.isLoading ? (
+        <p className="text-meta" style={{ color: 'var(--text-muted)' }}>Hələ PDF yüklənməyib.</p>
+      ) : null}
+
+      {pdfs.length > 0 ? (
+        <ul className="space-y-2">
+          {pdfs.map(([pdf, meta]) => (
+            <li
+              key={pdf}
+              className="flex items-center justify-between gap-3 py-2 border-b"
+              style={{ borderColor: 'var(--line-soft)' }}
+            >
+              <div>
+                <div className="text-body font-medium truncate max-w-xs">{pdf}</div>
+                <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                  {meta.count} hissə · {new Date(meta.uploaded_at).toLocaleDateString('az-AZ')}
+                </div>
+              </div>
+              <span className="chip" style={{ background: 'rgba(173,251,73,0.1)', color: 'var(--brand-text)' }}>
+                RAG
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
 }
 function NotificationsSettings() {
   return <NotificationPreferencesPage />;
