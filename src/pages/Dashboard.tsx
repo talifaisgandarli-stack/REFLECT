@@ -106,6 +106,22 @@ export function DashboardPage() {
   const { data: meetings = [] } = useUpcomingMeetings(7);
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all');
 
+  // REQ-DASH-02 — personal OKR progress (non-admin only)
+  const { data: personalOkrs = [] } = useQuery({
+    queryKey: ['okrs', 'personal', profile?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('okrs')
+        .select('*, key_results(*)')
+        .eq('scope', 'personal')
+        .eq('employee_id', profile!.id)
+        .order('created_at', { ascending: false })
+        .limit(3);
+      return (data ?? []) as Array<{ id: string; objective: string; period: string; key_results: Array<{ current_value: number; target_value: number; title: string }> }>;
+    },
+    enabled: !isAdmin && !!profile?.id,
+  });
+
   // Team tasks for workload (admin only — US-DASH-05)
   const { data: allTasks = [] } = useQuery({
     queryKey: ['tasks-all-open'],
@@ -466,6 +482,36 @@ export function DashboardPage() {
             </ul>
           )}
         </section>
+        {/* REQ-DASH-02 — Personal OKR progress (non-admin only) */}
+        {!isAdmin && personalOkrs.length > 0 ? (
+          <section className="lg:col-span-12 card">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-h3">Şəxsi OKR</h3>
+              <a href="/şirkət/okr" className="text-meta" style={{ color: 'var(--brand-text)' }}>Hamısı →</a>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {personalOkrs.map((o) => {
+                const krs = o.key_results ?? [];
+                const pct = krs.length
+                  ? Math.round(krs.reduce((s, kr) => s + (kr.target_value > 0 ? Math.min(1, kr.current_value / kr.target_value) : 0), 0) / krs.length * 100)
+                  : 0;
+                const color = pct >= 70 ? '#16A34A' : pct >= 40 ? '#D97706' : '#B91C1C';
+                return (
+                  <div key={o.id}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-body font-medium truncate">{o.objective}</span>
+                      <span className="text-meta ml-2" style={{ color, fontWeight: 600 }}>{pct}%</span>
+                    </div>
+                    <div className="h-1.5 rounded-full" style={{ background: 'var(--line)' }}>
+                      <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
+                    </div>
+                    <div className="text-meta mt-0.5" style={{ color: 'var(--text-muted)', fontSize: 11 }}>{o.period}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
       </div>
     </>
   );

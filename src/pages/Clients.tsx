@@ -479,7 +479,13 @@ function OverviewTab({ client }: { client: Client }) {
   const [icpLoading, setIcpLoading] = useState(false);
   const [icpErr, setIcpErr] = useState<string | null>(null);
 
+  // REQ-CRM-04 — throttle: max 1 refresh per 24h per client
+  const lastRun = client.ai_icp_calculated_at ? new Date(client.ai_icp_calculated_at) : null;
+  const hoursSince = lastRun ? (Date.now() - lastRun.getTime()) / 3_600_000 : Infinity;
+  const throttled = hoursSince < 24;
+
   async function runIcp() {
+    if (throttled) return;
     setIcpLoading(true);
     setIcpErr(null);
     try {
@@ -498,7 +504,10 @@ function OverviewTab({ client }: { client: Client }) {
       const match = String(data?.reply ?? '').match(/\d+/);
       const score = match ? Math.min(100, Math.max(0, Number(match[0]))) : null;
       if (score != null) {
-        await supabase.from('clients').update({ ai_icp_fit: score }).eq('id', client.id);
+        await supabase.from('clients').update({
+          ai_icp_fit: score,
+          ai_icp_calculated_at: new Date().toISOString(),
+        }).eq('id', client.id);
         qc.invalidateQueries({ queryKey: ['clients'] });
       }
     } catch (e) {
@@ -525,10 +534,11 @@ function OverviewTab({ client }: { client: Client }) {
       <div className="mt-4">
         <button
           className="btn-outline"
-          disabled={icpLoading}
+          disabled={icpLoading || throttled}
           onClick={runIcp}
+          title={throttled ? `Son yenilənmə: ${lastRun?.toLocaleString('az-AZ')} (24 saatda 1 dəfə)` : undefined}
         >
-          {icpLoading ? 'AI analiz edir…' : 'AI analiz (ICP)'}
+          {icpLoading ? 'AI analiz edir…' : throttled ? `AI analiz — ${Math.ceil(24 - hoursSince)}s sonra` : 'AI analiz (ICP)'}
         </button>
         {icpErr ? <p className="text-meta mt-1" style={{ color: '#B91C1C' }}>{icpErr}</p> : null}
       </div>

@@ -6,6 +6,7 @@
  * Conversation history loaded from mirai_conversations (last session per persona).
  */
 import { useEffect, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MiraiSphere } from '@/components/MiraiSphere';
 import { Mascot } from '@/components/Mascot';
 import { supabase } from '@/lib/supabase';
@@ -52,6 +53,7 @@ const SUGGESTIONS: Record<PersonaKey, string[]> = {
 
 export function MiraiPage() {
   const { isAdmin } = useAuth();
+  const qc = useQueryClient();
   const [persona, setPersona] = useState<PersonaKey>(isAdmin ? 'general' : 'team_assistant');
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [q, setQ] = useState('');
@@ -61,6 +63,32 @@ export function MiraiPage() {
   const [error, setError] = useState<string | null>(null);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [budgetInput, setBudgetInput] = useState('');
+  const [budgetSaved, setBudgetSaved] = useState(false);
+
+  // REQ-MIRAI-05 — admin reads/sets monthly budget cap from system_settings
+  const budgetSetting = useQuery({
+    queryKey: ['system_settings', 'mirai_monthly_budget'],
+    queryFn: async () => {
+      const { data } = await supabase.from('system_settings').select('value').eq('key', 'mirai_monthly_budget').maybeSingle();
+      return data?.value ?? '10';
+    },
+    enabled: !!isAdmin,
+  });
+
+  const saveBudget = useMutation({
+    mutationFn: async (val: string) => {
+      const num = Number(val);
+      if (!Number.isFinite(num) || num <= 0) throw new Error('Düzgün məbləğ daxil edin');
+      const { error } = await supabase.from('system_settings').upsert({ key: 'mirai_monthly_budget', value: val }, { onConflict: 'key' });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['system_settings'] });
+      setBudgetSaved(true);
+      setTimeout(() => setBudgetSaved(false), 2000);
+    },
+  });
 
   const availablePersonas = PERSONAS.filter((p) => isAdmin || !p.adminOnly);
   const budgetExhausted = !!(usage && usage.warning === null && usage.pct >= 1);
@@ -210,6 +238,31 @@ export function MiraiPage() {
             style={{ background: 'rgba(185,28,28,0.15)', border: '1px solid rgba(185,28,28,0.4)', color: '#FCA5A5' }}
           >
             Bu ay MIRAI limitinə çatdınız. Növbəti ay yenilənəcək.
+          </div>
+        ) : null}
+
+        {/* REQ-MIRAI-05 — admin budget cap editor */}
+        {isAdmin ? (
+          <div className="rounded-card px-4 py-3 mb-4 flex items-center gap-3 flex-wrap" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <span className="text-meta" style={{ color: 'rgba(255,255,255,0.5)' }}>Aylıq büdcə (USD):</span>
+            <input
+              type="number"
+              className="input max-w-[90px]"
+              style={{ height: 30, fontSize: 13, background: 'rgba(255,255,255,0.06)', color: 'var(--canvas)', border: '1px solid rgba(255,255,255,0.12)' }}
+              value={budgetInput || budgetSetting.data || ''}
+              onChange={(e) => setBudgetInput(e.target.value)}
+              placeholder={budgetSetting.data ?? '10'}
+            />
+            <button
+              className="chip"
+              style={{ color: 'var(--canvas)', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)' }}
+              disabled={saveBudget.isPending}
+              onClick={() => saveBudget.mutate(budgetInput || budgetSetting.data || '10')}
+            >
+              {saveBudget.isPending ? '…' : 'Saxla'}
+            </button>
+            {budgetSaved ? <span className="text-meta" style={{ color: '#ADFB49' }}>✓</span> : null}
+            {saveBudget.error ? <span className="text-meta" style={{ color: '#FCA5A5' }}>{(saveBudget.error as Error).message}</span> : null}
           </div>
         ) : null}
 
