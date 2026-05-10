@@ -160,6 +160,20 @@
     98% { transform: scaleY(0.1); }
   }
 
+  /* Skeleton loader (PRD §6.7) */
+  .skeleton {
+    background: linear-gradient(90deg, var(--surface-mist) 0%, var(--line-soft) 50%, var(--surface-mist) 100%);
+    background-size: 200% 100%;
+    animation: skeleton-pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes skeleton-pulse {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton { animation: none; opacity: 0.6; }
+  }
+
   /* MIRAI drift — §7.3 */
   .mirai-sphere { animation: mirai-drift 12s ease-in-out infinite; }
   @keyframes mirai-drift {

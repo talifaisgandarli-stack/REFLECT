@@ -565,7 +565,7 @@ function OutsourceSummary() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('outsource_items')
-        .select('id, vendor, description, amount, status, deadline')
+        .select('id, work_title, contact_company, contact_person, amount, status, deadline')
         .order('deadline', { ascending: true })
         .limit(200);
       if (error) throw error;
@@ -576,14 +576,14 @@ function OutsourceSummary() {
   const rows = q.data ?? [];
   const byStatus: Record<string, { count: number; total: number }> = {};
   for (const r of rows) {
-    const s = r.status ?? 'pending';
+    const s = r.status ?? 'order';
     byStatus[s] ??= { count: 0, total: 0 };
     byStatus[s].count++;
     byStatus[s].total += Number(r.amount ?? 0);
   }
 
   const STATUS_LABEL: Record<string, string> = {
-    pending: 'Sifariş', active: 'İcra', delivered: 'Təhvil', paid: 'Ödənildi',
+    order: 'Sifariş', in_progress: 'İcra', delivered: 'Təhvil', paid: 'Ödənildi',
   };
 
   return (
@@ -605,7 +605,7 @@ function OutsourceSummary() {
           <table className="w-full text-body">
             <thead>
               <tr style={{ borderBottom: '1px solid var(--line)' }}>
-                {['Vendor', 'Təsvir', 'Məbləğ', 'Status', 'Müddət'].map((h) => (
+                {['Şirkət', 'İş', 'Məbləğ', 'Status', 'Müddət'].map((h) => (
                   <th key={h} className="text-left py-2 px-3 text-meta" style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
                 ))}
               </tr>
@@ -613,8 +613,8 @@ function OutsourceSummary() {
             <tbody>
               {rows.map((r: any) => (
                 <tr key={r.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
-                  <td className="py-2 px-3">{r.vendor ?? '—'}</td>
-                  <td className="py-2 px-3 max-w-[200px] truncate">{r.description ?? '—'}</td>
+                  <td className="py-2 px-3">{r.contact_company ?? r.contact_person ?? '—'}</td>
+                  <td className="py-2 px-3 max-w-[200px] truncate">{r.work_title ?? '—'}</td>
                   <td className="py-2 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAZN(r.amount ?? 0)}</td>
                   <td className="py-2 px-3"><span className="chip text-meta" style={{ padding: '2px 6px', fontSize: 11 }}>{STATUS_LABEL[r.status] ?? r.status}</span></td>
                   <td className="py-2 px-3">{r.deadline ? formatDate(r.deadline) : '—'}</td>

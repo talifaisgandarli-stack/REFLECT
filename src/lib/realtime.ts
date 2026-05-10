@@ -25,25 +25,24 @@ function subscribeTable(opts: {
   channelName: string;
   onChange: ChangeHandler;
 }) {
-  const ch = supabase
-    .channel(opts.channelName)
+  // postgres_changes is the documented event name; cast keeps the typed
+  // client happy when it lags Supabase's runtime catalogue.
+  const ch = (supabase.channel(opts.channelName) as unknown as {
+    on: (event: string, filter: Record<string, unknown>, cb: ChangeHandler) => { subscribe: () => unknown };
+  })
     .on(
-      // postgres_changes is the documented event name; cast keeps the
-      // typed client happy when it lags Supabase's runtime catalogue.
-      'postgres_changes' as unknown as 'broadcast',
+      'postgres_changes',
       {
         event: '*',
         schema: 'public',
         table: opts.table,
         ...(opts.filter ? { filter: opts.filter } : {}),
-      } as never,
-      (payload: { eventType: ChangeKind; new: unknown; old: unknown }) => {
-        opts.onChange(payload);
       },
+      (payload) => opts.onChange(payload),
     )
     .subscribe();
   return () => {
-    supabase.removeChannel(ch);
+    supabase.removeChannel(ch as never);
   };
 }
 

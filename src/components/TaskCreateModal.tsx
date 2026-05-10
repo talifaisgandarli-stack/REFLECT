@@ -8,7 +8,7 @@
  * after the parent is inserted.
  */
 import { useMemo, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { useProjects } from '@/lib/hooks';
@@ -44,9 +44,23 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
 };
 
 export function TaskCreateModal({ onClose }: Props) {
-  const { profile } = useAuth();
+  const { profile, isAdmin } = useAuth();
   const projects = useProjects();
   const qc = useQueryClient();
+
+  // REQ-TASK-02 — admins can multi-assign. Non-admins only get "assign self".
+  const teamMembers = useQuery({
+    queryKey: ['profiles', 'team-list'],
+    enabled: isAdmin,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .eq('is_active', true)
+        .order('full_name');
+      return (data ?? []) as Array<{ id: string; full_name: string | null; email: string }>;
+    },
+  });
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -59,6 +73,7 @@ export function TaskCreateModal({ onClose }: Props) {
   const [riskBuffer, setRiskBuffer] = useState<number>(0);
   const [withExpertise, setWithExpertise] = useState(false);
   const [assignSelf, setAssignSelf] = useState(true);
+  const [extraAssignees, setExtraAssignees] = useState<string[]>([]);
 
   const workloadPreview = useMemo(() => {
     const e = parseFloat(estimated);
@@ -81,7 +96,12 @@ export function TaskCreateModal({ onClose }: Props) {
         duration_unit: unit,
         risk_buffer_pct: Math.max(0, Math.min(100, Math.round(riskBuffer))),
         is_expertise_subtask: false,
-        assignee_ids: assignSelf && profile?.id ? [profile.id] : [],
+        assignee_ids: (() => {
+          const set = new Set<string>();
+          if (assignSelf && profile?.id) set.add(profile.id);
+          for (const id of extraAssignees) set.add(id);
+          return Array.from(set);
+        })(),
       };
       const { data, error } = await supabase.from('tasks').insert(payload).select('*').single();
       if (error) throw error;
@@ -259,6 +279,33 @@ export function TaskCreateModal({ onClose }: Props) {
             />
             Mənə təyin et
           </label>
+
+          {isAdmin ? (
+            <Field label="Əlavə icraçılar (admin)">
+              <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 rounded-btn" style={{ background: 'var(--surface-mist)' }}>
+                {(teamMembers.data ?? []).filter((m) => m.id !== profile?.id).map((m) => {
+                  const checked = extraAssignees.includes(m.id);
+                  return (
+                    <label key={m.id} className="flex items-center gap-1.5 text-meta cursor-pointer chip" style={{ background: checked ? 'var(--brand-action)' : 'var(--surface)', color: checked ? 'var(--ink)' : 'var(--text)' }}>
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        checked={checked}
+                        onChange={(e) => {
+                          if (e.target.checked) setExtraAssignees((a) => [...a, m.id]);
+                          else setExtraAssignees((a) => a.filter((x) => x !== m.id));
+                        }}
+                      />
+                      {m.full_name ?? m.email}
+                    </label>
+                  );
+                })}
+                {(teamMembers.data ?? []).length === 0 ? (
+                  <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Komanda üzvü yoxdur.</span>
+                ) : null}
+              </div>
+            </Field>
+          ) : null}
 
           <label className="flex items-center gap-2 text-body cursor-pointer">
             <input

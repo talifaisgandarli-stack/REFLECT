@@ -27,25 +27,43 @@ type LostPrompt = { id: string; from: ClientPipelineStage };
 type ClientPanelTab = 'overview' | 'interactions' | 'proposals' | 'projects' | 'documents' | 'history';
 
 export function ClientsPage() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, role } = useAuth();
   const { data: clients = [], isLoading } = useClients();
   const updateStage = useUpdateClientStage();
   const [active, setActive] = useState<Client | null>(null);
   const [creating, setCreating] = useState(false);
   const [lostPrompt, setLostPrompt] = useState<LostPrompt | null>(null);
+  const [search, setSearch] = useState('');
+
+  // BD Lead may also drag (PRD §8 RLS allows insert/update). Admin retains
+  // full control; non-admin/non-BD-Lead is read-only.
+  const canDrag = isAdmin || role?.key === 'bd_lead';
+
+  const filteredClients = useMemo(() => {
+    if (!search.trim()) return clients;
+    const q = search.trim().toLowerCase();
+    return clients.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        (c.company ?? '').toLowerCase().includes(q) ||
+        (c.email ?? '').toLowerCase().includes(q),
+    );
+  }, [clients, search]);
 
   const grouped = useMemo(() => {
     const map: Record<ClientPipelineStage, Client[]> = CLIENT_STAGE_ORDER.reduce(
       (acc, s) => ({ ...acc, [s]: [] }),
       {} as Record<ClientPipelineStage, Client[]>,
     );
-    for (const c of clients) map[c.pipeline_stage]?.push(c);
+    for (const c of filteredClients) map[c.pipeline_stage]?.push(c);
     return map;
-  }, [clients]);
+  }, [filteredClients]);
 
+  // REQ-CRM-02 — pipeline value uses each client's own confidence_pct, not the
+  // stage default (which the kanban already implies).
   const stageValue = (s: ClientPipelineStage) =>
     grouped[s].reduce(
-      (sub, c) => sub + (c.expected_value ?? 0) * (CLIENT_STAGE_CONFIDENCE[s] / 100),
+      (sub, c) => sub + (c.expected_value ?? 0) * ((c.confidence_pct ?? CLIENT_STAGE_CONFIDENCE[s]) / 100),
       0,
     );
   const totalPipeline = CLIENT_STAGE_ORDER.reduce((sum, s) => sum + stageValue(s), 0);
@@ -66,8 +84,13 @@ export function ClientsPage() {
         title="Müştərilər"
         actions={
           <>
-            <input className="input max-w-[240px]" placeholder="Axtar…" />
-            {isAdmin ? <button className="btn-primary" onClick={() => setCreating(true)}>+ Yeni müştəri</button> : null}
+            <input
+              className="input max-w-[240px]"
+              placeholder="Axtar (ad, şirkət, email)…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            {canDrag ? <button className="btn-primary" onClick={() => setCreating(true)}>+ Yeni müştəri</button> : null}
           </>
         }
       />
@@ -87,9 +110,9 @@ export function ClientsPage() {
               key={s}
               className="rounded-card p-3"
               style={{ border: '1px dashed var(--line)', minHeight: 280 }}
-              onDragOver={isAdmin ? (e) => e.preventDefault() : undefined}
+              onDragOver={canDrag ? (e) => e.preventDefault() : undefined}
               onDrop={
-                isAdmin
+                canDrag
                   ? (e) => {
                       const raw = e.dataTransfer.getData('text/plain');
                       if (!raw) return;

@@ -153,10 +153,15 @@ export function useLogInteraction() {
       type: InteractionType;
       note?: string;
     }) => {
+      // REQ-CRM-03 — attribution: stamp logged_by so the audit trail shows
+      // who recorded the interaction (BD Lead vs admin).
+      const { data: sess } = await supabase.auth.getSession();
+      const loggedBy = sess.session?.user.id ?? null;
       const { error } = await supabase.from('client_interactions').insert({
         client_id: input.clientId,
         type: input.type,
         note: input.note ?? null,
+        logged_by: loggedBy,
       });
       if (error) throw error;
     },

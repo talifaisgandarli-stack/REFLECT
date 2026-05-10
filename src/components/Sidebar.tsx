@@ -1,6 +1,7 @@
-import { NavLink } from 'react-router-dom';
+import { useEffect } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import { Mascot } from './Mascot';
-import { useAuth } from '@/lib/store';
+import { useAuth, useUI } from '@/lib/store';
 import { signOut } from '@/lib/auth';
 
 type NavItem = { to: string; label: string; admin?: boolean };
@@ -56,27 +57,19 @@ const NAV: NavGroup[] = [
   },
 ];
 
-export function Sidebar() {
+function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const { isAdmin, profile } = useAuth();
 
   return (
-    <aside
-      className="m-5 w-60 shrink-0 hidden lg:flex flex-col rounded-capsule sticky top-5 self-start max-h-[calc(100vh-2.5rem)]"
-      style={{ background: 'var(--ink)' }}
-    >
-      {/* Header */}
+    <>
       <div className="px-5 pt-5 pb-3 flex items-center gap-3">
         <div
           className="w-8 h-8 rounded-lg flex items-center justify-center"
           style={{ background: 'var(--brand-text)' }}
         >
-          <span className="text-h3" style={{ color: 'var(--brand-action)' }}>
-            R
-          </span>
+          <span className="text-h3" style={{ color: 'var(--brand-action)' }}>R</span>
         </div>
-        <span className="font-bold text-h4" style={{ color: 'var(--brand-mist)' }}>
-          Reflect
-        </span>
+        <span className="font-bold text-h4" style={{ color: 'var(--brand-mist)' }}>Reflect</span>
       </div>
 
       <nav className="flex-1 overflow-y-auto py-2">
@@ -91,6 +84,7 @@ export function Sidebar() {
                   key={item.to}
                   to={item.to}
                   end={item.to === '/'}
+                  onClick={onNavigate}
                   className={({ isActive }) => `sb-item mx-2 ${isActive ? 'active' : ''}`}
                 >
                   {item.label}
@@ -101,18 +95,14 @@ export function Sidebar() {
         })}
 
         <div className="sb-section">MIRAI</div>
-        <NavLink to="/mirai" className={({ isActive }) => `sb-item mx-2 ${isActive ? 'active' : ''}`}>
+        <NavLink to="/mirai" onClick={onNavigate} className={({ isActive }) => `sb-item mx-2 ${isActive ? 'active' : ''}`}>
           MIRAI
         </NavLink>
-        <NavLink
-          to="/telegram"
-          className={({ isActive }) => `sb-item mx-2 ${isActive ? 'active' : ''}`}
-        >
+        <NavLink to="/telegram" onClick={onNavigate} className={({ isActive }) => `sb-item mx-2 ${isActive ? 'active' : ''}`}>
           Telegram
         </NavLink>
       </nav>
 
-      {/* Foot — mascot + identity */}
       <div className="p-4 flex items-center gap-3 border-t border-white/5">
         <Mascot size={40} />
         <div className="flex-1 min-w-0">
@@ -129,6 +119,77 @@ export function Sidebar() {
           </button>
         </div>
       </div>
-    </aside>
+    </>
+  );
+}
+
+export function Sidebar() {
+  const { sidebarOpen, toggleSidebar } = useUI();
+  const location = useLocation();
+
+  // Close mobile drawer on route change
+  useEffect(() => {
+    if (sidebarOpen) toggleSidebar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') toggleSidebar();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [sidebarOpen, toggleSidebar]);
+
+  return (
+    <>
+      {/* Desktop: persistent rail */}
+      <aside
+        className="m-5 w-60 shrink-0 hidden lg:flex flex-col rounded-capsule sticky top-5 self-start max-h-[calc(100vh-2.5rem)]"
+        style={{ background: 'var(--ink)' }}
+      >
+        <SidebarBody />
+      </aside>
+
+      {/* Mobile: drawer overlay */}
+      {sidebarOpen ? (
+        <div
+          className="fixed inset-0 z-40 lg:hidden"
+          role="dialog"
+          aria-label="Naviqasiya"
+          onClick={toggleSidebar}
+        >
+          <div className="absolute inset-0" style={{ background: 'rgba(14,22,17,0.5)' }} />
+          <aside
+            className="absolute top-0 left-0 bottom-0 w-72 flex flex-col"
+            style={{ background: 'var(--ink)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <SidebarBody onNavigate={toggleSidebar} />
+          </aside>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+export function MobileNavToggle() {
+  const { toggleSidebar } = useUI();
+  return (
+    <button
+      type="button"
+      aria-label="Menyunu aç"
+      onClick={toggleSidebar}
+      className="lg:hidden inline-flex items-center justify-center w-11 h-11 rounded-lg"
+      style={{ background: 'var(--ink)', color: 'var(--canvas)' }}
+    >
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+        <line x1="3" y1="6" x2="21" y2="6" />
+        <line x1="3" y1="12" x2="21" y2="12" />
+        <line x1="3" y1="18" x2="21" y2="18" />
+      </svg>
+    </button>
   );
 }

@@ -80,9 +80,42 @@ export function ProjectDetailPage() {
     },
   });
 
-  // Closeout checklist state
-  const [checked, setChecked] = useState<Set<string>>(new Set());
+  // Closeout checklist — persisted to closeout_checklists.items (jsonb array of
+  // ticked labels). Anyone with project access can tick boxes (RLS scoped).
+  const closeoutQ = useQuery({
+    queryKey: ['closeout', id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('closeout_checklists')
+        .select('items, completed_at')
+        .eq('project_id', id!)
+        .maybeSingle();
+      return data ?? { items: [] as string[], completed_at: null };
+    },
+  });
+  const checked = new Set<string>(((closeoutQ.data?.items as string[]) ?? []));
   const allChecked = CLOSEOUT_ITEMS.every((item) => checked.has(item));
+
+  const toggleCloseout = useMutation({
+    mutationFn: async (next: string[]) => {
+      if (!id) return;
+      const { error } = await supabase
+        .from('closeout_checklists')
+        .upsert({ project_id: id, items: next }, { onConflict: 'project_id' });
+      if (error) throw error;
+    },
+    onMutate: async (next) => {
+      await qc.cancelQueries({ queryKey: ['closeout', id] });
+      const prev = qc.getQueryData(['closeout', id]);
+      qc.setQueryData(['closeout', id], { items: next, completed_at: null });
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['closeout', id], ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['closeout', id] }),
+  });
 
   const closeProject = useMutation({
     mutationFn: async () => {
@@ -92,12 +125,20 @@ export function ProjectDetailPage() {
         .update({ status: 'closed' })
         .eq('id', id);
       if (error) throw error;
+      // Mark checklist as completed (audit trail)
+      await supabase
+        .from('closeout_checklists')
+        .upsert(
+          { project_id: id, items: Array.from(checked), completed_at: new Date().toISOString() },
+          { onConflict: 'project_id' },
+        );
       // Create portfolio_workflows row (REQ-PROJ-04)
       await supabase.from('portfolio_workflows').insert({ project_id: id });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['project', id] });
       qc.invalidateQueries({ queryKey: ['projects'] });
+      qc.invalidateQueries({ queryKey: ['closeout', id] });
     },
   });
 
@@ -309,7 +350,7 @@ export function ProjectDetailPage() {
                             const next = new Set(checked);
                             if (e.target.checked) next.add(item);
                             else next.delete(item);
-                            setChecked(next);
+                            toggleCloseout.mutate(Array.from(next));
                           }}
                         />
                         <span
