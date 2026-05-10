@@ -4,6 +4,8 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { Mascot } from './Mascot';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/store';
 
 const PRESETS = [
   { work: 25, brk: 5 },
@@ -27,10 +29,13 @@ function load(): Saved | null {
 }
 
 export function FocusWidget({ className = '' }: { className?: string }) {
+  const { profile } = useAuth();
   const [preset, setPreset] = useState(1); // 40/20 default
   const [phase, setPhase] = useState<Phase>('idle');
   const [remaining, setRemaining] = useState(PRESETS[1].work * 60);
   const tickRef = useRef<number | null>(null);
+  const sessionStartRef = useRef<string | null>(null);
+  const sessionStageRef = useRef<number>(1);
 
   useEffect(() => {
     const s = load();
@@ -52,6 +57,7 @@ export function FocusWidget({ className = '' }: { className?: string }) {
             const next = PRESETS[preset].brk * 60;
             const endsAt = Date.now() + next * 1000;
             localStorage.setItem(KEY, JSON.stringify({ phase: 'break', endsAt, preset }));
+            syncSession(new Date().toISOString(), false, sessionStageRef.current);
             setPhase('break');
             try {
               new Notification('İş seansı tamamlandı', { body: 'Fasilə vaxtı.' });
@@ -72,10 +78,24 @@ export function FocusWidget({ className = '' }: { className?: string }) {
     };
   }, [phase, preset]);
 
+  async function syncSession(completedAt: string, interrupted: boolean, mascotStage: number) {
+    if (!profile || !sessionStartRef.current) return;
+    await supabase.from('focus_sessions').insert({
+      user_id: profile.id,
+      started_at: sessionStartRef.current,
+      planned_minutes: PRESETS[preset].work,
+      completed_at: completedAt,
+      interrupted,
+      mascot_stage: mascotStage,
+    });
+    sessionStartRef.current = null;
+  }
+
   function start() {
     const total = PRESETS[preset].work * 60;
     const endsAt = Date.now() + total * 1000;
     localStorage.setItem(KEY, JSON.stringify({ phase: 'work', endsAt, preset }));
+    sessionStartRef.current = new Date().toISOString();
     setPhase('work');
     setRemaining(total);
     if ('Notification' in window && Notification.permission === 'default') {
@@ -83,6 +103,9 @@ export function FocusWidget({ className = '' }: { className?: string }) {
     }
   }
   function stop() {
+    if (phase === 'work') {
+      syncSession(new Date().toISOString(), true, sessionStageRef.current);
+    }
     localStorage.removeItem(KEY);
     setPhase('idle');
     setRemaining(PRESETS[preset].work * 60);
@@ -92,6 +115,7 @@ export function FocusWidget({ className = '' }: { className?: string }) {
     phase === 'break' ? PRESETS[preset].brk * 60 : PRESETS[preset].work * 60;
   const pct = phase === 'idle' ? 0 : Math.max(0, Math.min(1, 1 - remaining / total));
   const stage = Math.min(4, Math.max(1, 1 + Math.floor(pct * 4)));
+  sessionStageRef.current = stage;
   const mm = String(Math.floor(remaining / 60)).padStart(2, '0');
   const ss = String(remaining % 60).padStart(2, '0');
 

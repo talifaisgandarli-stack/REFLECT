@@ -27,6 +27,7 @@ import { ContentPlanPage } from '@/pages/company/ContentPlan';
 import { SettingsPage } from '@/pages/Settings';
 import { MiraiPage } from '@/pages/Mirai';
 import { TelegramLinkPage } from '@/pages/TelegramLink';
+import { RetroSurveyPage } from '@/pages/RetroSurvey';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const { session, hydrated } = useAuth();
@@ -47,6 +48,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      {/* PUBLIC — no auth required */}
+      <Route path="/retro/:token" element={<RetroSurveyPage />} />
       <Route
         element={
           <RequireAuth>
