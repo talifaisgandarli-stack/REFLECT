@@ -338,8 +338,13 @@ function ClientPanel({ client, onClose }: { client: Client; onClose: () => void 
   );
 }
 
-// REQ-CRM-05 — Proposals tab: project_documents with category='price_protocol'
+// REQ-CRM-05 / US-CRM-05 — Proposals tab: list + create price_protocol documents
 function ProposalsTab({ clientId }: { clientId: string }) {
+  const { profile } = useAuth();
+  const qc = useQueryClient();
+  const [creating, setCreating] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+
   const { data: proposals = [], isLoading } = useQuery({
     queryKey: ['client_proposals', clientId],
     queryFn: async () => {
@@ -354,37 +359,207 @@ function ProposalsTab({ clientId }: { clientId: string }) {
     },
   });
 
-  if (isLoading) return <div className="text-meta">Yüklənir…</div>;
-  if (proposals.length === 0) {
-    return (
-      <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
-        Hələ qiymət protokolu yoxdur.
-      </p>
-    );
+  function copyLink(token: string) {
+    navigator.clipboard.writeText(`${window.location.origin}/docs/${token}`);
+    setCopied(token);
+    setTimeout(() => setCopied(null), 2000);
   }
+
   return (
-    <ul className="space-y-2">
-      {proposals.map((p: { id: string; title: string; share_token: string | null; created_at: string; external_link: string | null }) => (
-        <li key={p.id} className="card" style={{ padding: 12 }}>
-          <div className="text-body font-medium">{p.title}</div>
-          {p.share_token ? (
-            <button
-              type="button"
-              className="text-meta mt-1"
-              style={{ color: 'var(--brand-text)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-              onClick={() => {
-                navigator.clipboard.writeText(`${window.location.origin}/docs/${p.share_token}`);
-              }}
+    <div>
+      <div className="flex justify-between items-center mb-3">
+        <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+          {proposals.length} təklif
+        </span>
+        <button className="btn-primary" style={{ padding: '4px 12px', fontSize: 13 }} onClick={() => setCreating(true)}>
+          + Təklif yarat
+        </button>
+      </div>
+
+      {isLoading ? <div className="text-meta">Yüklənir…</div> : null}
+
+      {!isLoading && proposals.length === 0 ? (
+        <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+          Hələ qiymət protokolu yoxdur.
+        </p>
+      ) : null}
+
+      <ul className="space-y-2">
+        {proposals.map((p: { id: string; title: string; share_token: string | null; created_at: string; external_link: string | null }) => (
+          <li key={p.id} className="card" style={{ padding: 12 }}>
+            <div className="text-body font-medium">{p.title}</div>
+            <div className="flex items-center gap-3 mt-1 flex-wrap">
+              {p.share_token ? (
+                <button
+                  type="button"
+                  className="text-meta"
+                  style={{ color: copied === p.share_token ? 'var(--brand-action)' : 'var(--brand-text)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                  onClick={() => copyLink(p.share_token!)}
+                >
+                  {copied === p.share_token ? '✓ Kopyalandı' : 'Linki paylaş'}
+                </button>
+              ) : null}
+              {p.external_link ? (
+                <a
+                  href={p.external_link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-meta"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  Drive ↗
+                </a>
+              ) : null}
+              <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                {new Date(p.created_at).toLocaleDateString('az-AZ')}
+              </span>
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      {creating ? (
+        <CreateProposalModal
+          clientId={clientId}
+          authorId={profile?.id ?? null}
+          onClose={() => setCreating(false)}
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: ['client_proposals', clientId] });
+            setCreating(false);
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+// US-CRM-05 — create proposal modal
+function CreateProposalModal({
+  clientId,
+  authorId,
+  onClose,
+  onSaved,
+}: {
+  clientId: string;
+  authorId: string | null;
+  onClose: () => void;
+  onSaved: (token: string) => void;
+}) {
+  const [title, setTitle] = useState('');
+  const [externalLink, setExternalLink] = useState('');
+  const [shareToken, setShareToken] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!title.trim()) throw new Error('Başlıq tələb olunur');
+      const token = crypto.randomUUID();
+      const { error } = await supabase.from('project_documents').insert({
+        client_id: clientId,
+        project_id: null,
+        category: 'price_protocol',
+        title: title.trim(),
+        source: 'auto_generated',
+        share_token: token,
+        external_link: externalLink.trim() || null,
+        storage_path: null,
+        shared_with: [],
+        created_by: authorId,
+      });
+      if (error) throw error;
+      return token;
+    },
+    onSuccess: (token) => {
+      setShareToken(token);
+    },
+  });
+
+  const shareUrl = shareToken ? `${window.location.origin}/docs/${shareToken}` : '';
+
+  function copyAndClose() {
+    if (shareToken) navigator.clipboard.writeText(shareUrl);
+    setCopied(true);
+    setTimeout(() => { onSaved(shareToken!); }, 1200);
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: 'rgba(14,22,17,0.6)' }}
+      onClick={shareToken ? undefined : onClose}
+    >
+      <div
+        className="bg-surface p-6 rounded-card w-[460px]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {!shareToken ? (
+          <>
+            <h2 className="text-h2 mb-4">Təklif yarat</h2>
+
+            <label className="block mb-3">
+              <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Başlıq *</span>
+              <input
+                className="input w-full"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Qiymət protokolu — İyun 2026"
+                autoFocus
+              />
+            </label>
+
+            <label className="block mb-5">
+              <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
+                Drive / xarici link (ixtiyari)
+              </span>
+              <input
+                className="input w-full"
+                value={externalLink}
+                onChange={(e) => setExternalLink(e.target.value)}
+                placeholder="https://docs.google.com/…"
+              />
+            </label>
+
+            {save.error ? (
+              <p className="text-meta mb-3" style={{ color: '#B91C1C' }}>
+                {(save.error as Error).message}
+              </p>
+            ) : null}
+
+            <div className="flex justify-end gap-2">
+              <button className="btn-outline" onClick={onClose}>Ləğv et</button>
+              <button
+                className="btn-primary"
+                disabled={save.isPending || !title.trim()}
+                onClick={() => save.mutate()}
+              >
+                {save.isPending ? 'Yaradılır…' : 'Yarat'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <h2 className="text-h2 mb-2">Təklif yaradıldı</h2>
+            <p className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
+              Bu linki müştəriyə göndərin. Giriş tələb olunmur.
+            </p>
+            <div
+              className="rounded-card p-3 mb-4 flex items-center gap-2"
+              style={{ background: 'var(--surface-raised)', border: '1px solid var(--line)' }}
             >
-              Linki kopyala
-            </button>
-          ) : null}
-          <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-            {new Date(p.created_at).toLocaleDateString('az-AZ')}
-          </div>
-        </li>
-      ))}
-    </ul>
+              <span className="flex-1 text-meta truncate" style={{ color: 'var(--text-muted)' }}>
+                {shareUrl}
+              </span>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button className="btn-outline" onClick={onClose}>Bağla</button>
+              <button className="btn-primary" onClick={copyAndClose}>
+                {copied ? '✓ Kopyalandı' : 'Linki paylaş'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 

@@ -105,6 +105,8 @@ export function DashboardPage() {
   const { data: announcements = [] } = useRecentAnnouncements(3);
   const { data: meetings = [] } = useUpcomingMeetings(7);
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all');
+  // US-DASH-02 — "Bu gün" / "Bu həftə" tab toggle (user dashboard only)
+  const [taskTab, setTaskTab] = useState<'today' | 'week'>('today');
 
   // REQ-DASH-02 — personal OKR progress (non-admin only)
   const { data: personalOkrs = [] } = useQuery({
@@ -147,6 +149,25 @@ export function DashboardPage() {
     return map;
   }, [allTasks, isAdmin]);
 
+  // US-DASH-02: filter by deadline date (not status) for user task tabs
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const endOfWeekStr = (() => {
+    const d = new Date();
+    const diff = 7 - (d.getDay() === 0 ? 7 : d.getDay());
+    d.setDate(d.getDate() + diff);
+    return d.toISOString().slice(0, 10);
+  })();
+
+  const openTasks = tasks.filter((t) => t.status !== 'done' && t.status !== 'cancelled');
+  const overdueTasks = openTasks.filter((t) => t.deadline && t.deadline < todayStr);
+  const todayTasks = openTasks.filter((t) => t.deadline === todayStr);
+  const weekTasks = openTasks.filter((t) => t.deadline && t.deadline > todayStr && t.deadline <= endOfWeekStr);
+
+  const tabTasks = taskTab === 'today'
+    ? [...overdueTasks, ...todayTasks]
+    : [...overdueTasks, ...todayTasks, ...weekTasks];
+
+  // Legacy sort for admin "BU GÜN" feature card (active/review)
   const today = tasks
     .filter((t) => t.status === 'active' || t.status === 'review')
     .sort((a, b) => {
@@ -190,20 +211,40 @@ export function DashboardPage() {
         {/* Focus widget — REQ-FOCUS-06 */}
         <FocusWidget className="lg:col-span-5" />
 
-        {/* Today's task ribbon */}
+        {/* Today's task ribbon — US-DASH-02: Bu gün / Bu həftə tabs */}
         <section
           className="lg:col-span-8 rounded-card p-5"
           style={{ background: 'var(--ink)', color: 'var(--canvas)' }}
         >
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-h3" style={{ color: 'var(--brand-action)' }}>BU GÜN</h3>
-            <a href="/tapşırıqlar" className="text-meta opacity-80 hover:opacity-100">
+            {/* Tab toggle — US-DASH-02 */}
+            <div className="flex gap-1">
+              {(['today', 'week'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  className="chip"
+                  onClick={() => setTaskTab(tab)}
+                  style={{
+                    background: taskTab === tab ? 'var(--brand-action)' : 'rgba(255,255,255,0.08)',
+                    color: taskTab === tab ? 'var(--ink)' : 'var(--canvas)',
+                    fontWeight: taskTab === tab ? 700 : 400,
+                    fontSize: 12,
+                    letterSpacing: '0.06em',
+                  }}
+                >
+                  {tab === 'today' ? 'BU GÜN' : 'BU HƏFTƏ'}
+                </button>
+              ))}
+            </div>
+            <a href="/tapşırıqlar" className="text-meta opacity-80 hover:opacity-100" style={{ color: 'var(--canvas)' }}>
               Hamısına bax →
             </a>
           </div>
           <ul className="space-y-2">
-            {today.slice(0, 5).map((t) => {
-              const h = taskHealth(t.deadline);
+            {tabTasks.slice(0, 6).map((t) => {
+              const isOv = overdueTasks.some((x) => x.id === t.id);
+              const h = isOv ? 'red' : taskHealth(t.deadline);
               return (
                 <li
                   key={t.id}
@@ -217,15 +258,21 @@ export function DashboardPage() {
                   <div>
                     <div className="text-body font-medium">{t.title}</div>
                     <div className="text-meta opacity-70">
-                      {t.deadline ? `Son: ${t.deadline}` : 'Müddət yoxdur'}
+                      {t.deadline
+                        ? isOv
+                          ? `Gecikmiş: ${t.deadline}`
+                          : `Son: ${t.deadline}`
+                        : 'Müddət yoxdur'}
                     </div>
                   </div>
                   <StatusChip status={t.status} />
                 </li>
               );
             })}
-            {today.length === 0 ? (
-              <li className="opacity-70 text-meta py-4 text-center">Aktiv tapşırıq yoxdur.</li>
+            {tabTasks.length === 0 ? (
+              <li className="opacity-70 text-meta py-4 text-center">
+                {taskTab === 'today' ? 'Bu gün üçün tapşırıq yoxdur.' : 'Bu həftə üçün tapşırıq yoxdur.'}
+              </li>
             ) : null}
           </ul>
         </section>

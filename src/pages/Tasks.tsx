@@ -12,6 +12,39 @@ import { TaskCreateModal } from '@/components/TaskCreateModal';
 import { CancelTaskModal } from '@/components/CancelTaskModal';
 import { TaskCommentsModal } from '@/components/TaskCommentsModal';
 
+// US-TASK-06 — deadline-based groups for personal view
+const todayStr = new Date().toISOString().slice(0, 10);
+const endOfWeekStr = (() => {
+  const d = new Date();
+  const diff = 7 - (d.getDay() === 0 ? 7 : d.getDay());
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().slice(0, 10);
+})();
+
+type TimeGroup = 'overdue' | 'today' | 'week' | 'later' | 'none';
+const TIME_GROUP_LABEL: Record<TimeGroup, string> = {
+  overdue: 'Gecikmiş',
+  today: 'Bu gün',
+  week: 'Bu həftə',
+  later: 'Sonra',
+  none: 'Deadline yoxdur',
+};
+const TIME_GROUP_COLOR: Record<TimeGroup, string> = {
+  overdue: '#EF4444',
+  today: '#D97706',
+  week: '#22C55E',
+  later: 'var(--text-muted)',
+  none: 'var(--text-muted)',
+};
+function taskTimeGroup(t: Task): TimeGroup {
+  if (!t.deadline) return 'none';
+  if (t.deadline < todayStr) return 'overdue';
+  if (t.deadline === todayStr) return 'today';
+  if (t.deadline <= endOfWeekStr) return 'week';
+  return 'later';
+}
+const TIME_GROUP_ORDER: TimeGroup[] = ['overdue', 'today', 'week', 'later', 'none'];
+
 export function TasksPage() {
   const { profile, isAdmin } = useAuth();
   const qc = useQueryClient();
@@ -80,6 +113,17 @@ export function TasksPage() {
     return map;
   }, [filtered]);
 
+  // US-TASK-06 — time-grouped personal view computed data
+  const groupedByTime = useMemo(() => {
+    const map = {} as Record<TimeGroup, Task[]>;
+    for (const g of TIME_GROUP_ORDER) map[g] = [];
+    for (const t of filtered) {
+      if (t.status === 'done' || t.status === 'cancelled') continue;
+      map[taskTimeGroup(t)].push(t);
+    }
+    return map;
+  }, [filtered]);
+
   const meta = `${filtered.length} cəmi · ${grouped.active.length} icrada · ${grouped.review.length} yoxlamada`;
 
   return (
@@ -137,6 +181,82 @@ export function TasksPage() {
             </button>
           }
         />
+      ) : mineOnly ? (
+        // US-TASK-06 — personal view: time-grouped list with inline actions
+        <div className="space-y-6">
+          {TIME_GROUP_ORDER.map((g) => {
+            const items = groupedByTime[g];
+            if (!items.length) return null;
+            return (
+              <section key={g}>
+                <h3
+                  className="text-tiny mb-3"
+                  style={{ color: TIME_GROUP_COLOR[g], letterSpacing: '0.08em', textTransform: 'uppercase' }}
+                >
+                  {TIME_GROUP_LABEL[g]} · {items.length}
+                </h3>
+                <div className="space-y-1">
+                  {items.map((t) => (
+                    <div
+                      key={t.id}
+                      className="flex items-center gap-3 py-2 px-3 rounded-card"
+                      style={{ background: 'var(--surface)', border: '1px solid var(--line)' }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={false}
+                        onChange={() => moveTask(t.id, 'done', t.status)}
+                        style={{ accentColor: 'var(--brand-action)', width: 16, height: 16, flexShrink: 0, cursor: 'pointer' }}
+                        aria-label={`${t.title} tamamlandı`}
+                      />
+                      <span
+                        className="flex-1 text-body cursor-pointer"
+                        onClick={() => setCommenting({ id: t.id, title: t.title })}
+                      >
+                        {t.title}
+                      </span>
+                      {t.deadline ? (
+                        <span
+                          className="text-meta"
+                          style={{ color: TIME_GROUP_COLOR[g], fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}
+                        >
+                          {t.deadline}
+                        </span>
+                      ) : null}
+                      <span
+                        className="text-meta px-2 py-0.5 rounded"
+                        style={{ background: 'var(--surface-raised)', color: TASK_STATUS_TONE[t.status].text, flexShrink: 0 }}
+                      >
+                        {TASK_STATUS_LABEL[t.status]}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setCommenting({ id: t.id, title: t.title })}
+                        className="opacity-60 hover:opacity-100"
+                        style={{ color: 'var(--text-muted)', fontSize: 13, flexShrink: 0 }}
+                        aria-label="Şərhlər"
+                      >
+                        💬
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCancelling({ id: t.id, title: t.title })}
+                        className="text-meta opacity-60 hover:opacity-100"
+                        style={{ color: 'var(--text-muted)', flexShrink: 0 }}
+                        aria-label={`Tapşırığı ləğv et: ${t.title}`}
+                      >
+                        Ləğv et
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            );
+          })}
+          {TIME_GROUP_ORDER.every((g) => !groupedByTime[g].length) && (
+            <p className="text-meta" style={{ color: 'var(--text-muted)' }}>Aktiv tapşırıq yoxdur.</p>
+          )}
+        </div>
       ) : view === 'board' ? (
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
           {TASK_STATUS_ORDER.map((s) => {

@@ -286,11 +286,15 @@ export function ProjectDetailPage() {
           <div className="card">
             <h3 className="text-h3 mb-4">Layihəni bağla</h3>
             {project.status === 'closed' ? (
-              <div
-                className="rounded-card px-4 py-3"
-                style={{ background: 'rgba(34,197,94,0.1)', color: '#16A34A' }}
-              >
-                Bu layihə artıq bağlanıb. ✓
+              <div className="space-y-3">
+                <div
+                  className="rounded-card px-4 py-3"
+                  style={{ background: 'rgba(34,197,94,0.1)', color: '#16A34A' }}
+                >
+                  Bu layihə artıq bağlanıb. ✓
+                </div>
+                {/* US-PROJ-05 — Reopen closed project (admin only) */}
+                {isAdmin ? <ReopenProjectButton projectId={id!} /> : null}
               </div>
             ) : (
               <>
@@ -691,6 +695,40 @@ function AwardsSection({ projectId }: { projectId: string }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// US-PROJ-05 — Reopen closed project (admin only); appends reopened_at
+function ReopenProjectButton({ projectId }: { projectId: string }) {
+  const qc = useQueryClient();
+  const reopen = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from('projects')
+        .update({ status: 'active', reopened_at: new Date().toISOString() })
+        .eq('id', projectId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['project', projectId] });
+      qc.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
+  return (
+    <div>
+      {reopen.error ? (
+        <p className="text-meta mb-2" style={{ color: '#B91C1C' }}>
+          {(reopen.error as Error).message}
+        </p>
+      ) : null}
+      <button
+        className="btn-outline w-full"
+        disabled={reopen.isPending}
+        onClick={() => reopen.mutate()}
+      >
+        {reopen.isPending ? 'Açılır…' : 'Layihəni yenidən aç'}
+      </button>
     </div>
   );
 }

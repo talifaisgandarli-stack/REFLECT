@@ -37,7 +37,7 @@ const PERSONAS: PersonaMeta[] = [
 ];
 
 type Source = { name: string; page?: number };
-type Msg = { role: 'user' | 'assistant'; content: string; sources?: Source[] };
+type Msg = { role: 'user' | 'assistant'; content: string; sources?: Source[]; dbId?: string };
 type Usage = { spent_usd: number; cap_usd: number; pct: number; warning: string | null };
 
 const SUGGESTIONS: Record<PersonaKey, string[]> = {
@@ -52,7 +52,7 @@ const SUGGESTIONS: Record<PersonaKey, string[]> = {
 };
 
 export function MiraiPage() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, profile } = useAuth();
   const qc = useQueryClient();
   const [persona, setPersona] = useState<PersonaKey>(isAdmin ? 'general' : 'team_assistant');
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -65,6 +65,8 @@ export function MiraiPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [budgetInput, setBudgetInput] = useState('');
   const [budgetSaved, setBudgetSaved] = useState(false);
+  // REQ-7.9 — thumbs feedback keyed by message index in current thread
+  const [feedbackGiven, setFeedbackGiven] = useState<Record<number, 'up' | 'down'>>({});
 
   // REQ-MIRAI-05 — admin reads/sets monthly budget cap from system_settings
   const budgetSetting = useQuery({
@@ -99,6 +101,7 @@ export function MiraiPage() {
     setConversationId(null);
     setHistoryLoaded(false);
     setError(null);
+    setFeedbackGiven({});
 
     let cancelled = false;
     async function loadHistory() {
@@ -114,7 +117,7 @@ export function MiraiPage() {
 
       const { data: messages } = await supabase
         .from('mirai_messages')
-        .select('role, content')
+        .select('id, role, content')
         .eq('conversation_id', conv.id)
         .order('created_at', { ascending: true })
         .limit(20);
@@ -122,7 +125,7 @@ export function MiraiPage() {
       if (cancelled) return;
       if (messages && messages.length) {
         setConversationId(conv.id);
-        setMsgs(messages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })));
+        setMsgs(messages.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content, dbId: m.id })));
       }
       setHistoryLoaded(true);
     }
@@ -161,7 +164,8 @@ export function MiraiPage() {
 
       const reply = data?.reply ?? 'Hazırda cavab verə bilmirəm.';
       const sources: Source[] = data?.sources ?? [];
-      setMsgs((m) => [...m, { role: 'assistant', content: reply, sources }]);
+      const assistantMsgId: string | undefined = data?.message_id;
+      setMsgs((m) => [...m, { role: 'assistant', content: reply, sources, dbId: assistantMsgId }]);
       if (data?.conversation_id) setConversationId(data.conversation_id);
       if (data?.usage) setUsage(data.usage as Usage);
     } catch (e) {
@@ -170,6 +174,19 @@ export function MiraiPage() {
     } finally {
       setThinking(false);
     }
+  }
+
+  // REQ-7.9 — record thumbs up/down for assistant message
+  async function giveFeedback(msgIndex: number, vote: 'up' | 'down', dbId?: string) {
+    if (feedbackGiven[msgIndex]) return;
+    setFeedbackGiven((prev) => ({ ...prev, [msgIndex]: vote }));
+    await supabase.from('mirai_feedback').insert({
+      user_id: profile?.id,
+      conversation_id: conversationId,
+      message_id: dbId ?? null,
+      message_index: msgIndex,
+      vote,
+    });
   }
 
   function switchPersona(key: PersonaKey) {
@@ -348,6 +365,36 @@ export function MiraiPage() {
                   ))}
                 </div>
               ) : null}
+              {/* REQ-7.9 — thumbs up/down feedback (assistant only) */}
+              {m.role === 'assistant' ? <div className="flex items-center gap-2 mt-3">
+                {(['up', 'down'] as const).map((vote) => {
+                  const icon = vote === 'up' ? '👍' : '👎';
+                  const given = feedbackGiven[i];
+                  const isChosen = given === vote;
+                  const isDisabled = !!given;
+                  return (
+                    <button
+                      key={vote}
+                      type="button"
+                      onClick={() => giveFeedback(i, vote, m.dbId)}
+                      disabled={isDisabled}
+                      aria-label={vote === 'up' ? 'Faydalı' : 'Faydasız'}
+                      style={{
+                        background: isChosen ? 'rgba(173,251,73,0.15)' : 'transparent',
+                        border: `1px solid ${isChosen ? 'rgba(173,251,73,0.4)' : 'rgba(255,255,255,0.1)'}`,
+                        borderRadius: 6,
+                        padding: '2px 8px',
+                        fontSize: 13,
+                        cursor: isDisabled ? 'default' : 'pointer',
+                        opacity: isDisabled && !isChosen ? 0.35 : 1,
+                        transition: 'opacity 0.15s',
+                      }}
+                    >
+                      {icon}
+                    </button>
+                  );
+                })}
+              </div> : null}
             </article>
           ))}
           {thinking ? (

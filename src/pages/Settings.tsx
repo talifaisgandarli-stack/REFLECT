@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
@@ -137,6 +137,103 @@ function GeneralSettings() {
           {saved ? <span className="text-meta" style={{ color: 'var(--brand-text)' }}>Saxlandı ✓</span> : null}
           {save.error ? <span className="text-meta" style={{ color: '#B91C1C' }}>{(save.error as Error).message}</span> : null}
         </div>
+      </div>
+
+      {/* PRD §8.5 — MIRAI CMO RSS feed sources stored in system_settings */}
+      <RssFeedSettings settings={settings.data} onSaved={() => qc.invalidateQueries({ queryKey: ['system_settings'] })} />
+    </div>
+  );
+}
+
+// PRD §8.5 — Admin configures custom RSS feeds for MIRAI CMO weekly cron
+// Default feeds (ArchDaily, Dezeen, Architizer, WAF) are hardcoded in the backend cron.
+// Custom feeds stored as JSON array in system_settings[mirai_rss_feeds].
+function RssFeedSettings({ settings, onSaved }: { settings: Record<string, string> | undefined; onSaved: () => void }) {
+  const qc = useQueryClient();
+  const defaultFeeds = ['https://www.archdaily.com/feed', 'https://www.dezeen.com/feed', 'https://www.architizer.com/feed'];
+  const [feeds, setFeeds] = useState<string[]>([]);
+  const [newUrl, setNewUrl] = useState('');
+  const [saved, setSaved] = useState(false);
+
+  // Populate once loaded
+  useEffect(() => {
+    if (!settings) return;
+    try {
+      const parsed = JSON.parse(settings.mirai_rss_feeds ?? '[]');
+      if (Array.isArray(parsed) && parsed.length) setFeeds(parsed);
+      else setFeeds([...defaultFeeds]);
+    } catch {
+      setFeeds([...defaultFeeds]);
+    }
+  }, [settings]);
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from('system_settings').upsert(
+        { key: 'mirai_rss_feeds', value: JSON.stringify(feeds) },
+        { onConflict: 'key' },
+      );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      onSaved();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    },
+  });
+
+  function addFeed() {
+    const url = newUrl.trim();
+    if (!url) return;
+    if (!url.startsWith('http')) return;
+    if (feeds.includes(url)) return;
+    setFeeds((f) => [...f, url]);
+    setNewUrl('');
+  }
+
+  return (
+    <div className="space-y-3" style={{ paddingTop: 12, borderTop: '1px solid var(--line)' }}>
+      <h3 className="text-h3">MIRAI CMO RSS mənbələri</h3>
+      <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+        Həftəlik cron bu mənbələri çəkib MIRAI CMO vasitəsilə elanlar sırasına əlavə edir (PRD §8.5).
+      </p>
+      <ul className="space-y-1.5">
+        {feeds.map((url) => (
+          <li key={url} className="flex items-center gap-2">
+            <span
+              className="flex-1 text-meta font-mono truncate"
+              style={{ color: 'var(--text-muted)', fontSize: 12 }}
+            >
+              {url}
+            </span>
+            <button
+              className="chip"
+              style={{ color: '#B91C1C', background: 'rgba(185,28,28,0.08)', fontSize: 12 }}
+              onClick={() => setFeeds((f) => f.filter((x) => x !== url))}
+            >
+              Sil
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="flex gap-2">
+        <input
+          className="input flex-1"
+          placeholder="https://example.com/feed"
+          value={newUrl}
+          onChange={(e) => setNewUrl(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addFeed())}
+        />
+        <button className="btn-outline" onClick={addFeed} disabled={!newUrl.trim().startsWith('http')}>
+          Əlavə et
+        </button>
+      </div>
+      <div className="flex items-center gap-3">
+        <button className="btn-primary" disabled={save.isPending} onClick={() => save.mutate()}>
+          {save.isPending ? 'Saxlanılır…' : 'Saxla'}
+        </button>
+        {saved ? <span className="text-meta" style={{ color: 'var(--brand-text)' }}>Saxlandı ✓</span> : null}
+        {save.error ? <span className="text-meta" style={{ color: '#B91C1C' }}>{(save.error as Error).message}</span> : null}
       </div>
     </div>
   );
