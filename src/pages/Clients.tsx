@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import {
@@ -24,6 +24,7 @@ import { supabase } from '@/lib/supabase';
 
 type DragPayload = { id: string; from: ClientPipelineStage };
 type LostPrompt = { id: string; from: ClientPipelineStage };
+type ClientPanelTab = 'overview' | 'interactions' | 'proposals' | 'projects' | 'documents' | 'history';
 
 export function ClientsPage() {
   const { isAdmin } = useAuth();
@@ -260,10 +261,26 @@ function CField({ label, children }: { label: string; children: React.ReactNode 
   );
 }
 
-type Tab = 'overview' | 'interactions' | 'history';
+// ClientPanelTab defined above
+
+const PANEL_TABS: { key: ClientPanelTab; label: string }[] = [
+  { key: 'overview', label: 'Ümumi' },
+  { key: 'interactions', label: 'Əlaqələr' },
+  { key: 'proposals', label: 'Təkliflər' },
+  { key: 'projects', label: 'Layihələr' },
+  { key: 'documents', label: 'Sənədlər' },
+  { key: 'history', label: 'Tarixçə' },
+];
 
 function ClientPanel({ client, onClose }: { client: Client; onClose: () => void }) {
-  const [tab, setTab] = useState<Tab>('overview');
+  const [tab, setTab] = useState<ClientPanelTab>('overview');
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
   return (
     <div
       className="fixed inset-0 z-40 flex justify-end"
@@ -271,35 +288,189 @@ function ClientPanel({ client, onClose }: { client: Client; onClose: () => void 
       onClick={onClose}
     >
       <aside
-        className="w-[480px] h-full bg-surface p-6 overflow-y-auto"
+        className="w-[520px] h-full bg-surface p-6 overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-h2">{client.name}</h2>
+        <div className="flex items-start justify-between mb-1">
+          <h2 className="text-h2">{client.name}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-meta"
+            style={{ color: 'var(--text-muted)', fontSize: 20 }}
+            aria-label="Bağla"
+          >
+            ✕
+          </button>
+        </div>
         <div className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
           {client.company ?? '—'}
         </div>
 
-        <div className="flex gap-2 mb-4">
-          {(['overview', 'interactions', 'history'] as const).map((t) => (
+        <div className="flex gap-1 mb-5 flex-wrap">
+          {PANEL_TABS.map((t) => (
             <button
-              key={t}
-              className={`chip ${tab === t ? 'chip-brand' : ''}`}
-              onClick={() => setTab(t)}
+              key={t.key}
+              type="button"
+              className="chip"
+              style={{
+                background: tab === t.key ? 'var(--brand-action)' : 'var(--surface)',
+                color: tab === t.key ? 'var(--ink)' : 'var(--text)',
+                fontWeight: tab === t.key ? 600 : 400,
+                padding: '4px 10px',
+                fontSize: 13,
+              }}
+              onClick={() => setTab(t.key)}
             >
-              {t === 'overview' ? 'Ümumi' : t === 'interactions' ? 'Əlaqələr' : 'Tarixçə'}
+              {t.label}
             </button>
           ))}
         </div>
 
         {tab === 'overview' ? <OverviewTab client={client} /> : null}
         {tab === 'interactions' ? <InteractionsTab clientId={client.id} /> : null}
+        {tab === 'proposals' ? <ProposalsTab clientId={client.id} /> : null}
+        {tab === 'projects' ? <ProjectsTab clientId={client.id} /> : null}
+        {tab === 'documents' ? <DocumentsTab clientId={client.id} /> : null}
         {tab === 'history' ? <HistoryTab clientId={client.id} /> : null}
-
-        <button className="btn-outline mt-6" onClick={onClose}>
-          Bağla
-        </button>
       </aside>
     </div>
+  );
+}
+
+// REQ-CRM-05 — Proposals tab: project_documents with category='price_protocol'
+function ProposalsTab({ clientId }: { clientId: string }) {
+  const { data: proposals = [], isLoading } = useQuery({
+    queryKey: ['client_proposals', clientId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('project_documents')
+        .select('id, title, share_token, created_at, external_link')
+        .eq('client_id', clientId)
+        .eq('category', 'price_protocol')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  if (isLoading) return <div className="text-meta">Yüklənir…</div>;
+  if (proposals.length === 0) {
+    return (
+      <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+        Hələ qiymət protokolu yoxdur.
+      </p>
+    );
+  }
+  return (
+    <ul className="space-y-2">
+      {proposals.map((p: { id: string; title: string; share_token: string | null; created_at: string; external_link: string | null }) => (
+        <li key={p.id} className="card" style={{ padding: 12 }}>
+          <div className="text-body font-medium">{p.title}</div>
+          {p.share_token ? (
+            <button
+              type="button"
+              className="text-meta mt-1"
+              style={{ color: 'var(--brand-text)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+              onClick={() => {
+                navigator.clipboard.writeText(`${window.location.origin}/docs/${p.share_token}`);
+              }}
+            >
+              Linki kopyala
+            </button>
+          ) : null}
+          <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+            {new Date(p.created_at).toLocaleDateString('az-AZ')}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// REQ-CRM-05 — Projects tab: projects linked to this client
+function ProjectsTab({ clientId }: { clientId: string }) {
+  const { data: projects = [], isLoading } = useQuery({
+    queryKey: ['client_projects', clientId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('id, name, status, deadline')
+        .eq('client_id', clientId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  if (isLoading) return <div className="text-meta">Yüklənir…</div>;
+  if (projects.length === 0) {
+    return (
+      <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+        Bu müştəriyə bağlı layihə yoxdur.
+      </p>
+    );
+  }
+  return (
+    <ul className="space-y-2">
+      {projects.map((p: { id: string; name: string; status: string; deadline: string | null }) => (
+        <li key={p.id} className="card" style={{ padding: 12 }}>
+          <div className="text-body font-medium">{p.name}</div>
+          <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+            {p.status} {p.deadline ? `· ${new Date(p.deadline).toLocaleDateString('az-AZ')}` : ''}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// REQ-CRM-05 — Documents tab: project_documents (non-proposal) for this client
+function DocumentsTab({ clientId }: { clientId: string }) {
+  const { data: docs = [], isLoading } = useQuery({
+    queryKey: ['client_docs', clientId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('project_documents')
+        .select('id, title, category, created_at, external_link, source')
+        .eq('client_id', clientId)
+        .neq('category', 'price_protocol')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  if (isLoading) return <div className="text-meta">Yüklənir…</div>;
+  if (docs.length === 0) {
+    return (
+      <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+        Sənəd yoxdur.
+      </p>
+    );
+  }
+  return (
+    <ul className="space-y-2">
+      {docs.map((d: { id: string; title: string; category: string | null; created_at: string; external_link: string | null }) => (
+        <li key={d.id} className="card" style={{ padding: 12 }}>
+          <div className="text-body font-medium">{d.title}</div>
+          <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+            {d.category ?? '—'} · {new Date(d.created_at).toLocaleDateString('az-AZ')}
+          </div>
+          {d.external_link ? (
+            <a
+              href={d.external_link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-meta"
+              style={{ color: 'var(--brand-text)' }}
+            >
+              Aç →
+            </a>
+          ) : null}
+        </li>
+      ))}
+    </ul>
   );
 }
 

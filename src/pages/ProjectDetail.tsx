@@ -280,59 +280,75 @@ export function ProjectDetailPage() {
       {/* FINANCE (admin only) */}
       {tab === 'Finance' && id ? <ProjectPnL projectId={id} /> : null}
 
-      {/* CLOSEOUT — REQ-PROJ-04 */}
+      {/* CLOSEOUT — REQ-PROJ-04 + REQ-PROJ-05 */}
       {tab === 'Closeout' ? (
-        <div className="card max-w-lg">
-          <h3 className="text-h3 mb-4">Layihəni bağla</h3>
-          {project.status === 'closed' ? (
-            <div
-              className="rounded-card px-4 py-3"
-              style={{ background: 'rgba(34,197,94,0.1)', color: '#16A34A' }}
-            >
-              Bu layihə artıq bağlanıb.
-            </div>
-          ) : (
-            <>
-              <ul className="space-y-2 mb-6">
-                {CLOSEOUT_ITEMS.map((item) => (
-                  <li key={item}>
-                    <label className="flex items-center gap-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={checked.has(item)}
-                        onChange={(e) => {
-                          const next = new Set(checked);
-                          if (e.target.checked) next.add(item);
-                          else next.delete(item);
-                          setChecked(next);
-                        }}
-                      />
-                      <span className="text-body" style={{ color: checked.has(item) ? 'var(--text-muted)' : 'var(--text)', textDecoration: checked.has(item) ? 'line-through' : 'none' }}>
-                        {item}
-                      </span>
-                    </label>
-                  </li>
-                ))}
-              </ul>
-              {closeProject.error ? (
-                <p className="text-meta mb-3" style={{ color: '#B91C1C' }}>
-                  {(closeProject.error as Error).message}
-                </p>
-              ) : null}
-              <button
-                className="btn-primary w-full"
-                disabled={!allChecked || closeProject.isPending}
-                onClick={() => closeProject.mutate()}
+        <div className="space-y-4 max-w-lg">
+          <div className="card">
+            <h3 className="text-h3 mb-4">Layihəni bağla</h3>
+            {project.status === 'closed' ? (
+              <div
+                className="rounded-card px-4 py-3"
+                style={{ background: 'rgba(34,197,94,0.1)', color: '#16A34A' }}
               >
-                {closeProject.isPending ? 'Bağlanır…' : 'Layihəni Tamamla'}
-              </button>
-              {!allChecked ? (
-                <p className="text-meta mt-2 text-center" style={{ color: 'var(--text-muted)' }}>
-                  Bütün məntəqələri işarələyin
-                </p>
-              ) : null}
-            </>
-          )}
+                Bu layihə artıq bağlanıb. ✓
+              </div>
+            ) : (
+              <>
+                <ul className="space-y-2 mb-6">
+                  {CLOSEOUT_ITEMS.map((item) => (
+                    <li key={item}>
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={checked.has(item)}
+                          onChange={(e) => {
+                            const next = new Set(checked);
+                            if (e.target.checked) next.add(item);
+                            else next.delete(item);
+                            setChecked(next);
+                          }}
+                        />
+                        <span
+                          className="text-body"
+                          style={{
+                            color: checked.has(item) ? 'var(--text-muted)' : 'var(--text)',
+                            textDecoration: checked.has(item) ? 'line-through' : 'none',
+                          }}
+                        >
+                          {item}
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+                {closeProject.error ? (
+                  <p className="text-meta mb-3" style={{ color: '#B91C1C' }}>
+                    {(closeProject.error as Error).message}
+                  </p>
+                ) : null}
+                <button
+                  className="btn-primary w-full"
+                  disabled={!allChecked || closeProject.isPending}
+                  onClick={() => closeProject.mutate()}
+                >
+                  {closeProject.isPending ? 'Bağlanır…' : 'Layihəni Tamamla'}
+                </button>
+                {!allChecked ? (
+                  <p className="text-meta mt-2 text-center" style={{ color: 'var(--text-muted)' }}>
+                    Bütün məntəqələri işarələyin
+                  </p>
+                ) : null}
+              </>
+            )}
+          </div>
+
+          {/* Retrospective survey trigger (REQ-CRM-07 / US-CRM-06) */}
+          {project.status === 'closed' && project.client_id ? (
+            <RetroSurveyTrigger projectId={id!} clientId={project.client_id} />
+          ) : null}
+
+          {/* Award submission (REQ-PROJ-05) */}
+          {project.status === 'closed' ? <AwardsSection projectId={id!} /> : null}
         </div>
       ) : null}
 
@@ -447,6 +463,235 @@ function AddDocumentButton({ projectId, onAdded }: { projectId: string; onAdded:
         Ləğv
       </button>
     </form>
+  );
+}
+
+// REQ-CRM-07 — Retrospective survey trigger from closeout
+function RetroSurveyTrigger({ projectId, clientId }: { projectId: string; clientId: string }) {
+  const { profile } = useAuth();
+  const [link, setLink] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function sendSurvey() {
+    setSending(true);
+    setErr(null);
+    try {
+      const token = crypto.randomUUID();
+      const { error } = await supabase.from('retrospective_surveys').insert({
+        project_id: projectId,
+        client_id: clientId,
+        share_token: token,
+        sent_at: new Date().toISOString(),
+      });
+      if (error) throw error;
+      const url = `${window.location.origin}/retro/${token}`;
+      setLink(url);
+      await navigator.clipboard.writeText(url).catch(() => {});
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="card">
+      <h3 className="text-h3 mb-2">Müştəri sorğusu</h3>
+      <p className="text-meta mb-3" style={{ color: 'var(--text-muted)' }}>
+        NPS 0–10 + kateqoriya reytinqləri + şərh. Müştəriyə link göndərin.
+      </p>
+      {link ? (
+        <div>
+          <p className="text-meta mb-2" style={{ color: '#16A34A' }}>
+            Sorğu yaradıldı — link bufer yaddaşına kopyalandı.
+          </p>
+          <code
+            className="text-meta block p-2 rounded"
+            style={{ background: 'var(--surface)', wordBreak: 'break-all' }}
+          >
+            {link}
+          </code>
+        </div>
+      ) : (
+        <>
+          {err ? <p className="text-meta mb-2" style={{ color: '#B91C1C' }}>{err}</p> : null}
+          <button
+            type="button"
+            className="btn-outline"
+            disabled={sending}
+            onClick={sendSurvey}
+          >
+            {sending ? 'Yaradılır…' : 'Sorğu göndər'}
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+// REQ-PROJ-05 — Award/portfolio submission
+type SystemAward = {
+  id: string;
+  name: string;
+  organizer: string;
+  deadline_month: string | null;
+  url: string | null;
+  criteria: string | null;
+};
+
+type PortfolioWorkflow = {
+  id: string;
+  selected_awards: string[];
+  applications: Record<string, Record<string, boolean>>;
+};
+
+function AwardsSection({ projectId }: { projectId: string }) {
+  const qc = useQueryClient();
+
+  const { data: awards = [] } = useQuery({
+    queryKey: ['system_awards'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('system_awards')
+        .select('*')
+        .order('deadline_month');
+      return (data ?? []) as SystemAward[];
+    },
+  });
+
+  const { data: workflow } = useQuery({
+    queryKey: ['portfolio_workflow', projectId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('portfolio_workflows')
+        .select('id, selected_awards, applications')
+        .eq('project_id', projectId)
+        .maybeSingle();
+      return data as PortfolioWorkflow | null;
+    },
+  });
+
+  const updateAwards = useMutation({
+    mutationFn: async ({ awardId, selected }: { awardId: string; selected: boolean }) => {
+      if (!workflow) return;
+      const current = workflow.selected_awards ?? [];
+      const next = selected
+        ? [...current, awardId]
+        : current.filter((id) => id !== awardId);
+      const { error } = await supabase
+        .from('portfolio_workflows')
+        .update({ selected_awards: next })
+        .eq('id', workflow.id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['portfolio_workflow', projectId] }),
+  });
+
+  const toggleChecklist = useMutation({
+    mutationFn: async ({
+      awardId, key, val,
+    }: { awardId: string; key: string; val: boolean }) => {
+      if (!workflow) return;
+      const apps = { ...(workflow.applications ?? {}) };
+      apps[awardId] = { ...(apps[awardId] ?? {}), [key]: val };
+      const { error } = await supabase
+        .from('portfolio_workflows')
+        .update({ applications: apps })
+        .eq('id', workflow.id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['portfolio_workflow', projectId] }),
+  });
+
+  if (awards.length === 0) return null;
+
+  const selectedIds = new Set(workflow?.selected_awards ?? []);
+  const today = new Date();
+
+  return (
+    <div className="card">
+      <h3 className="text-h3 mb-4">Mükafat müraciətləri (REQ-PROJ-05)</h3>
+      <div className="space-y-3">
+        {awards.map((award) => {
+          const isSelected = selectedIds.has(award.id);
+          const apps = workflow?.applications?.[award.id] ?? {};
+
+          // Deadline indicator: "Mart (12 gün qaldı)"
+          let deadlineLabel = '';
+          if (award.deadline_month) {
+            const [year, month] = award.deadline_month.split('-').map(Number);
+            if (year && month) {
+              const deadline = new Date(year, month - 1, 28);
+              const daysLeft = Math.ceil((deadline.getTime() - today.getTime()) / 86400000);
+              deadlineLabel = `${award.deadline_month} (${daysLeft > 0 ? `${daysLeft} gün qaldı` : 'keçib'})`;
+            } else {
+              deadlineLabel = award.deadline_month;
+            }
+          }
+
+          return (
+            <div
+              key={award.id}
+              className="rounded-card p-3"
+              style={{ border: `1px solid ${isSelected ? 'var(--brand-text)' : 'var(--line)'}` }}
+            >
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={(e) =>
+                    updateAwards.mutate({ awardId: award.id, selected: e.target.checked })
+                  }
+                  className="mt-1"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-body font-medium">{award.name}</div>
+                  <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                    {award.organizer}
+                    {deadlineLabel ? ` · ${deadlineLabel}` : ''}
+                  </div>
+                  {award.url ? (
+                    <a
+                      href={award.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-meta"
+                      style={{ color: 'var(--brand-text)' }}
+                    >
+                      Ətraflı →
+                    </a>
+                  ) : null}
+                  {isSelected ? (
+                    <div className="mt-2 space-y-1">
+                      {(['material_ready', 'submitted', 'confirmed'] as const).map((step) => {
+                        const labels: Record<string, string> = {
+                          material_ready: 'Materiallar hazır',
+                          submitted: 'Göndərildi',
+                          confirmed: 'Təsdiqləndi',
+                        };
+                        return (
+                          <label key={step} className="flex items-center gap-2 text-meta cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={!!apps[step]}
+                              onChange={(e) =>
+                                toggleChecklist.mutate({ awardId: award.id, key: step, val: e.target.checked })
+                              }
+                            />
+                            {labels[step]}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
