@@ -409,15 +409,16 @@ export default async function handler(req: Request) {
     if (user.isAdmin) {
       const { data: projs, count } = await sbUser
         .from('projects')
-        .select('id, name, current_phase, deadline', { count: 'exact' })
+        .select('id, name, phases, deadline', { count: 'exact' })
         .eq('status', 'active')
         .order('deadline', { ascending: true, nullsFirst: false })
         .limit(1);
       activeProjects = count ?? 0;
       if (projs && projs.length) {
+        const phases = (projs[0] as { phases?: string[] }).phases ?? [];
         topProject = {
           name: projs[0].name,
-          phase: projs[0].current_phase ?? null,
+          phase: phases.length > 0 ? phases[phases.length - 1] : null,
           deadline: projs[0].deadline ?? null,
         };
       }

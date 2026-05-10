@@ -146,7 +146,7 @@ export function DashboardPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from('projects')
-        .select('id, name, current_phase, deadline, status')
+        .select('id, name, phases, deadline, status')
         .eq('status', 'active')
         .is('archived_at', null)
         .order('deadline', { ascending: true, nullsFirst: false })
@@ -154,7 +154,7 @@ export function DashboardPage() {
       return (data ?? []) as Array<{
         id: string;
         name: string;
-        current_phase: string | null;
+        phases: string[] | null;
         deadline: string | null;
         status: string;
       }>;
@@ -346,7 +346,7 @@ export function DashboardPage() {
                       <a href={`/layihelər/${p.id}`} className="block" style={{ textDecoration: 'none', color: 'inherit' }}>
                         <div className="text-body font-medium truncate">{p.name}</div>
                         <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                          {p.current_phase ?? 'Faza yoxdur'}
+                          {(p.phases && p.phases.length > 0) ? p.phases[p.phases.length - 1] : 'Faza yoxdur'}
                         </div>
                         <div className="text-meta mt-1" style={{ color: HEALTH_COLOR[h] }}>
                           {p.deadline ? `Son: ${formatDate(p.deadline)}` : 'Müddət yoxdur'}
