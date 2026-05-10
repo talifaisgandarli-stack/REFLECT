@@ -68,12 +68,18 @@ export function MiraiPage() {
   // REQ-7.9 — thumbs feedback keyed by message index in current thread
   const [feedbackGiven, setFeedbackGiven] = useState<Record<number, 'up' | 'down'>>({});
 
-  // REQ-MIRAI-05 — admin reads/sets monthly budget cap from system_settings
+  // REQ-MIRAI-05 — admin reads/sets monthly budget cap from system_settings.
+  // Stored as jsonb { usd: number } (must match api/mirai/chat.ts reader).
   const budgetSetting = useQuery({
     queryKey: ['system_settings', 'mirai_monthly_budget'],
-    queryFn: async () => {
-      const { data } = await supabase.from('system_settings').select('value').eq('key', 'mirai_monthly_budget').maybeSingle();
-      return data?.value ?? '10';
+    queryFn: async (): Promise<string> => {
+      const { data } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'mirai_monthly_budget')
+        .maybeSingle();
+      const v = data?.value as { usd?: number } | null | undefined;
+      return typeof v?.usd === 'number' ? String(v.usd) : '5';
     },
     enabled: !!isAdmin,
   });
@@ -82,7 +88,9 @@ export function MiraiPage() {
     mutationFn: async (val: string) => {
       const num = Number(val);
       if (!Number.isFinite(num) || num <= 0) throw new Error('Düzgün məbləğ daxil edin');
-      const { error } = await supabase.from('system_settings').upsert({ key: 'mirai_monthly_budget', value: val }, { onConflict: 'key' });
+      const { error } = await supabase
+        .from('system_settings')
+        .upsert({ key: 'mirai_monthly_budget', value: { usd: num } }, { onConflict: 'key' });
       if (error) throw error;
     },
     onSuccess: () => {

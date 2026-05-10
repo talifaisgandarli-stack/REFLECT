@@ -502,7 +502,7 @@ function KnowledgeBaseSettings() {
           disabled={uploading}
         />
         <span className="btn-primary">{uploading ? 'Yüklənir…' : 'PDF yüklə'}</span>
-        <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Maks. 50 MB</span>
+        <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Maks. 4 MB (Vercel limiti)</span>
       </label>
 
       {uploadOk ? <p className="text-meta" style={{ color: 'var(--brand-text)' }}>{uploadOk}</p> : null}

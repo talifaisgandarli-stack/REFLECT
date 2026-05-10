@@ -11,7 +11,9 @@ import { admin, errorResponse, HttpError, jsonResponse, requireUser } from '../_
 
 export const config = { runtime: 'nodejs' };
 
-const MAX_BYTES = 50 * 1024 * 1024; // 50 MB
+// Vercel serverless body limit on the Hobby plan is ~4.5 MB. Pro plan is 50 MB.
+// Stay safely below the platform cap so users get our error message, not Vercel's.
+const MAX_BYTES = 4 * 1024 * 1024; // 4 MB
 const CHUNK_TOKENS = 500;
 const CHUNK_OVERLAP = 50;
 // Rough heuristic: ~4 chars per token for Latin/Cyrillic mixed text.
@@ -61,7 +63,12 @@ export default async function handler(req: Request) {
     const file = form.get('file');
     if (!(file instanceof File)) throw new HttpError(400, 'file field required');
     if (!file.name.toLowerCase().endsWith('.pdf')) throw new HttpError(400, 'PDF only');
-    if (file.size > MAX_BYTES) throw new HttpError(413, 'File too large (max 50 MB)');
+    if (file.size > MAX_BYTES) {
+      throw new HttpError(
+        413,
+        `Fayl çox böyükdür (${(file.size / 1024 / 1024).toFixed(1)} MB). Maksimum: 4 MB. Daha kiçik PDF-ə bölün və ya sıxın.`,
+      );
+    }
 
     const buf = new Uint8Array(await file.arrayBuffer());
 
