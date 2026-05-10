@@ -1,11 +1,13 @@
 /**
- * Diagnostic endpoint — returns environment + auth state for the calling user.
- * Authenticated users only; safe to expose (no secret values returned).
- * Use this to debug "No profile" or other auth issues from the frontend.
+ * Diagnostic endpoint — returns environment + auth state.
+ * Public: returns env flags only. With Authorization header: also returns
+ * auth user + profile lookup for that token.
+ * No secret values are ever returned (booleans only).
  *
- * GET /api/_diag/check  with  Authorization: Bearer <token>
+ * GET /api/diag/check  (no auth → env flags only)
+ * GET /api/diag/check  with Authorization: Bearer <token> → full diagnostics
  */
-import { admin, errorResponse, HttpError, jsonResponse } from '../_lib/auth';
+import { admin, errorResponse, jsonResponse } from '../_lib/auth';
 
 export const config = { runtime: 'edge' };
 
