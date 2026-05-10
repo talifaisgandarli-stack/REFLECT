@@ -30,12 +30,39 @@ export async function requireUser(req: Request): Promise<AuthedUser> {
   const { data, error } = await sb.auth.getUser(token);
   if (error || !data?.user) throw new HttpError(401, 'Invalid token');
 
-  const { data: prof } = await sb
+  const authUser = data.user;
+
+  // Defense-in-depth: if profile row missing (auto-create trigger didn't fire,
+  // or migration not applied yet), self-heal on the fly. This guarantees that
+  // any authenticated auth.users row also has a profiles row by the time we
+  // return — no more "No profile" 403s, ever.
+  let { data: prof } = await sb
     .from('profiles')
-    .select('id, email, is_creator, role_id')
-    .eq('id', data.user.id)
+    .select('id, email, is_creator, role_id, is_active')
+    .eq('id', authUser.id)
     .maybeSingle();
-  if (!prof) throw new HttpError(403, 'No profile');
+
+  if (!prof) {
+    const { data: created, error: insertErr } = await sb
+      .from('profiles')
+      .insert({
+        id: authUser.id,
+        email: authUser.email ?? '',
+        is_active: true,
+        is_creator: false,
+      })
+      .select('id, email, is_creator, role_id, is_active')
+      .single();
+    if (insertErr || !created) {
+      // Surface what actually went wrong instead of the generic 403.
+      throw new HttpError(500, `Profile auto-create failed: ${insertErr?.message ?? 'unknown'}`);
+    }
+    prof = created;
+  }
+
+  if (prof.is_active === false) {
+    throw new HttpError(403, 'Account is deactivated');
+  }
 
   let roleKey: string | null = null;
   let roleAdmin = false;

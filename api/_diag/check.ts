@@ -1,0 +1,78 @@
+/**
+ * Diagnostic endpoint — returns environment + auth state for the calling user.
+ * Authenticated users only; safe to expose (no secret values returned).
+ * Use this to debug "No profile" or other auth issues from the frontend.
+ *
+ * GET /api/_diag/check  with  Authorization: Bearer <token>
+ */
+import { admin, errorResponse, HttpError, jsonResponse } from '../_lib/auth';
+
+export const config = { runtime: 'edge' };
+
+export default async function handler(req: Request) {
+  try {
+    const auth = req.headers.get('authorization') ?? '';
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+
+    // Env diagnostics (names only; never echo values)
+    const env = {
+      SUPABASE_URL: !!process.env.SUPABASE_URL,
+      VITE_SUPABASE_URL: !!process.env.VITE_SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+      SUPABASE_ANON_KEY: !!process.env.SUPABASE_ANON_KEY,
+      VITE_SUPABASE_ANON_KEY: !!process.env.VITE_SUPABASE_ANON_KEY,
+      ANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY,
+      OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
+      RESEND_API_KEY: !!process.env.RESEND_API_KEY,
+      TELEGRAM_BOT_TOKEN: !!process.env.TELEGRAM_BOT_TOKEN,
+      TELEGRAM_WEBHOOK_SECRET: !!process.env.TELEGRAM_WEBHOOK_SECRET,
+      CRON_SECRET: !!process.env.CRON_SECRET,
+    };
+
+    // Service-role key sanity: decode the JWT payload and check the "role" claim.
+    // anon and service_role keys are JWTs signed with the same secret; the only
+    // difference is `role: "anon"` vs `role: "service_role"` in the payload.
+    let serviceKeyRole: string | null = null;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+    if (key) {
+      try {
+        const payload = key.split('.')[1];
+        const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+        serviceKeyRole = decoded.role ?? 'unknown';
+      } catch {
+        serviceKeyRole = 'invalid_jwt';
+      }
+    }
+
+    if (!token) {
+      return jsonResponse({ ok: false, env, serviceKeyRole, note: 'Send Authorization: Bearer <token> for full diagnostics' });
+    }
+
+    const sb = admin();
+    const { data: authData, error: authErr } = await sb.auth.getUser(token);
+    if (authErr || !authData?.user) {
+      return jsonResponse({ ok: false, env, serviceKeyRole, authError: authErr?.message ?? 'no user' });
+    }
+
+    const authUser = authData.user;
+
+    const { data: prof, error: profErr } = await sb
+      .from('profiles')
+      .select('id, email, is_creator, is_active, role_id')
+      .eq('id', authUser.id)
+      .maybeSingle();
+
+    return jsonResponse({
+      ok: true,
+      env,
+      serviceKeyRole,
+      authUserId: authUser.id,
+      authEmail: authUser.email,
+      profile: prof ?? null,
+      profileError: profErr?.message ?? null,
+      profileMatchesAuth: prof?.id === authUser.id,
+    });
+  } catch (e) {
+    return errorResponse(e);
+  }
+}
