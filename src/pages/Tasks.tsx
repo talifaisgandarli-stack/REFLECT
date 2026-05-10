@@ -26,6 +26,7 @@ export function TasksPage() {
   const [cancelling, setCancelling] = useState<{ id: string; title: string } | null>(null);
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [commenting, setCommenting] = useState<{ id: string; title: string } | null>(null);
+  const [search, setSearch] = useState('');
 
   const archivableCount = useMemo(
     () => tasks.filter((t) => t.status === 'done' || t.status === 'cancelled').length,
@@ -65,15 +66,21 @@ export function TasksPage() {
     );
   }
 
+  const filtered = useMemo(() => {
+    if (!search.trim()) return tasks;
+    const q = search.toLowerCase();
+    return tasks.filter((t) => t.title.toLowerCase().includes(q));
+  }, [tasks, search]);
+
   const grouped = useMemo(() => {
     const map: Record<TaskStatus, Task[]> = {
       idea: [], queued: [], active: [], review: [], expert: [], done: [], cancelled: [],
     };
-    for (const t of tasks) map[t.status].push(t);
+    for (const t of filtered) map[t.status].push(t);
     return map;
-  }, [tasks]);
+  }, [filtered]);
 
-  const meta = `${tasks.length} cəmi · ${grouped.active.length} icrada · ${grouped.review.length} yoxlamada`;
+  const meta = `${filtered.length} cəmi · ${grouped.active.length} icrada · ${grouped.review.length} yoxlamada`;
 
   return (
     <>
@@ -82,7 +89,12 @@ export function TasksPage() {
         title="Tapşırıqlar"
         actions={
           <>
-            <input className="input max-w-[240px]" placeholder="Axtar…" />
+            <input
+              className="input max-w-[240px]"
+              placeholder="Axtar…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
             <button
               className={`btn-outline ${mineOnly ? 'border-brand-text' : ''}`}
               onClick={() => setMineOnly((v) => !v)}

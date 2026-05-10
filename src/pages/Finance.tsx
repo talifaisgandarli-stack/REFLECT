@@ -230,11 +230,8 @@ export function FinancePage() {
       {tab === 'Xərclər' ? <ExpensesTable /> : null}
       {tab === 'Sabit' ? <RecurringExpensesPanel /> : null}
 
-      {tab === 'P&L' || tab === 'Outsource' ? (
-        <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
-          {tab} cədvəli — v1.5-də.
-        </div>
-      ) : null}
+      {tab === 'P&L' ? <PnLTable incomes={incomes.data ?? []} expenses={expenses.data ?? []} /> : null}
+      {tab === 'Outsource' ? <OutsourceSummary /> : null}
 
       {modal ? <IncomeExpenseModal kind={modal} onClose={() => setModal(null)} /> : null}
       {markPaid ? (
@@ -502,6 +499,125 @@ function RecurringExpensesPanel() {
           Əlavə et
         </button>
       </form>
+    </div>
+  );
+}
+
+// REQ-FIN-06 — Firm-wide P&L: monthly income / expense / net
+function PnLTable({
+  incomes,
+  expenses,
+}: {
+  incomes: Array<{ amount: number; occurred_at: string | null }>;
+  expenses: Array<{ amount: number; occurred_at: string | null }>;
+}) {
+  const rows = byMonth(incomes, expenses);
+  if (rows.length === 0) {
+    return <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>Məlumat yoxdur.</div>;
+  }
+  const totIn = rows.reduce((s, r) => s + r.in, 0);
+  const totOut = rows.reduce((s, r) => s + r.out, 0);
+  return (
+    <div className="card overflow-x-auto">
+      <h3 className="text-h3 mb-3">Gəlir / Xərc / Xalis (aylıq)</h3>
+      <table className="w-full text-body">
+        <thead>
+          <tr style={{ borderBottom: '1px solid var(--line)' }}>
+            {['Ay', 'Gəlir', 'Xərc', 'Xalis'].map((h) => (
+              <th key={h} className="text-left py-2 px-3 text-meta" style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const net = r.in - r.out;
+            return (
+              <tr key={r.m} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                <td className="py-2 px-3">{r.m}</td>
+                <td className="py-2 px-3" style={{ fontVariantNumeric: 'tabular-nums', color: '#16A34A' }}>{formatAZN(r.in)}</td>
+                <td className="py-2 px-3" style={{ fontVariantNumeric: 'tabular-nums', color: '#B91C1C' }}>{formatAZN(r.out)}</td>
+                <td className="py-2 px-3 font-medium" style={{ fontVariantNumeric: 'tabular-nums', color: net >= 0 ? '#16A34A' : '#B91C1C' }}>{formatAZN(net)}</td>
+              </tr>
+            );
+          })}
+          <tr style={{ borderTop: '2px solid var(--line)' }}>
+            <td className="py-2 px-3 font-medium">Cəmi</td>
+            <td className="py-2 px-3 font-medium" style={{ color: '#16A34A' }}>{formatAZN(totIn)}</td>
+            <td className="py-2 px-3 font-medium" style={{ color: '#B91C1C' }}>{formatAZN(totOut)}</td>
+            <td className="py-2 px-3 font-medium" style={{ color: totIn - totOut >= 0 ? '#16A34A' : '#B91C1C' }}>{formatAZN(totIn - totOut)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// REQ-FIN-07 — Outsource cost summary by status
+function OutsourceSummary() {
+  const q = useQuery({
+    queryKey: ['fin', 'outsource_summary'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('outsource_items')
+        .select('id, vendor, description, amount, status, deadline')
+        .order('deadline', { ascending: true })
+        .limit(200);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const rows = q.data ?? [];
+  const byStatus: Record<string, { count: number; total: number }> = {};
+  for (const r of rows) {
+    const s = r.status ?? 'pending';
+    byStatus[s] ??= { count: 0, total: 0 };
+    byStatus[s].count++;
+    byStatus[s].total += Number(r.amount ?? 0);
+  }
+
+  const STATUS_LABEL: Record<string, string> = {
+    pending: 'Sifariş', active: 'İcra', delivered: 'Təhvil', paid: 'Ödənildi',
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Status summary chips */}
+      <div className="flex flex-wrap gap-3">
+        {Object.entries(byStatus).map(([s, v]) => (
+          <div key={s} className="card px-4 py-3 min-w-[130px]">
+            <div className="text-meta uppercase tracking-wider" style={{ color: 'var(--text-muted)', fontSize: 11 }}>{STATUS_LABEL[s] ?? s}</div>
+            <div className="text-h2 mt-1" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAZN(v.total)}</div>
+            <div className="text-meta" style={{ color: 'var(--text-muted)' }}>{v.count} sifariş</div>
+          </div>
+        ))}
+        {rows.length === 0 ? <div className="text-meta" style={{ color: 'var(--text-muted)' }}>Outsource sifarişi yoxdur.</div> : null}
+      </div>
+      {/* Detail table */}
+      {rows.length > 0 ? (
+        <div className="card overflow-x-auto">
+          <table className="w-full text-body">
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--line)' }}>
+                {['Vendor', 'Təsvir', 'Məbləğ', 'Status', 'Müddət'].map((h) => (
+                  <th key={h} className="text-left py-2 px-3 text-meta" style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r: any) => (
+                <tr key={r.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                  <td className="py-2 px-3">{r.vendor ?? '—'}</td>
+                  <td className="py-2 px-3 max-w-[200px] truncate">{r.description ?? '—'}</td>
+                  <td className="py-2 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAZN(r.amount ?? 0)}</td>
+                  <td className="py-2 px-3"><span className="chip text-meta" style={{ padding: '2px 6px', fontSize: 11 }}>{STATUS_LABEL[r.status] ?? r.status}</span></td>
+                  <td className="py-2 px-3">{r.deadline ? formatDate(r.deadline) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
     </div>
   );
 }
