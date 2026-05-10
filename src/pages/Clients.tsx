@@ -21,6 +21,7 @@ import type { Client, ClientPipelineStage, InteractionType } from '@/types/db';
 import { formatAZN, relativeTime } from '@/lib/format';
 import { useAuth } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
+import { ProposalCreateModal } from '@/components/ProposalCreateModal';
 
 type DragPayload = { id: string; from: ClientPipelineStage };
 type LostPrompt = { id: string; from: ClientPipelineStage };
@@ -327,6 +328,7 @@ function ClientProjectsTab({ clientId }: { clientId: string }) {
 }
 
 function ProposalsTab({ clientId }: { clientId: string }) {
+  const [showCreate, setShowCreate] = useState(false);
   const proposals = useQuery({
     queryKey: ['client-proposals', clientId],
     queryFn: async () => {
@@ -341,13 +343,44 @@ function ProposalsTab({ clientId }: { clientId: string }) {
     },
   });
 
-  if (proposals.isLoading) return <div className="text-meta">Yüklənir…</div>;
-  if (!proposals.data?.length)
-    return <div className="text-meta" style={{ color: 'var(--text-muted)' }}>Qiymət protokolu yoxdur.</div>;
+  return (
+    <div>
+      <button
+        className="btn-primary mb-3 text-meta"
+        style={{ padding: '4px 12px' }}
+        onClick={() => setShowCreate(true)}
+      >
+        + Təklif
+      </button>
 
+      {proposals.isLoading ? (
+        <div className="text-meta">Yüklənir…</div>
+      ) : !proposals.data?.length ? (
+        <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+          Qiymət protokolu yoxdur.
+        </div>
+      ) : (
+        <ProposalList docs={proposals.data} />
+      )}
+
+      {showCreate && (
+        <ProposalCreateModal
+          clientId={clientId}
+          onClose={() => setShowCreate(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ProposalList({
+  docs,
+}: {
+  docs: Array<{ id: string; title: string; created_at: string; share_token: string | null; external_link: string | null }>;
+}) {
   return (
     <ul className="space-y-2">
-      {proposals.data.map((doc) => (
+      {docs.map((doc) => (
         <li key={doc.id} className="card" style={{ padding: 12 }}>
           <div className="font-medium text-body">{doc.title}</div>
           <div className="flex items-center gap-3 mt-1">

@@ -3,11 +3,14 @@ import { PageHead } from '@/components/PageHead';
 import { useProject, useTasks } from '@/lib/hooks';
 import { StatusChip } from '@/components/StatusChip';
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { PROJECT_PHASES } from '@/lib/labels';
 import { ProjectPnL } from '@/components/ProjectPnL';
+import { ProposalCreateModal } from '@/components/ProposalCreateModal';
 
-const TABS = ['Overview', 'Tasks', 'Documents', 'Closeout', 'History'] as const;
+const TABS = ['Overview', 'Tasks', 'Proposals', 'Documents', 'Closeout', 'History'] as const;
 
 export function ProjectDetailPage() {
   const { id } = useParams();
@@ -17,7 +20,7 @@ export function ProjectDetailPage() {
   type Tab = (typeof TABS)[number] | 'Finance';
   const [tab, setTab] = useState<Tab>('Overview');
   const tabs: Tab[] = isAdmin
-    ? [...TABS.slice(0, 3), 'Finance', ...TABS.slice(3)]
+    ? [...TABS.slice(0, 4), 'Finance', ...TABS.slice(4)]
     : [...TABS];
 
   if (!project) {
@@ -103,12 +106,90 @@ export function ProjectDetailPage() {
 
       {tab === 'Finance' && id ? <ProjectPnL projectId={id} /> : null}
 
+      {tab === 'Proposals' && id ? (
+        <ProjectProposalsTab projectId={id} clientId={project.client_id} />
+      ) : null}
+
       {tab === 'Documents' || tab === 'Closeout' || tab === 'History' ? (
         <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
           {tab} bölməsi v1.5-də.
         </div>
       ) : null}
     </>
+  );
+}
+
+function ProjectProposalsTab({
+  projectId,
+  clientId,
+}: {
+  projectId: string;
+  clientId: string | null;
+}) {
+  const [showCreate, setShowCreate] = useState(false);
+  const proposals = useQuery({
+    queryKey: ['project-proposals', projectId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('project_documents')
+        .select('id, title, created_at, share_token, external_link, source')
+        .eq('project_id', projectId)
+        .eq('category', 'price_protocol')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  return (
+    <div className="card">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-h3">Qiymət protokolu</h3>
+        <button className="btn-primary" onClick={() => setShowCreate(true)}>
+          + Təklif
+        </button>
+      </div>
+
+      {proposals.isLoading ? (
+        <p className="text-meta">Yüklənir…</p>
+      ) : !proposals.data?.length ? (
+        <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+          Bu layihə üçün qiymət protokolu yoxdur.
+        </p>
+      ) : (
+        <ul className="divide-y divide-line-soft">
+          {proposals.data.map((doc) => (
+            <li key={doc.id} className="py-3 flex items-center justify-between">
+              <div>
+                <div className="font-medium text-body">{doc.title}</div>
+                <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                  {new Date(doc.created_at).toLocaleDateString('az-AZ')}
+                  {doc.share_token ? ' · public link' : ''}
+                </div>
+              </div>
+              {doc.external_link ? (
+                <a
+                  href={doc.external_link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="chip"
+                >
+                  Aç
+                </a>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {showCreate && (
+        <ProposalCreateModal
+          projectId={projectId}
+          clientId={clientId}
+          onClose={() => setShowCreate(false)}
+        />
+      )}
+    </div>
   );
 }
 
