@@ -1,16 +1,19 @@
 import { useMemo, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import { isOpenChildrenError, useTasks, useUpdateTaskStatus } from '@/lib/hooks';
 import { TASK_STATUS_LABEL, TASK_STATUS_ORDER, TASK_STATUS_TONE } from '@/lib/labels';
 import type { Task, TaskStatus } from '@/types/db';
 import { useAuth } from '@/lib/store';
+import { supabase } from '@/lib/supabase';
 import { SubtaskBlockingModal } from '@/components/SubtaskBlockingModal';
 import { TaskCreateModal } from '@/components/TaskCreateModal';
 import { CancelTaskModal } from '@/components/CancelTaskModal';
 
 export function TasksPage() {
-  const { profile } = useAuth();
+  const { profile, isAdmin } = useAuth();
+  const qc = useQueryClient();
   const [view, setView] = useState<'board' | 'table'>('board');
   const [mineOnly, setMineOnly] = useState(false);
   const { data: tasks = [], isLoading } = useTasks(
@@ -20,6 +23,27 @@ export function TasksPage() {
   const [blocker, setBlocker] = useState<{ id: string; from?: TaskStatus } | null>(null);
   const [creating, setCreating] = useState(false);
   const [cancelling, setCancelling] = useState<{ id: string; title: string } | null>(null);
+  const [confirmArchive, setConfirmArchive] = useState(false);
+
+  const archivableCount = useMemo(
+    () => tasks.filter((t) => t.status === 'done' || t.status === 'cancelled').length,
+    [tasks],
+  );
+
+  const bulkArchive = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ archived_at: new Date().toISOString() })
+        .in('status', ['done', 'cancelled'])
+        .is('archived_at', null);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      setConfirmArchive(false);
+    },
+  });
 
   function moveTask(id: string, status: TaskStatus, from?: TaskStatus) {
     if (status === 'cancelled') {
@@ -63,6 +87,11 @@ export function TasksPage() {
             >
               Mənim
             </button>
+            {isAdmin && archivableCount > 0 ? (
+              <button className="btn-outline" onClick={() => setConfirmArchive(true)}>
+                Arxivlə ({archivableCount})
+              </button>
+            ) : null}
             <button className="btn-primary" onClick={() => setCreating(true)}>
               + Yeni
             </button>
@@ -239,6 +268,42 @@ export function TasksPage() {
             update.reset();
           }}
         />
+      ) : null}
+
+      {confirmArchive ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: 'rgba(14,22,17,0.55)' }}
+          onClick={() => setConfirmArchive(false)}
+        >
+          <div
+            className="bg-surface p-6 rounded-card w-[380px]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-h2 mb-2">Toplu arxivləmə</h2>
+            <p className="text-body mb-5" style={{ color: 'var(--text-muted)' }}>
+              {archivableCount} ədəd <strong>Tamamlandı</strong> / <strong>Ləğv edildi</strong>{' '}
+              tapşırığı arxivlənəcək. Tapşırıqlar lövhədən silinəcək; Arxiv bölməsindən bərpa edilə bilər.
+            </p>
+            {bulkArchive.error ? (
+              <p className="text-meta mb-3" style={{ color: '#B91C1C' }}>
+                {(bulkArchive.error as Error).message}
+              </p>
+            ) : null}
+            <div className="flex justify-end gap-2">
+              <button className="btn-outline" onClick={() => setConfirmArchive(false)}>
+                Ləğv et
+              </button>
+              <button
+                className="btn-primary"
+                disabled={bulkArchive.isPending}
+                onClick={() => bulkArchive.mutate()}
+              >
+                {bulkArchive.isPending ? 'Arxivlənir…' : 'Arxivlə'}
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </>
   );
