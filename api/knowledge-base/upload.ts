@@ -45,7 +45,7 @@ function chunkText(text: string): string[] {
 // 768-dim multilingual vectors (good Azerbaijani support).
 // Get key: https://aistudio.google.com/apikey
 async function embed(input: string, key: string): Promise<number[]> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${encodeURIComponent(key)}`;
+  const url = `https://generativelanguage.googleapis.com/v1/models/text-embedding-004:embedContent?key=${encodeURIComponent(key)}`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
