@@ -121,12 +121,12 @@ async function embedQuery(text: string): Promise<number[] | null> {
   const key = process.env.GOOGLE_API_KEY;
   if (!key) return null;
   try {
-    const url = `https://generativelanguage.googleapis.com/v1/models/text-embedding-004:embedContent?key=${encodeURIComponent(key)}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/embedding-001:embedContent?key=${encodeURIComponent(key)}`;
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        model: 'models/text-embedding-004',
+        model: 'models/embedding-001',
         content: { parts: [{ text }] },
       }),
     });
