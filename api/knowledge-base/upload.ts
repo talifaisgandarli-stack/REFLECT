@@ -1,17 +1,19 @@
 /**
  * Admin-only PDF upload for MIRAI RAG (PRD §7.4 / US-SYS-02).
  *
- * Pipeline: multipart PDF → unpdf text extract → ~500-token chunks →
- * OpenAI text-embedding-ada-002 → insert into knowledge_base.
+ * Pipeline: multipart PDF → unpdf text extract → ~1000-token chunks →
+ * Google Gemini text-embedding-004 (parallel) → insert into knowledge_base.
+ *
+ * Runs on edge runtime — unpdf is designed for it, and edge gives us a 30s
+ * budget which is plenty once embeddings run in parallel batches.
  *
  * RLS already restricts knowledge_base writes to admins (kb_admin_write),
  * but we double-check `user.isAdmin` to short-circuit before parsing.
  */
+import { extractText, getDocumentProxy } from 'unpdf';
 import { admin, errorResponse, HttpError, jsonResponse, requireUser } from '../_lib/auth';
 
-// Extend Hobby default 10s timeout to 60s — sequential embedding calls for a
-// multi-chunk PDF easily exceed 10s. Pro plans can extend further.
-export const config = { runtime: 'nodejs', maxDuration: 60 };
+export const config = { runtime: 'edge' };
 
 // Vercel serverless body limit on Hobby is ~4.5 MB. Pro is 50 MB.
 const MAX_BYTES = 4 * 1024 * 1024; // 4 MB
@@ -90,7 +92,6 @@ export default async function handler(req: Request) {
     const buf = new Uint8Array(await file.arrayBuffer());
 
     // unpdf is edge/node compatible and has no native deps.
-    const { extractText, getDocumentProxy } = await import('unpdf');
     const pdf = await getDocumentProxy(buf);
     const { text } = await extractText(pdf, { mergePages: true });
     const fullText = Array.isArray(text) ? text.join('\n') : text;
