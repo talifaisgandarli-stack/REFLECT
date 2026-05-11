@@ -9,15 +9,20 @@
  */
 import { admin, errorResponse, HttpError, jsonResponse, requireUser } from '../_lib/auth';
 
-export const config = { runtime: 'nodejs' };
+// Extend Hobby default 10s timeout to 60s — sequential embedding calls for a
+// multi-chunk PDF easily exceed 10s. Pro plans can extend further.
+export const config = { runtime: 'nodejs', maxDuration: 60 };
 
-// Vercel serverless body limit on the Hobby plan is ~4.5 MB. Pro plan is 50 MB.
-// Stay safely below the platform cap so users get our error message, not Vercel's.
+// Vercel serverless body limit on Hobby is ~4.5 MB. Pro is 50 MB.
 const MAX_BYTES = 4 * 1024 * 1024; // 4 MB
-const CHUNK_TOKENS = 500;
-const CHUNK_OVERLAP = 50;
+// Larger chunks → fewer embedding calls → faster wall time. 1000 tokens still
+// fits comfortably inside Gemini's input limit.
+const CHUNK_TOKENS = 1000;
+const CHUNK_OVERLAP = 100;
 // Rough heuristic: ~4 chars per token for Latin/Cyrillic mixed text.
 const CHARS_PER_TOKEN = 4;
+// Embed N chunks in parallel. Google free tier allows 100 req/min, so 8 is safe.
+const EMBED_CONCURRENCY = 8;
 
 function chunkText(text: string): string[] {
   const clean = text.replace(/\s+/g, ' ').trim();
@@ -98,24 +103,29 @@ export default async function handler(req: Request) {
     // Replace any existing rows for this PDF — admin re-upload = full refresh.
     await sb.from('knowledge_base').delete().eq('source_pdf', file.name);
 
-    const rows: Array<{
+    type Row = {
       source_pdf: string;
       chunk_index: number;
       content: string;
       embedding: number[];
       uploaded_by: string;
-    }> = [];
+    };
 
-    // Sequential to keep token-rate predictable; small PDFs typically <50 chunks.
-    for (let i = 0; i < chunks.length; i++) {
-      const vec = await embed(chunks[i], apiKey);
-      rows.push({
-        source_pdf: file.name,
-        chunk_index: i,
-        content: chunks[i],
-        embedding: vec,
-        uploaded_by: user.id,
-      });
+    // Embed in parallel batches — 100-chunk PDFs go from ~20s sequential to
+    // ~3s parallel, comfortably inside the 60s function budget.
+    const rows: Row[] = new Array(chunks.length);
+    for (let start = 0; start < chunks.length; start += EMBED_CONCURRENCY) {
+      const slice = chunks.slice(start, start + EMBED_CONCURRENCY);
+      const vectors = await Promise.all(slice.map((c) => embed(c, apiKey)));
+      for (let j = 0; j < slice.length; j++) {
+        rows[start + j] = {
+          source_pdf: file.name,
+          chunk_index: start + j,
+          content: slice[j],
+          embedding: vectors[j],
+          uploaded_by: user.id,
+        };
+      }
     }
 
     const { error } = await sb.from('knowledge_base').insert(rows);
