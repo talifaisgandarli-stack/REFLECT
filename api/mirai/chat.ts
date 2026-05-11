@@ -115,18 +115,24 @@ async function getMonthlyCap(sb: ReturnType<typeof admin>): Promise<number> {
 
 type KbChunk = { source_pdf: string; chunk_index: number; content: string };
 
+// Google Gemini text-embedding-004 (free 1500 RPD, multilingual, 768-dim).
+// RAG silently no-ops if key is missing — non-legal personas keep working.
 async function embedQuery(text: string): Promise<number[] | null> {
-  const key = process.env.OPENAI_API_KEY;
+  const key = process.env.GOOGLE_API_KEY;
   if (!key) return null;
   try {
-    const res = await fetch('https://api.openai.com/v1/embeddings', {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${encodeURIComponent(key)}`;
+    const res = await fetch(url, {
       method: 'POST',
-      headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model: 'text-embedding-ada-002', input: text }),
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'models/text-embedding-004',
+        content: { parts: [{ text }] },
+      }),
     });
     if (!res.ok) return null;
-    const data = (await res.json()) as { data: Array<{ embedding: number[] }> };
-    return data.data[0]?.embedding ?? null;
+    const data = (await res.json()) as { embedding?: { values?: number[] } };
+    return data.embedding?.values ?? null;
   } catch {
     return null;
   }

@@ -24,7 +24,7 @@ export default async function handler(req: Request) {
       SUPABASE_ANON_KEY: !!process.env.SUPABASE_ANON_KEY,
       VITE_SUPABASE_ANON_KEY: !!process.env.VITE_SUPABASE_ANON_KEY,
       ANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY,
-      OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
+      GOOGLE_API_KEY: !!process.env.GOOGLE_API_KEY,
       RESEND_API_KEY: !!process.env.RESEND_API_KEY,
       TELEGRAM_BOT_TOKEN: !!process.env.TELEGRAM_BOT_TOKEN,
       TELEGRAM_WEBHOOK_SECRET: !!process.env.TELEGRAM_WEBHOOK_SECRET,
@@ -48,7 +48,7 @@ export default async function handler(req: Request) {
 
     // Feature flags derived from env presence — safe to expose, never include secrets.
     const features = {
-      rag_enabled: !!process.env.OPENAI_API_KEY,
+      rag_enabled: !!process.env.GOOGLE_API_KEY,
       telegram_enabled: !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_WEBHOOK_SECRET,
       email_enabled: !!process.env.RESEND_API_KEY,
       mirai_enabled: !!process.env.ANTHROPIC_API_KEY,

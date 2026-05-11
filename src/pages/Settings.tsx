@@ -500,32 +500,20 @@ function KnowledgeBaseSettings() {
 
   const pdfs = Object.entries(chunks.data ?? {});
 
-  if (!diag.isLoading && !ragEnabled) {
-    return (
-      <div className="space-y-4">
-        <h3 className="text-h3">Bilik Bazası (MIRAI RAG)</h3>
-        <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
-          AZ inşaat normaları, AZDNT sənədlərini yükləyin. MIRAI Hüquqşünas bu mənbələrə istinad edər.
-        </p>
-        <div
-          className="rounded-card px-4 py-3"
-          style={{ background: 'var(--surface-mist)', color: 'var(--text-soft)', border: '1px solid var(--line)' }}
-        >
-          <div className="text-body font-medium mb-1">Bu funksiya hazırda söndürülüb</div>
-          <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-            PDF yükləmə və hüquqşünas RAG axtarışı OpenAI embedding xidmətini tələb edir. Aktivləşdirmək üçün admin Vercel-də <code>OPENAI_API_KEY</code> təyin etməlidir. Sistemin qalan hissəsi (8 persona, tool-lar, layihələr, maliyyə) bu olmadan da tam işləkdir.
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-5">
       <h3 className="text-h3">Bilik Bazası (MIRAI RAG)</h3>
       <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
         AZ inşaat normaları, AZDNT sənədlərini yükləyin. MIRAI Hüquqşünas bu mənbələrə istinad edər.
       </p>
+      {!diag.isLoading && !ragEnabled ? (
+        <div
+          className="rounded-card px-3 py-2 text-meta"
+          style={{ background: 'rgba(217,119,6,0.08)', color: '#92400E', border: '1px solid rgba(217,119,6,0.25)' }}
+        >
+          ⓘ Embedding üçün açar tələb olunur. Pulsuz Google Gemini açarı al → <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{ textDecoration: 'underline' }}>aistudio.google.com/apikey</a> → Vercel-də <code>GOOGLE_API_KEY</code> təyin et.
+        </div>
+      ) : null}
 
       <label className="flex items-center gap-3 cursor-pointer">
         <input
