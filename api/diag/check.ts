@@ -46,8 +46,16 @@ export default async function handler(req: Request) {
       }
     }
 
+    // Feature flags derived from env presence — safe to expose, never include secrets.
+    const features = {
+      rag_enabled: !!process.env.OPENAI_API_KEY,
+      telegram_enabled: !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_WEBHOOK_SECRET,
+      email_enabled: !!process.env.RESEND_API_KEY,
+      mirai_enabled: !!process.env.ANTHROPIC_API_KEY,
+    };
+
     if (!token) {
-      return jsonResponse({ ok: false, env, serviceKeyRole, note: 'Send Authorization: Bearer <token> for full diagnostics' });
+      return jsonResponse({ ok: false, env, serviceKeyRole, features, note: 'Send Authorization: Bearer <token> for full diagnostics' });
     }
 
     const sb = admin();
@@ -68,6 +76,7 @@ export default async function handler(req: Request) {
       ok: true,
       env,
       serviceKeyRole,
+      features,
       authUserId: authUser.id,
       authEmail: authUser.email,
       profile: prof ?? null,

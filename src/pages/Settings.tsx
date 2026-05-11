@@ -425,15 +425,29 @@ function TemplatesSettings() {
   );
 }
 
-// §10.3 / US-SYS-02 — Knowledge Base PDF upload + chunk + embed pipeline
+// §10.3 / US-SYS-02 — Knowledge Base PDF upload + chunk + embed pipeline.
+// Gracefully hides upload UI when RAG is disabled server-side (no OpenAI key),
+// so admins don't see a feature that only ever returns errors.
 function KnowledgeBaseSettings() {
   const qc = useQueryClient();
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState<string | null>(null);
   const [uploadOk, setUploadOk] = useState<string | null>(null);
 
+  const diag = useQuery({
+    queryKey: ['diag', 'features'],
+    queryFn: async () => {
+      const res = await fetch('/api/diag/check');
+      const j = (await res.json()) as { features?: { rag_enabled?: boolean } };
+      return j.features ?? {};
+    },
+    staleTime: 5 * 60_000,
+  });
+  const ragEnabled = diag.data?.rag_enabled === true;
+
   const chunks = useQuery({
     queryKey: ['knowledge-base'],
+    enabled: ragEnabled,
     queryFn: async () => {
       const { data } = await supabase
         .from('knowledge_base')
@@ -486,18 +500,32 @@ function KnowledgeBaseSettings() {
 
   const pdfs = Object.entries(chunks.data ?? {});
 
+  if (!diag.isLoading && !ragEnabled) {
+    return (
+      <div className="space-y-4">
+        <h3 className="text-h3">Bilik Bazası (MIRAI RAG)</h3>
+        <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+          AZ inşaat normaları, AZDNT sənədlərini yükləyin. MIRAI Hüquqşünas bu mənbələrə istinad edər.
+        </p>
+        <div
+          className="rounded-card px-4 py-3"
+          style={{ background: 'var(--surface-mist)', color: 'var(--text-soft)', border: '1px solid var(--line)' }}
+        >
+          <div className="text-body font-medium mb-1">Bu funksiya hazırda söndürülüb</div>
+          <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+            PDF yükləmə və hüquqşünas RAG axtarışı OpenAI embedding xidmətini tələb edir. Aktivləşdirmək üçün admin Vercel-də <code>OPENAI_API_KEY</code> təyin etməlidir. Sistemin qalan hissəsi (8 persona, tool-lar, layihələr, maliyyə) bu olmadan da tam işləkdir.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
       <h3 className="text-h3">Bilik Bazası (MIRAI RAG)</h3>
       <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
         AZ inşaat normaları, AZDNT sənədlərini yükləyin. MIRAI Hüquqşünas bu mənbələrə istinad edər.
       </p>
-      <div
-        className="rounded-card px-3 py-2 text-meta"
-        style={{ background: 'rgba(217,119,6,0.08)', color: '#92400E', border: '1px solid rgba(217,119,6,0.25)' }}
-      >
-        ⓘ Bu funksiya OpenAI API açarı tələb edir (embedding-lər üçün). Vercel-də <code>OPENAI_API_KEY</code> təyin edilməyibsə, yükləmə xətası verəcək.
-      </div>
 
       <label className="flex items-center gap-3 cursor-pointer">
         <input

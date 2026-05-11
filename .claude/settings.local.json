@@ -5,7 +5,8 @@
       "PowerShell(git config --get credential.helper; [System.Environment]::GetEnvironmentVariable\\(\"GITHUB_TOKEN\"\\); [System.Environment]::GetEnvironmentVariable\\(\"GH_TOKEN\"\\))",
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(npx tsc *)"
     ]
   }
 }
