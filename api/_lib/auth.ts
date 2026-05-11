@@ -43,23 +43,22 @@ export async function requireUser(req: Request): Promise<AuthedUser> {
     .maybeSingle();
 
   if (!prof) {
-    const { data: created, error: insertErr } = await sb
-      .from('profiles')
-      .insert({
-        id: authUser.id,
-        email: authUser.email ?? '',
-        is_active: true,
-        is_creator: false,
-      })
-      .select('id, email, is_creator, role_id, is_active')
-      .single();
-    if (insertErr || !created) {
-      // Surface what actually went wrong instead of the generic 403.
-      throw new HttpError(500, `Profile auto-create failed: ${insertErr?.message ?? 'unknown'}`);
+    // Call SECURITY DEFINER RPC (migration 0025) — runs as postgres superuser
+    // so it bypasses any service_role GRANT gaps. Returns the row whether it
+    // already existed or was just created.
+    const { data: ensured, error: rpcErr } = await sb.rpc('ensure_profile', {
+      p_id: authUser.id,
+      p_email: authUser.email ?? '',
+    });
+    if (rpcErr) {
+      throw new HttpError(500, `ensure_profile RPC failed: ${rpcErr.message}`);
     }
-    prof = created;
+    const row = Array.isArray(ensured) ? ensured[0] : ensured;
+    if (!row) throw new HttpError(500, 'ensure_profile returned no row');
+    prof = row as NonNullable<typeof prof>;
   }
 
+  if (!prof) throw new HttpError(500, 'profile unexpectedly null');
   if (prof.is_active === false) {
     throw new HttpError(403, 'Account is deactivated');
   }
