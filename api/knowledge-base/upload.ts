@@ -45,13 +45,16 @@ function chunkText(text: string): string[] {
 // 768-dim multilingual vectors (good Azerbaijani support).
 // Get key: https://aistudio.google.com/apikey
 async function embed(input: string, key: string): Promise<number[]> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/embedding-001:embedContent?key=${encodeURIComponent(key)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${encodeURIComponent(key)}`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      model: 'models/embedding-001',
+      model: 'models/gemini-embedding-001',
       content: { parts: [{ text: input }] },
+      // Schema is vector(768); ask Gemini for 768-dim explicitly
+      // (default is 3072, which would fail the INSERT).
+      outputDimensionality: 768,
     }),
   });
   if (!res.ok) {
