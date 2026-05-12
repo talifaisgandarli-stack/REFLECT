@@ -73,7 +73,7 @@ export function ArchivePage() {
       if (assigneeId && !t.assignee_ids.includes(assigneeId)) return false;
       if (statusFilter && t.status !== statusFilter) return false;
       if (dateFrom && t.archived_at && t.archived_at < dateFrom) return false;
-      if (dateTo && t.archived_at && t.archived_at > dateTo + 'T23:59:59') return false;
+      if (dateTo && t.archived_at && t.archived_at > dateTo + 'T23:59:59.999Z') return false;
       return true;
     });
   }, [tasks.data, projectId, assigneeId, statusFilter, dateFrom, dateTo]);
@@ -82,7 +82,7 @@ export function ArchivePage() {
     return (projects.data ?? []).filter((p) => {
       if (projectId && p.id !== projectId) return false;
       if (dateFrom && p.archived_at && p.archived_at < dateFrom) return false;
-      if (dateTo && p.archived_at && p.archived_at > dateTo + 'T23:59:59') return false;
+      if (dateTo && p.archived_at && p.archived_at > dateTo + 'T23:59:59.999Z') return false;
       return true;
     });
   }, [projects.data, projectId, dateFrom, dateTo]);

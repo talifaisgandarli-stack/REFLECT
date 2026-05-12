@@ -65,17 +65,26 @@ export function ProjectDetailPage() {
     },
   });
 
-  // History from activity_log (REQ-PROJ-03)
+  // History from activity_log — REQ-PROJ-03. Show project events PLUS task
+  // events that belong to this project, so the history tab isn't deceptively
+  // empty when only tasks have moved.
   const { data: history = [] } = useQuery({
     queryKey: ['project-history', id],
     enabled: !!id && tab === 'History',
     queryFn: async () => {
+      const projectTaskIds = await supabase
+        .from('tasks')
+        .select('id')
+        .eq('project_id', id!)
+        .limit(500);
+      const taskIds = (projectTaskIds.data ?? []).map((t: { id: string }) => t.id);
+      const ids = [id!, ...taskIds];
       const { data } = await supabase
         .from('activity_log')
         .select('*, profiles!activity_log_user_id_fkey(full_name)')
-        .eq('entity_id', id!)
+        .in('entity_id', ids)
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(100);
       return data ?? [];
     },
   });

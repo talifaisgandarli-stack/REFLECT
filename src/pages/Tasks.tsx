@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import { isOpenChildrenError, useTasks, useUpdateTaskStatus } from '@/lib/hooks';
@@ -59,7 +60,16 @@ export function TasksPage() {
   const [cancelling, setCancelling] = useState<{ id: string; title: string } | null>(null);
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [commenting, setCommenting] = useState<{ id: string; title: string } | null>(null);
-  const [search, setSearch] = useState('');
+  // Persist search filter in URL so refresh / share-link preserves it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [search, setSearch] = useState(searchParams.get('q') ?? '');
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (search) next.set('q', search);
+    else next.delete('q');
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
   const archivableCount = useMemo(
     () => tasks.filter((t) => t.status === 'done' || t.status === 'cancelled').length,
@@ -387,7 +397,24 @@ export function TasksPage() {
                 <td className="py-3 px-3">{t.title}</td>
                 <td className="py-3 px-3">{TASK_STATUS_LABEL[t.status]}</td>
                 <td className="py-3 px-3">{t.assignee_ids.length} nəfər</td>
-                <td className="py-3 px-3">{t.deadline ?? '—'}</td>
+                <td className="py-3 px-3">
+                  {t.deadline ? (
+                    <span
+                      style={{
+                        color:
+                          taskTimeGroup(t) === 'overdue' ? '#EF4444'
+                          : taskTimeGroup(t) === 'today' ? '#D97706'
+                          : taskTimeGroup(t) === 'week' ? '#22C55E'
+                          : 'var(--text)',
+                        fontVariantNumeric: 'tabular-nums',
+                      }}
+                    >
+                      {t.deadline}
+                    </span>
+                  ) : (
+                    <span style={{ color: 'var(--text-muted)' }}>—</span>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

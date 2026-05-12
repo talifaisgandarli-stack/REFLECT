@@ -44,7 +44,12 @@ export function FinancePage() {
   const receivables = useQuery({
     queryKey: ['fin', 'receivables'],
     queryFn: async () =>
-      ((await supabase.from('receivables').select('*').limit(200)).data ?? []) as Receivable[],
+      ((
+        await supabase
+          .from('receivables')
+          .select('*, clients(name, company)')
+          .limit(200)
+      ).data ?? []) as Array<Receivable & { clients?: { name: string; company: string | null } | null }>,
   });
   const forecasts = useQuery({
     queryKey: ['fin', 'forecast'],
@@ -157,7 +162,9 @@ export function FinancePage() {
           <tbody>
             {(receivables.data ?? []).map((r) => (
               <tr key={r.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
-                <td className="py-3 px-3">{r.client_id ?? '—'}</td>
+                <td className="py-3 px-3">
+                  {r.clients?.company ?? r.clients?.name ?? (r.client_id ? '—' : '—')}
+                </td>
                 <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
                   {formatAZN(r.amount)}
                 </td>

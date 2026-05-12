@@ -66,9 +66,10 @@ export function MiraiDrawer() {
       if (data?.conversation_id) setConversationId(data.conversation_id);
       if (data?.usage) setUsage(data.usage as Usage);
     } catch (err) {
+      // Surface as a banner only — don't mix errors into the conversation
+      // history (they look like real assistant replies otherwise).
       const msg = err instanceof Error ? err.message : 'Xəta baş verdi.';
       setError(msg);
-      setMsgs((m) => [...m, { role: 'assistant', content: msg }]);
     } finally {
       setThinking(false);
     }
@@ -147,19 +148,31 @@ export function MiraiDrawer() {
       </div>
 
       {/* Input */}
-      <form onSubmit={ask} className="p-4 border-t border-white/5">
+      <form onSubmit={ask} className="p-4 border-t border-white/5 flex gap-2">
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="MIRAI-dən soruş…"
           disabled={thinking}
-          className="w-full h-10 rounded-btn px-3 text-body"
+          className="flex-1 h-10 rounded-btn px-3 text-body"
           style={{
             background: 'rgba(255,255,255,0.04)',
             border: '1px solid rgba(255,255,255,0.08)',
             color: 'var(--canvas)',
           }}
         />
+        <button
+          type="submit"
+          disabled={thinking || !q.trim()}
+          className="h-10 px-4 rounded-btn text-body font-medium"
+          style={{
+            background: q.trim() && !thinking ? 'var(--brand-action)' : 'rgba(255,255,255,0.08)',
+            color: q.trim() && !thinking ? 'var(--ink)' : 'var(--canvas)',
+            opacity: thinking || !q.trim() ? 0.6 : 1,
+          }}
+        >
+          {thinking ? '…' : 'Göndər'}
+        </button>
       </form>
     </aside>
   );

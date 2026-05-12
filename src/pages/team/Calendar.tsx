@@ -364,6 +364,20 @@ export function CalendarPage() {
 
 // --------- Event detail modal ---------
 function EventModal({ event, onClose }: { event: CalEvent; onClose: () => void }) {
+  const qc = useQueryClient();
+  const { profile, isAdmin } = useAuth();
+  const canDelete = isAdmin || event.organizer_id === profile?.id;
+  const del = useMutation({
+    mutationFn: async () => {
+      if (!confirm('Bu görüşü silmək istədiyinə əminsənmi?')) throw new Error('aborted');
+      const { error } = await supabase.from('calendar_events').delete().eq('id', event.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['calendar'] });
+      onClose();
+    },
+  });
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center px-4"
@@ -396,7 +410,18 @@ function EventModal({ event, onClose }: { event: CalEvent; onClose: () => void }
             Görüşə qoşul (Meet)
           </a>
         ) : null}
-        <div className="flex justify-end mt-4">
+        <div className="flex justify-between items-center mt-4 gap-2">
+          {canDelete ? (
+            <button
+              type="button"
+              className="text-meta"
+              style={{ color: '#B91C1C' }}
+              disabled={del.isPending}
+              onClick={() => del.mutate()}
+            >
+              {del.isPending ? 'Silinir…' : 'Sil'}
+            </button>
+          ) : <span />}
           <button className="btn-outline" onClick={onClose}>Bağla</button>
         </div>
       </div>

@@ -64,6 +64,10 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
         resolvedClientId = newClient.id;
       }
 
+      if (startDate && deadline && deadline < startDate) {
+        throw new Error('Bitmə tarixi başlama tarixindən əvvəl ola bilməz.');
+      }
+
       const payload = {
         name: trimmedName,
         client_id: resolvedClientId,

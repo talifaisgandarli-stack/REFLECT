@@ -66,10 +66,24 @@ export function useUpdateTaskStatus() {
         .update({ status: input.status })
         .eq('id', input.id);
       if (error) throw error;
-      // task_status_history is also written by the DB trigger (0004); keeping
-      // this insert as a no-op fallback when triggers are not yet deployed.
     },
-    onSuccess: () => {
+    // REQ-TASK-03 — optimistic update so the kanban card moves immediately
+    // instead of snapping back ~200ms after drop while the network round-trips.
+    onMutate: async (input) => {
+      await qc.cancelQueries({ queryKey: ['tasks'] });
+      const snapshots = qc.getQueriesData<unknown>({ queryKey: ['tasks'] });
+      qc.setQueriesData<Task[] | undefined>({ queryKey: ['tasks'] }, (old) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((t) => (t.id === input.id ? { ...t, status: input.status } : t));
+      });
+      return { snapshots };
+    },
+    onError: (_err, _vars, ctx) => {
+      // Rollback on failure.
+      if (!ctx) return;
+      for (const [key, data] of ctx.snapshots) qc.setQueryData(key, data);
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] });
       qc.invalidateQueries({ queryKey: ['done-list'] });
       qc.invalidateQueries({ queryKey: ['archive', 'tasks'] });

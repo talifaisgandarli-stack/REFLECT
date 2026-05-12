@@ -294,7 +294,13 @@ function TemplatesSettings() {
 
   const templates = useQuery({
     queryKey: ['templates'],
-    queryFn: async () => (await supabase.from('templates').select('*').order('created_at', { ascending: false })).data ?? [],
+    queryFn: async () =>
+      (await supabase
+        .from('templates')
+        .select('*')
+        .not('name', 'like', '\\_deprecated\\_%')
+        .order('created_at', { ascending: false })
+      ).data ?? [],
   });
 
   function extractVars(body: string): string[] {
