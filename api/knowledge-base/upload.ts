@@ -2,13 +2,11 @@
  * Admin-only PDF upload for MIRAI RAG (PRD §7.4 / US-SYS-02).
  *
  * Pipeline: multipart PDF → unpdf text extract → ~1000-token chunks →
- * Google Gemini text-embedding-004 (parallel) → insert into knowledge_base.
+ * insert into knowledge_base (Postgres generates the tsvector automatically).
  *
- * Runs on edge runtime — unpdf is designed for it, and edge gives us a 30s
- * budget which is plenty once embeddings run in parallel batches.
- *
- * RLS already restricts knowledge_base writes to admins (kb_admin_write),
- * but we double-check `user.isAdmin` to short-circuit before parsing.
+ * No external embedding API — search uses Postgres full-text search, which is
+ * free, local, and unlimited. Earlier attempts with OpenAI/Gemini/Voyage all
+ * hit free-tier rate limits.
  */
 import { extractText, getDocumentProxy } from 'unpdf';
 import { admin, errorResponse, HttpError, jsonResponse, requireUser } from '../_lib/auth';
@@ -17,14 +15,10 @@ export const config = { runtime: 'edge' };
 
 // Vercel serverless body limit on Hobby is ~4.5 MB. Pro is 50 MB.
 const MAX_BYTES = 4 * 1024 * 1024; // 4 MB
-// Larger chunks → fewer embedding calls → faster wall time. 1000 tokens still
-// fits comfortably inside Gemini's input limit.
 const CHUNK_TOKENS = 1000;
 const CHUNK_OVERLAP = 100;
 // Rough heuristic: ~4 chars per token for Latin/Cyrillic mixed text.
 const CHARS_PER_TOKEN = 4;
-// Embed N chunks in parallel. Google free tier allows 100 req/min, so 8 is safe.
-const EMBED_CONCURRENCY = 8;
 
 function chunkText(text: string): string[] {
   const clean = text.replace(/\s+/g, ' ').trim();
@@ -41,45 +35,11 @@ function chunkText(text: string): string[] {
   return out;
 }
 
-// Voyage AI voyage-3.5-lite — 1024-dim multilingual embeddings.
-// Free trial: 200M tokens (practically unlimited for typical use).
-// Anthropic-recommended provider. Get key: https://dash.voyageai.com
-async function embed(input: string, key: string): Promise<number[]> {
-  const res = await fetch('https://api.voyageai.com/v1/embeddings', {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${key}`,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      input: [input],
-      model: 'voyage-3.5-lite',
-      input_type: 'document',
-    }),
-  });
-  if (!res.ok) {
-    const errBody = await res.text().catch(() => '');
-    throw new HttpError(502, `Embedding failed (${res.status}): ${errBody.slice(0, 200)}`);
-  }
-  const data = (await res.json()) as { data?: Array<{ embedding: number[] }> };
-  const v = data.data?.[0]?.embedding;
-  if (!v || v.length === 0) throw new HttpError(502, 'Embedding missing');
-  return v;
-}
-
 export default async function handler(req: Request) {
   try {
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed');
     const user = await requireUser(req);
     if (!user.isAdmin) throw new HttpError(403, 'Admin only');
-
-    const apiKey = process.env.VOYAGE_API_KEY;
-    if (!apiKey) {
-      throw new HttpError(
-        503,
-        'Embedding xidməti açılmayıb. VOYAGE_API_KEY Vercel-də təyin edilməlidir (pulsuz 200M token: dash.voyageai.com).',
-      );
-    }
 
     const form = await req.formData();
     const file = form.get('file');
@@ -94,43 +54,26 @@ export default async function handler(req: Request) {
 
     const buf = new Uint8Array(await file.arrayBuffer());
 
-    // unpdf is edge/node compatible and has no native deps.
     const pdf = await getDocumentProxy(buf);
     const { text } = await extractText(pdf, { mergePages: true });
     const fullText = Array.isArray(text) ? text.join('\n') : text;
 
     const chunks = chunkText(fullText);
-    if (chunks.length === 0) throw new HttpError(400, 'PDF mətn tapılmadı (skanlanmış ola bilər)');
+    if (chunks.length === 0) {
+      throw new HttpError(400, 'PDF mətn tapılmadı (skanlanmış ola bilər).');
+    }
 
     const sb = admin();
 
     // Replace any existing rows for this PDF — admin re-upload = full refresh.
     await sb.from('knowledge_base').delete().eq('source_pdf', file.name);
 
-    type Row = {
-      source_pdf: string;
-      chunk_index: number;
-      content: string;
-      embedding: number[];
-      uploaded_by: string;
-    };
-
-    // Embed in parallel batches — 100-chunk PDFs go from ~20s sequential to
-    // ~3s parallel, comfortably inside the 60s function budget.
-    const rows: Row[] = new Array(chunks.length);
-    for (let start = 0; start < chunks.length; start += EMBED_CONCURRENCY) {
-      const slice = chunks.slice(start, start + EMBED_CONCURRENCY);
-      const vectors = await Promise.all(slice.map((c) => embed(c, apiKey)));
-      for (let j = 0; j < slice.length; j++) {
-        rows[start + j] = {
-          source_pdf: file.name,
-          chunk_index: start + j,
-          content: slice[j],
-          embedding: vectors[j],
-          uploaded_by: user.id,
-        };
-      }
-    }
+    const rows = chunks.map((content, i) => ({
+      source_pdf: file.name,
+      chunk_index: i,
+      content,
+      uploaded_by: user.id,
+    }));
 
     const { error } = await sb.from('knowledge_base').insert(rows);
     if (error) throw new HttpError(500, error.message);

@@ -506,14 +506,7 @@ function KnowledgeBaseSettings() {
       <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
         AZ inşaat normaları, AZDNT sənədlərini yükləyin. MIRAI Hüquqşünas bu mənbələrə istinad edər.
       </p>
-      {!diag.isLoading && !ragEnabled ? (
-        <div
-          className="rounded-card px-3 py-2 text-meta"
-          style={{ background: 'rgba(217,119,6,0.08)', color: '#92400E', border: '1px solid rgba(217,119,6,0.25)' }}
-        >
-          ⓘ Embedding üçün açar tələb olunur. Pulsuz Voyage AI açarı al (200M token trial, illərlə kifayət) → <a href="https://dash.voyageai.com" target="_blank" rel="noreferrer" style={{ textDecoration: 'underline' }}>dash.voyageai.com</a> → Vercel-də <code>VOYAGE_API_KEY</code> təyin et.
-        </div>
-      ) : null}
+      {/* RAG axtarışı Postgres FTS ilə işləyir — heç bir xarici açar tələb olunmur. */}
 
       <label className="flex items-center gap-3 cursor-pointer">
         <input

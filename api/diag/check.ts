@@ -24,7 +24,7 @@ export default async function handler(req: Request) {
       SUPABASE_ANON_KEY: !!process.env.SUPABASE_ANON_KEY,
       VITE_SUPABASE_ANON_KEY: !!process.env.VITE_SUPABASE_ANON_KEY,
       ANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY,
-      VOYAGE_API_KEY: !!process.env.VOYAGE_API_KEY,
+      // RAG no longer needs an external embedding key — uses Postgres FTS.
       RESEND_API_KEY: !!process.env.RESEND_API_KEY,
       TELEGRAM_BOT_TOKEN: !!process.env.TELEGRAM_BOT_TOKEN,
       TELEGRAM_WEBHOOK_SECRET: !!process.env.TELEGRAM_WEBHOOK_SECRET,
@@ -48,7 +48,8 @@ export default async function handler(req: Request) {
 
     // Feature flags derived from env presence — safe to expose, never include secrets.
     const features = {
-      rag_enabled: !!process.env.VOYAGE_API_KEY,
+      // RAG is always enabled — Postgres FTS needs no API key.
+      rag_enabled: true,
       telegram_enabled: !!process.env.TELEGRAM_BOT_TOKEN && !!process.env.TELEGRAM_WEBHOOK_SECRET,
       email_enabled: !!process.env.RESEND_API_KEY,
       mirai_enabled: !!process.env.ANTHROPIC_API_KEY,

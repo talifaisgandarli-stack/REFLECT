@@ -115,35 +115,15 @@ async function getMonthlyCap(sb: ReturnType<typeof admin>): Promise<number> {
 
 type KbChunk = { source_pdf: string; chunk_index: number; content: string };
 
-// Voyage AI voyage-3.5-lite (1024-dim multilingual). Anthropic-recommended.
-// RAG silently no-ops if key is missing — non-legal personas keep working.
-async function embedQuery(text: string): Promise<number[] | null> {
-  const key = process.env.VOYAGE_API_KEY;
-  if (!key) return null;
-  try {
-    const res = await fetch('https://api.voyageai.com/v1/embeddings', {
-      method: 'POST',
-      headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        input: [text],
-        model: 'voyage-3.5-lite',
-        input_type: 'query',
-      }),
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { data?: Array<{ embedding: number[] }> };
-    return data.data?.[0]?.embedding ?? null;
-  } catch {
-    return null;
-  }
-}
-
+// Postgres full-text search — no external API, no rate limits, free forever.
+// Returns matching knowledge_base chunks ranked by ts_rank. Quality is good for
+// AZ legal/normative docs where users search exact terms.
 async function searchKnowledgeBase(
   sb: ReturnType<typeof admin>,
-  embedding: number[],
+  queryText: string,
 ): Promise<KbChunk[]> {
   const { data } = await sb.rpc('match_knowledge_base', {
-    query_embedding: embedding,
+    query_text: queryText,
     match_count: RAG_TOP_K,
   });
   return (data ?? []) as KbChunk[];
@@ -308,9 +288,7 @@ async function runTool(
       case 'search_knowledge_base': {
         const query = String(input.query ?? '').trim();
         if (!query) return { content: 'query tələb olunur', isError: true };
-        const embedding = await embedQuery(query);
-        if (!embedding) return { content: 'Embedding xidməti əlçatan deyil.', isError: true };
-        const chunks = await searchKnowledgeBase(ctx.sb, embedding);
+        const chunks = await searchKnowledgeBase(ctx.sb, query);
         return { content: JSON.stringify(chunks) };
       }
       case 'client_summary': {
@@ -398,13 +376,10 @@ export default async function handler(req: Request) {
     let ragContext = '';
     let sources: Source[] = [];
     if (persona.useRag) {
-      const embedding = await embedQuery(message);
-      if (embedding) {
-        const chunks = await searchKnowledgeBase(sb, embedding);
-        const rag = buildRagContext(chunks);
-        ragContext = rag.context;
-        sources = rag.sources;
-      }
+      const chunks = await searchKnowledgeBase(sb, message);
+      const rag = buildRagContext(chunks);
+      ragContext = rag.context;
+      sources = rag.sources;
     }
 
     // --- Context engine (PRD §7.7) ----------------------------------------
