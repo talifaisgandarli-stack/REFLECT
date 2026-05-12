@@ -1,18 +1,18 @@
 /**
  * Realtime sync — PRD §3.4. Subscribes to Supabase channels and invalidates
- * the React Query cache when relevant rows change. Replaces our 30s polling
- * for notifications and gives presence-like immediacy on the kanban.
+ * the React Query cache when relevant rows change.
  *
- * Channels:
- *  - notifications:user=<uid> (per-user filter)
- *  - tasks (RLS-filtered server-side)
- *  - activity_log (RLS-filtered server-side)
- *  - announcements (read by everyone authenticated)
+ * Scoping strategy:
+ *  - notifications: filter=user_id=eq.<uid> (per-user push)
+ *  - tasks/activity/announcements: RLS already filters server-side so a user
+ *    only receives events for rows they can SELECT. We further coalesce
+ *    invalidations via debounce so a burst of related events triggers a
+ *    single refetch — the original audit concern (100× refetch overhead).
  *
  * Tables must be in the `supabase_realtime` publication (migration 0008).
  */
-import { useEffect } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { supabase } from './supabase';
 
 type ChangeKind = 'INSERT' | 'UPDATE' | 'DELETE';
@@ -46,8 +46,29 @@ function subscribeTable(opts: {
   };
 }
 
+// Coalesce bursts of invalidations into one — e.g. drag-drop emits an UPDATE
+// event AND its dependent task_status_history INSERT in the same tick.
+function makeDebouncer(qc: QueryClient): (key: readonly unknown[]) => void {
+  const pending = new Map<string, ReturnType<typeof setTimeout>>();
+  return (key) => {
+    const k = JSON.stringify(key);
+    const existing = pending.get(k);
+    if (existing) clearTimeout(existing);
+    pending.set(
+      k,
+      setTimeout(() => {
+        pending.delete(k);
+        qc.invalidateQueries({ queryKey: key as readonly never[] });
+      }, 150),
+    );
+  };
+}
+
 export function useRealtimeSync(userId: string | undefined) {
   const qc = useQueryClient();
+  const debouncerRef = useRef<((key: readonly unknown[]) => void) | null>(null);
+  if (!debouncerRef.current) debouncerRef.current = makeDebouncer(qc);
+  const debouncedInvalidate = debouncerRef.current;
 
   useEffect(() => {
     if (!userId) return;
@@ -59,20 +80,21 @@ export function useRealtimeSync(userId: string | undefined) {
         table: 'notifications',
         filter: `user_id=eq.${userId}`,
         channelName: `notifications:${userId}`,
-        onChange: () => {
-          qc.invalidateQueries({ queryKey: ['notifications'] });
-        },
+        onChange: () => debouncedInvalidate(['notifications']),
       }),
     );
 
+    // RLS scopes the events server-side: a user only receives changes to
+    // tasks they can SELECT. Channel name includes userId so Supabase routes
+    // separately per session — avoids the broadcast fan-out cost.
     cleanups.push(
       subscribeTable({
         table: 'tasks',
-        channelName: 'tasks:all',
+        channelName: `tasks:${userId}`,
         onChange: () => {
-          qc.invalidateQueries({ queryKey: ['tasks'] });
-          qc.invalidateQueries({ queryKey: ['done-list'] });
-          qc.invalidateQueries({ queryKey: ['archive', 'tasks'] });
+          debouncedInvalidate(['tasks']);
+          debouncedInvalidate(['done-list']);
+          debouncedInvalidate(['archive', 'tasks']);
         },
       }),
     );
@@ -80,25 +102,21 @@ export function useRealtimeSync(userId: string | undefined) {
     cleanups.push(
       subscribeTable({
         table: 'activity_log',
-        channelName: 'activity:all',
-        onChange: () => {
-          qc.invalidateQueries({ queryKey: ['activity'] });
-        },
+        channelName: `activity:${userId}`,
+        onChange: () => debouncedInvalidate(['activity']),
       }),
     );
 
     cleanups.push(
       subscribeTable({
         table: 'announcements',
-        channelName: 'announcements:all',
-        onChange: () => {
-          qc.invalidateQueries({ queryKey: ['announcements'] });
-        },
+        channelName: `announcements:${userId}`,
+        onChange: () => debouncedInvalidate(['announcements']),
       }),
     );
 
     return () => {
       for (const c of cleanups) c();
     };
-  }, [userId, qc]);
+  }, [userId, debouncedInvalidate]);
 }

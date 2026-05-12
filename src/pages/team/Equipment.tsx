@@ -190,9 +190,20 @@ export function EquipmentPage() {
             <h3 className="text-h3 mb-2">Tapşır / Geri al</h3>
             <select
               className="input w-full mb-3"
+              key={selected.id + ':' + (selected.assigned_to ?? '')}
               defaultValue={selected.assigned_to ?? ''}
               onChange={(e) => {
                 const val = e.target.value || null;
+                const currentName = (profiles.data ?? []).find((p) => p.id === selected.assigned_to)?.full_name ?? null;
+                const nextName = val ? (profiles.data ?? []).find((p) => p.id === val)?.full_name ?? 'naməlum' : 'Boş';
+                const msg = selected.assigned_to
+                  ? `Avadanlığı ${currentName ?? 'cari istifadəçidən'} ${val ? '→ ' + nextName + '-ə' : 'geri al?'} keçirilsin?`
+                  : `Avadanlığı "${nextName}" istifadəçisinə tapşır?`;
+                if (!confirm(msg)) {
+                  // Revert select to prior value without firing change
+                  e.target.value = selected.assigned_to ?? '';
+                  return;
+                }
                 assign.mutate({ id: selected.id, assigned_to: val, old_assigned: selected.assigned_to });
               }}
             >

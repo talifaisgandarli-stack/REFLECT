@@ -12,6 +12,7 @@ import { SubtaskBlockingModal } from '@/components/SubtaskBlockingModal';
 import { TaskCreateModal } from '@/components/TaskCreateModal';
 import { CancelTaskModal } from '@/components/CancelTaskModal';
 import { TaskCommentsModal } from '@/components/TaskCommentsModal';
+import { TaskEditModal } from '@/components/TaskEditModal';
 
 // US-TASK-06 — deadline-based groups for personal view
 const todayStr = new Date().toISOString().slice(0, 10);
@@ -60,6 +61,7 @@ export function TasksPage() {
   const [cancelling, setCancelling] = useState<{ id: string; title: string } | null>(null);
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [commenting, setCommenting] = useState<{ id: string; title: string } | null>(null);
+  const [editing, setEditing] = useState<Task | null>(null);
   // Persist search filter in URL so refresh / share-link preserves it.
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get('q') ?? '');
@@ -340,6 +342,15 @@ export function TasksPage() {
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
+                            onClick={(e) => { e.stopPropagation(); setEditing(t); }}
+                            className="text-meta opacity-60 hover:opacity-100"
+                            style={{ color: isToday ? 'var(--text-faint)' : 'var(--text-muted)', fontSize: 13 }}
+                            aria-label="Düzəlt"
+                          >
+                            ✎
+                          </button>
+                          <button
+                            type="button"
                             onClick={(e) => { e.stopPropagation(); setCommenting({ id: t.id, title: t.title }); }}
                             className="text-meta opacity-60 hover:opacity-100"
                             style={{ color: isToday ? 'var(--text-faint)' : 'var(--text-muted)', fontSize: 13 }}
@@ -453,6 +464,10 @@ export function TasksPage() {
           taskTitle={commenting.title}
           onClose={() => setCommenting(null)}
         />
+      ) : null}
+
+      {editing ? (
+        <TaskEditModal task={editing} onClose={() => setEditing(null)} />
       ) : null}
 
       {confirmArchive ? (

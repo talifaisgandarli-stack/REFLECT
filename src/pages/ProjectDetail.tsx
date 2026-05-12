@@ -126,6 +126,23 @@ export function ProjectDetailPage() {
     onSettled: () => qc.invalidateQueries({ queryKey: ['closeout', id] }),
   });
 
+  // Admin toggles a phase on/off — phases is text[] in schema.
+  const togglePhase = useMutation({
+    mutationFn: async (phase: string) => {
+      if (!id || !project) return;
+      const current = project.phases ?? [];
+      const next = current.includes(phase)
+        ? current.filter((p) => p !== phase)
+        : [...current, phase];
+      const { error } = await supabase.from('projects').update({ phases: next }).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['project', id] });
+      qc.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
+
   const closeProject = useMutation({
     mutationFn: async () => {
       if (!id) return;
@@ -231,17 +248,41 @@ export function ProjectDetailPage() {
       {tab === 'Overview' ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="card lg:col-span-2">
-            <h3 className="text-h3 mb-3">Mərhələlər</h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-h3">Mərhələlər</h3>
+              {isAdmin ? (
+                <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                  Klik et — keç/söndür
+                </span>
+              ) : null}
+            </div>
             <ol className="space-y-2">
               {PROJECT_PHASES.map((p) => {
                 const active = project.phases?.includes(p);
                 return (
-                  <li key={p} className="flex items-center gap-3">
-                    <span
-                      className="w-2 h-2 rounded-full shrink-0"
-                      style={{ background: active ? 'var(--brand-action)' : 'var(--line)' }}
-                    />
-                    <span style={{ color: active ? 'var(--text)' : 'var(--text-muted)' }}>{p}</span>
+                  <li key={p}>
+                    {isAdmin ? (
+                      <button
+                        type="button"
+                        className="flex items-center gap-3 w-full text-left rounded-btn px-1 py-0.5 hover:bg-surface-mist"
+                        onClick={() => togglePhase.mutate(p)}
+                        disabled={togglePhase.isPending}
+                      >
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ background: active ? 'var(--brand-action)' : 'var(--line)' }}
+                        />
+                        <span style={{ color: active ? 'var(--text)' : 'var(--text-muted)' }}>{p}</span>
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ background: active ? 'var(--brand-action)' : 'var(--line)' }}
+                        />
+                        <span style={{ color: active ? 'var(--text)' : 'var(--text-muted)' }}>{p}</span>
+                      </div>
+                    )}
                   </li>
                 );
               })}
@@ -756,7 +797,7 @@ function ReopenProjectButton({ projectId }: { projectId: string }) {
     mutationFn: async () => {
       const { error } = await supabase
         .from('projects')
-        .update({ status: 'active', reopened_at: new Date().toISOString() })
+        .update({ status: 'active', reopened_at: new Date().toISOString(), archived_at: null })
         .eq('id', projectId);
       if (error) throw error;
     },
