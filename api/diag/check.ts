@@ -54,8 +54,29 @@ export default async function handler(req: Request) {
       mirai_enabled: !!process.env.ANTHROPIC_API_KEY,
     };
 
+    // List available Gemini models for the configured key — helps diagnose
+    // "model not found" errors by showing what the key actually has access to.
+    let geminiModels: string[] | { error: string } = [];
+    if (process.env.GOOGLE_API_KEY) {
+      try {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(process.env.GOOGLE_API_KEY)}`,
+        );
+        if (res.ok) {
+          const data = (await res.json()) as { models?: Array<{ name: string; supportedGenerationMethods?: string[] }> };
+          geminiModels = (data.models ?? [])
+            .filter((m) => m.supportedGenerationMethods?.includes('embedContent'))
+            .map((m) => m.name);
+        } else {
+          geminiModels = { error: `ListModels failed (${res.status})` };
+        }
+      } catch (e) {
+        geminiModels = { error: (e as Error).message };
+      }
+    }
+
     if (!token) {
-      return jsonResponse({ ok: false, env, serviceKeyRole, features, note: 'Send Authorization: Bearer <token> for full diagnostics' });
+      return jsonResponse({ ok: false, env, serviceKeyRole, features, geminiModels, note: 'Send Authorization: Bearer <token> for full diagnostics' });
     }
 
     const sb = admin();
@@ -77,6 +98,7 @@ export default async function handler(req: Request) {
       env,
       serviceKeyRole,
       features,
+      geminiModels,
       authUserId: authUser.id,
       authEmail: authUser.email,
       profile: prof ?? null,
