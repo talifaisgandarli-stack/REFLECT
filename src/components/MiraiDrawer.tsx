@@ -17,11 +17,13 @@ export function MiraiDrawer() {
   const [error, setError] = useState<string | null>(null);
 
   if (!miraiPanelOpen) {
+    // bottom-20 on mobile lifts the sphere above the OS gesture bar / safe
+    // area; sm:bottom-6 restores the original position on tablet+.
     return (
       <button
         type="button"
         onClick={toggleMirai}
-        className="fixed bottom-6 right-6 rounded-full flex items-center justify-center shadow-card-hover"
+        className="fixed bottom-20 right-4 sm:bottom-6 sm:right-6 rounded-full flex items-center justify-center shadow-card-hover z-30"
         style={{
           width: 56,
           height: 56,
@@ -76,10 +78,18 @@ export function MiraiDrawer() {
   }
 
   return (
-    <aside
-      className="fixed top-0 right-0 bottom-0 w-[420px] z-40 flex flex-col"
-      style={{ background: 'var(--mirai-surface)', color: 'var(--canvas)' }}
-    >
+    <>
+      {/* Mobile backdrop — tap outside to close */}
+      <div
+        className="fixed inset-0 z-30 sm:hidden"
+        style={{ background: 'rgba(14,22,17,0.4)' }}
+        onClick={toggleMirai}
+        aria-hidden
+      />
+      <aside
+        className="fixed top-0 right-0 bottom-0 w-full sm:w-[420px] max-w-full z-40 flex flex-col"
+        style={{ background: 'var(--mirai-surface)', color: 'var(--canvas)' }}
+      >
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-white/5">
         <div className="flex items-center gap-3">
@@ -174,6 +184,7 @@ export function MiraiDrawer() {
           {thinking ? '…' : 'Göndər'}
         </button>
       </form>
-    </aside>
+      </aside>
+    </>
   );
 }

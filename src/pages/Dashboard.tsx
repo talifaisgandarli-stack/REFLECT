@@ -336,7 +336,14 @@ export function DashboardPage() {
               <a href="/layihelər" className="text-meta" style={{ color: 'var(--text-muted)' }}>Hamısına bax →</a>
             </div>
             {activeProjects.length === 0 ? (
-              <p className="text-meta" style={{ color: 'var(--text-muted)' }}>Aktiv layihə yoxdur.</p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                  Aktiv layihə yoxdur.
+                </p>
+                <a href="/layihelər" className="btn-primary text-meta" style={{ padding: '6px 12px' }}>
+                  + Yeni layihə yarat
+                </a>
+              </div>
             ) : (
               <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                 {activeProjects.map((p) => {

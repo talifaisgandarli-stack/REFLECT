@@ -31,7 +31,17 @@ export function OutsourcePage() {
         actions={isAdmin ? <button className="btn-primary" onClick={() => setCreateOpen(true)}>+ Yeni</button> : null}
       />
       {(q.data ?? []).length === 0 ? (
-        <EmptyState title="Podrat işi yoxdur" body="Sifariş yarat və icraçıya təhvil ver." />
+        <EmptyState
+          title="Podrat işi yoxdur"
+          body="Sifariş yarat və icraçıya təhvil ver."
+          cta={
+            isAdmin ? (
+              <button className="btn-primary" onClick={() => setCreateOpen(true)}>
+                + İlk sifarişi yarat
+              </button>
+            ) : null
+          }
+        />
       ) : (
         <div className="card overflow-x-auto">
           <table className="w-full text-body">

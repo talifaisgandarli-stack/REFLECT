@@ -1,11 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { PageHead } from '@/components/PageHead';
 import { Avatar } from '@/components/Avatar';
 import { EmptyState } from '@/components/EmptyState';
+import { useAuth } from '@/lib/store';
 import type { Profile, UserPresence } from '@/types/db';
 
 export function TeamRosterPage() {
+  const { isAdmin } = useAuth();
   const profiles = useQuery({
     queryKey: ['profiles'],
     queryFn: async (): Promise<Profile[]> =>
@@ -24,7 +27,17 @@ export function TeamRosterPage() {
     <>
       <PageHead meta={`${ppl.length} nəfər`} title="İşçi Heyəti" />
       {ppl.length === 0 ? (
-        <EmptyState title="Komanda hələ formalaşmayıb" body="Admin işçi dəvət edə bilər." />
+        <EmptyState
+          title="Komanda hələ formalaşmayıb"
+          body="Admin işçi dəvət edə bilər."
+          cta={
+            isAdmin ? (
+              <Link to="/parametrlər/dəvətlər" className="btn-primary">
+                + İşçi dəvət et
+              </Link>
+            ) : null
+          }
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {ppl.map((p) => (

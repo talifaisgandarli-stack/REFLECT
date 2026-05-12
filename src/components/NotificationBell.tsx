@@ -36,6 +36,46 @@ function bodyFor(n: NotificationRow): string {
   return '';
 }
 
+// Group consecutive same-kind unread notifications under a single header so
+// "5 yeni mention" is one row instead of five. Read notifications stay flat
+// to preserve audit-style chronology.
+type GroupedItem =
+  | { kind: 'single'; row: NotificationRow }
+  | { kind: 'group'; kindLabel: string; count: number; rows: NotificationRow[] };
+
+function groupNotifications(rows: NotificationRow[]): GroupedItem[] {
+  const out: GroupedItem[] = [];
+  let i = 0;
+  while (i < rows.length) {
+    const row = rows[i];
+    if (row.read_at) {
+      out.push({ kind: 'single', row });
+      i++;
+      continue;
+    }
+    // Look ahead for runs of the same unread kind within a 24h window.
+    const cluster: NotificationRow[] = [row];
+    let j = i + 1;
+    const firstTs = new Date(row.created_at).getTime();
+    while (
+      j < rows.length
+      && !rows[j].read_at
+      && rows[j].kind === row.kind
+      && firstTs - new Date(rows[j].created_at).getTime() < 24 * 3_600_000
+    ) {
+      cluster.push(rows[j]);
+      j++;
+    }
+    if (cluster.length >= 3) {
+      out.push({ kind: 'group', kindLabel: row.kind, count: cluster.length, rows: cluster });
+    } else {
+      for (const r of cluster) out.push({ kind: 'single', row: r });
+    }
+    i = j;
+  }
+  return out;
+}
+
 export function NotificationBell() {
   const { data = [] } = useNotifications();
   const markRead = useMarkNotificationRead();
@@ -123,44 +163,78 @@ export function NotificationBell() {
           ) : null}
           {data.length > 0 ? (
             <ul>
-              {data.map((n) => (
-                <li
-                  key={n.id}
-                  className="px-4 py-3 flex gap-3 cursor-pointer"
-                  style={{
-                    borderBottom: '1px solid var(--line-soft)',
-                    background: n.read_at ? 'transparent' : 'var(--brand-mist)',
-                  }}
-                  onClick={() => {
-                    if (!n.read_at) markRead.mutate({ id: n.id });
-                  }}
-                >
-                  <span
-                    aria-hidden
-                    className="mt-1 w-2 h-2 rounded-full shrink-0"
-                    style={{
-                      background: n.read_at ? 'var(--text-faint)' : 'var(--brand-action)',
-                    }}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-ui font-medium" style={{ color: 'var(--text)' }}>
-                      {labelFor(n.kind)}
-                    </div>
-                    {bodyFor(n) ? (
-                      <div className="text-meta truncate" style={{ color: 'var(--text-soft)' }}>
-                        {bodyFor(n)}
-                      </div>
-                    ) : null}
-                    <time
-                      dateTime={n.created_at}
-                      className="text-tiny"
-                      style={{ color: 'var(--text-muted)' }}
+              {groupNotifications(data).map((item) => {
+                if (item.kind === 'single') {
+                  const n = item.row;
+                  return (
+                    <li
+                      key={n.id}
+                      className="px-4 py-3 flex gap-3 cursor-pointer"
+                      style={{
+                        borderBottom: '1px solid var(--line-soft)',
+                        background: n.read_at ? 'transparent' : 'var(--brand-mist)',
+                      }}
+                      onClick={() => {
+                        if (!n.read_at) markRead.mutate({ id: n.id });
+                      }}
                     >
-                      {relativeTime(n.created_at)}
-                    </time>
-                  </div>
-                </li>
-              ))}
+                      <span
+                        aria-hidden
+                        className="mt-1 w-2 h-2 rounded-full shrink-0"
+                        style={{ background: n.read_at ? 'var(--text-faint)' : 'var(--brand-action)' }}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-ui font-medium" style={{ color: 'var(--text)' }}>
+                          {labelFor(n.kind)}
+                        </div>
+                        {bodyFor(n) ? (
+                          <div className="text-meta truncate" style={{ color: 'var(--text-soft)' }}>
+                            {bodyFor(n)}
+                          </div>
+                        ) : null}
+                        <time
+                          dateTime={n.created_at}
+                          className="text-tiny"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          {relativeTime(n.created_at)}
+                        </time>
+                      </div>
+                    </li>
+                  );
+                }
+                // Grouped: one row representing N same-kind unreads.
+                const first = item.rows[0];
+                return (
+                  <li
+                    key={`group:${first.id}`}
+                    className="px-4 py-3 flex gap-3 cursor-pointer"
+                    style={{ borderBottom: '1px solid var(--line-soft)', background: 'var(--brand-mist)' }}
+                    onClick={() => {
+                      // Mark every notification in the cluster as read.
+                      for (const r of item.rows) markRead.mutate({ id: r.id });
+                    }}
+                  >
+                    <span
+                      aria-hidden
+                      className="mt-1 w-2 h-2 rounded-full shrink-0"
+                      style={{ background: 'var(--brand-action)' }}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-ui font-medium" style={{ color: 'var(--text)' }}>
+                        {item.count} yeni {labelFor(item.kindLabel).toLowerCase()}
+                      </div>
+                      <time
+                        dateTime={first.created_at}
+                        className="text-tiny"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        {relativeTime(first.created_at)}
+                      </time>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           ) : null}
           <footer

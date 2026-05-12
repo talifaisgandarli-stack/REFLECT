@@ -120,7 +120,17 @@ export function EquipmentPage() {
       />
 
       {(equipment.data ?? []).length === 0 ? (
-        <EmptyState title="Avadanlıq qeydiyyatı yoxdur" body="Texnika, kompüterlər, ploterlər — burada izlə." />
+        <EmptyState
+          title="Avadanlıq qeydiyyatı yoxdur"
+          body="Texnika, kompüterlər, ploterlər — burada izlə."
+          cta={
+            isAdmin ? (
+              <button className="btn-primary" onClick={() => setCreating(true)}>
+                + İlk avadanlığı əlavə et
+              </button>
+            ) : null
+          }
+        />
       ) : (
         <div className="card overflow-x-auto">
           <table className="w-full text-body">
