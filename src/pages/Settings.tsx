@@ -64,6 +64,7 @@ function GeneralSettings() {
   const [incomeAlert, setIncomeAlert] = useState('');
   const [expenseAlert, setExpenseAlert] = useState('');
   const [miraiBudget, setMiraiBudget] = useState('');
+  const [firmName, setFirmName] = useState('');
   const [saved, setSaved] = useState(false);
 
   // PRD §8.1 / REQ-TG-03: cron reads `finance_alert_income_threshold` and
@@ -91,16 +92,22 @@ function GeneralSettings() {
       if (typeof n === 'number') setMiraiBudget(String(n));
     }
   }
+  if (loaded && firmName === '') {
+    const raw = loaded.firm_name;
+    // firm_name is stored as a quoted JSON string in jsonb.
+    if (typeof raw === 'string') setFirmName(raw);
+  }
 
   const save = useMutation({
     mutationFn: async () => {
       const incomeNum = Number(incomeAlert) || 5000;
       const expenseNum = Number(expenseAlert) || 2000;
       const budgetNum = Number(miraiBudget) || 5;
-      const rows: Array<{ key: string; value: Record<string, number> }> = [
+      const rows: Array<{ key: string; value: unknown }> = [
         { key: 'finance_alert_income_threshold', value: { azn: incomeNum } },
         { key: 'finance_alert_expense_threshold', value: { azn: expenseNum } },
         { key: 'mirai_monthly_budget', value: { usd: budgetNum } },
+        { key: 'firm_name', value: firmName.trim() || 'Reflect' },
       ];
       for (const row of rows) {
         const { error } = await supabase.from('system_settings').upsert(row, { onConflict: 'key' });
@@ -120,7 +127,12 @@ function GeneralSettings() {
         <h3 className="text-h3">Şirkət</h3>
         <label className="block">
           <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Şirkət adı</span>
-          <input className="input mt-1 max-w-md" defaultValue="Reflect" />
+          <input
+            className="input mt-1 max-w-md"
+            value={firmName}
+            onChange={(e) => setFirmName(e.target.value)}
+            placeholder="Reflect"
+          />
         </label>
         <label className="block">
           <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Region / Saat qurşağı</span>

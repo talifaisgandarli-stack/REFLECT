@@ -626,14 +626,20 @@ function RetroSurveyTrigger({ projectId, clientId }: { projectId: string; client
 }
 
 // REQ-PROJ-05 — Award/portfolio submission
+// `deadline_month` is int (1-12) per schema 0001 (not 'YYYY-MM').
 type SystemAward = {
   id: string;
   name: string;
   organizer: string;
-  deadline_month: string | null;
+  deadline_month: number | null;
   url: string | null;
   criteria: string | null;
 };
+
+const MONTH_NAMES_AZ = [
+  'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'İyun',
+  'İyul', 'Avqust', 'Sentyabr', 'Oktyabr', 'Noyabr', 'Dekabr',
+];
 
 type PortfolioWorkflow = {
   id: string;
@@ -712,17 +718,21 @@ function AwardsSection({ projectId }: { projectId: string }) {
           const isSelected = selectedIds.has(award.id);
           const apps = workflow?.applications?.[award.id] ?? {};
 
-          // Deadline indicator: "Mart (12 gün qaldı)"
+          // Deadline indicator: "Mart (12 gün qaldı)". award.deadline_month is
+          // an int 1-12 — same month each year, so we anchor to this year and
+          // roll forward when the date has already passed.
           let deadlineLabel = '';
-          if (award.deadline_month) {
-            const [year, month] = award.deadline_month.split('-').map(Number);
-            if (year && month) {
-              const deadline = new Date(year, month - 1, 28);
-              const daysLeft = Math.ceil((deadline.getTime() - today.getTime()) / 86400000);
-              deadlineLabel = `${award.deadline_month} (${daysLeft > 0 ? `${daysLeft} gün qaldı` : 'keçib'})`;
-            } else {
-              deadlineLabel = award.deadline_month;
+          if (typeof award.deadline_month === 'number') {
+            const m = award.deadline_month;
+            const monthName = MONTH_NAMES_AZ[m - 1] ?? String(m);
+            let year = today.getFullYear();
+            let deadline = new Date(year, m - 1, 28);
+            if (deadline.getTime() < today.getTime()) {
+              year += 1;
+              deadline = new Date(year, m - 1, 28);
             }
+            const daysLeft = Math.ceil((deadline.getTime() - today.getTime()) / 86400000);
+            deadlineLabel = `${monthName} ${year} (${daysLeft > 0 ? `${daysLeft} gün qaldı` : 'keçib'})`;
           }
 
           return (

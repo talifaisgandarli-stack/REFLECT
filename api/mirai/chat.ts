@@ -205,6 +205,21 @@ const TOOLS: Tool[] = [
       required: ['client_id'],
     },
   },
+  {
+    name: 'post_announcement_draft',
+    description:
+      'Yeni elan layihəsini admin moderasiya növbəsinə əlavə edir (mirai_feed_posts). YALNIZ ADMIN. Kateqoriyalar: Trend | Opportunity.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        summary: { type: 'string', description: 'Elan mətni (qısa xülasə)' },
+        source_url: { type: 'string', description: 'Mənbə URL-i (məs. ArchDaily məqaləsi)' },
+        source_kind: { type: 'string', enum: ['trend', 'opportunity'] },
+        deadline_at: { type: 'string', description: 'ISO timestamp (opsional, fürsətlər üçün)' },
+      },
+      required: ['summary', 'source_url', 'source_kind'],
+    },
+  },
 ];
 
 type ToolResult = { content: string; isError?: boolean };
@@ -303,6 +318,26 @@ async function runTool(
         if (error) return { content: error.message, isError: true };
         if (!data) return { content: 'Müştəri tapılmadı.', isError: true };
         return { content: JSON.stringify(data) };
+      }
+      case 'post_announcement_draft': {
+        if (!ctx.user.isAdmin) return { content: 'Bu vasitə yalnız adminlər üçündür.', isError: true };
+        const summary = String(input.summary ?? '').trim();
+        const sourceUrl = String(input.source_url ?? '').trim();
+        const sourceKind = input.source_kind === 'opportunity' ? 'opportunity' : 'trend';
+        const deadlineAt = typeof input.deadline_at === 'string' && input.deadline_at ? input.deadline_at : null;
+        if (!summary || !sourceUrl) return { content: 'summary və source_url tələb olunur', isError: true };
+        const { data, error } = await ctx.sb
+          .from('mirai_feed_posts')
+          .insert({
+            summary,
+            source_url: sourceUrl,
+            source_kind: sourceKind,
+            deadline_at: deadlineAt,
+          })
+          .select('id')
+          .single();
+        if (error) return { content: error.message, isError: true };
+        return { content: JSON.stringify({ queued_for_approval: data?.id }) };
       }
       default:
         return { content: `Bilinməyən vasitə: ${name}`, isError: true };
