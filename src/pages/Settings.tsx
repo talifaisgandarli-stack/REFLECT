@@ -511,7 +511,7 @@ function KnowledgeBaseSettings() {
           className="rounded-card px-3 py-2 text-meta"
           style={{ background: 'rgba(217,119,6,0.08)', color: '#92400E', border: '1px solid rgba(217,119,6,0.25)' }}
         >
-          ⓘ Embedding üçün açar tələb olunur. Pulsuz Google Gemini açarı al → <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{ textDecoration: 'underline' }}>aistudio.google.com/apikey</a> → Vercel-də <code>GOOGLE_API_KEY</code> təyin et.
+          ⓘ Embedding üçün açar tələb olunur. Pulsuz Voyage AI açarı al (200M token trial, illərlə kifayət) → <a href="https://dash.voyageai.com" target="_blank" rel="noreferrer" style={{ textDecoration: 'underline' }}>dash.voyageai.com</a> → Vercel-də <code>VOYAGE_API_KEY</code> təyin et.
         </div>
       ) : null}
 

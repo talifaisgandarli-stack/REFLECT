@@ -115,26 +115,24 @@ async function getMonthlyCap(sb: ReturnType<typeof admin>): Promise<number> {
 
 type KbChunk = { source_pdf: string; chunk_index: number; content: string };
 
-// Google Gemini text-embedding-004 (free 1500 RPD, multilingual, 768-dim).
+// Voyage AI voyage-3.5-lite (1024-dim multilingual). Anthropic-recommended.
 // RAG silently no-ops if key is missing — non-legal personas keep working.
 async function embedQuery(text: string): Promise<number[] | null> {
-  const key = process.env.GOOGLE_API_KEY;
+  const key = process.env.VOYAGE_API_KEY;
   if (!key) return null;
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${encodeURIComponent(key)}`;
-    const res = await fetch(url, {
+    const res = await fetch('https://api.voyageai.com/v1/embeddings', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
       body: JSON.stringify({
-        model: 'models/gemini-embedding-001',
-        content: { parts: [{ text }] },
-        // Match schema vector(768); default is 3072 which would mismatch.
-        outputDimensionality: 768,
+        input: [text],
+        model: 'voyage-3.5-lite',
+        input_type: 'query',
       }),
     });
     if (!res.ok) return null;
-    const data = (await res.json()) as { embedding?: { values?: number[] } };
-    return data.embedding?.values ?? null;
+    const data = (await res.json()) as { data?: Array<{ embedding: number[] }> };
+    return data.data?.[0]?.embedding ?? null;
   } catch {
     return null;
   }

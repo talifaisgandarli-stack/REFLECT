@@ -41,28 +41,28 @@ function chunkText(text: string): string[] {
   return out;
 }
 
-// Google Gemini text-embedding-004 — free tier: 1500 requests/day, no card.
-// 768-dim multilingual vectors (good Azerbaijani support).
-// Get key: https://aistudio.google.com/apikey
+// Voyage AI voyage-3.5-lite — 1024-dim multilingual embeddings.
+// Free trial: 200M tokens (practically unlimited for typical use).
+// Anthropic-recommended provider. Get key: https://dash.voyageai.com
 async function embed(input: string, key: string): Promise<number[]> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${encodeURIComponent(key)}`;
-  const res = await fetch(url, {
+  const res = await fetch('https://api.voyageai.com/v1/embeddings', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      authorization: `Bearer ${key}`,
+      'content-type': 'application/json',
+    },
     body: JSON.stringify({
-      model: 'models/gemini-embedding-001',
-      content: { parts: [{ text: input }] },
-      // Schema is vector(768); ask Gemini for 768-dim explicitly
-      // (default is 3072, which would fail the INSERT).
-      outputDimensionality: 768,
+      input: [input],
+      model: 'voyage-3.5-lite',
+      input_type: 'document',
     }),
   });
   if (!res.ok) {
     const errBody = await res.text().catch(() => '');
     throw new HttpError(502, `Embedding failed (${res.status}): ${errBody.slice(0, 200)}`);
   }
-  const data = (await res.json()) as { embedding?: { values?: number[] } };
-  const v = data.embedding?.values;
+  const data = (await res.json()) as { data?: Array<{ embedding: number[] }> };
+  const v = data.data?.[0]?.embedding;
   if (!v || v.length === 0) throw new HttpError(502, 'Embedding missing');
   return v;
 }
@@ -73,11 +73,11 @@ export default async function handler(req: Request) {
     const user = await requireUser(req);
     if (!user.isAdmin) throw new HttpError(403, 'Admin only');
 
-    const apiKey = process.env.GOOGLE_API_KEY;
+    const apiKey = process.env.VOYAGE_API_KEY;
     if (!apiKey) {
       throw new HttpError(
         503,
-        'Embedding xidməti açılmayıb. GOOGLE_API_KEY Vercel-də təyin edilməlidir (pulsuz açar: aistudio.google.com/apikey).',
+        'Embedding xidməti açılmayıb. VOYAGE_API_KEY Vercel-də təyin edilməlidir (pulsuz 200M token: dash.voyageai.com).',
       );
     }
 
