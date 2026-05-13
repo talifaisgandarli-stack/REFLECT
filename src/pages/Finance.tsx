@@ -7,6 +7,7 @@ import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recha
 import { IncomeExpenseModal, type FinanceKind } from '@/components/IncomeExpenseModal';
 import { MarkPaidModal } from '@/components/MarkPaidModal';
 import { InvoiceFromTemplateModal } from '@/components/InvoiceFromTemplateModal';
+import * as XLSX from 'xlsx';
 
 const TABS = ['Cash Cockpit', 'P&L', 'Outsource', 'Xərclər', 'Sabit', 'Debitor', 'Forecast'] as const;
 
@@ -82,6 +83,32 @@ export function FinancePage() {
     0,
   );
 
+  function exportXlsx() {
+    const wb = XLSX.utils.book_new();
+    const incomeSheet = XLSX.utils.json_to_sheet(
+      (incomes.data ?? []).map((r: Record<string, unknown>) => ({
+        Tarix: r.occurred_at ?? '',
+        Kateqoriya: r.category ?? '',
+        Qeyd: r.note ?? '',
+        Məbləğ: r.amount,
+        Valyuta: 'AZN',
+      })),
+    );
+    XLSX.utils.book_append_sheet(wb, incomeSheet, 'Gəlirlər');
+    const expenseSheet = XLSX.utils.json_to_sheet(
+      (expenses.data ?? []).map((r: Record<string, unknown>) => ({
+        Tarix: r.occurred_at ?? '',
+        Kateqoriya: r.category ?? '',
+        Qeyd: r.note ?? r.vendor ?? '',
+        Məbləğ: r.amount,
+        Valyuta: 'AZN',
+      })),
+    );
+    XLSX.utils.book_append_sheet(wb, expenseSheet, 'Xərclər');
+    const month = new Date().toISOString().slice(0, 7);
+    XLSX.writeFile(wb, `reflect-maliyye-${month}.xlsx`);
+  }
+
   return (
     <>
       <PageHead
@@ -89,6 +116,9 @@ export function FinancePage() {
         title="Maliyyə Mərkəzi"
         actions={
           <>
+            <button className="btn-outline" onClick={exportXlsx}>
+              ↓ Excel
+            </button>
             <button className="btn-outline" onClick={() => setInvoiceModal(true)}>
               + Faktura
             </button>
@@ -242,7 +272,12 @@ export function FinancePage() {
       {tab === 'Xərclər' ? <ExpensesTable /> : null}
       {tab === 'Sabit' ? <RecurringExpensesPanel /> : null}
 
-      {tab === 'P&L' ? <PnLTable incomes={incomes.data ?? []} expenses={expenses.data ?? []} /> : null}
+      {tab === 'P&L' ? (
+        <div className="space-y-4">
+          <PnLTable incomes={incomes.data ?? []} expenses={expenses.data ?? []} />
+          <PnLByCategory expenses={expenses.data ?? []} />
+        </div>
+      ) : null}
       {tab === 'Outsource' ? <OutsourceSummary /> : null}
 
       {modal ? <IncomeExpenseModal kind={modal} onClose={() => setModal(null)} /> : null}
@@ -351,6 +386,7 @@ type RecurringRow = {
   amount: number;
   period: 'weekly' | 'monthly' | 'quarterly' | 'yearly';
   next_run_at: string;
+  last_run_at: string | null;
 };
 
 function RecurringExpensesPanel() {
@@ -361,7 +397,7 @@ function RecurringExpensesPanel() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('recurring_expenses')
-        .select('id, label, amount, period, next_run_at')
+        .select('id, label, amount, period, next_run_at, last_run_at')
         .order('next_run_at', { ascending: true });
       if (error) throw error;
       return (data ?? []) as RecurringRow[];
@@ -411,7 +447,7 @@ function RecurringExpensesPanel() {
         <table className="w-full text-body">
           <thead>
             <tr style={{ borderBottom: '1px solid var(--line)' }}>
-              {['Ad', 'Dövr', 'Növbəti', 'Məbləğ', ''].map((h) => (
+              {['Ad', 'Dövr', 'Son', 'Növbəti', 'Məbləğ', ''].map((h) => (
                 <th
                   key={h}
                   className="text-left py-3 px-3 text-meta"
@@ -423,29 +459,47 @@ function RecurringExpensesPanel() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
-                <td className="py-3 px-3">{r.label}</td>
-                <td className="py-3 px-3">{PERIOD_LABEL[r.period] ?? r.period}</td>
-                <td className="py-3 px-3">{formatDate(r.next_run_at)}</td>
-                <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  {formatAZN(r.amount)}
-                </td>
-                <td className="py-3 px-3 text-right">
-                  <button
-                    type="button"
-                    className="chip"
-                    onClick={() => remove.mutate(r.id)}
-                    disabled={remove.isPending}
-                  >
-                    Sil
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {rows.map((r) => {
+              const overdue = new Date(r.next_run_at).getTime() < Date.now();
+              return (
+                <tr key={r.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                  <td className="py-3 px-3">{r.label}</td>
+                  <td className="py-3 px-3">{PERIOD_LABEL[r.period] ?? r.period}</td>
+                  <td className="py-3 px-3" style={{ color: 'var(--text-muted)' }}>
+                    {r.last_run_at ? formatDate(r.last_run_at) : '—'}
+                  </td>
+                  <td className="py-3 px-3">
+                    <span style={overdue ? { color: '#B91C1C', fontWeight: 600 } : undefined}>
+                      {formatDate(r.next_run_at)}
+                    </span>
+                    {overdue ? (
+                      <span
+                        className="chip text-meta ml-2"
+                        style={{ background: '#FEE2E2', color: '#B91C1C', padding: '1px 6px', fontSize: 11 }}
+                      >
+                        Gecikib
+                      </span>
+                    ) : null}
+                  </td>
+                  <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {formatAZN(r.amount)}
+                  </td>
+                  <td className="py-3 px-3 text-right">
+                    <button
+                      type="button"
+                      className="chip"
+                      onClick={() => remove.mutate(r.id)}
+                      disabled={remove.isPending}
+                    >
+                      Sil
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="py-6 text-center text-meta" style={{ color: 'var(--text-muted)' }}>
+                <td colSpan={6} className="py-6 text-center text-meta" style={{ color: 'var(--text-muted)' }}>
                   Sabit xərc qaydası yoxdur.
                 </td>
               </tr>
@@ -558,6 +612,47 @@ function PnLTable({
             <td className="py-2 px-3 font-medium" style={{ color: '#16A34A' }}>{formatAZN(totIn)}</td>
             <td className="py-2 px-3 font-medium" style={{ color: '#B91C1C' }}>{formatAZN(totOut)}</td>
             <td className="py-2 px-3 font-medium" style={{ color: totIn - totOut >= 0 ? '#16A34A' : '#B91C1C' }}>{formatAZN(totIn - totOut)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function PnLByCategory({ expenses }: { expenses: Array<{ amount: number; category: string | null }> }) {
+  const byCategory: Record<string, number> = {};
+  for (const e of expenses) {
+    const cat = e.category?.trim() || 'Digər';
+    byCategory[cat] = (byCategory[cat] ?? 0) + Number(e.amount);
+  }
+  const rows = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
+  if (rows.length === 0) return null;
+  const total = rows.reduce((s, [, v]) => s + v, 0);
+  return (
+    <div className="card overflow-x-auto">
+      <h3 className="text-h3 mb-3">Xərc kateqoriyası üzrə</h3>
+      <table className="w-full text-body">
+        <thead>
+          <tr style={{ borderBottom: '1px solid var(--line)' }}>
+            {['Kateqoriya', 'Məbləğ', '%'].map((h) => (
+              <th key={h} className="text-left py-2 px-3 text-meta" style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([cat, amt]) => (
+            <tr key={cat} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+              <td className="py-2 px-3">{cat}</td>
+              <td className="py-2 px-3" style={{ fontVariantNumeric: 'tabular-nums', color: '#B91C1C' }}>{formatAZN(amt)}</td>
+              <td className="py-2 px-3" style={{ color: 'var(--text-muted)' }}>
+                {total > 0 ? `${((amt / total) * 100).toFixed(1)}%` : '—'}
+              </td>
+            </tr>
+          ))}
+          <tr style={{ borderTop: '2px solid var(--line)' }}>
+            <td className="py-2 px-3 font-medium">Cəmi</td>
+            <td className="py-2 px-3 font-medium" style={{ color: '#B91C1C' }}>{formatAZN(total)}</td>
+            <td className="py-2 px-3">100%</td>
           </tr>
         </tbody>
       </table>

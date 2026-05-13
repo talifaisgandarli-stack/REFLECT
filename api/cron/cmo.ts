@@ -12,12 +12,35 @@ export const config = { runtime: 'edge' };
 
 const MODEL = 'claude-haiku-4-5-20251001'; // PRD §3.1
 
-const FEEDS = [
+const DEFAULT_FEEDS = [
   { url: 'https://www.archdaily.com/feed', kind: 'trend' as const },
   { url: 'https://www.dezeen.com/feed/', kind: 'trend' as const },
   { url: 'https://www.architizer.com/feed/', kind: 'opportunity' as const },
   { url: 'https://worldarchitecturefestival.com/feed/', kind: 'opportunity' as const },
 ];
+
+type FeedConfig = { url: string; kind: 'trend' | 'opportunity' };
+
+async function resolveFeeds(sb: ReturnType<typeof admin>): Promise<FeedConfig[]> {
+  const { data } = await sb
+    .from('system_settings')
+    .select('value')
+    .eq('key', 'mirai_rss_feeds')
+    .maybeSingle();
+  if (!data?.value) return DEFAULT_FEEDS;
+  try {
+    const custom = JSON.parse(String(data.value)) as FeedConfig[];
+    if (!Array.isArray(custom) || custom.length === 0) return DEFAULT_FEEDS;
+    // Merge: custom overrides defaults by URL, extras appended
+    const byUrl = new Map<string, FeedConfig>(DEFAULT_FEEDS.map((f) => [f.url, f]));
+    for (const c of custom) {
+      if (c?.url) byUrl.set(c.url, { url: c.url, kind: c.kind ?? 'trend' });
+    }
+    return Array.from(byUrl.values());
+  } catch {
+    return DEFAULT_FEEDS;
+  }
+}
 
 type FeedItem = { title: string; link: string; description: string };
 
@@ -76,7 +99,8 @@ export default async function handler(req: Request) {
     let inserted = 0;
     let skipped = 0;
 
-    for (const feed of FEEDS) {
+    const feeds = await resolveFeeds(sb);
+    for (const feed of feeds) {
       let xml: string;
       try {
         xml = await fetch(feed.url, { signal: AbortSignal.timeout(8_000) }).then((r) => r.text());

@@ -21,6 +21,7 @@ export function ArchivePage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
 
   const profiles = useQuery({
     queryKey: ['profiles', 'list'],
@@ -57,6 +58,17 @@ export function ArchivePage() {
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['archive', 'tasks'] }),
+  });
+
+  const bulkRestoreTasks = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const { error } = await supabase.from('tasks').update({ archived_at: null }).in('id', ids);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setSelectedTaskIds(new Set());
+      qc.invalidateQueries({ queryKey: ['archive', 'tasks'] });
+    },
   });
 
   const restoreProject = useMutation({
@@ -127,12 +139,43 @@ export function ArchivePage() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <section className="card">
-            <h3 className="text-h3 mb-3">Tapşırıqlar ({filteredTasks.length})</h3>
+            <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+              <h3 className="text-h3">Tapşırıqlar ({filteredTasks.length})</h3>
+              {isAdmin && selectedTaskIds.size > 0 ? (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  style={{ fontSize: 13 }}
+                  disabled={bulkRestoreTasks.isPending}
+                  onClick={() => bulkRestoreTasks.mutate(Array.from(selectedTaskIds))}
+                >
+                  {bulkRestoreTasks.isPending
+                    ? 'Bərpa edilir…'
+                    : `Seçilmişləri bərpa et (${selectedTaskIds.size})`}
+                </button>
+              ) : null}
+            </div>
             <ul className="divide-y divide-line-soft">
               {filteredTasks.map((t) => (
-                <li key={t.id} className="py-2 flex items-center justify-between gap-2">
-                  <div>
-                    <div className="text-body">{t.title}</div>
+                <li key={t.id} className="py-2 flex items-center gap-2">
+                  {isAdmin ? (
+                    <input
+                      type="checkbox"
+                      aria-label={`${t.title} seç`}
+                      checked={selectedTaskIds.has(t.id)}
+                      onChange={(e) => {
+                        setSelectedTaskIds((prev) => {
+                          const next = new Set(prev);
+                          if (e.target.checked) next.add(t.id);
+                          else next.delete(t.id);
+                          return next;
+                        });
+                      }}
+                      style={{ flexShrink: 0 }}
+                    />
+                  ) : null}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-body truncate">{t.title}</div>
                     <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
                       {TASK_STATUS_LABEL[t.status]} · {t.archived_at?.slice(0, 10) ?? '—'}
                     </div>
@@ -141,7 +184,7 @@ export function ArchivePage() {
                     <button
                       type="button"
                       className="chip"
-                      style={{ whiteSpace: 'nowrap' }}
+                      style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
                       disabled={restoreTask.isPending}
                       onClick={() => restoreTask.mutate(t.id)}
                     >
