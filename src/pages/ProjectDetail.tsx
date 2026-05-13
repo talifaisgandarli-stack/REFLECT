@@ -5,7 +5,7 @@
  * REQ-PROJ-05 — award/portfolio submission (referenced from Closeout tab).
  */
 import { useParams, Link } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
 import { useProject, useTasks, useActivityFeed } from '@/lib/hooks';
@@ -14,8 +14,11 @@ import { Avatar } from '@/components/Avatar';
 import { useAuth } from '@/lib/store';
 import { PROJECT_PHASES } from '@/lib/labels';
 import { ProjectPnL } from '@/components/ProjectPnL';
+import { TaskCreateModal } from '@/components/TaskCreateModal';
 import { supabase } from '@/lib/supabase';
 import { relativeTime } from '@/lib/format';
+import { TASK_STATUS_LABEL, TASK_STATUS_ORDER } from '@/lib/labels';
+import type { TaskStatus } from '@/types/db';
 
 const TABS_BASE = ['Overview', 'Tasks', 'Documents', 'Closeout', 'History'] as const;
 type Tab = (typeof TABS_BASE)[number] | 'Finance';
@@ -50,6 +53,13 @@ export function ProjectDetailPage() {
     ? ['Overview', 'Tasks', 'Documents', 'Finance', 'Closeout', 'History']
     : ['Overview', 'Tasks', 'Documents', 'Closeout', 'History'];
   const [tab, setTab] = useState<Tab>('Overview');
+  const [addingTask, setAddingTask] = useState(false);
+  const [taskStatusFilter, setTaskStatusFilter] = useState<TaskStatus | 'all'>('all');
+
+  const filteredTasks = useMemo(() => {
+    if (taskStatusFilter === 'all') return tasks;
+    return tasks.filter((t) => t.status === taskStatusFilter);
+  }, [tasks, taskStatusFilter]);
 
   // Documents (project_documents table — REQ-PROJ-03)
   const { data: documents = [] } = useQuery({
@@ -306,19 +316,55 @@ export function ProjectDetailPage() {
       {/* TASKS */}
       {tab === 'Tasks' ? (
         <div className="card">
-          {tasks.length === 0 ? (
-            <p className="text-meta" style={{ color: 'var(--text-muted)' }}>Bu layihədə tapşırıq yoxdur.</p>
+          <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+            <select
+              className="input"
+              style={{ maxWidth: 200 }}
+              value={taskStatusFilter}
+              onChange={(e) => setTaskStatusFilter(e.target.value as TaskStatus | 'all')}
+              aria-label="Status filtri"
+            >
+              <option value="all">Bütün statuslar ({tasks.length})</option>
+              {TASK_STATUS_ORDER.map((s) => {
+                const count = tasks.filter((t) => t.status === s).length;
+                if (!count) return null;
+                return (
+                  <option key={s} value={s}>
+                    {TASK_STATUS_LABEL[s]} ({count})
+                  </option>
+                );
+              })}
+            </select>
+            <button className="btn-primary" onClick={() => setAddingTask(true)}>
+              + Tapşırıq
+            </button>
+          </div>
+          {filteredTasks.length === 0 ? (
+            <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+              {tasks.length === 0 ? 'Bu layihədə tapşırıq yoxdur.' : 'Bu statusda tapşırıq yoxdur.'}
+            </p>
           ) : (
             <ul className="divide-y" style={{ borderColor: 'var(--line-soft)' }}>
-              {tasks.map((t) => (
-                <li key={t.id} className="py-3 flex items-center justify-between">
-                  <span className="text-body">{t.title}</span>
+              {filteredTasks.map((t) => (
+                <li key={t.id} className="py-3 flex items-center justify-between gap-3">
+                  <span className="text-body flex-1 min-w-0 truncate">{t.title}</span>
+                  {t.deadline ? (
+                    <span className="text-meta shrink-0" style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                      {t.deadline}
+                    </span>
+                  ) : null}
                   <StatusChip status={t.status} />
                 </li>
               ))}
             </ul>
           )}
         </div>
+      ) : null}
+      {addingTask && id ? (
+        <TaskCreateModal
+          defaultProjectId={id}
+          onClose={() => setAddingTask(false)}
+        />
       ) : null}
 
       {/* DOCUMENTS — REQ-PROJ-03, project_documents table */}

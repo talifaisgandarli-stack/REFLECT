@@ -167,14 +167,33 @@ function AddSalaryModal({ profiles, onClose, onSaved }: AddProps) {
       if (!employeeId || !amount || !effectiveFrom) throw new Error('Zəruri sahələri doldurun');
       const amt = parseFloat(amount);
       if (isNaN(amt) || amt <= 0) throw new Error('Məbləğ müsbət rəqəm olmalıdır');
-      const { error } = await supabase.from('salaries').insert({
-        employee_id: employeeId,
-        amount: amt,
-        currency,
-        effective_from: effectiveFrom,
-        effective_to: effectiveTo || null,
-      });
+
+      const { data: row, error } = await supabase
+        .from('salaries')
+        .insert({
+          employee_id: employeeId,
+          amount: amt,
+          currency,
+          effective_from: effectiveFrom,
+          effective_to: effectiveTo || null,
+        })
+        .select('id')
+        .single();
       if (error) throw error;
+
+      // Audit trail — PRD §8.2
+      await supabase.from('audit_log').insert({
+        action: 'salary_created',
+        resource: `salary:${row.id}`,
+      }).then(() => null).catch(() => null);
+
+      // Notify employee via existing fan-out (Telegram + email if configured)
+      await supabase.from('notifications').insert({
+        user_id: employeeId,
+        kind: 'salary_changed',
+        payload: { amount: amt, currency, effective_from: effectiveFrom },
+        dispatched_channels: {},
+      }).then(() => null).catch(() => null);
     },
     onSuccess: onSaved,
   });

@@ -15,7 +15,11 @@ import { useProjects } from '@/lib/hooks';
 import { useFocusTrap } from '@/lib/a11y';
 import type { Task, TaskStatus } from '@/types/db';
 
-type Props = { onClose: () => void };
+type Props = {
+  onClose: () => void;
+  defaultProjectId?: string;
+  defaultStatus?: TaskStatus;
+};
 
 const EXPERTISE_CHILDREN = [
   'Çertyoj hazırlığı',
@@ -44,7 +48,7 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
   cancelled: 'Ləğv edilmiş',
 };
 
-export function TaskCreateModal({ onClose }: Props) {
+export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus }: Props) {
   const { profile, isAdmin } = useAuth();
   const projects = useProjects();
   const qc = useQueryClient();
@@ -65,8 +69,8 @@ export function TaskCreateModal({ onClose }: Props) {
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [projectId, setProjectId] = useState<string>('');
-  const [status, setStatus] = useState<TaskStatus>('queued');
+  const [projectId, setProjectId] = useState<string>(defaultProjectId ?? '');
+  const [status, setStatus] = useState<TaskStatus>(defaultStatus ?? 'queued');
   const [startDate, setStartDate] = useState('');
   const [deadline, setDeadline] = useState('');
   const [estimated, setEstimated] = useState<string>('');

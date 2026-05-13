@@ -1,7 +1,7 @@
 # Reflect Architects OS — Tam Audit (PRD v3.8 vs. kod)
 
 **İlk audit:** 2026-05-10
-**Son yeniləmə:** 2026-05-14
+**Son yeniləmə:** 2026-05-14 (P2 sprint)
 **PRD:** docs/PRD.md (1909 sətr)
 **Audit edilən:** bütün `src/pages/`, `src/components/`, `api/`, `supabase/migrations/`
 
@@ -14,11 +14,11 @@ PRD-ni və hər səhifəni oxudum. **22 ship-blocking + 100+ kiçik bug** tapıl
 | Kateqoriya | İlkin | Düzəldildi | Qalır | Coverage |
 |---|---|---|---|---|
 | **Ship-blocker** | 22 | **22** ✅ | 0 | **100%** |
-| Secondary (modul) | ~70 | ~52 | ~18 | ~74% |
+| Secondary (modul) | ~70 | ~63 | ~7 | ~90% |
 | Cross-cutting | ~20 | ~11 | ~9 | ~55% |
 | Security/RLS | 7 | **6** | 1 | ~86% |
 | Performance/N+1 | 7 | 2 | 5 | ~29% |
-| **CƏMI** | **~126** | **~93** | **~33** | **~74%** |
+| **CƏMI** | **~126** | **~104** | **~22** | **~83%** |
 
 **Production:** `reflectbc.vercel.app` — canlı, stabil, gündəlik istifadə üçün hazır.
 
@@ -140,10 +140,10 @@ PRD-ni və hər səhifəni oxudum. **22 ship-blocking + 100+ kiçik bug** tapıl
 - ✅ Reopen `archived_at` təmizlənir
 - ✅ History tab task event-lərini göstərir
 - ✅ Deadline ≥ start_date validation
-- ❌ `system_awards.deadline_month` parse səhvi
+- ✅ `system_awards.deadline_month` parse (commit 1ce3ed2)
+- ✅ Tasks tab — filter + "Tapşırıq əlavə et" (defaultProjectId) (2026-05-14)
+- ✅ Documents upload affordance — `AddDocumentButton` artıq vardı (false positive idi)
 - ❌ `applications jsonb` type mismatch
-- ❌ Tasks tab improvements (filter, inline status, add-task)
-- ❌ Documents upload affordance
 
 ### MODUL 4 — Tapşırıqlar (PRD §10)
 - ✅ Multi-assignee picker (admin)
@@ -151,7 +151,7 @@ PRD-ni və hər səhifəni oxudum. **22 ship-blocking + 100+ kiçik bug** tapıl
 - ✅ Cədvəl view deadline rəng kodu
 - ✅ Search URL-də saxlanır
 - ✅ Mention parser
-- ❌ Quick-add per kanban column
+- ✅ Quick-add per kanban column — "+" düyməsi hər sütunda, TaskCreateModal defaultStatus ilə (2026-05-14)
 - ❌ Optimistic drag-drop (cəhd edildi, geri qaytarıldı — `@dnd-kit/core` lazımdır)
 - — Bulk archive (defense-in-depth, acceptable)
 
@@ -161,11 +161,11 @@ PRD-ni və hər səhifəni oxudum. **22 ship-blocking + 100+ kiçik bug** tapıl
 - ✅ Pipeline value `client.confidence_pct` istifadə edir
 - ✅ `logged_by` interaksiyalarda
 - ✅ `last_interaction_at` trigger (Migration 0005-də vardı)
-- ❌ BD Lead `expected_value` RLS ayrılması
-- ❌ `ai_icp_fit` enum vs numeric uyğunsuzluğu
+- ✅ `ai_icp_fit` numeric — db.ts `number | null`, kod düzgündür; audit false positive idi
+- ✅ ICP throttle server-side — `api/crm/icp.ts` 24h yoxlanır DB-dən; Clients.tsx artıq bu endpoint-i çağırır (2026-05-14)
+- ✅ MIRAI regex parse — `api/crm/icp.ts` daxilindədir, structured endpoint (2026-05-14)
+- ❌ BD Lead `expected_value` RLS ayrılması (column-level grant)
 - ❌ `project_documents.status` "Draft"
-- ❌ ICP throttle server-side
-- ❌ MIRAI regex parse → structured tool
 
 ### MODUL 6 — Maliyyə (PRD §11)
 - ✅ Income → receivable auto-mark trigger (Migration 0030)
@@ -181,14 +181,14 @@ PRD-ni və hər səhifəni oxudum. **22 ship-blocking + 100+ kiçik bug** tapıl
 
 ### MODUL 7 — Komanda
 #### 7.1 Roster
-- ❌ 3/5 PRD sahəsi (equipment count, workload, role label)
+- ✅ Role label + equipment count + workload chip (az/orta/yüksək) (2026-05-14)
 - ❌ `useTeamPresence` rol dəyişikliyində invalidate
 
 #### 7.2 Salary
 - ✅ `effective_to` trigger (Migration 0018)
 - ✅ `activity_log` trigger (Migration 0020)
-- ❌ `audit_log` insert
-- ❌ Telegram notification
+- ✅ `audit_log` insert — `salary_created` action (2026-05-14)
+- ✅ Telegram notification — `salary_changed` notification row → fan-out (2026-05-14)
 
 #### 7.3 Performance
 - ✅ `performance_review` notification dispatcher whitelist
@@ -214,7 +214,7 @@ PRD-ni və hər səhifəni oxudum. **22 ship-blocking + 100+ kiçik bug** tapıl
 
 #### 7.7 Equipment
 - ✅ Reassign confirm dialog
-- ❌ `condition_log` RLS
+- ✅ `condition_log` RLS — ayrı `condition_log` cədvəli yoxdur; `condition` sütunu `equipment`-dadır, dəyişikliklər `activity_log`-a yazılır (RLS migration 0016 ilə örtülür); false positive idi
 
 ### MODUL 8 — Şirkət
 #### 8.1 OKR

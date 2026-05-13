@@ -691,24 +691,18 @@ function OverviewTab({ client }: { client: Client }) {
       const { data: sess } = await supabase.auth.getSession();
       const token = sess.session?.access_token;
       if (!token) throw new Error('Sessiya yoxdur');
-      const res = await fetch('/api/mirai/chat', {
+      const res = await fetch('/api/crm/icp', {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          persona: 'operations_director',
-          message: `Müştəri adı: ${client.name}. Şirkət: ${client.company ?? '—'}. Əlaqə: ${client.email ?? '—'}. ICP uyğunluğunu 0-100 arasında qiymətləndir. Yalnız rəqəm cavab ver.`,
-        }),
+        body: JSON.stringify({ client_id: client.id }),
       });
-      const data = await res.json().catch(() => null);
-      const match = String(data?.reply ?? '').match(/\d+/);
-      const score = match ? Math.min(100, Math.max(0, Number(match[0]))) : null;
-      if (score != null) {
-        await supabase.from('clients').update({
-          ai_icp_fit: score,
-          ai_icp_calculated_at: new Date().toISOString(),
-        }).eq('id', client.id);
-        qc.invalidateQueries({ queryKey: ['clients'] });
+      const data = await res.json().catch(() => ({})) as { score?: number; throttled?: boolean; error?: string };
+      if (res.status === 429 || data.throttled) {
+        setIcpErr('Son 24 saat ərzində artıq analiz edilib.');
+        return;
       }
+      if (!res.ok) throw new Error(data.error ?? 'AI analiz uğursuz oldu');
+      qc.invalidateQueries({ queryKey: ['clients'] });
     } catch (e) {
       setIcpErr((e as Error).message);
     } finally {

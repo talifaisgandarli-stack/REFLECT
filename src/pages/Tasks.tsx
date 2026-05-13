@@ -58,6 +58,7 @@ export function TasksPage() {
   const update = useUpdateTaskStatus();
   const [blocker, setBlocker] = useState<{ id: string; from?: TaskStatus } | null>(null);
   const [creating, setCreating] = useState(false);
+  const [quickAddCol, setQuickAddCol] = useState<TaskStatus | null>(null);
   const [cancelling, setCancelling] = useState<{ id: string; title: string } | null>(null);
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [commenting, setCommenting] = useState<{ id: string; title: string } | null>(null);
@@ -302,7 +303,7 @@ export function TasksPage() {
                 >
                   {isToday ? 'BU GÜN' : TASK_STATUS_LABEL[s]} · {grouped[s].length}
                 </h3>
-                <div className="space-y-2">
+                <div className="space-y-2" role="list" aria-label={TASK_STATUS_LABEL[s]}>
                   {grouped[s].map((t) => (
                     <article
                       key={t.id}
@@ -402,6 +403,16 @@ export function TasksPage() {
                     </article>
                   ))}
                 </div>
+                {/* Quick-add per column: opens TaskCreateModal pre-set to this status */}
+                <button
+                  type="button"
+                  className="mt-2 w-full text-left text-meta opacity-50 hover:opacity-100 py-1 px-2 rounded-btn"
+                  style={{ color: isToday ? 'var(--brand-action)' : 'var(--text-muted)', fontSize: 12 }}
+                  onClick={() => setQuickAddCol(s)}
+                  aria-label={`${TASK_STATUS_LABEL[s]} sütununa tapşırıq əlavə et`}
+                >
+                  + Tapşırıq
+                </button>
               </div>
             );
           })}
@@ -468,6 +479,12 @@ export function TasksPage() {
       ) : null}
 
       {creating ? <TaskCreateModal onClose={() => setCreating(false)} /> : null}
+      {quickAddCol ? (
+        <TaskCreateModal
+          defaultStatus={quickAddCol}
+          onClose={() => setQuickAddCol(null)}
+        />
+      ) : null}
 
       {cancelling ? (
         <CancelTaskModal

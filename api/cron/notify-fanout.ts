@@ -52,6 +52,7 @@ const KIND_TITLE: Record<string, string> = {
   okr_nudge: 'Həftəlik OKR yenilənməsi',
   content_due_soon: 'Məzmun planı yaxınlaşır',
   announcement: 'Yeni elan',
+  salary_changed: 'Maaş cədvəliniz yeniləndi',
 };
 
 function bodyFor(n: NotifRow): string {
@@ -64,6 +65,9 @@ function bodyFor(n: NotifRow): string {
   if (typeof p.deadline === 'string') lines.push(`Deadline: ${p.deadline}`);
   if (typeof p.scheduled_at === 'string') lines.push(`Tarix: ${p.scheduled_at}`);
   if (typeof p.reason === 'string') lines.push(p.reason);
+  if (typeof p.amount === 'number' && typeof p.currency === 'string') {
+    lines.push(`Məbləğ: ${p.amount.toLocaleString('az-AZ')} ${p.currency}`);
+  }
   return lines.join('\n');
 }
 
