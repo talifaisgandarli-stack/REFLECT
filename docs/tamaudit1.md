@@ -1,7 +1,7 @@
 # Reflect Architects OS — Tam Audit (PRD v3.8 vs. kod)
 
 **İlk audit:** 2026-05-10
-**Son yeniləmə:** 2026-05-12
+**Son yeniləmə:** 2026-05-14
 **PRD:** docs/PRD.md (1909 sətr)
 **Audit edilən:** bütün `src/pages/`, `src/components/`, `api/`, `supabase/migrations/`
 
@@ -14,11 +14,11 @@ PRD-ni və hər səhifəni oxudum. **22 ship-blocking + 100+ kiçik bug** tapıl
 | Kateqoriya | İlkin | Düzəldildi | Qalır | Coverage |
 |---|---|---|---|---|
 | **Ship-blocker** | 22 | **22** ✅ | 0 | **100%** |
-| Secondary (modul) | ~70 | ~45 | ~25 | ~64% |
-| Cross-cutting | ~20 | ~7 | ~13 | ~35% |
-| Security/RLS | 7 | 4 | 3 | ~57% |
-| Performance/N+1 | 7 | 1 | 6 | ~14% |
-| **CƏMI** | **~126** | **~79** | **~47** | **~63%** |
+| Secondary (modul) | ~70 | ~52 | ~18 | ~74% |
+| Cross-cutting | ~20 | ~11 | ~9 | ~55% |
+| Security/RLS | 7 | **6** | 1 | ~86% |
+| Performance/N+1 | 7 | 2 | 5 | ~29% |
+| **CƏMI** | **~126** | **~93** | **~33** | **~74%** |
 
 **Production:** `reflectbc.vercel.app` — canlı, stabil, gündəlik istifadə üçün hazır.
 
@@ -122,9 +122,9 @@ PRD-ni və hər səhifəni oxudum. **22 ship-blocking + 100+ kiçik bug** tapıl
 - ✅ Şifrəni unutdum linki + Supabase password reset
 - ✅ `is_active` deaktiv user avtomatik logout
 - ✅ Auto-create profile trigger (Migration 0024) + RPC `ensure_profile` (Migration 0025)
-- ⚠️ Rate limit migration scaffolded (0031), amma server proxy lazımdır kodla bağlanmaq üçün
-- ❌ Resend invitations bypass — Settings.tsx birbaşa Supabase insert edir
-- ❌ `accepted_at` heç vaxt yazılmır
+- ✅ Rate limit proxy — `api/auth/rate-check.ts` migration 0031 RPC-lərini bağladı (2026-05-14)
+- ✅ Resend invitations — Settings.tsx artıq `POST /api/invitations/create` çağırır (2026-05-14)
+- ✅ `accepted_at` yazılır — `api/invitations/accept.ts` + Login.tsx `?invite=` param (2026-05-14)
 - ❌ Locale switch / i18n
 
 ### MODUL 2 — Dashboard (PRD §6)
@@ -235,21 +235,21 @@ PRD-ni və hər səhifəni oxudum. **22 ship-blocking + 100+ kiçik bug** tapıl
 - ✅ Templates `_deprecated_*` filter
 - ✅ MIRAI aylıq büdcə inputu işləkdir
 - ✅ Finance alert thresholds işləkdir
-- ❌ Şirkət adı save (hardcoded `defaultValue`)
-- ❌ Invitations Resend bypass
+- ✅ Şirkət adı save (2026-05-13, commit 1ce3ed2)
+- ✅ Invitations API — Settings.tsx API endpoint çağırır (2026-05-14)
 
 ### MODUL 10 — MIRAI — tam ✅
 - ✅ SSE streaming (`?stream=1`)
-- ✅ 6 tool whitelist
+- ✅ 7 tool whitelist (7-ci tool commit 1ce3ed2-də əlavə olundu)
 - ✅ Project context (top project name/phase/deadline)
 - ✅ `mirai_monthly_budget` admin input
 - ✅ Hard cap (1.05× over-budget multiplier silindi)
 - ✅ `tools_used` yazılır
 - ✅ Submit düyməsi (Enter-dən başqa)
 - ✅ Error banner-də qalır (history-ə qarışmır)
-- ❌ 80% pre-flight warning (hələ post-call)
-- ❌ CMO RSS custom feeds
-- ❌ `mirai_feedback` unique constraint collision
+- ✅ 80% pre-flight warning (`SOFT_WARN_PCT = 0.8`, commit sonrası)
+- ✅ `mirai_feedback` unique constraint — migration 0012-də VAR `(user_id, conversation_id, message_index)` — audit false positive idi
+- ❌ CMO RSS custom feeds (Settings UI hazır, cron consumption yoxdur)
 - ❌ Tokens_in attribution
 
 ### MODUL 11 — Telegram — tam ✅
@@ -295,8 +295,8 @@ PRD-ni və hər səhifəni oxudum. **22 ship-blocking + 100+ kiçik bug** tapıl
 - ✅ Telegram link codes dedicated table (Migration 0015)
 - ✅ Knowledge_base grants (Migration 0029)
 - ✅ Profiles grants + ensure_profile RPC (Migration 0025)
-- ❌ `projects` UPDATE creator-also
-- ❌ CSRF protection /api/*
+- ✅ `projects` UPDATE creator-also — Migration 0033 (2026-05-14)
+- ✅ Origin check `/api/*` — `api/_lib/auth.ts` `originAllowed()` (2026-05-14, defense-in-depth; Bearer JWT ilə həqiqi CSRF risk yox idi)
 - ❌ `is_project_member` genişləndirilməsi
 
 ---
@@ -346,13 +346,13 @@ PRD-ni və hər səhifəni oxudum. **22 ship-blocking + 100+ kiçik bug** tapıl
 ## 🎯 QALAN İŞ — Prioritetlə
 
 ### Yüksək təsir, az xərc (~3 saat) — "live with it" olmayan
-1. **Resend invitations bypass** — Settings invitations UI Resend istifadə etsin
-2. **Auth rate limit proxy** — Server-side login endpoint (migration 0031 hazırdır)
-3. **BD Lead expected_value RLS** — financial fields ayrılması
-4. **MIRAI 80% pre-flight warning** — call başlamazdan əvvəl
-5. **`projects` UPDATE creator-also** — RLS genişləndirilməsi
-6. **Modal focus trap** — A11y
-7. **Bulk restore Archive** — multi-select + restore action
+- ~~**Resend invitations bypass**~~ ✅ 2026-05-14
+- ~~**Auth rate limit proxy**~~ ✅ 2026-05-14
+- ~~**MIRAI 80% pre-flight warning**~~ ✅ həll edilib
+- ~~**`projects` UPDATE creator-also**~~ ✅ Migration 0033
+- ~~**Modal focus trap**~~ ✅ commit 002dab1
+1. **BD Lead expected_value RLS** — financial fields ayrılması (column-level grant)
+2. **Bulk restore Archive** — multi-select + restore action
 
 ### Orta təsir, orta xərc (~6-8 saat)
 8. **Calendar rrule expand + ics attachment + multi-day**

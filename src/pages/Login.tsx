@@ -1,11 +1,15 @@
 import { FormEvent, useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { Mascot } from '@/components/Mascot';
 import { useAuth } from '@/lib/store';
 import { sendMagicLink, sendPasswordReset, signInWithPassword } from '@/lib/auth';
+import { supabase } from '@/lib/supabase';
 
 export function LoginPage() {
   const { session, hydrated } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const inviteToken = searchParams.get('invite');
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [err, setErr] = useState<string | null>(null);
@@ -14,6 +18,19 @@ export function LoginPage() {
 
   if (!hydrated) return null;
   if (session) return <Navigate to="/" replace />;
+
+  async function acceptInvite(token: string) {
+    const { data: sess } = await supabase.auth.getSession();
+    const accessToken = sess.session?.access_token;
+    if (!accessToken) return;
+    await fetch('/api/invitations/accept', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ token }),
+    });
+    // Remove invite param from URL regardless of accept result (idempotent).
+    setSearchParams((p) => { p.delete('invite'); return p; }, { replace: true });
+  }
 
   // PRD §5 / OWASP — never echo Supabase auth errors verbatim. Distinct
   // messages for "user not found" vs. "wrong password" let an attacker
@@ -25,8 +42,13 @@ export function LoginPage() {
     setInfo(null);
     setBusy(true);
     const { error } = await signInWithPassword(email, password);
+    if (error) {
+      setBusy(false);
+      setErr('Email və ya şifrə yanlışdır.');
+      return;
+    }
+    if (inviteToken) await acceptInvite(inviteToken);
     setBusy(false);
-    if (error) setErr('Email və ya şifrə yanlışdır.');
   }
 
   async function onMagic() {

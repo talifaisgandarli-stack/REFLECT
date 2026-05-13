@@ -62,6 +62,22 @@ export function useAuthBootstrap() {
 }
 
 export async function signInWithPassword(email: string, password: string) {
+  // PRD §5 / REQ-AUTH-01 — server-side rate limit gate (migration 0031).
+  // Fail-open: if the endpoint is unreachable we let Supabase handle it.
+  try {
+    const res = await fetch('/api/auth/rate-check', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    if (res.status === 429) {
+      const body = await res.json().catch(() => ({}));
+      const msg = (body as { error?: string }).error ?? 'Çox sayda cəhd. 15 dəqiqə gözləyin.';
+      return { data: { user: null, session: null }, error: { message: msg } as never };
+    }
+  } catch {
+    // network error → fail-open, proceed to Supabase
+  }
   return supabase.auth.signInWithPassword({ email, password });
 }
 

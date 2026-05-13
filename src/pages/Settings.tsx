@@ -613,31 +613,21 @@ function InvitationsSettings() {
   const invite = useMutation({
     mutationFn: async () => {
       if (!email.trim() || !roleId) throw new Error('Email və rol tələb olunur');
-      if (!profile?.id) throw new Error('Sessiya tapılmadı');
+      const role = (roles.data ?? []).find((r) => r.id === roleId);
+      if (!role) throw new Error('Rol tapılmadı');
 
-      const expires = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
-      const token = crypto.randomUUID();
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) throw new Error('Sessiya tapılmadı');
 
-      // PRD edge case: re-invite same email → reuse and bump expiry
-      const existing = (invitations.data ?? []).find(
-        (i) => i.email.toLowerCase() === email.trim().toLowerCase(),
-      );
-
-      if (existing) {
-        const { error } = await supabase
-          .from('invitations')
-          .update({ expires_at: expires, role_id: roleId, invited_by: profile.id })
-          .eq('id', existing.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from('invitations').insert({
-          email: email.trim().toLowerCase(),
-          role_id: roleId,
-          invited_by: profile.id,
-          token,
-          expires_at: expires,
-        });
-        if (error) throw error;
+      const res = await fetch('/api/invitations/create', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ email: email.trim().toLowerCase(), role_key: role.key }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Dəvət göndərilmədi');
       }
     },
     onSuccess: () => {

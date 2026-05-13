@@ -4,6 +4,26 @@
  */
 import { createClient } from '@supabase/supabase-js';
 
+// Defense-in-depth: reject state-changing requests from unexpected origins.
+// The API already requires a Bearer JWT so true CSRF is not possible, but
+// an extra Origin check prevents abuse from rogue browser tabs or extensions.
+const ALLOWED_ORIGINS = (() => {
+  const raw = process.env.ALLOWED_ORIGINS ?? process.env.PUBLIC_APP_URL ?? '';
+  const base = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  // Always allow localhost for local dev.
+  return [...base, 'http://localhost:5173', 'http://localhost:4173'];
+})();
+
+function originAllowed(req: Request): boolean {
+  // GET/HEAD/OPTIONS are safe methods — no origin check needed.
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return true;
+  const origin = req.headers.get('origin');
+  if (!origin) return true; // server-to-server call (cron, webhook) — allow
+  return ALLOWED_ORIGINS.some(
+    (allowed) => origin === allowed || origin.endsWith('.vercel.app'),
+  );
+}
+
 export type AuthedUser = {
   id: string;
   email: string;
@@ -22,6 +42,8 @@ export function admin() {
 }
 
 export async function requireUser(req: Request): Promise<AuthedUser> {
+  if (!originAllowed(req)) throw new HttpError(403, 'Origin not allowed');
+
   const auth = req.headers.get('authorization') ?? '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   if (!token) throw new HttpError(401, 'Missing bearer token');
