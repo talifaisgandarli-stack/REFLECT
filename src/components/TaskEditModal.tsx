@@ -3,11 +3,12 @@
  * project, deadline, status, assignees, duration). Mirrors TaskCreateModal
  * but without the expertise-subtask scaffolding (that only seeds on create).
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { useProjects } from '@/lib/hooks';
+import { useFocusTrap } from '@/lib/a11y';
 import type { Task, TaskStatus } from '@/types/db';
 
 type Props = { task: Task; onClose: () => void };
@@ -85,15 +86,24 @@ export function TaskEditModal({ task, onClose }: Props) {
     },
   });
 
+  const trapRef = useFocusTrap<HTMLFormElement>(true);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
     <div
       role="dialog"
+      aria-modal="true"
       aria-label="Tapşırığı düzəlt"
       className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8 overflow-y-auto"
       style={{ background: 'rgba(14,22,17,0.4)' }}
       onClick={onClose}
     >
       <form
+        ref={trapRef}
         className="card w-full max-w-lg"
         onClick={(e) => e.stopPropagation()}
         onSubmit={(e) => {

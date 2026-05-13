@@ -3,10 +3,11 @@
  * The DB CHECK chk_paid_lte_amount on receivables is the final guard;
  * the UI prevents the round-trip and computes the new status locally.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { formatAZN } from '@/lib/format';
+import { useFocusTrap } from '@/lib/a11y';
 
 type Receivable = {
   id: string;
@@ -46,15 +47,24 @@ export function MarkPaidModal({ receivable, onClose }: Props) {
     },
   });
 
+  const trapRef = useFocusTrap<HTMLFormElement>(true);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
     <div
       role="dialog"
+      aria-modal="true"
       aria-label="Ödənişi qeyd et"
       className="fixed inset-0 z-50 flex items-center justify-center px-4"
       style={{ background: 'rgba(14,22,17,0.4)' }}
       onClick={onClose}
     >
       <form
+        ref={trapRef}
         className="card w-full max-w-sm"
         onClick={(e) => e.stopPropagation()}
         onSubmit={(e) => {

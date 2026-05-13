@@ -6,6 +6,7 @@
  * this component is the UX layer that prevents the round-trip.
  */
 import { useEffect, useState } from 'react';
+import { useFocusTrap } from '@/lib/a11y';
 import { supabase } from '@/lib/supabase';
 import type { Task } from '@/types/db';
 import { TASK_STATUS_LABEL } from '@/lib/labels';
@@ -55,15 +56,19 @@ export function SubtaskBlockingModal({ parentTaskId, onCancel, onResolved }: Pro
     onResolved();
   }
 
+  const trapRef = useFocusTrap<HTMLDivElement>(true);
+
   return (
     <div
       role="dialog"
+      aria-modal="true"
       aria-label="Subtask blockers"
       className="fixed inset-0 z-50 flex items-center justify-center px-4"
       style={{ background: 'rgba(14,22,17,0.4)' }}
       onClick={onCancel}
     >
       <div
+        ref={trapRef}
         className="card w-full max-w-md"
         onClick={(e) => e.stopPropagation()}
         style={{ padding: 24 }}

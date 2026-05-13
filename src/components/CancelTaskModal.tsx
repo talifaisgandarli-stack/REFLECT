@@ -3,10 +3,11 @@
  * (with "Digər" → free-text). The DB also enforces this in
  * tasks_cancel_reason_required (0006).
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { CANCEL_REASONS } from '@/lib/labels';
+import { useFocusTrap } from '@/lib/a11y';
 
 type Props = {
   taskId: string;
@@ -45,15 +46,24 @@ export function CancelTaskModal({ taskId, taskTitle, onCancel, onCancelled }: Pr
     onCancelled();
   }
 
+  const trapRef = useFocusTrap<HTMLDivElement>(true);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onCancel]);
+
   return (
     <div
       role="dialog"
+      aria-modal="true"
       aria-label="Tapşırığı ləğv et"
       className="fixed inset-0 z-50 flex items-center justify-center px-4"
       style={{ background: 'rgba(14,22,17,0.4)' }}
       onClick={onCancel}
     >
       <div
+        ref={trapRef}
         className="card w-full max-w-md"
         onClick={(e) => e.stopPropagation()}
         style={{ padding: 24 }}

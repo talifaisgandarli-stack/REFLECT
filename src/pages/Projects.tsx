@@ -6,6 +6,7 @@ import { useProjects } from '@/lib/hooks';
 import { Mascot } from '@/components/Mascot';
 import { PROJECT_STATUS_LABEL } from '@/lib/labels';
 import { ProjectCreateModal } from '@/components/ProjectCreateModal';
+import { SkeletonList } from '@/components/Skeleton';
 
 const FOLDER_TONE = ['bg-grad-folder-sage', 'bg-grad-folder-lime', 'bg-grad-folder-forest', 'bg-grad-folder-peach', 'bg-grad-folder-lavender'];
 
@@ -29,7 +30,7 @@ export function ProjectsPage() {
       />
 
       {isLoading ? (
-        <div className="card text-meta">Yüklənir…</div>
+        <SkeletonList rows={6} />
       ) : projects.length === 0 ? (
         <EmptyState
           title="Hələ layihə yoxdur"

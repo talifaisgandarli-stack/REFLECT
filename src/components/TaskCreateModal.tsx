@@ -7,11 +7,12 @@
  * seed 5 child tasks (Çertyoj/Spesifikasiya/Möhür+imza/Çap+ciltləmə/Təhvil)
  * after the parent is inserted.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { useProjects } from '@/lib/hooks';
+import { useFocusTrap } from '@/lib/a11y';
 import type { Task, TaskStatus } from '@/types/db';
 
 type Props = { onClose: () => void };
@@ -128,15 +129,25 @@ export function TaskCreateModal({ onClose }: Props) {
     },
   });
 
+  const trapRef = useFocusTrap<HTMLFormElement>(true);
+  // Close on Escape — basic accessibility.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
     <div
       role="dialog"
-      aria-label="Yeni tapşırıq"
+      aria-modal="true"
+      aria-labelledby="task-create-title"
       className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8 overflow-y-auto"
       style={{ background: 'rgba(14,22,17,0.4)' }}
       onClick={onClose}
     >
       <form
+        ref={trapRef}
         className="card w-full max-w-lg"
         onClick={(e) => e.stopPropagation()}
         onSubmit={(e) => {
@@ -145,7 +156,7 @@ export function TaskCreateModal({ onClose }: Props) {
         }}
         style={{ padding: 24 }}
       >
-        <h2 className="text-h2">Yeni tapşırıq</h2>
+        <h2 id="task-create-title" className="text-h2">Yeni tapşırıq</h2>
 
         <div className="mt-4 space-y-3">
           <Field label="Başlıq" required>

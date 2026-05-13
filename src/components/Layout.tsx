@@ -1,6 +1,7 @@
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useEffect, useRef } from 'react';
 import { Sidebar, MobileNavToggle } from './Sidebar';
+import { LiveAnnouncer } from '@/lib/a11y';
 import { MiraiDrawer } from './MiraiDrawer';
 import { CmdK } from './CmdK';
 import { NotificationBell } from './NotificationBell';
@@ -74,6 +75,7 @@ export function Layout() {
       </main>
       <MiraiDrawer />
       <CmdK />
+      <LiveAnnouncer />
     </div>
   );
 }

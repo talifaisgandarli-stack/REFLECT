@@ -340,6 +340,29 @@ export function TasksPage() {
                           <span />
                         )}
                         <div className="flex items-center gap-2">
+                          {/* Keyboard alternative to drag-drop: status select. */}
+                          <select
+                            aria-label="Status dəyiş"
+                            value={t.status}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              const next = e.target.value as TaskStatus;
+                              if (next === t.status) return;
+                              moveTask(t.id, next, t.status);
+                            }}
+                            className="text-meta rounded-btn"
+                            style={{
+                              background: isToday ? '#2D3833' : 'var(--surface-mist)',
+                              color: isToday ? 'var(--canvas)' : 'var(--text-soft)',
+                              fontSize: 11,
+                              padding: '2px 4px',
+                              border: 'none',
+                            }}
+                          >
+                            {TASK_STATUS_ORDER.map((s) => (
+                              <option key={s} value={s}>{TASK_STATUS_LABEL[s]}</option>
+                            ))}
+                          </select>
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); setEditing(t); }}

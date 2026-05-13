@@ -3,7 +3,8 @@
  * Fields: name, client (select/create inline), phases[], start_date, deadline,
  * requires_expertise, expertise_deadline, payment_buffer_days (default 10).
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useFocusTrap } from '@/lib/a11y';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
@@ -92,15 +93,24 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
     },
   });
 
+  const trapRef = useFocusTrap<HTMLFormElement>(true);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
     <div
       role="dialog"
+      aria-modal="true"
       aria-label="Yeni layihə"
       className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8 overflow-y-auto"
       style={{ background: 'rgba(14,22,17,0.4)' }}
       onClick={onClose}
     >
       <form
+        ref={trapRef}
         className="card w-full max-w-lg"
         style={{ padding: 24 }}
         onClick={(e) => e.stopPropagation()}

@@ -11,6 +11,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
+import { SkeletonList } from '@/components/Skeleton';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 
@@ -171,7 +172,7 @@ export function CareerPage() {
       ) : null}
 
       {isLoading ? (
-        <div className="card text-meta">Yüklənir…</div>
+        <SkeletonList rows={4} />
       ) : levels.length === 0 ? (
         <div className="card">
           <p className="text-meta" style={{ color: 'var(--text-muted)' }}>

@@ -17,6 +17,7 @@ import {
   INTERACTION_LABEL,
   LOST_REASONS,
 } from '@/lib/labels';
+import { SkeletonList } from '@/components/Skeleton';
 import type { Client, ClientPipelineStage, InteractionType } from '@/types/db';
 import { formatAZN, relativeTime } from '@/lib/format';
 import { useAuth } from '@/lib/store';
@@ -96,7 +97,7 @@ export function ClientsPage() {
       />
 
       {isLoading ? (
-        <div className="card text-meta">Yüklənir…</div>
+        <SkeletonList rows={6} />
       ) : clients.length === 0 ? (
         <EmptyState
           title="Müştəri yoxdur"

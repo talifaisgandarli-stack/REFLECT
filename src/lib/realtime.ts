@@ -14,6 +14,7 @@
 import { useEffect, useRef } from 'react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { supabase } from './supabase';
+import { announce } from './a11y';
 
 type ChangeKind = 'INSERT' | 'UPDATE' | 'DELETE';
 
@@ -80,7 +81,13 @@ export function useRealtimeSync(userId: string | undefined) {
         table: 'notifications',
         filter: `user_id=eq.${userId}`,
         channelName: `notifications:${userId}`,
-        onChange: () => debouncedInvalidate(['notifications']),
+        onChange: (payload) => {
+          debouncedInvalidate(['notifications']);
+          // Announce new notifications for screen readers.
+          if (payload.eventType === 'INSERT') {
+            announce('Yeni bildiriş');
+          }
+        },
       }),
     );
 
