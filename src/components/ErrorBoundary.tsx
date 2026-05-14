@@ -4,6 +4,7 @@
  * and a "Reload" action; in dev mode include the stack for debugging.
  */
 import { Component, ReactNode } from 'react';
+import * as Sentry from '@sentry/react';
 
 type Props = { children: ReactNode; fallback?: ReactNode };
 type State = { error: Error | null };
@@ -18,6 +19,7 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, info: { componentStack: string }) {
     // eslint-disable-next-line no-console
     console.error('[ErrorBoundary]', error, info.componentStack);
+    Sentry.captureException(error, { extra: { componentStack: info.componentStack } });
   }
 
   reset = () => this.setState({ error: null });
