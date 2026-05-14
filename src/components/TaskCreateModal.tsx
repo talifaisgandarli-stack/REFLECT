@@ -71,6 +71,7 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus }: Pr
   const [description, setDescription] = useState('');
   const [projectId, setProjectId] = useState<string>(defaultProjectId ?? '');
   const [status, setStatus] = useState<TaskStatus>(defaultStatus ?? 'queued');
+  const [parentTaskId, setParentTaskId] = useState('');
   const [startDate, setStartDate] = useState('');
   const [deadline, setDeadline] = useState('');
   const [estimated, setEstimated] = useState<string>('');
@@ -79,6 +80,26 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus }: Pr
   const [withExpertise, setWithExpertise] = useState(false);
   const [assignSelf, setAssignSelf] = useState(true);
   const [extraAssignees, setExtraAssignees] = useState<string[]>([]);
+
+  // REQ-TASK-01 — parent task options filtered by selected project
+  const parentOptions = useQuery({
+    queryKey: ['tasks', 'parent-options', projectId],
+    queryFn: async () => {
+      let q = supabase
+        .from('tasks')
+        .select('id, title, task_level')
+        .is('archived_at', null)
+        .not('status', 'in', '("done","cancelled")')
+        .order('title')
+        .limit(100);
+      if (projectId) q = q.eq('project_id', projectId);
+      const { data } = await q;
+      return (data ?? []) as Array<{ id: string; title: string; task_level: number }>;
+    },
+  });
+
+  // Reset parent selection when project changes
+  useEffect(() => { setParentTaskId(''); }, [projectId]);
 
   const workloadPreview = useMemo(() => {
     const e = parseFloat(estimated);
@@ -90,11 +111,16 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus }: Pr
     mutationFn: async () => {
       const trimmed = title.trim();
       if (!trimmed) throw new Error('Başlıq tələb olunur');
+      const selectedParent = parentTaskId
+        ? (parentOptions.data ?? []).find((t) => t.id === parentTaskId)
+        : undefined;
       const payload: Partial<Task> = {
         title: trimmed,
         description: description.trim() || null,
         status,
         project_id: projectId || null,
+        parent_task_id: parentTaskId || null,
+        task_level: selectedParent ? selectedParent.task_level + 1 : 0,
         start_date: startDate || null,
         deadline: deadline || null,
         estimated_duration: estimated ? Number(estimated) : null,
@@ -213,6 +239,22 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus }: Pr
               </select>
             </Field>
           </div>
+
+          {/* REQ-TASK-01 — parent task picker */}
+          <Field label="Üst tapşırıq (könüllü)">
+            <select
+              className="input"
+              value={parentTaskId}
+              onChange={(e) => setParentTaskId(e.target.value)}
+            >
+              <option value="">— yoxdur —</option>
+              {(parentOptions.data ?? []).map((t) => (
+                <option key={t.id} value={t.id}>
+                  {'  '.repeat(t.task_level)}{t.title}
+                </option>
+              ))}
+            </select>
+          </Field>
 
           <div className="grid grid-cols-2 gap-3">
             <Field label="Başlama">
