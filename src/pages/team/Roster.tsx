@@ -11,9 +11,9 @@ import type { Profile, UserPresence } from '@/types/db';
 type ProfileWithRole = Profile & { role?: { name: string } | null };
 
 const WORKLOAD_CHIP: Record<string, { label: string; color: string; bg: string }> = {
-  low:    { label: 'Az',     color: '#16A34A', bg: 'rgba(34,197,94,0.12)' },
-  medium: { label: 'Orta',   color: '#D97706', bg: 'rgba(217,119,6,0.12)' },
-  high:   { label: 'Yüksək', color: '#DC2626', bg: 'rgba(220,38,38,0.12)' },
+  low:    { label: 'Az',     color: 'var(--success-deep)', bg: 'var(--success-bg)' },
+  medium: { label: 'Orta',   color: 'var(--warning)', bg: 'var(--warning-bg)' },
+  high:   { label: 'Yüksək', color: 'var(--error-deep)', bg: 'var(--error-bg)' },
 };
 function workloadLevel(openTasks: number): keyof typeof WORKLOAD_CHIP {
   if (openTasks <= 2) return 'low';

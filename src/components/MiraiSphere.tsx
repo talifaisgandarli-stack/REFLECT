@@ -32,7 +32,7 @@ export function MiraiSphere({ size = 360, particles = 400, className = '' }: Pro
       <div
         className="absolute inset-0 rounded-full"
         style={{
-          background: 'radial-gradient(circle, rgba(173,251,73,0.08) 0%, transparent 70%)',
+          background: 'radial-gradient(circle, var(--mirai-glow) 0%, transparent 70%)',
           filter: 'blur(24px)',
         }}
       />

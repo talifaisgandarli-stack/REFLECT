@@ -228,7 +228,7 @@ export function InvoiceFromTemplateModal({ onClose }: { onClose: () => void }) {
             </div>
 
             {generate.error ? (
-              <p className="text-meta mb-3" style={{ color: '#B91C1C' }}>
+              <p className="text-meta mb-3" style={{ color: 'var(--error-deep)' }}>
                 {(generate.error as Error).message}
               </p>
             ) : null}

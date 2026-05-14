@@ -263,7 +263,7 @@ function CreateClientModal({ onClose, onCreated }: { onClose: () => void; onCrea
           </CField>
         </div>
         {create.error ? (
-          <p className="text-meta mt-3" style={{ color: '#B91C1C' }}>{(create.error as Error).message}</p>
+          <p className="text-meta mt-3" style={{ color: 'var(--error-deep)' }}>{(create.error as Error).message}</p>
         ) : null}
         <div className="flex justify-end gap-2 mt-6">
           <button type="button" className="btn-outline" onClick={onClose} disabled={create.isPending}>Ləğv</button>
@@ -544,7 +544,7 @@ function CreateProposalModal({
             </label>
 
             {save.error ? (
-              <p className="text-meta mb-3" style={{ color: '#B91C1C' }}>
+              <p className="text-meta mb-3" style={{ color: 'var(--error-deep)' }}>
                 {(save.error as Error).message}
               </p>
             ) : null}
@@ -733,7 +733,7 @@ function OverviewTab({ client }: { client: Client }) {
         >
           {icpLoading ? 'AI analiz edir…' : throttled ? `AI analiz — ${Math.ceil(24 - hoursSince)}s sonra` : 'AI analiz (ICP)'}
         </button>
-        {icpErr ? <p className="text-meta mt-1" style={{ color: '#B91C1C' }}>{icpErr}</p> : null}
+        {icpErr ? <p className="text-meta mt-1" style={{ color: 'var(--error-deep)' }}>{icpErr}</p> : null}
       </div>
     </div>
   );

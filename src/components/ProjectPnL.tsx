@@ -123,7 +123,7 @@ export function ProjectPnL({ projectId }: Props) {
                 <td
                   className="py-3 px-3 text-right font-medium"
                   style={{
-                    color: netCommitted >= 0 ? 'var(--brand-text)' : '#B91C1C',
+                    color: netCommitted >= 0 ? 'var(--brand-text)' : 'var(--error-deep)',
                     fontVariantNumeric: 'tabular-nums',
                   }}
                 >
@@ -170,7 +170,7 @@ function PnLRow({
         className="py-2 px-3 text-right"
         style={{
           fontVariantNumeric: 'tabular-nums',
-          color: muted ? 'var(--text-muted)' : negative ? '#B91C1C' : 'var(--text)',
+          color: muted ? 'var(--text-muted)' : negative ? 'var(--error-deep)' : 'var(--text)',
         }}
       >
         {negative ? `−${formatAZN(amount).replace(/^−|^-/, '')}` : formatAZN(amount)}
@@ -193,7 +193,7 @@ function Stat({
   const color = accent
     ? 'var(--brand-text)'
     : tone === 'negative'
-      ? '#B91C1C'
+      ? 'var(--error-deep)'
       : tone === 'positive'
         ? '#15803D'
         : 'var(--text)';

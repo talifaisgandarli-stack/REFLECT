@@ -576,7 +576,7 @@ export function DashboardPage() {
                       <span
                         className="chip"
                         style={{
-                          background: 'rgba(173,251,73,0.12)',
+                          background: 'var(--brand-glow-lg)',
                           color: 'var(--brand-text)',
                           height: 18,
                           padding: '0 6px',

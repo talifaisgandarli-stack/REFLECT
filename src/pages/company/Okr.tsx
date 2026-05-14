@@ -42,9 +42,9 @@ function progress(okr: Okr): number {
 }
 
 function healthLabel(pct: number): { label: string; color: string } {
-  if (pct >= 70) return { label: 'On Track', color: '#16A34A' };
-  if (pct >= 40) return { label: 'At Risk', color: '#D97706' };
-  return { label: 'Off Track', color: '#B91C1C' };
+  if (pct >= 70) return { label: 'On Track', color: 'var(--success-deep)' };
+  if (pct >= 40) return { label: 'At Risk', color: 'var(--warning)' };
+  return { label: 'Off Track', color: 'var(--error-deep)' };
 }
 
 export function OkrPage() {
@@ -102,7 +102,7 @@ export function OkrPage() {
         <div className="flex gap-4 mb-4 flex-wrap">
           {(['On Track', 'At Risk', 'Off Track'] as const).map((label) => {
             const count = (okrs.data ?? []).filter((o) => healthLabel(progress(o)).label === label).length;
-            const color = label === 'On Track' ? '#16A34A' : label === 'At Risk' ? '#D97706' : '#B91C1C';
+            const color = label === 'On Track' ? 'var(--success-deep)' : label === 'At Risk' ? 'var(--warning)' : 'var(--error-deep)';
             return (
               <div key={label} className="card flex items-center gap-3 px-4 py-2" style={{ minWidth: 140 }}>
                 <span className="text-h2" style={{ color }}>{count}</span>
@@ -313,7 +313,7 @@ function CreateOkrModal({
         </div>
 
         {save.error ? (
-          <p className="text-meta mt-3" style={{ color: '#B91C1C' }}>{(save.error as Error).message}</p>
+          <p className="text-meta mt-3" style={{ color: 'var(--error-deep)' }}>{(save.error as Error).message}</p>
         ) : null}
 
         <div className="flex justify-end gap-2 mt-5">

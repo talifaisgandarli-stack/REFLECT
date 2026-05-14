@@ -219,7 +219,7 @@ function AddSalaryModal({ profiles, onClose, onSaved }: AddProps) {
         <div className="space-y-3">
           <label className="block">
             <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-              İşçi <span style={{ color: '#B91C1C' }}>*</span>
+              İşçi <span style={{ color: 'var(--error-deep)' }}>*</span>
             </span>
             <select
               className="input"
@@ -239,7 +239,7 @@ function AddSalaryModal({ profiles, onClose, onSaved }: AddProps) {
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
               <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-                Məbləğ <span style={{ color: '#B91C1C' }}>*</span>
+                Məbləğ <span style={{ color: 'var(--error-deep)' }}>*</span>
               </span>
               <input
                 type="number"
@@ -273,7 +273,7 @@ function AddSalaryModal({ profiles, onClose, onSaved }: AddProps) {
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
               <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-                Başlanğıc tarixi <span style={{ color: '#B91C1C' }}>*</span>
+                Başlanğıc tarixi <span style={{ color: 'var(--error-deep)' }}>*</span>
               </span>
               <input
                 type="date"
@@ -299,7 +299,7 @@ function AddSalaryModal({ profiles, onClose, onSaved }: AddProps) {
         </div>
 
         {save.error ? (
-          <p className="text-meta mt-3" style={{ color: '#B91C1C' }}>
+          <p className="text-meta mt-3" style={{ color: 'var(--error-deep)' }}>
             {(save.error as Error).message}
           </p>
         ) : null}

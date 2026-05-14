@@ -174,7 +174,7 @@ function CreateOutsourceModal({ onClose }: { onClose: () => void }) {
             </select>
           </label>
           {create.error ? (
-            <p className="text-meta" style={{ color: '#B91C1C' }}>{(create.error as Error).message}</p>
+            <p className="text-meta" style={{ color: 'var(--error-deep)' }}>{(create.error as Error).message}</p>
           ) : null}
         </div>
         <div className="flex gap-3 justify-end mt-5">

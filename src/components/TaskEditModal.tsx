@@ -225,7 +225,7 @@ export function TaskEditModal({ task, onClose }: Props) {
           ) : null}
 
           {save.error ? (
-            <p className="text-meta" style={{ color: '#B91C1C' }}>{(save.error as Error).message}</p>
+            <p className="text-meta" style={{ color: 'var(--error-deep)' }}>{(save.error as Error).message}</p>
           ) : null}
         </div>
 
@@ -244,7 +244,7 @@ function Field({ label, required, children }: { label: string; required?: boolea
   return (
     <label className="block">
       <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-        {label}{required ? <span style={{ color: '#B91C1C' }}> *</span> : null}
+        {label}{required ? <span style={{ color: 'var(--error-deep)' }}> *</span> : null}
       </span>
       {children}
     </label>
