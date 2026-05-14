@@ -125,7 +125,7 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
           {/* Name */}
           <label className="block">
             <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-              Layihə adı <span style={{ color: '#B91C1C' }}>*</span>
+              Layihə adı <span style={{ color: 'var(--error-deep)' }}>*</span>
             </span>
             <input
               className="input"
@@ -195,7 +195,7 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
           {/* Phases multi-select */}
           <div>
             <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-              Fazalar <span style={{ color: '#B91C1C' }}>*</span>
+              Fazalar <span style={{ color: 'var(--error-deep)' }}>*</span>
             </span>
             <div className="flex flex-wrap gap-2">
               {PHASES.map((phase) => {
@@ -291,7 +291,7 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
         </div>
 
         {create.error ? (
-          <p className="text-meta mt-3" style={{ color: '#B91C1C' }}>
+          <p className="text-meta mt-3" style={{ color: 'var(--error-deep)' }}>
             {(create.error as Error).message}
           </p>
         ) : null}

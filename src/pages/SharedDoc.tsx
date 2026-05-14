@@ -100,9 +100,9 @@ export function SharedDocPage() {
               <span
                 style={{
                   display: 'inline-block',
-                  background: 'rgba(173,251,73,0.1)',
+                  background: 'var(--brand-glow-md)',
                   color: '#ADFB49',
-                  border: '1px solid rgba(173,251,73,0.25)',
+                  border: '1px solid var(--brand-glow-border)',
                   borderRadius: 20,
                   padding: '3px 12px',
                   fontSize: 12,

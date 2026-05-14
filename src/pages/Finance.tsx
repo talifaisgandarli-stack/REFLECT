@@ -547,17 +547,17 @@ function PnLTable({
             return (
               <tr key={r.m} style={{ borderBottom: '1px solid var(--line-soft)' }}>
                 <td className="py-2 px-3">{r.m}</td>
-                <td className="py-2 px-3" style={{ fontVariantNumeric: 'tabular-nums', color: '#16A34A' }}>{formatAZN(r.in)}</td>
-                <td className="py-2 px-3" style={{ fontVariantNumeric: 'tabular-nums', color: '#B91C1C' }}>{formatAZN(r.out)}</td>
-                <td className="py-2 px-3 font-medium" style={{ fontVariantNumeric: 'tabular-nums', color: net >= 0 ? '#16A34A' : '#B91C1C' }}>{formatAZN(net)}</td>
+                <td className="py-2 px-3" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--success-deep)' }}>{formatAZN(r.in)}</td>
+                <td className="py-2 px-3" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--error-deep)' }}>{formatAZN(r.out)}</td>
+                <td className="py-2 px-3 font-medium" style={{ fontVariantNumeric: 'tabular-nums', color: net >= 0 ? 'var(--success-deep)' : 'var(--error-deep)' }}>{formatAZN(net)}</td>
               </tr>
             );
           })}
           <tr style={{ borderTop: '2px solid var(--line)' }}>
             <td className="py-2 px-3 font-medium">Cəmi</td>
-            <td className="py-2 px-3 font-medium" style={{ color: '#16A34A' }}>{formatAZN(totIn)}</td>
-            <td className="py-2 px-3 font-medium" style={{ color: '#B91C1C' }}>{formatAZN(totOut)}</td>
-            <td className="py-2 px-3 font-medium" style={{ color: totIn - totOut >= 0 ? '#16A34A' : '#B91C1C' }}>{formatAZN(totIn - totOut)}</td>
+            <td className="py-2 px-3 font-medium" style={{ color: 'var(--success-deep)' }}>{formatAZN(totIn)}</td>
+            <td className="py-2 px-3 font-medium" style={{ color: 'var(--error-deep)' }}>{formatAZN(totOut)}</td>
+            <td className="py-2 px-3 font-medium" style={{ color: totIn - totOut >= 0 ? 'var(--success-deep)' : 'var(--error-deep)' }}>{formatAZN(totIn - totOut)}</td>
           </tr>
         </tbody>
       </table>

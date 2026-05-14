@@ -86,7 +86,7 @@ export function LoginPage() {
         className="absolute -bottom-40 -right-40 w-[600px] h-[600px] rounded-full"
         style={{
           background:
-            'radial-gradient(circle, rgba(173,251,73,0.55) 0%, rgba(173,251,73,0) 70%)',
+            'radial-gradient(circle, var(--brand-glow-hero) 0%, var(--brand-glow-zero) 70%)',
           filter: 'blur(40px)',
         }}
       />
@@ -128,7 +128,7 @@ export function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
             />
           </label>
-          {err ? <p className="text-meta" style={{ color: '#B91C1C' }}>{err}</p> : null}
+          {err ? <p className="text-meta" style={{ color: 'var(--error-deep)' }}>{err}</p> : null}
           {info ? <p className="text-meta" style={{ color: 'var(--brand-text)' }}>{info}</p> : null}
           <button type="submit" className="btn-primary w-full" disabled={busy}>
             Daxil ol

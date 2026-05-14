@@ -254,7 +254,7 @@ export function FocusWidget({ className = '' }: { className?: string }) {
       {showResumeBanner && ls ? (
         <div
           className="rounded-card px-3 py-2 flex items-center justify-between gap-3 flex-wrap"
-          style={{ background: 'rgba(173,251,73,0.06)', border: '1px solid rgba(173,251,73,0.15)' }}
+          style={{ background: 'var(--brand-glow-sm)', border: '1px solid var(--brand-glow-xl)' }}
         >
           <span className="text-meta" style={{ color: 'var(--brand-text)' }}>
             Son seans: {ls.planned_minutes} dəq · Səviyyə {ls.mascot_stage}/4
@@ -353,9 +353,9 @@ export function FocusWidget({ className = '' }: { className?: string }) {
             type="button"
             className="chip"
             style={{
-              background: sound === s ? 'rgba(173,251,73,0.15)' : 'rgba(255,255,255,0.04)',
+              background: sound === s ? 'var(--brand-glow-xl)' : 'rgba(255,255,255,0.04)',
               color: sound === s ? 'var(--brand-text)' : 'var(--text-muted)',
-              border: `1px solid ${sound === s ? 'rgba(173,251,73,0.3)' : 'rgba(255,255,255,0.08)'}`,
+              border: `1px solid ${sound === s ? 'var(--brand-glow-ring)' : 'rgba(255,255,255,0.08)'}`,
               fontSize: 12,
             }}
             onClick={() => switchSound(s)}

@@ -298,7 +298,7 @@ function CreateAnnouncementModal({ onClose, onSaved }: { onClose: () => void; on
         </label>
 
         {save.error ? (
-          <p className="text-meta mb-3" style={{ color: '#B91C1C' }}>{(save.error as Error).message}</p>
+          <p className="text-meta mb-3" style={{ color: 'var(--error-deep)' }}>{(save.error as Error).message}</p>
         ) : null}
 
         <div className="flex justify-end gap-2">
