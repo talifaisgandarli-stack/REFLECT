@@ -60,10 +60,10 @@ const ACTIVITY_FILTERS: { key: ActivityFilter; label: string }[] = [
 
 // ---------- Health ----------
 const HEALTH_COLOR: Record<'green' | 'amber' | 'red' | 'none', string> = {
-  green: '#22C55E',
-  amber: '#D97706',
-  red: '#EF4444',
-  none: '#94A3B8',
+  green: 'var(--success)',
+  amber: 'var(--warning)',
+  red: 'var(--error)',
+  none: 'var(--info)',
 };
 function HealthLabel({ deadline }: { deadline: string | null | undefined }) {
   const h = taskHealth(deadline);
@@ -80,9 +80,9 @@ function HealthLabel({ deadline }: { deadline: string | null | undefined }) {
 
 // ---------- Presence ----------
 const PRESENCE_DOT: Record<string, string> = {
-  online: '#22C55E',
-  away: '#D97706',
-  offline: '#94A3B8',
+  online: 'var(--presence-online)',
+  away: 'var(--presence-away)',
+  offline: 'var(--presence-offline)',
 };
 const PRESENCE_LABEL: Record<string, string> = {
   online: 'Onlayn',
@@ -92,9 +92,9 @@ const PRESENCE_LABEL: Record<string, string> = {
 
 // ---------- Workload (US-DASH-05) ----------
 function workloadColor(count: number): string {
-  if (count <= 5) return '#22C55E';
-  if (count <= 9) return '#D97706';
-  return '#EF4444';
+  if (count <= 5) return 'var(--success)';
+  if (count <= 9) return 'var(--warning)';
+  return 'var(--error)';
 }
 
 export function DashboardPage() {
@@ -273,8 +273,8 @@ export function DashboardPage() {
                   key={t.id}
                   className="rounded-card px-4 py-3 flex items-center justify-between"
                   style={{
-                    background: '#1F2925',
-                    border: '1px solid #2D3833',
+                    background: 'var(--card-dark-bg)',
+                    border: '1px solid var(--card-dark-border)',
                     borderLeft: `3px solid ${HEALTH_COLOR[h]}`,
                   }}
                 >
@@ -445,7 +445,7 @@ export function DashboardPage() {
                       <span
                         className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2"
                         style={{
-                          background: PRESENCE_DOT[p.status] ?? '#94A3B8',
+                          background: PRESENCE_DOT[p.status] ?? 'var(--info)',
                           borderColor: 'var(--surface)',
                         }}
                         aria-label={PRESENCE_LABEL[p.status]}
@@ -604,7 +604,7 @@ export function DashboardPage() {
                 const pct = krs.length
                   ? Math.round(krs.reduce((s, kr) => s + (kr.target_value > 0 ? Math.min(1, kr.current_value / kr.target_value) : 0), 0) / krs.length * 100)
                   : 0;
-                const color = pct >= 70 ? '#16A34A' : pct >= 40 ? '#D97706' : '#B91C1C';
+                const color = pct >= 70 ? 'var(--success-deep)' : pct >= 40 ? 'var(--warning)' : 'var(--error-deep)';
                 return (
                   <div key={o.id}>
                     <div className="flex items-center justify-between mb-1">
@@ -634,7 +634,7 @@ function Kpi({ label, value, red }: { label: string; value: number; red?: boolea
         className="text-h2 mt-1"
         style={{
           fontVariantNumeric: 'tabular-nums',
-          color: red && value > 0 ? '#B91C1C' : 'var(--text)',
+          color: red && value > 0 ? 'var(--error-deep)' : 'var(--text)',
         }}
       >
         {value}

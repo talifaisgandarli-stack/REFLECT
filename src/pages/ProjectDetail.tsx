@@ -195,11 +195,13 @@ export function ProjectDetailPage() {
     );
     const daysLeft = daysUntil(designDeadline);
     const ddStr = designDeadline.toLocaleDateString('az-AZ');
-    const bannerColor = daysLeft < 14 ? '#B91C1C' : daysLeft < 30 ? '#D97706' : '#16A34A';
+    const bannerColor  = daysLeft < 14 ? 'var(--error-deep)'    : daysLeft < 30 ? 'var(--warning)'      : 'var(--success-deep)';
+    const bannerBg     = daysLeft < 14 ? 'var(--error-bg)'      : daysLeft < 30 ? 'var(--warning-bg)'    : 'var(--success-bg)';
+    const bannerBorder = daysLeft < 14 ? 'var(--error-border)'  : daysLeft < 30 ? 'var(--warning-border)': 'var(--success-border)';
     expertiseBanner = (
       <div
         className="rounded-card px-4 py-3 mb-5 text-body"
-        style={{ background: `${bannerColor}18`, border: `1px solid ${bannerColor}40`, color: bannerColor }}
+        style={{ background: bannerBg, border: `1px solid ${bannerBorder}`, color: bannerColor }}
       >
         <strong>Ekspertiza layihəsi:</strong> Daxili dizayn deadline:{' '}
         <strong>{ddStr}</strong>
@@ -426,7 +428,7 @@ export function ProjectDetailPage() {
               <div className="space-y-3">
                 <div
                   className="rounded-card px-4 py-3"
-                  style={{ background: 'rgba(34,197,94,0.1)', color: '#16A34A' }}
+                  style={{ background: 'var(--success-bg)', color: 'var(--success-deep)' }}
                 >
                   Bu layihə artıq bağlanıb. ✓
                 </div>
@@ -463,7 +465,7 @@ export function ProjectDetailPage() {
                   ))}
                 </ul>
                 {closeProject.error ? (
-                  <p className="text-meta mb-3" style={{ color: '#B91C1C' }}>
+                  <p className="text-meta mb-3" style={{ color: 'var(--error-deep)' }}>
                     {(closeProject.error as Error).message}
                   </p>
                 ) : null}
@@ -644,7 +646,7 @@ function RetroSurveyTrigger({ projectId, clientId }: { projectId: string; client
       </p>
       {link ? (
         <div>
-          <p className="text-meta mb-2" style={{ color: '#16A34A' }}>
+          <p className="text-meta mb-2" style={{ color: 'var(--success-deep)' }}>
             Sorğu yaradıldı — link bufer yaddaşına kopyalandı.
           </p>
           <code
@@ -656,7 +658,7 @@ function RetroSurveyTrigger({ projectId, clientId }: { projectId: string; client
         </div>
       ) : (
         <>
-          {err ? <p className="text-meta mb-2" style={{ color: '#B91C1C' }}>{err}</p> : null}
+          {err ? <p className="text-meta mb-2" style={{ color: 'var(--error-deep)' }}>{err}</p> : null}
           <button
             type="button"
             className="btn-outline"
@@ -865,7 +867,7 @@ function ReopenProjectButton({ projectId }: { projectId: string }) {
   return (
     <div>
       {reopen.error ? (
-        <p className="text-meta mb-2" style={{ color: '#B91C1C' }}>
+        <p className="text-meta mb-2" style={{ color: 'var(--error-deep)' }}>
           {(reopen.error as Error).message}
         </p>
       ) : null}
