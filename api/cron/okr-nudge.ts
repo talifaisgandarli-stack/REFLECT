@@ -26,6 +26,7 @@ export default async function handler(req: Request) {
 
     const sb = admin();
     const period = bakuQuarter();
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 3_600_000).toISOString();
     const sixDaysAgo = new Date(Date.now() - 6 * 24 * 3_600_000).toISOString();
 
     const { data: okrs } = await sb
@@ -37,7 +38,17 @@ export default async function handler(req: Request) {
 
     const inserts: Array<{ user_id: string; kind: string; payload: Record<string, unknown> }> = [];
     for (const okr of okrs ?? []) {
-      // Dedupe: any nudge for this user in the last 6 days?
+      // PRD §9.1: only nudge if no key result was updated in the last 7 days
+      const { data: recentKr } = await sb
+        .from('key_results')
+        .select('id')
+        .eq('okr_id', okr.id)
+        .gte('updated_at', sevenDaysAgo)
+        .limit(1)
+        .maybeSingle();
+      if (recentKr) continue;
+
+      // Dedupe: skip if we already sent a nudge for this user in the last 6 days
       const { data: recent } = await sb
         .from('notifications')
         .select('id')

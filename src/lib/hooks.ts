@@ -321,10 +321,22 @@ export function useMarkNotificationRead() {
 }
 
 // ---------------- Presence ----------------
+// REQ-PRESENCE-01: realtime channel subscription; no polling
 export function useTeamPresence() {
+  const qc = useQueryClient();
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('presence_updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_presence' }, () => {
+        qc.invalidateQueries({ queryKey: ['presence'] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [qc]);
+
   return useQuery({
     queryKey: ['presence'],
-    refetchInterval: 30_000,
     queryFn: async (): Promise<UserPresence[]> => {
       const { data, error } = await supabase
         .from('user_presence')
