@@ -243,9 +243,9 @@ export function MiraiPage() {
             role="status"
             className="rounded-card px-4 py-3 mb-4 text-meta flex items-center justify-between"
             style={{
-              background: 'rgba(217, 119, 6, 0.12)',
-              border: '1px solid rgba(217, 119, 6, 0.4)',
-              color: '#FFD9A8',
+              background: 'var(--mirai-warning-bg)',
+              border: '1px solid var(--mirai-warning-border)',
+              color: 'var(--mirai-warning)',
             }}
           >
             <span>
@@ -260,7 +260,7 @@ export function MiraiPage() {
           <div
             role="alert"
             className="rounded-card px-4 py-3 mb-4 text-body"
-            style={{ background: 'rgba(185,28,28,0.15)', border: '1px solid rgba(185,28,28,0.4)', color: '#FCA5A5' }}
+            style={{ background: 'var(--mirai-error-bg)', border: '1px solid var(--mirai-error-border)', color: 'var(--mirai-error-text)' }}
           >
             Bu ay MIRAI limitinə çatdınız. Növbəti ay yenilənəcək.
           </div>
@@ -287,7 +287,7 @@ export function MiraiPage() {
               {saveBudget.isPending ? '…' : 'Saxla'}
             </button>
             {budgetSaved ? <span className="text-meta" style={{ color: '#ADFB49' }}>✓</span> : null}
-            {saveBudget.error ? <span className="text-meta" style={{ color: '#FCA5A5' }}>{(saveBudget.error as Error).message}</span> : null}
+            {saveBudget.error ? <span className="text-meta" style={{ color: 'var(--mirai-error-text)' }}>{(saveBudget.error as Error).message}</span> : null}
           </div>
         ) : null}
 
@@ -330,7 +330,7 @@ export function MiraiPage() {
         </div>
 
         {error ? (
-          <p className="text-meta mt-3" style={{ color: '#F87171' }}>{error}</p>
+          <p className="text-meta mt-3" style={{ color: 'var(--mirai-error-text-alt)' }}>{error}</p>
         ) : null}
 
         {/* History loading placeholder */}

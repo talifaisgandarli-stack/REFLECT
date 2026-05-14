@@ -380,14 +380,16 @@ export default async function handler(req: Request) {
     // --- Cost guardian (PRD §7.6) — admin-configurable cap -----------------
     const monthlyCap = await getMonthlyCap(sb);
     const yyyymm = periodYyyyMm();
-    const { data: usage } = await sb
+    // PRD §7.9 — fetch per-persona rows, sum cost for budget enforcement.
+    const { data: usageRows } = await sb
       .from('mirai_usage_log')
-      .select('tokens_in, tokens_out, cost_usd')
+      .select('tokens_in, tokens_out, cost_usd, persona')
       .eq('user_id', user.id)
-      .eq('period_yyyymm', yyyymm)
-      .maybeSingle();
+      .eq('period_yyyymm', yyyymm);
 
-    const spent = Number(usage?.cost_usd ?? 0);
+    const allRows = usageRows ?? [];
+    const spent = allRows.reduce((s, r) => s + Number(r.cost_usd ?? 0), 0);
+    const usage = allRows.find((r) => r.persona === personaKey) ?? null;
     if (!user.isCreator && spent >= monthlyCap) {
       throw new HttpError(
         429,
@@ -557,11 +559,12 @@ export default async function handler(req: Request) {
       {
         user_id: user.id,
         period_yyyymm: yyyymm,
+        persona: personaKey,
         tokens_in: Number(usage?.tokens_in ?? 0) + totalIn,
         tokens_out: Number(usage?.tokens_out ?? 0) + totalOut,
         cost_usd: newSpent,
       },
-      { onConflict: 'user_id,period_yyyymm' },
+      { onConflict: 'user_id,period_yyyymm,persona' },
     );
 
     const conversationId = await persistConversation(sb, {
@@ -710,11 +713,12 @@ async function runStreaming(args: {
           {
             user_id: args.user.id,
             period_yyyymm: args.yyyymm,
+            persona: args.personaKey,
             tokens_in: Number(args.usage?.tokens_in ?? 0) + tIn,
             tokens_out: Number(args.usage?.tokens_out ?? 0) + tOut,
             cost_usd: newSpent,
           },
-          { onConflict: 'user_id,period_yyyymm' },
+          { onConflict: 'user_id,period_yyyymm,persona' },
         );
 
         const conversationId = await persistConversation(args.sb, {

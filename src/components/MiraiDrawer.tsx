@@ -107,9 +107,9 @@ export function MiraiDrawer() {
           role="status"
           className="px-4 py-2 text-tiny flex items-center justify-between"
           style={{
-            background: 'rgba(217, 119, 6, 0.15)',
-            borderBottom: '1px solid rgba(217, 119, 6, 0.3)',
-            color: '#FFD9A8',
+            background: 'var(--mirai-warning-bg)',
+            borderBottom: '1px solid var(--mirai-warning-border)',
+            color: 'var(--mirai-warning)',
           }}
         >
           <span>Büdcənin {Math.round(usage.pct * 100)}%-i istifadə olunub</span>
@@ -153,7 +153,7 @@ export function MiraiDrawer() {
           </div>
         ) : null}
         {error ? (
-          <p className="text-tiny" style={{ color: '#F87171' }}>{error}</p>
+          <p className="text-tiny" style={{ color: 'var(--mirai-error-text-alt)' }}>{error}</p>
         ) : null}
       </div>
 
