@@ -242,7 +242,12 @@ export function FinancePage() {
       {tab === 'Xərclər' ? <ExpensesTable /> : null}
       {tab === 'Sabit' ? <RecurringExpensesPanel /> : null}
 
-      {tab === 'P&L' ? <PnLTable incomes={incomes.data ?? []} expenses={expenses.data ?? []} /> : null}
+      {tab === 'P&L' ? (
+        <div className="space-y-5">
+          <ProjectPnLTable />
+          <PnLTable incomes={incomes.data ?? []} expenses={expenses.data ?? []} />
+        </div>
+      ) : null}
       {tab === 'Outsource' ? <OutsourceSummary /> : null}
 
       {modal ? <IncomeExpenseModal kind={modal} onClose={() => setModal(null)} /> : null}
@@ -512,6 +517,100 @@ function RecurringExpensesPanel() {
           Əlavə et
         </button>
       </form>
+    </div>
+  );
+}
+
+// REQ-FIN-06 — Per-project P&L using projects_admin_view (migration 0034)
+type ProjectPnLRow = {
+  id: string;
+  name: string;
+  status: string;
+  total_income: number;
+  total_expenses: number;
+  total_outsource: number;
+  net_pnl: number;
+};
+
+function ProjectPnLTable() {
+  const q = useQuery({
+    queryKey: ['fin', 'project-pnl'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('projects_admin_view')
+        .select('id, name, status, total_income, total_expenses, total_outsource, net_pnl')
+        .order('net_pnl', { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return (data ?? []) as ProjectPnLRow[];
+    },
+  });
+
+  const rows = q.data ?? [];
+  if (q.isLoading) return <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>Yüklənir…</div>;
+  if (rows.length === 0) return null;
+
+  const totIn = rows.reduce((s, r) => s + r.total_income, 0);
+  const totExp = rows.reduce((s, r) => s + r.total_expenses, 0);
+  const totOut = rows.reduce((s, r) => s + r.total_outsource, 0);
+  const totNet = rows.reduce((s, r) => s + r.net_pnl, 0);
+
+  return (
+    <div className="card overflow-x-auto">
+      <h3 className="text-h3 mb-3">Layihə üzrə P&L</h3>
+      <table className="w-full text-body" style={{ minWidth: 560 }}>
+        <thead>
+          <tr style={{ borderBottom: '1px solid var(--line)' }}>
+            {['Layihə', 'Gəlir', 'Xərc', 'Outsource', 'Xalis'].map((h) => (
+              <th
+                key={h}
+                className="text-left py-2 px-3 text-meta"
+                style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+              <td className="py-2 px-3">
+                <a href={`/layihelər/${r.id}`} style={{ textDecoration: 'none', color: 'var(--text)' }}>
+                  {r.name}
+                </a>
+                {r.status !== 'active' ? (
+                  <span className="ml-2 text-meta chip" style={{ fontSize: 10, padding: '1px 5px' }}>
+                    {r.status}
+                  </span>
+                ) : null}
+              </td>
+              <td className="py-2 px-3" style={{ fontVariantNumeric: 'tabular-nums', color: '#16A34A' }}>
+                {formatAZN(r.total_income)}
+              </td>
+              <td className="py-2 px-3" style={{ fontVariantNumeric: 'tabular-nums', color: '#B91C1C' }}>
+                {formatAZN(r.total_expenses)}
+              </td>
+              <td className="py-2 px-3" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>
+                {formatAZN(r.total_outsource)}
+              </td>
+              <td
+                className="py-2 px-3 font-medium"
+                style={{ fontVariantNumeric: 'tabular-nums', color: r.net_pnl >= 0 ? '#16A34A' : '#B91C1C' }}
+              >
+                {formatAZN(r.net_pnl)}
+              </td>
+            </tr>
+          ))}
+          <tr style={{ borderTop: '2px solid var(--line)' }}>
+            <td className="py-2 px-3 font-medium">Cəmi</td>
+            <td className="py-2 px-3 font-medium" style={{ color: '#16A34A' }}>{formatAZN(totIn)}</td>
+            <td className="py-2 px-3 font-medium" style={{ color: '#B91C1C' }}>{formatAZN(totExp)}</td>
+            <td className="py-2 px-3 font-medium" style={{ color: 'var(--text-muted)' }}>{formatAZN(totOut)}</td>
+            <td className="py-2 px-3 font-medium" style={{ color: totNet >= 0 ? '#16A34A' : '#B91C1C' }}>{formatAZN(totNet)}</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   );
 }

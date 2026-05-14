@@ -197,6 +197,16 @@ const TOOLS: Tool[] = [
     },
   },
   {
+    name: 'summarize_project',
+    description:
+      'Layihə haqqında qısa xülasə qaytarır (ad, status, fazalar, deadline, açıq tapşırıq sayı). İstifadəçinin görə biləcəyi layihələrlə məhdudlaşır.',
+    input_schema: {
+      type: 'object',
+      properties: { project_id: { type: 'string', description: 'Layihə UUID' } },
+      required: ['project_id'],
+    },
+  },
+  {
     name: 'client_summary',
     description: 'Müştəri haqqında qısa xülasə (mərhələ, son interaksiya, gözlənilən dəyər). YALNIZ ADMIN.',
     input_schema: {
@@ -305,6 +315,25 @@ async function runTool(
         if (!query) return { content: 'query tələb olunur', isError: true };
         const chunks = await searchKnowledgeBase(ctx.sb, query);
         return { content: JSON.stringify(chunks) };
+      }
+      case 'summarize_project': {
+        const projectId = String(input.project_id ?? '').trim();
+        if (!projectId) return { content: 'project_id tələb olunur', isError: true };
+        const [projResult, taskResult] = await Promise.all([
+          sbUser
+            .from('projects')
+            .select('id, name, status, phases, deadline, description')
+            .eq('id', projectId)
+            .maybeSingle(),
+          sbUser
+            .from('tasks')
+            .select('id', { count: 'exact', head: true })
+            .eq('project_id', projectId)
+            .is('archived_at', null)
+            .not('status', 'in', '("done","cancelled")'),
+        ]);
+        if (!projResult.data) return { content: 'Layihə tapılmadı və ya giriş icazəsi yoxdur.', isError: true };
+        return { content: JSON.stringify({ ...projResult.data, open_tasks: taskResult.count ?? 0 }) };
       }
       case 'client_summary': {
         if (!ctx.user.isAdmin) return { content: 'Bu vasitə yalnız adminlər üçündür.', isError: true };

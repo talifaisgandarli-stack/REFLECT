@@ -19,7 +19,9 @@ type EventKind =
   | 'task_done'
   | 'task_cancelled'
   | 'deadline_reminder'
-  | 'finance_alert';
+  | 'finance_alert'
+  | 'okr_nudge'
+  | 'mirai_feed';
 
 const CHANNELS: Array<{ key: Channel; label: string; hint?: string }> = [
   { key: 'inapp', label: 'Tətbiqdə' },
@@ -43,6 +45,8 @@ const EVENTS: Array<{ key: EventKind; label: string; description?: string }> = [
     label: 'Maliyyə xəbərdarlığı',
     description: 'Yalnız adminlər üçün — Telegramda gizlədilmir',
   },
+  { key: 'okr_nudge', label: 'OKR xatırlatma', description: 'Həftəlik — KPI yenilənməmişsə' },
+  { key: 'mirai_feed', label: 'MIRAI lenti', description: 'Yeni trend və fürsət elanları' },
 ];
 
 type PrefRow = {

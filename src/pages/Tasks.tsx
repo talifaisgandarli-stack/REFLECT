@@ -126,6 +126,20 @@ export function TasksPage() {
     return map;
   }, [filtered]);
 
+  // Kanban nesting visual helpers (REQ-TASK-01 / parent_task_id)
+  const taskTitleById = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const t of tasks) m[t.id] = t.title;
+    return m;
+  }, [tasks]);
+  const subtaskCountById = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const t of tasks) {
+      if (t.parent_task_id) m[t.parent_task_id] = (m[t.parent_task_id] ?? 0) + 1;
+    }
+    return m;
+  }, [tasks]);
+
   // US-TASK-06 — time-grouped personal view computed data
   const groupedByTime = useMemo(() => {
     const map = {} as Record<TimeGroup, Task[]>;
@@ -324,7 +338,23 @@ export function TasksPage() {
                         className="font-medium cursor-pointer"
                         onClick={(e) => { e.stopPropagation(); setCommenting({ id: t.id, title: t.title }); }}
                       >
+                        {t.parent_task_id && taskTitleById[t.parent_task_id] ? (
+                          <span
+                            className="block text-meta mb-0.5 truncate"
+                            style={{ color: isToday ? 'rgba(255,255,255,0.4)' : 'var(--text-muted)', fontSize: 10 }}
+                          >
+                            ↳ {taskTitleById[t.parent_task_id]}
+                          </span>
+                        ) : null}
                         {t.title}
+                        {subtaskCountById[t.id] ? (
+                          <span
+                            className="ml-1.5 text-meta"
+                            style={{ color: isToday ? 'rgba(255,255,255,0.5)' : 'var(--text-muted)', fontSize: 10 }}
+                          >
+                            · {subtaskCountById[t.id]} alt
+                          </span>
+                        ) : null}
                       </div>
                       <div className="flex items-center justify-between mt-1">
                         {t.deadline ? (
