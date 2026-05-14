@@ -5,12 +5,13 @@ import { LiveAnnouncer } from '@/lib/a11y';
 import { MiraiDrawer } from './MiraiDrawer';
 import { CmdK } from './CmdK';
 import { NotificationBell } from './NotificationBell';
+import { TaskCreateModal } from './TaskCreateModal';
 import { useUI, useAuth } from '@/lib/store';
 import { useRealtimeSync } from '@/lib/realtime';
 import { usePresenceHeartbeat } from '@/lib/hooks';
 
 export function Layout() {
-  const { setCmdK, toggleMirai } = useUI();
+  const { setCmdK, toggleMirai, taskCreateOpen, setTaskCreate } = useUI();
   const { session } = useAuth();
   const navigate = useNavigate();
   useRealtimeSync(session?.userId);
@@ -33,6 +34,12 @@ export function Layout() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setCmdK(true);
+        return;
+      }
+      // PRD §6.3 — Cmd+N: new task (context-aware)
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        setTaskCreate(true);
         return;
       }
       if ((e.metaKey || e.ctrlKey) && e.key === '/') {
@@ -59,7 +66,7 @@ export function Layout() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [setCmdK, toggleMirai, navigate]);
+  }, [setCmdK, toggleMirai, setTaskCreate, navigate]);
 
   return (
     <div className="flex min-h-screen">
@@ -75,6 +82,7 @@ export function Layout() {
       </main>
       <MiraiDrawer />
       <CmdK />
+      {taskCreateOpen ? <TaskCreateModal onClose={() => setTaskCreate(false)} /> : null}
       <LiveAnnouncer />
     </div>
   );

@@ -185,7 +185,7 @@ function AddSalaryModal({ profiles, onClose, onSaved }: AddProps) {
       await supabase.from('audit_log').insert({
         action: 'salary_created',
         resource: `salary:${row.id}`,
-      }).then(() => null).catch(() => null);
+      }).then(null, () => null);
 
       // Notify employee via existing fan-out (Telegram + email if configured)
       await supabase.from('notifications').insert({
@@ -193,7 +193,7 @@ function AddSalaryModal({ profiles, onClose, onSaved }: AddProps) {
         kind: 'salary_changed',
         payload: { amount: amt, currency, effective_from: effectiveFrom },
         dispatched_channels: {},
-      }).then(() => null).catch(() => null);
+      }).then(null, () => null);
     },
     onSuccess: onSaved,
   });

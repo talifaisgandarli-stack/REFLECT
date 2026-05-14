@@ -50,6 +50,7 @@ const KIND_TITLE: Record<string, string> = {
   leave_approved: 'Məzuniyyət təsdiqləndi',
   leave_denied: 'Məzuniyyət rədd edildi',
   okr_nudge: 'Həftəlik OKR yenilənməsi',
+  mirai_feed: 'Yeni MIRAI lenti elanı',
   content_due_soon: 'Məzmun planı yaxınlaşır',
   announcement: 'Yeni elan',
   salary_changed: 'Maaş cədvəliniz yeniləndi',
