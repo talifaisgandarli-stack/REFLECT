@@ -32,9 +32,9 @@ const TIME_GROUP_LABEL: Record<TimeGroup, string> = {
   none: 'Deadline yoxdur',
 };
 const TIME_GROUP_COLOR: Record<TimeGroup, string> = {
-  overdue: '#EF4444',
-  today: '#D97706',
-  week: '#22C55E',
+  overdue: 'var(--error)',
+  today: 'var(--warning)',
+  week: 'var(--success)',
   later: 'var(--text-muted)',
   none: 'var(--text-muted)',
 };
@@ -316,8 +316,8 @@ export function TasksPage() {
                       }
                       className="rounded-card p-3 text-body"
                       style={{
-                        background: isToday ? '#1F2925' : 'var(--surface)',
-                        border: `1px solid ${isToday ? '#2D3833' : 'var(--line)'}`,
+                        background: isToday ? 'var(--card-dark-bg)' : 'var(--surface)',
+                        border: `1px solid ${isToday ? 'var(--card-dark-border)' : 'var(--line)'}`,
                       }}
                     >
                       <div
@@ -353,7 +353,7 @@ export function TasksPage() {
                             }}
                             className="text-meta rounded-btn"
                             style={{
-                              background: isToday ? '#2D3833' : 'var(--surface-mist)',
+                              background: isToday ? 'var(--card-dark-border)' : 'var(--surface-mist)',
                               color: isToday ? 'var(--canvas)' : 'var(--text-soft)',
                               fontSize: 11,
                               padding: '2px 4px',
@@ -446,11 +446,7 @@ export function TasksPage() {
                   {t.deadline ? (
                     <span
                       style={{
-                        color:
-                          taskTimeGroup(t) === 'overdue' ? '#EF4444'
-                          : taskTimeGroup(t) === 'today' ? '#D97706'
-                          : taskTimeGroup(t) === 'week' ? '#22C55E'
-                          : 'var(--text)',
+                        color: TIME_GROUP_COLOR[taskTimeGroup(t)],
                         fontVariantNumeric: 'tabular-nums',
                       }}
                     >
@@ -526,7 +522,7 @@ export function TasksPage() {
               tapşırığı arxivlənəcək. Tapşırıqlar lövhədən silinəcək; Arxiv bölməsindən bərpa edilə bilər.
             </p>
             {bulkArchive.error ? (
-              <p className="text-meta mb-3" style={{ color: '#B91C1C' }}>
+              <p className="text-meta mb-3" style={{ color: 'var(--error-deep)' }}>
                 {(bulkArchive.error as Error).message}
               </p>
             ) : null}

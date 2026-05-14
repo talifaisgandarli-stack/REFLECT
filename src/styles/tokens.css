@@ -26,6 +26,36 @@
   --text-muted: #7A857F;
   --text-faint: #A8B0AB;
 
+  /* Semantic — status (designstyle4 §4 / PRD §3.1) */
+  --success:          #22C55E;
+  --success-deep:     #16A34A;
+  --success-bg:       rgba(22, 163, 74, 0.10);
+  --success-border:   rgba(22, 163, 74, 0.40);
+  --warning:          #D97706;
+  --warning-bg:       rgba(217, 119, 6, 0.10);
+  --warning-border:   rgba(217, 119, 6, 0.40);
+  --error:            #EF4444;
+  --error-deep:       #B91C1C;
+  --error-bg:         rgba(185, 28, 28, 0.10);
+  --error-border:     rgba(185, 28, 28, 0.40);
+  --info:             #94A3B8;
+
+  /* Dark-context cards (Kanban / Dashboard today column) */
+  --card-dark-bg:     #1F2925;
+  --card-dark-border: #2D3833;
+
+  /* Presence */
+  --presence-online:  #22C55E;
+  --presence-away:    #D97706;
+  --presence-offline: #94A3B8;
+
+  /* MIRAI extended */
+  --mirai-warning:      #FFD9A8;
+  --mirai-error-text:   #FCA5A5;
+  --mirai-error-text-alt: #F87171;
+  --mirai-error-bg:     rgba(185, 28, 28, 0.15);
+  --mirai-error-border: rgba(185, 28, 28, 0.40);
+
   /* MIRAI */
   --mirai-surface: #0E1611;
   --mirai-particle: #FAFAF7;
