@@ -326,6 +326,25 @@ export function DashboardPage() {
               </a>
             ))}
           </div>
+
+          {/* MIRAI quick-launch — REQ-DASH-01 */}
+          {isAdmin ? (
+            <a
+              href="/mirai"
+              className="rounded-card p-4 card-interactive"
+              style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+            >
+              <div>
+                <div className="text-h3 font-bold">MIRAI</div>
+                <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                  AI köməkçi — sual ver, yarat, hesabat al
+                </div>
+              </div>
+              <span className="chip" style={{ background: 'var(--brand-action)', color: 'var(--ink)', flexShrink: 0 }}>
+                Aç →
+              </span>
+            </a>
+          ) : null}
         </section>
 
         {/* REQ-DASH-01 — admin active project health */}

@@ -196,6 +196,7 @@ export function ClientsPage() {
 // ── Create client modal (REQ-CRM-01) ──
 function CreateClientModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const qc = useQueryClient();
+  const { isAdmin } = useAuth();
   const [name, setName] = useState('');
   const [company, setCompany] = useState('');
   const [email, setEmail] = useState('');
@@ -250,17 +251,20 @@ function CreateClientModal({ onClose, onCreated }: { onClose: () => void; onCrea
               <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} />
             </CField>
           </div>
-          <CField label="Gözlənilən dəyər (AZN)">
-            <input
-              type="number"
-              min="0"
-              step="100"
-              className="input"
-              value={expectedValue}
-              onChange={(e) => setExpectedValue(e.target.value)}
-              style={{ fontVariantNumeric: 'tabular-nums' }}
-            />
-          </CField>
+          {/* PRD §6 line 398: expected_value visible to admin only (BD Lead cannot set financials) */}
+          {isAdmin ? (
+            <CField label="Gözlənilən dəyər (AZN)">
+              <input
+                type="number"
+                min="0"
+                step="100"
+                className="input"
+                value={expectedValue}
+                onChange={(e) => setExpectedValue(e.target.value)}
+                style={{ fontVariantNumeric: 'tabular-nums' }}
+              />
+            </CField>
+          ) : null}
         </div>
         {create.error ? (
           <p className="text-meta mt-3" style={{ color: '#B91C1C' }}>{(create.error as Error).message}</p>
