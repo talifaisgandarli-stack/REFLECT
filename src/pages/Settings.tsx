@@ -8,6 +8,10 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import type { Invitation, Role } from '@/types/db';
 
+async function writeAudit(actorId: string, action: string, resource: string, meta?: Record<string, unknown>) {
+  await supabase.from('audit_log').insert({ actor_id: actorId, action, resource, ip: null, user_agent: navigator.userAgent, ...(meta ? { meta } : {}) });
+}
+
 const NAV = [
   { to: 'umumi', label: 'Ümumi' },
   { to: 'şablonlar', label: 'Şablonlar' },
@@ -51,6 +55,7 @@ export function SettingsPage() {
 
 // §10.1 / REQ-TG-03 — General settings incl. Telegram finance alert thresholds
 function GeneralSettings() {
+  const { profile } = useAuth();
   const qc = useQueryClient();
 
   const settings = useQuery({
@@ -112,6 +117,11 @@ function GeneralSettings() {
       for (const row of rows) {
         const { error } = await supabase.from('system_settings').upsert(row, { onConflict: 'key' });
         if (error) throw error;
+      }
+      if (profile?.id) {
+        await writeAudit(profile.id, 'settings.update', 'system_settings', {
+          keys: rows.map((r) => r.key),
+        });
       }
     },
     onSuccess: () => {
