@@ -8,6 +8,7 @@
  * URL: GET /api/search?q=...
  */
 import { errorResponse, HttpError, jsonResponse, requireUser, userClient } from './_lib/auth';
+import { checkRateLimit } from './_lib/rate-limit';
 
 export const config = { runtime: 'edge' };
 
@@ -30,6 +31,9 @@ export default async function handler(req: Request) {
   try {
     if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed');
     const user = await requireUser(req);
+
+    const rateLimitErr = await checkRateLimit(req, user);
+    if (rateLimitErr) return rateLimitErr;
 
     const url = new URL(req.url);
     const raw = (url.searchParams.get('q') ?? '').trim();

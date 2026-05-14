@@ -1,10 +1,18 @@
 /**
  * Admin-only invite. Issues a 48h token, sends magic-link email via Resend.
- * REQ-AUTH-02.
+ * REQ-AUTH-02. Audited per PRD §9.4 (invitation.created → audit_log).
  */
+import { z } from 'zod';
 import { admin, errorResponse, HttpError, jsonResponse, requireUser } from '../_lib/auth';
+import { checkRateLimit } from '../_lib/rate-limit';
+import { logAudit } from '../_lib/audit';
 
 export const config = { runtime: 'edge' };
+
+const Body = z.object({
+  email: z.string().email(),
+  role_key: z.string().min(1),
+});
 
 export default async function handler(req: Request) {
   try {
@@ -12,8 +20,12 @@ export default async function handler(req: Request) {
     const user = await requireUser(req);
     if (!user.isAdmin) throw new HttpError(403, 'Admin only');
 
-    const { email, role_key } = (await req.json()) as { email?: string; role_key?: string };
-    if (!email || !role_key) throw new HttpError(400, 'email + role_key required');
+    const rateLimitErr = await checkRateLimit(req, user);
+    if (rateLimitErr) return rateLimitErr;
+
+    const parsed = Body.safeParse(await req.json());
+    if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid input');
+    const { email, role_key } = parsed.data;
 
     const sb = admin();
     const { data: role } = await sb.from('roles').select('id').eq('key', role_key).maybeSingle();
@@ -28,6 +40,16 @@ export default async function handler(req: Request) {
         { email, role_id: role.id, invited_by: user.id, token, expires_at: expires, accepted_at: null },
         { onConflict: 'email' },
       );
+
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? undefined;
+    await logAudit(sb, {
+      actorId: user.id,
+      action: 'invitation.created',
+      resource: `invitations:${email}`,
+      ip,
+      userAgent: req.headers.get('user-agent') ?? undefined,
+      meta: { role_key, email },
+    });
 
     const resendKey = process.env.RESEND_API_KEY;
     if (resendKey) {
