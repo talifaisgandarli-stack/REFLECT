@@ -98,10 +98,15 @@ export function useRealtimeSync(userId: string | undefined) {
       subscribeTable({
         table: 'tasks',
         channelName: `tasks:${userId}`,
-        onChange: () => {
+        onChange: (payload) => {
           debouncedInvalidate(['tasks']);
           debouncedInvalidate(['done-list']);
           debouncedInvalidate(['archive', 'tasks']);
+          if (payload.eventType === 'UPDATE') {
+            announce('Tapşırıq yeniləndi');
+          } else if (payload.eventType === 'INSERT') {
+            announce('Yeni tapşırıq əlavə edildi');
+          }
         },
       }),
     );
@@ -118,7 +123,12 @@ export function useRealtimeSync(userId: string | undefined) {
       subscribeTable({
         table: 'announcements',
         channelName: `announcements:${userId}`,
-        onChange: () => debouncedInvalidate(['announcements']),
+        onChange: (payload) => {
+          debouncedInvalidate(['announcements']);
+          if (payload.eventType === 'INSERT') {
+            announce('Yeni elan');
+          }
+        },
       }),
     );
 
