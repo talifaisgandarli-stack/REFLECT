@@ -30,9 +30,9 @@ type LeaveRequest = {
 const LEAVE_KINDS = ['Məzuniyyət', 'Xəstəlik', 'Ailə məsələsi', 'Şəxsi', 'Digər'];
 
 const STATUS_COLOR: Record<LeaveStatus, string> = {
-  pending: '#F59E0B',
-  approved: '#22C55E',
-  denied: '#EF4444',
+  pending:  'var(--warning)',
+  approved: 'var(--success)',
+  denied:   'var(--error)',
 };
 
 const STATUS_LABEL: Record<LeaveStatus, string> = {
@@ -365,7 +365,7 @@ function LeaveRequestForm({
         </label>
 
         {save.error ? (
-          <p className="text-meta mb-3" style={{ color: '#B91C1C' }}>
+          <p className="text-meta mb-3" style={{ color: 'var(--error-deep)' }}>
             {(save.error as Error).message}
           </p>
         ) : null}

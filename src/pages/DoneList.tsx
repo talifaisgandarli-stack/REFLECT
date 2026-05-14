@@ -180,7 +180,7 @@ function DoneRow({ task }: { task: Task }) {
           <span
             aria-hidden
             className="w-2 h-2 rounded-full shrink-0"
-            style={{ background: '#22C55E' }}
+            style={{ background: 'var(--success)' }}
           />
           <span className="text-body font-medium truncate" style={{ color: 'var(--text)' }}>
             {task.title}

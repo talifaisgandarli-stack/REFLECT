@@ -50,11 +50,13 @@
   --presence-offline: #94A3B8;
 
   /* MIRAI extended */
-  --mirai-warning:      #FFD9A8;
-  --mirai-error-text:   #FCA5A5;
+  --mirai-warning:        #FFD9A8;
+  --mirai-warning-bg:     rgba(217, 119, 6, 0.12);
+  --mirai-warning-border: rgba(217, 119, 6, 0.40);
+  --mirai-error-text:     #FCA5A5;
   --mirai-error-text-alt: #F87171;
-  --mirai-error-bg:     rgba(185, 28, 28, 0.15);
-  --mirai-error-border: rgba(185, 28, 28, 0.40);
+  --mirai-error-bg:       rgba(185, 28, 28, 0.15);
+  --mirai-error-border:   rgba(185, 28, 28, 0.40);
 
   /* MIRAI */
   --mirai-surface: #0E1611;
