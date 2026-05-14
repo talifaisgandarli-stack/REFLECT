@@ -3,6 +3,7 @@ import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
+import { Avatar } from '@/components/Avatar';
 import { NotificationPreferencesPage } from './NotificationPreferences';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
@@ -14,6 +15,7 @@ const NAV = [
   { to: 'bilik', label: 'Bilik Bazası' },
   { to: 'bildirişlər', label: 'Bildirişlər' },
   { to: 'dəvətlər', label: 'Dəvətlər' },
+  { to: 'istifadəçilər', label: 'İstifadəçilər' },
 ];
 
 export function SettingsPage() {
@@ -42,6 +44,7 @@ export function SettingsPage() {
             <Route path="bilik" element={<KnowledgeBaseSettings />} />
             <Route path="bildirişlər" element={<NotificationsSettings />} />
             <Route path="dəvətlər" element={<InvitationsSettings />} />
+            <Route path="istifadəçilər" element={<UsersSettings />} />
           </Routes>
         </div>
       </div>
@@ -757,6 +760,254 @@ function InvitationsSettings() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// REQ-AUTH-03 — Admin: manage user email + role + is_active (PRD §5 Module 1)
+// PRD line 257: "Email/role: admin only"
+// ---------------------------------------------------------------------------
+type ProfileRow = {
+  id: string;
+  email: string;
+  full_name: string | null;
+  role_id: string | null;
+  is_active: boolean;
+  is_creator: boolean;
+};
+
+function UsersSettings() {
+  const { profile: me } = useAuth();
+  const qc = useQueryClient();
+  const [emailModal, setEmailModal] = useState<ProfileRow | null>(null);
+
+  const profiles = useQuery({
+    queryKey: ['admin', 'profiles'],
+    queryFn: async (): Promise<ProfileRow[]> => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, email, full_name, role_id, is_active, is_creator')
+        .order('full_name');
+      if (error) throw error;
+      return (data ?? []) as ProfileRow[];
+    },
+  });
+
+  const roles = useQuery({
+    queryKey: ['roles'],
+    queryFn: async (): Promise<Role[]> => {
+      const { data, error } = await supabase.from('roles').select('*').order('level');
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  async function callUpdate(payload: { user_id: string; role_id?: string | null; email?: string; is_active?: boolean }) {
+    const { data: sess } = await supabase.auth.getSession();
+    const token = sess.session?.access_token;
+    if (!token) throw new Error('Sessiya yoxdur');
+    const res = await fetch('/api/admin/update-user', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error((body as { error?: string }).error ?? 'Xəta baş verdi');
+    }
+  }
+
+  const updateRole = useMutation({
+    mutationFn: ({ user_id, role_id }: { user_id: string; role_id: string | null }) =>
+      callUpdate({ user_id, role_id }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'profiles'] }),
+  });
+
+  const toggleActive = useMutation({
+    mutationFn: ({ user_id, is_active }: { user_id: string; is_active: boolean }) =>
+      callUpdate({ user_id, is_active }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'profiles'] }),
+  });
+
+  if (profiles.isLoading) {
+    return <p className="text-meta" style={{ color: 'var(--text-muted)' }}>Yüklənir…</p>;
+  }
+
+  const rows = profiles.data ?? [];
+
+  return (
+    <div className="space-y-4">
+      <h3 className="text-h3">İstifadəçilər</h3>
+      <div className="overflow-x-auto">
+        <table className="w-full text-body" style={{ minWidth: 560 }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--line)' }}>
+              {(['İstifadəçi', 'Rol', 'Status', ''] as const).map((h) => (
+                <th key={h} className="text-meta text-left py-2 pr-4" style={{ color: 'var(--text-muted)' }}>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((p) => {
+              const isSelf = p.id === me?.id;
+              return (
+                <tr key={p.id} style={{ borderBottom: '1px solid var(--line-soft)', opacity: p.is_active ? 1 : 0.5 }}>
+                  <td className="py-3 pr-4">
+                    <div className="flex items-center gap-2">
+                      <Avatar name={p.full_name ?? p.email} size={28} />
+                      <div>
+                        <div className="font-medium" style={{ color: 'var(--text)' }}>
+                          {p.full_name ?? '—'}
+                          {p.is_creator ? (
+                            <span className="chip chip-brand text-meta ml-2" style={{ fontSize: 10, padding: '1px 5px' }}>
+                              Creator
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="text-meta" style={{ color: 'var(--text-muted)' }}>{p.email}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="py-3 pr-4">
+                    {p.is_creator ? (
+                      <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Creator (dəyişilməz)</span>
+                    ) : (
+                      <select
+                        className="input"
+                        style={{ minWidth: 140, fontSize: 13 }}
+                        value={p.role_id ?? ''}
+                        disabled={updateRole.isPending}
+                        onChange={(e) =>
+                          updateRole.mutate({ user_id: p.id, role_id: e.target.value || null })
+                        }
+                        aria-label={`${p.full_name ?? p.email} rolu`}
+                      >
+                        <option value="">— Rol yoxdur —</option>
+                        {(roles.data ?? []).map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </td>
+                  <td className="py-3 pr-4">
+                    {p.is_creator ? (
+                      <span className="chip" style={{ background: 'rgba(173,251,73,0.12)', color: 'var(--brand-text)' }}>
+                        Aktiv
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="chip"
+                        disabled={isSelf || toggleActive.isPending}
+                        style={
+                          p.is_active
+                            ? { background: 'rgba(173,251,73,0.12)', color: 'var(--brand-text)' }
+                            : { background: 'rgba(185,28,28,0.1)', color: '#B91C1C' }
+                        }
+                        onClick={() => toggleActive.mutate({ user_id: p.id, is_active: !p.is_active })}
+                        title={isSelf ? 'Öz hesabınızı deaktiv edə bilməzsiniz' : undefined}
+                      >
+                        {p.is_active ? 'Aktiv' : 'Deaktiv'}
+                      </button>
+                    )}
+                  </td>
+                  <td className="py-3 text-right">
+                    {!p.is_creator ? (
+                      <button
+                        type="button"
+                        className="btn-outline"
+                        style={{ fontSize: 12, padding: '3px 10px' }}
+                        onClick={() => setEmailModal(p)}
+                      >
+                        Email dəyiş
+                      </button>
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {emailModal ? (
+        <ChangeEmailModal
+          user={emailModal}
+          onClose={() => setEmailModal(null)}
+          onSaved={() => {
+            setEmailModal(null);
+            qc.invalidateQueries({ queryKey: ['admin', 'profiles'] });
+          }}
+          callUpdate={callUpdate}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ChangeEmailModal({
+  user,
+  onClose,
+  onSaved,
+  callUpdate,
+}: {
+  user: ProfileRow;
+  onClose: () => void;
+  onSaved: () => void;
+  callUpdate: (p: { user_id: string; email?: string }) => Promise<void>;
+}) {
+  const [email, setEmail] = useState(user.email);
+  const save = useMutation({
+    mutationFn: () => callUpdate({ user_id: user.id, email }),
+    onSuccess: onSaved,
+  });
+
+  return (
+    <div
+      role="dialog"
+      aria-label="Email dəyiş"
+      className="fixed inset-0 z-50 flex items-center justify-center px-4"
+      style={{ background: 'rgba(14,22,17,0.4)' }}
+      onClick={onClose}
+    >
+      <form
+        className="card w-full max-w-sm space-y-4"
+        style={{ padding: 24 }}
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={(e) => { e.preventDefault(); save.mutate(); }}
+      >
+        <h2 className="text-h2">Email dəyiş</h2>
+        <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+          {user.full_name ?? user.email}
+        </p>
+        <label className="block">
+          <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Yeni email</span>
+          <input
+            type="email"
+            className="input w-full"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            autoFocus
+          />
+        </label>
+        {save.error ? (
+          <p className="text-meta" style={{ color: '#B91C1C' }}>{(save.error as Error).message}</p>
+        ) : null}
+        <div className="flex justify-end gap-2">
+          <button type="button" className="btn-outline" onClick={onClose} disabled={save.isPending}>
+            Ləğv et
+          </button>
+          <button type="submit" className="btn-primary" disabled={save.isPending || email === user.email}>
+            {save.isPending ? 'Saxlanılır…' : 'Saxla'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
