@@ -1,4 +1,4 @@
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useRef } from 'react';
 import { Sidebar, MobileNavToggle } from './Sidebar';
 import { LiveAnnouncer } from '@/lib/a11y';
@@ -14,8 +14,14 @@ export function Layout() {
   const { setCmdK, toggleMirai, taskCreateOpen, openTaskCreate, closeTaskCreate } = useUI();
   const { session } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   useRealtimeSync(session?.userId);
   usePresenceHeartbeat(session?.userId);
+
+  // PRD §6.3 — Cmd+N is "context-aware": derive defaultProjectId when on a
+  // project detail route so the new task lands in the right project.
+  const projectIdMatch = location.pathname.match(/^\/layihelər\/([^/]+)/);
+  const defaultProjectId = projectIdMatch?.[1];
 
   // PRD §6.3 keyboard shortcuts
   const gPending = useRef(false);
@@ -83,8 +89,10 @@ export function Layout() {
       <MiraiDrawer />
       <CmdK />
       <LiveAnnouncer />
-      {/* PRD §6.3 Cmd+N — global new-task modal */}
-      {taskCreateOpen ? <TaskCreateModal onClose={closeTaskCreate} /> : null}
+      {/* PRD §6.3 Cmd+N — global new-task modal, context-aware via route */}
+      {taskCreateOpen ? (
+        <TaskCreateModal onClose={closeTaskCreate} defaultProjectId={defaultProjectId} />
+      ) : null}
     </div>
   );
 }

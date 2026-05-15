@@ -7,6 +7,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { admin, errorResponse, HttpError, jsonResponse } from '../_lib/auth';
+import { withSentry } from '../_lib/sentry';
 
 export const config = { runtime: 'edge' };
 
@@ -62,7 +63,7 @@ Məzmun: ${item.description}`;
   }
 }
 
-export default async function handler(req: Request) {
+async function handler(req: Request) {
   try {
     const url = new URL(req.url);
     const cronAuth =
@@ -181,3 +182,5 @@ export default async function handler(req: Request) {
     return errorResponse(e);
   }
 }
+
+export default withSentry(handler, 'cron/cmo');

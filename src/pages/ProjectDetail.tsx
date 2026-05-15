@@ -385,7 +385,7 @@ export function ProjectDetailPage() {
               {documents.map((d: {
                 id: string; title: string; category: string | null;
                 source: string; external_link: string | null; storage_path: string | null;
-                share_token: string | null; created_at: string;
+                share_token: string | null; shared_with: string[] | null; created_at: string;
               }) => (
                 <DocumentRow
                   key={d.id}
@@ -636,6 +636,7 @@ function AddDocumentButton({ projectId, onAdded }: { projectId: string; onAdded:
 }
 
 // REQ-PROJ-03 + REQ-CRM-06 — single document row with download + share-link
+// Plus REQ-CRM-06 shared_with[] granular team-member sharing
 function DocumentRow({
   doc,
   onChanged,
@@ -648,11 +649,26 @@ function DocumentRow({
     external_link: string | null;
     storage_path: string | null;
     share_token: string | null;
+    shared_with: string[] | null;
     created_at: string;
   };
   onChanged: () => void;
 }) {
   const [copied, setCopied] = useState<'share' | 'download' | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+
+  // Lazy-load profiles only when the share popover is opened
+  const profiles = useQuery({
+    queryKey: ['profiles', 'doc-share'],
+    enabled: shareOpen,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .order('full_name');
+      return (data ?? []) as Array<{ id: string; full_name: string | null; email: string }>;
+    },
+  });
 
   async function downloadStorage() {
     if (!doc.storage_path) return;
@@ -663,7 +679,7 @@ function DocumentRow({
     window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
   }
 
-  async function shareLink() {
+  async function copyPublicLink() {
     let token = doc.share_token;
     if (!token) {
       // Generate URL-safe token + persist
@@ -685,39 +701,120 @@ function DocumentRow({
     }
   }
 
+  async function toggleSharedUser(userId: string) {
+    const current = doc.shared_with ?? [];
+    const next = current.includes(userId)
+      ? current.filter((id) => id !== userId)
+      : [...current, userId];
+    const { error } = await supabase
+      .from('project_documents')
+      .update({ shared_with: next })
+      .eq('id', doc.id);
+    if (!error) onChanged();
+  }
+
+  const sharedCount = (doc.shared_with ?? []).length;
+
   return (
-    <li className="py-3 flex items-center justify-between gap-3">
-      <div className="min-w-0">
-        <div className="text-body font-medium truncate">{doc.title}</div>
-        <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-          {doc.category ?? '—'} · {doc.source}
-          {doc.share_token ? ' · paylaşılıb' : ''}
+    <li className="py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-body font-medium truncate">{doc.title}</div>
+          <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+            {doc.category ?? '—'} · {doc.source}
+            {doc.share_token ? ' · publik link' : ''}
+            {sharedCount > 0 ? ` · ${sharedCount} komanda üzvü ilə` : ''}
+          </div>
         </div>
-      </div>
-      <div className="flex items-center gap-2 shrink-0">
-        {doc.storage_path ? (
-          <button type="button" className="chip" style={{ color: 'var(--brand-text)' }} onClick={downloadStorage}>
-            ↓ Yüklə
-          </button>
-        ) : null}
-        {doc.external_link ? (
-          <a
-            href={doc.external_link}
-            target="_blank"
-            rel="noreferrer noopener"
+        <div className="flex items-center gap-2 shrink-0">
+          {doc.storage_path ? (
+            <button type="button" className="chip" style={{ color: 'var(--brand-text)' }} onClick={downloadStorage}>
+              ↓ Yüklə
+            </button>
+          ) : null}
+          {doc.external_link ? (
+            <a
+              href={doc.external_link}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="chip"
+              style={{ color: 'var(--brand-text)' }}
+            >
+              Aç →
+            </a>
+          ) : null}
+          <button
+            type="button"
             className="chip"
             style={{ color: 'var(--brand-text)' }}
+            onClick={() => setShareOpen((v) => !v)}
           >
-            Aç →
-          </a>
-        ) : null}
-        <button type="button" className="chip" style={{ color: 'var(--brand-text)' }} onClick={shareLink}>
-          {copied === 'share' ? '✓ Kopyalandı' : '🔗 Paylaş'}
-        </button>
-        <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
-          {relativeTime(doc.created_at)}
-        </span>
+            🔗 Paylaş
+          </button>
+          <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+            {relativeTime(doc.created_at)}
+          </span>
+        </div>
       </div>
+
+      {/* Inline share panel: public token + per-user picker */}
+      {shareOpen ? (
+        <div
+          className="mt-3 ml-2 rounded-card p-3"
+          style={{ background: 'var(--brand-glow-sm)', border: '1px solid var(--line-soft)' }}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-body font-medium">Paylaşma</h4>
+            <button
+              type="button"
+              className="text-meta"
+              style={{ color: 'var(--text-muted)' }}
+              onClick={() => setShareOpen(false)}
+            >
+              ×
+            </button>
+          </div>
+
+          {/* Public link section */}
+          <div className="mb-4">
+            <div className="text-meta mb-2" style={{ color: 'var(--text-muted)' }}>Publik link</div>
+            <button
+              type="button"
+              className="chip"
+              style={{ color: 'var(--brand-text)' }}
+              onClick={copyPublicLink}
+            >
+              {copied === 'share' ? '✓ Kopyalandı' : doc.share_token ? '📋 Linki kopyala' : '+ Link yarat'}
+            </button>
+          </div>
+
+          {/* shared_with[] team picker */}
+          <div>
+            <div className="text-meta mb-2" style={{ color: 'var(--text-muted)' }}>
+              Komanda üzvləri ilə paylaş ({sharedCount})
+            </div>
+            {profiles.isLoading ? (
+              <div className="text-meta" style={{ color: 'var(--text-muted)' }}>Yüklənir…</div>
+            ) : (
+              <div className="max-h-[160px] overflow-y-auto space-y-1">
+                {(profiles.data ?? []).map((p) => {
+                  const checked = (doc.shared_with ?? []).includes(p.id);
+                  return (
+                    <label key={p.id} className="flex items-center gap-2 cursor-pointer text-body">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleSharedUser(p.id)}
+                      />
+                      <span>{p.full_name ?? p.email}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
     </li>
   );
 }

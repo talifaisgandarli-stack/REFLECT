@@ -759,7 +759,128 @@ function NotificationsSettings() {
       <NotificationPreferencesPage />
       {/* PRD §9.4 — admin MIRAI cost dashboard */}
       <MiraiCostDashboard />
+      {/* PRD §9.4 — admin audit log viewer */}
+      <AuditLogViewer />
     </div>
+  );
+}
+
+// PRD §9.4 — paginated audit_log viewer (admin only; route is RequireAdmin-gated)
+function AuditLogViewer() {
+  const { isAdmin } = useAuth();
+  const [page, setPage] = useState(0);
+  const [actionFilter, setActionFilter] = useState('');
+  const PAGE_SIZE = 30;
+
+  const audit = useQuery({
+    queryKey: ['audit-log', page, actionFilter],
+    enabled: isAdmin,
+    queryFn: async () => {
+      let q = supabase
+        .from('audit_log')
+        .select('id, actor_id, action, resource, ip, user_agent, meta, created_at, profile:profiles!audit_log_actor_id_fkey(full_name, email)', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+      if (actionFilter.trim()) q = q.ilike('action', `%${actionFilter.trim()}%`);
+      const { data, count, error } = await q;
+      if (error) throw error;
+      return { rows: data ?? [], total: count ?? 0 };
+    },
+  });
+
+  if (!isAdmin) return null;
+
+  const rows = audit.data?.rows ?? [];
+  const total = audit.data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  return (
+    <section>
+      <h2 className="text-h2 mb-1">Audit jurnalı</h2>
+      <p className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
+        Privileged əməliyyatların qeydi (PRD §9.4) — rol dəyişiklikləri, dəvətlər, ayar yeniləmələri.
+      </p>
+
+      <div className="flex items-center gap-2 mb-3">
+        <input
+          className="input max-w-[260px]"
+          placeholder="Action filter (məs: invitation, settings)"
+          value={actionFilter}
+          onChange={(e) => { setActionFilter(e.target.value); setPage(0); }}
+        />
+        <span className="text-meta" style={{ color: 'var(--text-muted)' }}>{total} qeyd</span>
+      </div>
+
+      {audit.isLoading ? (
+        <div className="text-meta" style={{ color: 'var(--text-muted)' }}>Yüklənir…</div>
+      ) : rows.length === 0 ? (
+        <EmptyState title="Hələ qeyd yoxdur" body="Privileged əməliyyatlar burada görünəcək." />
+      ) : (
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full text-body" style={{ minWidth: 720 }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--line)' }}>
+                  <th className="text-meta text-left py-2 pr-3" style={{ color: 'var(--text-muted)' }}>Vaxt</th>
+                  <th className="text-meta text-left py-2 px-3" style={{ color: 'var(--text-muted)' }}>Aktor</th>
+                  <th className="text-meta text-left py-2 px-3" style={{ color: 'var(--text-muted)' }}>Action</th>
+                  <th className="text-meta text-left py-2 px-3" style={{ color: 'var(--text-muted)' }}>Resource</th>
+                  <th className="text-meta text-left py-2 pl-3" style={{ color: 'var(--text-muted)' }}>Detallar</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => {
+                  const actor = (r.profile as unknown as { full_name?: string; email?: string } | null) ?? null;
+                  return (
+                    <tr key={r.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                      <td className="py-2 pr-3 text-meta" style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                        {new Date(r.created_at).toLocaleString('az-AZ', { timeZone: 'Asia/Baku' })}
+                      </td>
+                      <td className="py-2 px-3">{actor?.full_name ?? actor?.email ?? r.actor_id?.slice(0, 8) ?? 'Sistem'}</td>
+                      <td className="py-2 px-3">
+                        <code style={{ background: 'var(--brand-glow-sm)', padding: '1px 6px', borderRadius: 4, fontSize: 12 }}>
+                          {r.action}
+                        </code>
+                      </td>
+                      <td className="py-2 px-3 text-meta" style={{ color: 'var(--text-muted)' }}>{r.resource ?? '—'}</td>
+                      <td className="py-2 pl-3 text-meta" style={{ color: 'var(--text-muted)', maxWidth: 280 }}>
+                        {r.meta ? (
+                          <code className="block truncate" title={JSON.stringify(r.meta)} style={{ fontSize: 11 }}>
+                            {JSON.stringify(r.meta)}
+                          </code>
+                        ) : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {totalPages > 1 ? (
+            <div className="flex items-center justify-between mt-3">
+              <button
+                className="chip"
+                disabled={page === 0}
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+              >
+                ← Əvvəlki
+              </button>
+              <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                Səhifə {page + 1} / {totalPages}
+              </span>
+              <button
+                className="chip"
+                disabled={page >= totalPages - 1}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Sonrakı →
+              </button>
+            </div>
+          ) : null}
+        </>
+      )}
+    </section>
   );
 }
 

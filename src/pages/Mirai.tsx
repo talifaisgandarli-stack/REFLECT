@@ -62,7 +62,57 @@ export function MiraiPage() {
   const [usage, setUsage] = useState<Usage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  // When the user picks a past conversation we set persona AND msgs together,
+  // so the persona-change useEffect must NOT clobber by auto-loading the latest.
+  const skipAutoLoadRef = useRef(false);
+
+  // PRD §7 — list user's recent conversations across all personas so they can
+  // resume previous threads (current behavior auto-loads only the latest).
+  const conversationHistory = useQuery({
+    queryKey: ['mirai-conversations', profile?.id],
+    enabled: !!profile?.id && historyOpen,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('mirai_conversations')
+        .select('id, persona, started_at, last_message_at')
+        .eq('user_id', profile!.id)
+        .is('archived_at', null)
+        .order('last_message_at', { ascending: false })
+        .limit(30);
+      return (data ?? []) as Array<{
+        id: string;
+        persona: string;
+        started_at: string;
+        last_message_at: string;
+      }>;
+    },
+  });
+
+  async function switchToConversation(conv: { id: string; persona: string }) {
+    skipAutoLoadRef.current = true; // suppress the persona-change auto-loader
+    setPersona(conv.persona as PersonaKey);
+    setHistoryOpen(false);
+    setError(null);
+    setFeedbackGiven({});
+    setHistoryLoaded(false);
+
+    const { data: messages } = await supabase
+      .from('mirai_messages')
+      .select('id, role, content')
+      .eq('conversation_id', conv.id)
+      .order('created_at', { ascending: true })
+      .limit(50);
+
+    setConversationId(conv.id);
+    setMsgs((messages ?? []).map((m) => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+      dbId: m.id,
+    })));
+    setHistoryLoaded(true);
+  }
   const [budgetInput, setBudgetInput] = useState('');
   const [budgetSaved, setBudgetSaved] = useState(false);
   // REQ-7.9 — thumbs feedback keyed by message index in current thread
@@ -105,6 +155,12 @@ export function MiraiPage() {
 
   // Load last conversation for this persona (PRD §7.2)
   useEffect(() => {
+    // If switchToConversation just set this persona we already loaded the
+    // chosen thread — don't clobber it by auto-loading the latest.
+    if (skipAutoLoadRef.current) {
+      skipAutoLoadRef.current = false;
+      return;
+    }
     setMsgs([]);
     setConversationId(null);
     setHistoryLoaded(false);
@@ -292,7 +348,79 @@ export function MiraiPage() {
             {p.label}
           </button>
         ))}
+        {/* PRD §7 — past conversation switcher */}
+        <button
+          type="button"
+          onClick={() => setHistoryOpen((v) => !v)}
+          className="chip"
+          title="Keçmiş söhbətlər"
+          style={{
+            background: 'rgba(255,255,255,0.06)',
+            color: 'var(--canvas)',
+            border: '1px solid rgba(255,255,255,0.08)',
+          }}
+        >
+          ⏱ Tarixçə
+        </button>
       </div>
+
+      {/* Conversation history dropdown */}
+      {historyOpen ? (
+        <div
+          className="w-full max-w-[720px] mt-3 rounded-card p-3"
+          style={{
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: 'var(--canvas)',
+          }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-meta opacity-70">Keçmiş söhbətlər (son 30)</span>
+            <button
+              type="button"
+              className="text-meta opacity-70 hover:opacity-100"
+              onClick={() => setHistoryOpen(false)}
+            >
+              ×
+            </button>
+          </div>
+          {conversationHistory.isLoading ? (
+            <div className="text-meta opacity-50 py-2 text-center">Yüklənir…</div>
+          ) : (conversationHistory.data ?? []).length === 0 ? (
+            <div className="text-meta opacity-50 py-2 text-center">Hələ söhbət yoxdur</div>
+          ) : (
+            <ul className="max-h-[260px] overflow-y-auto divide-y" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+              {(conversationHistory.data ?? []).map((c) => {
+                const personaLabel = PERSONAS.find((p) => p.key === c.persona)?.label ?? c.persona;
+                const dt = new Date(c.last_message_at);
+                const isCurrent = c.id === conversationId;
+                return (
+                  <li key={c.id}>
+                    <button
+                      type="button"
+                      className="w-full text-left py-2 px-2 hover:bg-white/5 rounded-btn flex items-center justify-between gap-3"
+                      style={{ background: isCurrent ? 'rgba(173, 251, 73, 0.08)' : undefined }}
+                      onClick={() => switchToConversation(c)}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="text-body truncate">{personaLabel}</div>
+                        <div className="text-meta opacity-60" style={{ fontSize: 11 }}>
+                          {dt.toLocaleString('az-AZ', { timeZone: 'Asia/Baku' })}
+                        </div>
+                      </div>
+                      {isCurrent ? (
+                        <span className="text-meta" style={{ color: 'var(--brand-action)', fontSize: 11 }}>
+                          aktiv
+                        </span>
+                      ) : null}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      ) : null}
 
       <div className="w-full max-w-[720px] mt-8">
         {/* Budget warning — PRD §7.6 */}

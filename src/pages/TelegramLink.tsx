@@ -1,15 +1,18 @@
 import { PageHead } from '@/components/PageHead';
 import { useAuth } from '@/lib/store';
+import { supabase } from '@/lib/supabase';
 import { useState } from 'react';
 
 // PRD §8.1 — bot username for deep linking. Fallback to env-injected value at build time.
 const BOT_USERNAME = (import.meta.env.VITE_TELEGRAM_BOT_USERNAME as string | undefined) ?? 'ReflectStudioBot';
 
 export function TelegramLinkPage() {
-  const { profile } = useAuth();
+  const { profile, setProfile, role } = useAuth();
   const [busy, setBusy] = useState(false);
+  const [unlinking, setUnlinking] = useState(false);
   const [code, setCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [confirmUnlink, setConfirmUnlink] = useState(false);
 
   async function getCode() {
     setBusy(true);
@@ -30,6 +33,24 @@ export function TelegramLinkPage() {
       setTimeout(() => setCopied(false), 1500);
     } catch {
       /* ignore clipboard errors (secure context required) */
+    }
+  }
+
+  // PRD §8.1 — clear telegram_chat_id + telegram_linked_at to revoke bot access
+  async function unlink() {
+    if (!profile?.id) return;
+    setUnlinking(true);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ telegram_chat_id: null, telegram_linked_at: null })
+        .eq('id', profile.id);
+      if (error) throw error;
+      // Reflect change locally so the UI updates immediately
+      setProfile({ ...profile, telegram_chat_id: null, telegram_linked_at: null }, role);
+      setConfirmUnlink(false);
+    } finally {
+      setUnlinking(false);
     }
   }
 
@@ -89,10 +110,45 @@ export function TelegramLinkPage() {
           </p>
         ) : null}
 
-        <div className="text-meta mt-4" style={{ color: 'var(--text-muted)' }}>
-          {profile?.telegram_chat_id
-            ? `Bağlıdır: ${profile.telegram_chat_id}`
-            : 'Hələ bağlı deyil.'}
+        <div className="mt-4 flex items-center gap-3 flex-wrap">
+          <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+            {profile?.telegram_chat_id
+              ? `Bağlıdır: ${profile.telegram_chat_id}`
+              : 'Hələ bağlı deyil.'}
+          </div>
+          {profile?.telegram_chat_id ? (
+            confirmUnlink ? (
+              <div className="flex items-center gap-2">
+                <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Əminsən?</span>
+                <button
+                  type="button"
+                  className="chip"
+                  style={{ background: 'var(--error-deep)', color: 'white' }}
+                  disabled={unlinking}
+                  onClick={unlink}
+                >
+                  {unlinking ? 'Silinir…' : 'Bəli, sil'}
+                </button>
+                <button
+                  type="button"
+                  className="chip"
+                  onClick={() => setConfirmUnlink(false)}
+                  disabled={unlinking}
+                >
+                  Ləğv
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="chip"
+                style={{ color: 'var(--error-deep)' }}
+                onClick={() => setConfirmUnlink(true)}
+              >
+                Bağlantını sil
+              </button>
+            )
+          ) : null}
         </div>
       </div>
     </>

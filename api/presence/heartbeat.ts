@@ -3,10 +3,11 @@
  * Frontend pings every 30s; this updates user_presence row + computes derived status.
  */
 import { admin, errorResponse, HttpError, jsonResponse, requireUser } from '../_lib/auth';
+import { withSentry } from '../_lib/sentry';
 
 export const config = { runtime: 'edge' };
 
-export default async function handler(req: Request) {
+async function handler(req: Request) {
   try {
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed');
     const user = await requireUser(req);
@@ -31,3 +32,5 @@ export default async function handler(req: Request) {
     return errorResponse(e);
   }
 }
+
+export default withSentry(handler, 'presence/heartbeat');

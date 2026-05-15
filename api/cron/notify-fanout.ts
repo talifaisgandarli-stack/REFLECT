@@ -11,6 +11,7 @@
  * if their pref toggle is enabled.
  */
 import { admin, errorResponse, HttpError, jsonResponse } from '../_lib/auth';
+import { withSentry } from '../_lib/sentry';
 
 export const config = { runtime: 'edge' };
 
@@ -131,7 +132,7 @@ async function sendTelegram(chatId: string, text: string): Promise<boolean> {
   return res.ok;
 }
 
-export default async function handler(req: Request) {
+async function handler(req: Request) {
   try {
     const url = new URL(req.url);
     const cronAuth =
@@ -224,3 +225,5 @@ export default async function handler(req: Request) {
     return errorResponse(e);
   }
 }
+
+export default withSentry(handler, 'cron/notify-fanout');

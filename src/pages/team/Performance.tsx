@@ -60,6 +60,19 @@ export function PerformancePage() {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingReview, setEditingReview] = useState<Review | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const deleteReview = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('performance_reviews').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['performance_reviews'] });
+      setConfirmDeleteId(null);
+    },
+  });
 
   const { data: allProfiles = [] } = useQuery({
     queryKey: ['profiles-for-perf'],
@@ -141,13 +154,57 @@ export function PerformancePage() {
             <div key={rev.id} className="card flex flex-col lg:flex-row gap-6">
               <Gauge score={rev.score} />
               <div className="flex-1 min-w-0">
-                {isAdmin && rev.profiles ? (
-                  <div className="flex items-center gap-2 mb-3">
-                    <Avatar name={rev.profiles.full_name ?? 'İşçi'} size={28} />
-                    <span className="text-body font-medium">{rev.profiles.full_name ?? 'İşçi'}</span>
-                    <span className="text-meta" style={{ color: 'var(--text-muted)' }}>· {year}</span>
-                  </div>
-                ) : null}
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  {isAdmin && rev.profiles ? (
+                    <div className="flex items-center gap-2">
+                      <Avatar name={rev.profiles.full_name ?? 'İşçi'} size={28} />
+                      <span className="text-body font-medium">{rev.profiles.full_name ?? 'İşçi'}</span>
+                      <span className="text-meta" style={{ color: 'var(--text-muted)' }}>· {year}</span>
+                    </div>
+                  ) : <div />}
+                  {/* PRD §8.3 — admin edit/delete actions */}
+                  {isAdmin ? (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        className="chip"
+                        style={{ color: 'var(--brand-text)' }}
+                        onClick={() => setEditingReview(rev)}
+                      >
+                        Redaktə
+                      </button>
+                      {confirmDeleteId === rev.id ? (
+                        <>
+                          <button
+                            type="button"
+                            className="chip"
+                            style={{ background: 'var(--error-deep)', color: 'white' }}
+                            disabled={deleteReview.isPending}
+                            onClick={() => deleteReview.mutate(rev.id)}
+                          >
+                            {deleteReview.isPending ? 'Silinir…' : 'Bəli, sil'}
+                          </button>
+                          <button
+                            type="button"
+                            className="chip"
+                            onClick={() => setConfirmDeleteId(null)}
+                          >
+                            Ləğv
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          className="chip"
+                          style={{ color: 'var(--error-deep)' }}
+                          onClick={() => setConfirmDeleteId(rev.id)}
+                        >
+                          Sil
+                        </button>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
                 <div className="grid grid-cols-2 gap-3 mb-3">
                   {RATING_KEYS.map((rk) => {
                     const val = (rev.ratings as Record<string, number>)?.[rk.key] ?? 0;
@@ -195,7 +252,126 @@ export function PerformancePage() {
           }}
         />
       ) : null}
+
+      {editingReview && isAdmin ? (
+        <EditReviewModal
+          review={editingReview}
+          onClose={() => setEditingReview(null)}
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: ['performance_reviews'] });
+            setEditingReview(null);
+          }}
+        />
+      ) : null}
     </>
+  );
+}
+
+// PRD §8.3 — admin edit modal for existing performance_reviews rows
+function EditReviewModal({
+  review,
+  onClose,
+  onSaved,
+}: {
+  review: Review;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [score, setScore] = useState(review.score);
+  const [ratings, setRatings] = useState<Record<string, number>>({
+    quality: review.ratings?.quality ?? 3,
+    speed: review.ratings?.speed ?? 3,
+    teamwork: review.ratings?.teamwork ?? 3,
+    initiative: review.ratings?.initiative ?? 3,
+  });
+  const [summary, setSummary] = useState(review.summary ?? '');
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from('performance_reviews')
+        .update({
+          score,
+          ratings,
+          summary: summary.trim() || null,
+        })
+        .eq('id', review.id);
+      if (error) throw error;
+    },
+    onSuccess: onSaved,
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: 'rgba(14,22,17,0.55)' }}
+      onClick={onClose}
+    >
+      <div
+        className="bg-surface p-6 rounded-card w-[480px] max-h-[80vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-h2 mb-1">Qiymətləndirməni redaktə et</h2>
+        <p className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
+          {review.profiles?.full_name ?? 'İşçi'} · {review.year}
+        </p>
+
+        <label className="block mb-3">
+          <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Ümumi bal (0–100)</span>
+          <input
+            type="number" className="input" min={0} max={100}
+            value={score}
+            onChange={(e) => setScore(Math.max(0, Math.min(100, Number(e.target.value))))}
+          />
+        </label>
+
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          {RATING_KEYS.map((rk) => (
+            <label key={rk.key} className="block">
+              <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
+                {rk.label} (1–5)
+              </span>
+              <input
+                type="number" className="input" min={1} max={5}
+                value={ratings[rk.key]}
+                onChange={(e) =>
+                  setRatings((r) => ({
+                    ...r,
+                    [rk.key]: Math.max(1, Math.min(5, Number(e.target.value))),
+                  }))
+                }
+              />
+            </label>
+          ))}
+        </div>
+
+        <label className="block mb-4">
+          <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Xülasə</span>
+          <textarea
+            className="input" rows={3}
+            value={summary}
+            onChange={(e) => setSummary(e.target.value)}
+          />
+        </label>
+
+        {save.error ? (
+          <p className="text-meta mb-3" style={{ color: 'var(--error-deep)' }}>
+            {(save.error as Error).message}
+          </p>
+        ) : null}
+
+        <div className="flex justify-end gap-2">
+          <button className="btn-outline" onClick={onClose}>Ləğv et</button>
+          <button
+            className="btn-primary"
+            disabled={save.isPending}
+            onClick={() => save.mutate()}
+          >
+            {save.isPending ? 'Saxlanılır…' : 'Yenilə'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

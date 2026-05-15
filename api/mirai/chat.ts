@@ -17,6 +17,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { MessageParam, Tool, ToolUseBlock } from '@anthropic-ai/sdk/resources/messages';
 import { admin, errorResponse, HttpError, jsonResponse, requireUser, userClient } from '../_lib/auth';
+import { withSentry } from '../_lib/sentry';
 import { checkRateLimit } from '../_lib/rate-limit';
 
 export const config = { runtime: 'edge' };
@@ -350,7 +351,7 @@ async function runTool(
 
 // ---------------------------------------------------------------------------
 
-export default async function handler(req: Request) {
+async function handler(req: Request) {
   try {
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed');
     const user = await requireUser(req);
@@ -765,3 +766,5 @@ async function runStreaming(args: {
     },
   });
 }
+
+export default withSentry(handler, 'mirai/chat');
