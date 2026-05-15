@@ -182,18 +182,22 @@ function AddSalaryModal({ profiles, onClose, onSaved }: AddProps) {
       if (error) throw error;
 
       // Audit trail — PRD §8.2
-      await supabase.from('audit_log').insert({
-        action: 'salary_created',
-        resource: `salary:${row.id}`,
-      }).then(() => null).catch(() => null);
+      try {
+        await supabase.from('audit_log').insert({
+          action: 'salary_created',
+          resource: `salary:${row.id}`,
+        });
+      } catch { /* fire-and-forget audit */ }
 
       // Notify employee via existing fan-out (Telegram + email if configured)
-      await supabase.from('notifications').insert({
-        user_id: employeeId,
-        kind: 'salary_changed',
-        payload: { amount: amt, currency, effective_from: effectiveFrom },
-        dispatched_channels: {},
-      }).then(() => null).catch(() => null);
+      try {
+        await supabase.from('notifications').insert({
+          user_id: employeeId,
+          kind: 'salary_changed',
+          payload: { amount: amt, currency, effective_from: effectiveFrom },
+          dispatched_channels: {},
+        });
+      } catch { /* fire-and-forget notification */ }
     },
     onSuccess: onSaved,
   });

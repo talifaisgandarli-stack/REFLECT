@@ -15,7 +15,6 @@ const NAV: NavGroup[] = [
       { to: '/', label: 'Dashboard' },
       { to: '/layihelər', label: 'Layihələr' },
       { to: '/tapşırıqlar', label: 'Tapşırıqlar' },
-      { to: '/tamamlandı', label: 'Tamamlandı' },
       { to: '/arxiv', label: 'Arxiv' },
       { to: '/podrat', label: 'Podrat İşləri' },
     ],

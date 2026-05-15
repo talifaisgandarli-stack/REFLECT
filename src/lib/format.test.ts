@@ -16,8 +16,10 @@ describe('formatAZN', () => {
 
   it('formats integers with AZN currency and no fraction digits', () => {
     const out = formatAZN(1500);
-    expect(out).toMatch(/1\s?500/);
-    expect(out.toLowerCase()).toMatch(/azn|man/);
+    // Azerbaijani locale (az-AZ) uses '.' as the thousands separator → "1.500 ₼"
+    // Accept any thousands separator (dot, comma, space, narrow-space) or none.
+    expect(out).toMatch(/1[.,\s ]?500/);
+    expect(out).toMatch(/₼|AZN/i);
   });
 });
 

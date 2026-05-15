@@ -8,6 +8,7 @@
  * US-DASH-05: team workload (open task count per member, green/amber/red).
  */
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
 import { Avatar } from '@/components/Avatar';
 import { StatusChip } from '@/components/StatusChip';
@@ -210,6 +211,12 @@ export function DashboardPage() {
       <PageHead
         meta={isAdmin ? 'Admin görünüşü' : 'Sizin görünüşünüz'}
         title={`Salam, ${profile?.full_name?.split(' ')[0] ?? 'arxitekt'}`}
+        actions={
+          /* REQ-DASH-01 — MIRAI quick-launch; nav group removed per PRD §4 */
+          <Link to="/mirai" className="btn-primary" style={{ fontSize: 13 }}>
+            ✦ MIRAI
+          </Link>
+        }
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">

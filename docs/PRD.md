@@ -223,11 +223,17 @@ SİSTEM                  (admin only)
     ├── Ümumi
     ├── Şablonlar
     ├── Bilik Bazası   (legacy Qaynaqlar PDFs + MIRAI RAG sources)
-    └── Bildirişlər
+    ├── Bildirişlər
+    └── Dəvətlər       (invite management — REQ-AUTH-02)
+
+MIRAI
+├── MIRAI
+└── Telegram
 ```
 
-**Removed from nav:** Sənəd Arxivi (data → `project_documents`), Qaynaqlar (PDFs → Parametrlər/Bilik Bazası).
+**Removed from nav:** Sənəd Arxivi (data → `project_documents`), Qaynaqlar (PDFs → Parametrlər/Bilik Bazası), Tamamlandı (merged into Arxiv flow).
 **Moved:** Arxiv from System group → İŞ group.
+**Telegram:** Sidebar link opens `/telegram` linking flow; full linking UI also in `/profil` (REQ-AUTH-03).
 
 **Rule:** Removing a nav item NEVER drops the underlying table. See §10.
 

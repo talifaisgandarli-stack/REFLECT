@@ -14,7 +14,8 @@ describe('task status labels (REQ-TASK)', () => {
     for (const s of TASK_STATUS_ORDER) {
       expect(TASK_STATUS_LABEL[s]).toBeTruthy();
       expect(TASK_STATUS_TONE[s]).toBeDefined();
-      expect(TASK_STATUS_TONE[s].dot).toMatch(/^#/);
+      // dot is either a hex literal (#RRGGBB) or a design-system CSS token (var(--*))
+      expect(TASK_STATUS_TONE[s].dot).toMatch(/^(#|var\(--)/);
     }
   });
 

@@ -50,7 +50,7 @@ export default async function handler(req: Request) {
     }
 
     // Record the attempt whether allowed or not (for audit trail).
-    await sb.rpc('record_login_attempt', { p_ip: ip, p_email: email }).catch(() => null);
+    try { await sb.rpc('record_login_attempt', { p_ip: ip, p_email: email }); } catch { /* fire-and-forget audit */ }
 
     if (!allowed) {
       return new Response(JSON.stringify({ allowed: false, error: 'Çox sayda cəhd. 15 dəqiqə gözləyin.' }), {
