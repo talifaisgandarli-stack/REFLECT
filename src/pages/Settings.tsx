@@ -71,6 +71,9 @@ function GeneralSettings() {
   const [miraiBudget, setMiraiBudget] = useState('');
   const [firmName, setFirmName] = useState('');
   const [saved, setSaved] = useState(false);
+  const [logoUrl, setLogoUrl] = useState('');
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoErr, setLogoErr] = useState<string | null>(null);
 
   // PRD §8.1 / REQ-TG-03: cron reads `finance_alert_income_threshold` and
   // `finance_alert_expense_threshold` (jsonb { azn: number }). Stay aligned.
@@ -101,6 +104,46 @@ function GeneralSettings() {
     const raw = loaded.firm_name;
     // firm_name is stored as a quoted JSON string in jsonb.
     if (typeof raw === 'string') setFirmName(raw);
+  }
+  if (loaded && logoUrl === '') {
+    const raw = loaded.firm_logo_url;
+    if (typeof raw === 'string' && raw) setLogoUrl(raw);
+  }
+
+  /** PRD §10.1 / REQ-SET-07 — Upload firm logo to Supabase Storage firm-assets bucket. */
+  async function handleLogoUpload(file: File) {
+    setLogoErr(null);
+    if (!file.type.startsWith('image/')) {
+      setLogoErr('Yalnız şəkil faylları qəbul edilir (JPEG, PNG, SVG…)');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setLogoErr('Fayl ölçüsü 5 MB-dan az olmalıdır.');
+      return;
+    }
+    setLogoUploading(true);
+    try {
+      const ext = file.name.split('.').pop() ?? 'png';
+      const path = `logo/firm-logo-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('firm-assets')
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from('firm-assets').getPublicUrl(path);
+      const publicUrl = pub.publicUrl;
+      const { error: settErr } = await supabase
+        .from('system_settings')
+        .upsert({ key: 'firm_logo_url', value: publicUrl }, { onConflict: 'key' });
+      if (settErr) throw settErr;
+      setLogoUrl(publicUrl);
+      if (profile?.id) {
+        await writeAudit(profile.id, 'settings.update', 'system_settings', { keys: ['firm_logo_url'] });
+      }
+    } catch (e) {
+      setLogoErr((e as Error).message ?? 'Yükləmə xətası');
+    } finally {
+      setLogoUploading(false);
+    }
   }
 
   const save = useMutation({
@@ -144,6 +187,58 @@ function GeneralSettings() {
             placeholder="Reflect"
           />
         </label>
+        {/* PRD §10.1 / REQ-SET-07 — Firm logo upload (Supabase Storage: firm-assets) */}
+        <div>
+          <span className="text-meta block mb-2" style={{ color: 'var(--text-muted)' }}>Şirkət logosu</span>
+          <div className="flex items-center gap-4 flex-wrap">
+            {logoUrl ? (
+              <img
+                src={logoUrl}
+                alt="Şirkət logosu"
+                style={{ height: 56, maxWidth: 160, objectFit: 'contain', borderRadius: 8, background: 'var(--surface-mist)', padding: 6 }}
+              />
+            ) : (
+              <div
+                className="flex items-center justify-center text-meta rounded-card"
+                style={{ width: 80, height: 56, background: 'var(--surface-mist)', color: 'var(--text-muted)', fontSize: 12 }}
+              >
+                Logo yoxdur
+              </div>
+            )}
+            <label className="btn-outline cursor-pointer" style={{ display: 'inline-block' }}>
+              {logoUploading ? 'Yüklənir…' : logoUrl ? 'Dəyişdir' : 'Logo yüklə'}
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
+                className="sr-only"
+                disabled={logoUploading}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleLogoUpload(f);
+                  e.target.value = '';
+                }}
+              />
+            </label>
+            {logoUrl && !logoUploading && (
+              <button
+                type="button"
+                className="text-meta hover:underline"
+                style={{ color: 'var(--text-muted)', fontSize: 12 }}
+                onClick={async () => {
+                  await supabase.from('system_settings').delete().eq('key', 'firm_logo_url');
+                  setLogoUrl('');
+                }}
+              >
+                Sil
+              </button>
+            )}
+          </div>
+          {logoErr ? <p className="text-meta mt-1" style={{ color: 'var(--error-deep)', fontSize: 12 }}>{logoErr}</p> : null}
+          <p className="text-meta mt-1" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+            Maks. 5 MB · JPEG, PNG, SVG
+          </p>
+        </div>
+
         <label className="block">
           <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Region / Saat qurşağı</span>
           <input className="input mt-1 max-w-md" defaultValue="Asia/Baku" disabled />
@@ -356,6 +451,19 @@ function TemplatesSettings() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['templates'] }),
   });
 
+  /** PRD §10.2 — export template body as plain-text file for Word/Excel. */
+  function downloadTemplate(name: string, body: string) {
+    const blob = new Blob([body], { type: 'text/plain; charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${name.replace(/[^a-zA-Zа-яА-Яəüöçşğı\s]/g, '_').trim() || 'sablon'}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   if (editing) {
     const vars = extractVars(editing.body);
     return (
@@ -413,6 +521,15 @@ function TemplatesSettings() {
               {preview ? 'Önizləməni gizlət' : 'Önizlə'}
             </button>
           ) : null}
+          {editing.body ? (
+            <button
+              className="btn-outline"
+              onClick={() => downloadTemplate(editing.name || 'sablon', editing.body)}
+              title="TXT kimi yüklə"
+            >
+              ↓ Yüklə
+            </button>
+          ) : null}
           <button className="btn-outline" onClick={() => setEditing(null)}>Ləğv</button>
         </div>
       </div>
@@ -441,6 +558,13 @@ function TemplatesSettings() {
             <div className="flex gap-2 shrink-0">
               <button className="chip" onClick={() => setEditing({ id: t.id, category: t.category, name: t.name, body: t.body, mime_type: t.mime_type })}>
                 Redaktə
+              </button>
+              <button
+                className="chip"
+                onClick={() => downloadTemplate(t.name, t.body)}
+                title="TXT kimi yüklə"
+              >
+                ↓
               </button>
               <button className="chip" style={{ color: 'var(--error-deep)' }} onClick={() => del.mutate(t.id)}>
                 Sil

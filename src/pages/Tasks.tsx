@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
+import { AvatarGroup } from '@/components/AvatarGroup';
 import { isOpenChildrenError, useTasks, useUpdateTaskStatus } from '@/lib/hooks';
 import { TASK_STATUS_LABEL, TASK_STATUS_ORDER, TASK_STATUS_TONE } from '@/lib/labels';
 import type { Task, TaskStatus } from '@/types/db';
@@ -56,6 +57,30 @@ export function TasksPage() {
     mineOnly && profile?.id ? { assigneeId: profile.id } : undefined,
   );
   const update = useUpdateTaskStatus();
+
+  // PRD §6.8 — AvatarGroup: look up names/avatars for assignee_ids
+  const { data: allProfiles = [] } = useQuery({
+    queryKey: ['profiles', 'mini-list'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url')
+        .eq('is_active', true);
+      return (data ?? []) as { id: string; full_name: string | null; avatar_url: string | null }[];
+    },
+    staleTime: 5 * 60_000,
+  });
+  const profileById = useMemo(
+    () => Object.fromEntries(allProfiles.map((p) => [p.id, p])),
+    [allProfiles],
+  );
+  function assigneePeople(ids: string[]) {
+    return ids.map((id) => ({
+      id,
+      name: profileById[id]?.full_name ?? null,
+      avatar_url: profileById[id]?.avatar_url ?? null,
+    }));
+  }
   const [blocker, setBlocker] = useState<{ id: string; from?: TaskStatus } | null>(null);
   const [creating, setCreating] = useState(false);
   const [quickAddCol, setQuickAddCol] = useState<TaskStatus | null>(null);
@@ -326,6 +351,12 @@ export function TasksPage() {
                       >
                         {t.title}
                       </div>
+                      {/* Assignee avatars — PRD §6.8 */}
+                      {t.assignee_ids.length > 0 && (
+                        <div className="mt-1">
+                          <AvatarGroup people={assigneePeople(t.assignee_ids)} size={20} />
+                        </div>
+                      )}
                       <div className="flex items-center justify-between mt-1">
                         {t.deadline ? (
                           <span
@@ -441,7 +472,9 @@ export function TasksPage() {
               <tr key={t.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
                 <td className="py-3 px-3">{t.title}</td>
                 <td className="py-3 px-3">{TASK_STATUS_LABEL[t.status]}</td>
-                <td className="py-3 px-3">{t.assignee_ids.length} nəfər</td>
+                <td className="py-3 px-3">
+                  <AvatarGroup people={assigneePeople(t.assignee_ids)} size={24} />
+                </td>
                 <td className="py-3 px-3">
                   {t.deadline ? (
                     <span
