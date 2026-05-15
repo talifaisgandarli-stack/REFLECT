@@ -150,11 +150,11 @@ const TOOLS: Tool[] = [
   {
     name: 'list_my_tasks',
     description:
-      'İstifadəçinin açıq tapşırıqlarını qaytarır. Status filtri (todo|in_progress|in_review|done) opsionaldır.',
+      'İstifadəçinin açıq tapşırıqlarını qaytarır. Status filtri (idea|queued|active|review|expert|done|cancelled) opsionaldır.',
     input_schema: {
       type: 'object',
       properties: {
-        status: { type: 'string', enum: ['todo', 'in_progress', 'in_review', 'done'] },
+        status: { type: 'string', enum: ['idea', 'queued', 'active', 'review', 'expert', 'done', 'cancelled'] },
         limit: { type: 'number', description: 'Maksimum sıra sayı (default 10, max 25).' },
       },
     },
@@ -262,7 +262,7 @@ async function runTool(
             deadline,
             project_id: projectId,
             assignee_ids: assignSelf ? [ctx.user.id] : [],
-            status: 'todo',
+            status: 'queued',
             created_by: ctx.user.id,
           })
           .select('id, title')

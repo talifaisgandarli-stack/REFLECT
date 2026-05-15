@@ -30,8 +30,11 @@ export function ArchivePage() {
   const projects = useQuery({
     queryKey: ['archive', 'projects'],
     queryFn: async (): Promise<Project[]> => {
-      let q = supabase.from('projects').select('*').eq('status', 'closed').order('archived_at', { ascending: false }).limit(200);
-      if (!isAdmin && profile?.id) q = q.eq('created_by', profile.id);
+      // RLS policy (projects_select): is_admin() OR is_project_member(id)
+      // — Supabase already filters to only the rows this user may see.
+      // Applying an additional created_by filter here was overly restrictive:
+      // team members assigned to a project but not the creator were excluded.
+      const q = supabase.from('projects').select('*').eq('status', 'closed').order('archived_at', { ascending: false }).limit(200);
       const { data, error } = await q;
       if (error) throw error;
       return data ?? [];
