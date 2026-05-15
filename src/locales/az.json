@@ -1,0 +1,355 @@
+{
+  "_meta": { "lang": "az", "version": "1.0.0" },
+
+  "common": {
+    "loading": "Yüklənir…",
+    "saving": "Saxlanılır…",
+    "saved": "Saxlandı ✓",
+    "cancel": "Ləğv et",
+    "close": "Bağla",
+    "delete": "Sil",
+    "edit": "Redaktə et",
+    "add": "Əlavə et",
+    "save": "Saxla",
+    "search": "Axtar",
+    "filter": "Filtr",
+    "confirm": "Təsdiq et",
+    "back": "Geri",
+    "next": "İrəli",
+    "all": "Hamısı",
+    "none": "Yox",
+    "yes": "Bəli",
+    "no": "Xeyr",
+    "required": "Lazımdır",
+    "optional": "İstəyə bağlı",
+    "unknown": "Naməlum",
+    "noData": "Məlumat yoxdur.",
+    "error": "Nəsə tərs getdi",
+    "select": "Seçin…",
+    "viewAll": "Hamısına bax →",
+    "more": "Hamısı →",
+    "sum": "Cəmi",
+    "period": "Dövr",
+    "monthly": "Aylıq",
+    "weekly": "Həftəlik",
+    "quarterly": "Rüblük",
+    "fixed": "Sabit",
+    "type": "Növ",
+    "date": "Tarix",
+    "amount": "Məbləğ (AZN)",
+    "note": "Qeyd",
+    "title": "Başlıq",
+    "description": "Açıqlama",
+    "status": "Status",
+    "category": "Kateqoriya",
+    "role": "Rol",
+    "channel": "Kanal",
+    "text": "Mətn",
+    "number": "Nömrə",
+    "limit": "Limit (USD)",
+    "deadline": "Son tarix",
+    "startDate": "Başlanğıc",
+    "endDate": "Son",
+    "duration": "Müddət",
+    "noDuration": "Müddət yoxdur",
+    "region": "Region / Saat qurşağı",
+    "serial": "Serial nömrəsi",
+    "sequence": "Sıra nömrəsi"
+  },
+
+  "auth": {
+    "signIn": "Daxil ol",
+    "signOut": "Çıxış",
+    "email": "Email",
+    "password": "Şifrə",
+    "forgotPassword": "Şifrəni unutmusunuz?",
+    "loading": "Yüklənir…",
+    "reflect": "Reflect"
+  },
+
+  "nav": {
+    "dashboard": "Dashboard",
+    "tasks": "Tapşırıqlar",
+    "projects": "Layihələr",
+    "clients": "Müştərilər",
+    "finance": "Maliyyə",
+    "mirai": "Mirai",
+    "team": "Komanda",
+    "announcements": "Elanlar",
+    "calendar": "Təqvim",
+    "roster": "Heyət",
+    "leave": "Məzuniyyət",
+    "salary": "Maaş",
+    "performance": "Performans",
+    "equipment": "Avadanlıq",
+    "outsource": "Outsource",
+    "company": "Şirkət",
+    "okr": "OKR",
+    "contentPlan": "Məzmun planı",
+    "career": "Karyera",
+    "settings": "Tənzimləmələr",
+    "notifications": "Bildirişlər"
+  },
+
+  "taskStatus": {
+    "idea": "İdeyalar",
+    "queued": "Başlanmayıb",
+    "active": "İcrada",
+    "review": "Yoxlamada",
+    "expert": "Ekspertizada",
+    "done": "Tamamlandı",
+    "cancelled": "Ləğv edilmiş"
+  },
+
+  "projectStatus": {
+    "active": "Aktiv",
+    "on_hold": "Pauzada",
+    "closed": "Bağlanıb",
+    "cancelled": "Ləğv edilib"
+  },
+
+  "clientStage": {
+    "lead": "Lead",
+    "proposal": "Təklif",
+    "negotiation": "Müzakirə",
+    "signed": "İmzalanıb",
+    "in_progress": "İcrada",
+    "portfolio": "Portfolio",
+    "lost": "Udulan",
+    "archived": "Arxiv"
+  },
+
+  "presence": {
+    "online": "Online",
+    "away": "Uzaqda",
+    "offline": "Offline"
+  },
+
+  "interactionType": {
+    "call": "Zəng",
+    "email": "Email",
+    "meeting": "Görüş",
+    "whatsapp": "WhatsApp",
+    "other": "Digər"
+  },
+
+  "projectPhases": ["Konsepsiya", "SD", "DD", "CD", "Tender", "İcra nəzarəti"],
+
+  "lostReasons": [
+    "Qiymət uyğun gəlmədi",
+    "Rəqib seçildi",
+    "Layihə təxirə salındı",
+    "Əlaqə kəsildi",
+    "Digər"
+  ],
+
+  "cancelReasons": [
+    "Müştəri imtina etdi",
+    "Layihə dəyişdi",
+    "Texniki problem",
+    "Yenidən planlaşdırılır",
+    "Digər"
+  ],
+
+  "dashboard": {
+    "title": "Dashboard",
+    "todayTasks": "Bugünkü tapşırıqlar",
+    "weekTasks": "Bu həftə",
+    "noTasksToday": "Aktiv tapşırıq yoxdur.",
+    "teamLoad": "Komanda yükü",
+    "latestAnnouncements": "Son elanlar",
+    "upcomingMeetings": "Yaxınlaşan görüşlər",
+    "cashFlow": "Aylıq cash flow",
+    "activeProjects": "Aktiv layihələr",
+    "noMembers": "Komanda üzvü yoxdur."
+  },
+
+  "tasks": {
+    "title": "Tapşırıqlar",
+    "allStatuses": "Bütün statuslar",
+    "allProjects": "Bütün layihələr",
+    "allAssignees": "Bütün icraçılar",
+    "newTask": "+ Tapşırıq",
+    "editTask": "Tapşırığı redaktə et",
+    "deleteTask": "Tapşırığı sil",
+    "noTasks": "Tapşırıq yoxdur.",
+    "taskTitle": "Başlıq *",
+    "deadline": "Son tarix",
+    "assignee": "İcraçı",
+    "project": "Layihə",
+    "reopenTask": "Yenidən aç",
+    "cancelTask": "Ləğv et",
+    "cancelReason": "Ləğv səbəbi",
+    "archiveEmpty": "Arxiv boşdur.",
+    "doneEmpty": "Tamamlanmış tapşırıq yoxdur.",
+    "searchPlaceholder": "Tapşırıq axtar…"
+  },
+
+  "projects": {
+    "title": "Layihələr",
+    "noProjects": "Layihə yoxdur",
+    "newProject": "+ Layihə",
+    "closeProject": "Layihəni bağla",
+    "phases": "Mərhələlər",
+    "expertiseDeadline": "Ekspertiza:",
+    "expertiseProject": "Ekspertiza layihəsi:",
+    "awardApplications": "Mükafat müraciətləri (REQ-PROJ-05)"
+  },
+
+  "clients": {
+    "title": "Müştərilər",
+    "noClients": "Müştəri yoxdur.",
+    "lostClient": "Müştəri itirildi",
+    "inquiry": "Müştəri Sorğusu",
+    "inquiryLabel": "Müştəri sorğusu",
+    "pendingInvites": "Gözləyən dəvətlər",
+    "pendingApplications": "Gözləyən müraciətlər",
+    "pastApplications": "Keçmiş müraciətlər"
+  },
+
+  "finance": {
+    "title": "Maliyyə",
+    "income": "Gəlir",
+    "expense": "Xərc",
+    "net": "Xalis",
+    "incomeExpenseNet": "Gəlir / Xərc / Xalis (aylıq)",
+    "byCategory": "Kateqoriyalara görə qiymət",
+    "breakdown": "Detallı bölgü",
+    "fixedCosts": "Sabit xərclər",
+    "incomeThreshold": "Gəlir hədd (AZN)",
+    "invoiceReady": "Faktura hazır",
+    "invoiceTemplate": "Faktura — şablon seç",
+    "pdfDownload": "PDF yüklə",
+    "noPdf": "Hələ PDF yüklənməyib.",
+    "noTemplates": "Hələ şablon yoxdur.",
+    "newTemplate": "+ Yeni şablon",
+    "editTemplate": "Şablonu redaktə et",
+    "templateVars": "Dəyişənlər:"
+  },
+
+  "mirai": {
+    "title": "Mirai AI",
+    "monthlyBudget": "Aylıq büdcə (USD):",
+    "budgetUsed": "Büdcənin %-i istifadə olunub",
+    "budgetRemaining": "Qalır",
+    "resetNextMonth": "Növbəti ay sıfırlanacaq",
+    "knowledgeBase": "Bilik Bazası (MIRAI RAG)",
+    "chatLoading": "Söhbət yüklənir…",
+    "manual": "Manual",
+    "featured": "Featured"
+  },
+
+  "team": {
+    "title": "Komanda",
+    "noMembers": "Komanda üzvü yoxdur.",
+    "selectRole": "Rol seçin…"
+  },
+
+  "roster": {
+    "title": "Heyət"
+  },
+
+  "leave": {
+    "title": "Məzuniyyət",
+    "newRequest": "Məzuniyyət müraciəti",
+    "noRequests": "Məzuniyyət müraciəti yoxdur."
+  },
+
+  "salary": {
+    "title": "Maaş cədvəli"
+  },
+
+  "performance": {
+    "title": "Performans",
+    "newReview": "+ Qiymətləndirmə",
+    "reviewTitle": "Performans qiymətləndirməsi",
+    "noReviews": "Performans qiymətləndirməsi yoxdur.",
+    "addAdminHint": "\"Qiymətləndirmə\" düyməsinə basın.",
+    "score": "Ümumi bal (0–100)",
+    "summary": "Xülasə",
+    "employee": "İşçi",
+    "quality": "Keyfiyyət",
+    "speed": "Sürət",
+    "teamwork": "Komanda işi",
+    "initiative": "Təşəbbüs"
+  },
+
+  "equipment": {
+    "title": "Avadanlıq",
+    "noEquipment": "Avadanlıq yoxdur.",
+    "purchaseDate": "Alınma tarixi",
+    "addLevel": "\"Səviyyə əlavə et\" düyməsinə basın."
+  },
+
+  "outsource": {
+    "title": "Outsource",
+    "noOrders": "Outsource sifarişi yoxdur.",
+    "newOrder": "Outsource sifarişi"
+  },
+
+  "okr": {
+    "title": "OKR",
+    "companyOkr": "Şirkət OKR",
+    "personalOkr": "Şəxsi OKR",
+    "objective": "Obyektiv",
+    "keyResults": "Key Results",
+    "noOkr": "OKR yoxdur."
+  },
+
+  "contentPlan": {
+    "title": "Məzmun planı",
+    "newPost": "Məzmun postu",
+    "topic": "Mövzu"
+  },
+
+  "announcements": {
+    "title": "Elanlar",
+    "noAnnouncements": "Elan yoxdur.",
+    "newAnnouncement": "+ Elan"
+  },
+
+  "notifications": {
+    "title": "Bildirişlər",
+    "settings": "Bildiriş tənzimləmələri",
+    "soundEnabled": "Fon səsi:",
+    "noNotifications": "Bildiriş yoxdur.",
+    "newNotification": "Yeni bildiriş",
+    "taskUpdated": "Tapşırıq yeniləndi",
+    "projectUpdated": "Layihə yeniləndi",
+    "newAnnouncement": "Yeni elan"
+  },
+
+  "settings": {
+    "title": "Tənzimləmələr",
+    "firmName": "Şirkət adı",
+    "editProfile": "Məlumatlarımı redaktə et"
+  },
+
+  "profile": {
+    "title": "Profil"
+  },
+
+  "search": {
+    "noResults": "Sorğu tapılmadı"
+  },
+
+  "retroSurvey": {
+    "feedback": "Rəy (istəyə bağlı)"
+  },
+
+  "career": {
+    "title": "Karyera",
+    "noOpenings": "Açıq vakansiya yoxdur.",
+    "notAssigned": "Hələ təyin edilməyib"
+  },
+
+  "telegram": {
+    "link": "Telegram bağla",
+    "linked": "Telegram bağlandı"
+  },
+
+  "comments": {
+    "noComments": "Hələ şərh yoxdur. İlk şərhi sən yaz!",
+    "maxSize": "Maks. 4 MB (Vercel limiti)"
+  }
+}

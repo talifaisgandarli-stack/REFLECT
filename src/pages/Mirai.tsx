@@ -158,7 +158,9 @@ export function MiraiPage() {
       const token = sess.session?.access_token;
       if (!token) throw new Error('Sessiya tapılmadı — yenidən daxil ol.');
 
-      const res = await fetch('/api/mirai/chat', {
+      // PRD §7.1 — SSE streaming (?stream=1); server yields delta events so
+      // tokens render progressively instead of waiting for full response.
+      const res = await fetch('/api/mirai/chat?stream=1', {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
@@ -167,15 +169,71 @@ export function MiraiPage() {
         body: JSON.stringify({ message: text, persona, conversation_id: conversationId }),
       });
 
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error ?? `MIRAI xətası (${res.status})`);
+      if (!res.ok || !res.body) {
+        // Fallback: server returned error or no body — parse as JSON
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error ?? `MIRAI xətası (${res.status})`);
+      }
 
-      const reply = data?.reply ?? 'Hazırda cavab verə bilmirəm.';
-      const sources: Source[] = data?.sources ?? [];
-      const assistantMsgId: string | undefined = data?.message_id;
-      setMsgs((m) => [...m, { role: 'assistant', content: reply, sources, dbId: assistantMsgId }]);
-      if (data?.conversation_id) setConversationId(data.conversation_id);
-      if (data?.usage) setUsage(data.usage as Usage);
+      // Add a placeholder assistant message we'll stream into
+      setMsgs((m) => [...m, { role: 'assistant', content: '' }]);
+      setThinking(false); // cursor shown via empty content, stop spinner
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let metaSources: Source[] = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // SSE frames are separated by \n\n
+        const frames = buffer.split('\n\n');
+        buffer = frames.pop() ?? ''; // keep incomplete trailing frame
+
+        for (const frame of frames) {
+          const eventLine = frame.match(/^event: (\w+)/m)?.[1];
+          const dataLine = frame.match(/^data: (.+)/ms)?.[1];
+          if (!dataLine) continue;
+          let payload: Record<string, unknown>;
+          try { payload = JSON.parse(dataLine); } catch { continue; }
+
+          if (eventLine === 'meta') {
+            metaSources = (payload.sources as Source[]) ?? [];
+          } else if (eventLine === 'delta') {
+            // Append token to the last (assistant) message
+            setMsgs((m) => {
+              const next = [...m];
+              const last = next[next.length - 1];
+              if (last?.role === 'assistant') {
+                next[next.length - 1] = { ...last, content: last.content + (payload.text as string ?? '') };
+              }
+              return next;
+            });
+          } else if (eventLine === 'done') {
+            // Finalise: set sources + conversation_id + usage
+            const conv = payload.conversation_id as string | undefined;
+            if (conv) setConversationId(conv);
+            if (payload.usage) setUsage(payload.usage as Usage);
+            setMsgs((m) => {
+              const next = [...m];
+              const last = next[next.length - 1];
+              if (last?.role === 'assistant') {
+                next[next.length - 1] = {
+                  ...last,
+                  content: last.content || (payload.reply as string) || 'Hazırda cavab verə bilmirəm.',
+                  sources: metaSources,
+                };
+              }
+              return next;
+            });
+          } else if (eventLine === 'error') {
+            throw new Error((payload.error as string) ?? 'MIRAI axın xətası');
+          }
+        }
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Xəta baş verdi.';
       setError(msg);

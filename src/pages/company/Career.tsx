@@ -241,6 +241,11 @@ export function CareerPage() {
         </ol>
       )}
 
+      {/* PRD §9.2 / REQ-COMP-05 — Admin panel: assign career_level_id to each profile */}
+      {isAdmin && levels.length > 0 ? (
+        <TeamCareerPanel levels={levels} />
+      ) : null}
+
       {(creating || editing) && isAdmin ? (
         <CareerLevelModal
           level={editing}
@@ -256,6 +261,87 @@ export function CareerPage() {
     </>
   );
 }
+
+// --- Admin: assign career levels to team members (REQ-COMP-05) -------------
+
+type ProfileRow = {
+  id: string;
+  full_name: string | null;
+  career_level_id: string | null;
+};
+
+function TeamCareerPanel({ levels }: { levels: CareerLevel[] }) {
+  const qc = useQueryClient();
+
+  const members = useQuery({
+    queryKey: ['profiles', 'career-assign'],
+    queryFn: async (): Promise<ProfileRow[]> => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, career_level_id')
+        .eq('is_active', true)
+        .order('full_name');
+      if (error) throw error;
+      return (data ?? []) as ProfileRow[];
+    },
+  });
+
+  const assign = useMutation({
+    mutationFn: async ({ userId, levelId }: { userId: string; levelId: string | null }) => {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ career_level_id: levelId })
+        .eq('id', userId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['profiles', 'career-assign'] });
+      qc.invalidateQueries({ queryKey: ['profile_career'] });
+    },
+  });
+
+  return (
+    <section className="card mt-6" style={{ padding: 20 }}>
+      <h3 className="text-h3 mb-4">Komandaya səviyyə təyin et</h3>
+      {members.isLoading ? (
+        <p className="text-meta" style={{ color: 'var(--text-muted)' }}>Yüklənir…</p>
+      ) : (
+        <ul className="space-y-2">
+          {(members.data ?? []).map((m) => (
+            <li
+              key={m.id}
+              className="flex items-center justify-between gap-3 py-2"
+              style={{ borderBottom: '1px solid var(--line-soft)' }}
+            >
+              <span className="text-body font-medium">{m.full_name ?? '—'}</span>
+              <select
+                aria-label={`${m.full_name ?? ''} üçün karyera səviyyəsi`}
+                className="input"
+                style={{ width: 220, fontSize: 13 }}
+                value={m.career_level_id ?? ''}
+                onChange={(e) =>
+                  assign.mutate({
+                    userId: m.id,
+                    levelId: e.target.value || null,
+                  })
+                }
+              >
+                <option value="">— Təyin edilməyib —</option>
+                {levels.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.level_index}. {l.name}
+                  </option>
+                ))}
+              </select>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 
 function CareerLevelModal({
   level,

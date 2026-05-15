@@ -356,6 +356,19 @@ function TemplatesSettings() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['templates'] }),
   });
 
+  /** PRD §10.2 — export template body as plain-text file for Word/Excel. */
+  function downloadTemplate(name: string, body: string) {
+    const blob = new Blob([body], { type: 'text/plain; charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${name.replace(/[^a-zA-Zа-яА-Яəüöçşğı\s]/g, '_').trim() || 'sablon'}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   if (editing) {
     const vars = extractVars(editing.body);
     return (
@@ -413,6 +426,15 @@ function TemplatesSettings() {
               {preview ? 'Önizləməni gizlət' : 'Önizlə'}
             </button>
           ) : null}
+          {editing.body ? (
+            <button
+              className="btn-outline"
+              onClick={() => downloadTemplate(editing.name || 'sablon', editing.body)}
+              title="TXT kimi yüklə"
+            >
+              ↓ Yüklə
+            </button>
+          ) : null}
           <button className="btn-outline" onClick={() => setEditing(null)}>Ləğv</button>
         </div>
       </div>
@@ -441,6 +463,13 @@ function TemplatesSettings() {
             <div className="flex gap-2 shrink-0">
               <button className="chip" onClick={() => setEditing({ id: t.id, category: t.category, name: t.name, body: t.body, mime_type: t.mime_type })}>
                 Redaktə
+              </button>
+              <button
+                className="chip"
+                onClick={() => downloadTemplate(t.name, t.body)}
+                title="TXT kimi yüklə"
+              >
+                ↓
               </button>
               <button className="chip" style={{ color: '#B91C1C' }} onClick={() => del.mutate(t.id)}>
                 Sil
