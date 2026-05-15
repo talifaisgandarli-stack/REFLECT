@@ -63,7 +63,7 @@ export default async function handler(req: Request) {
       status: 200,
       headers: { 'content-type': 'application/json' },
     });
-  } catch (e) {
+  } catch {
     // fail-open
     return new Response(JSON.stringify({ allowed: true, warn: 'rate-check-error' }), {
       status: 200,
