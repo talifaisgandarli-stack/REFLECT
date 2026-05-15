@@ -489,10 +489,31 @@ function CreateEventModal({ defaultDate, userId, onClose, onCreated }: CreatePro
       });
       if (error) throw error;
 
-      // Send .ics to external emails via mailto (§8.2 v1 approach)
+      // Send .ics to external emails (§8.2): trigger downloadable .ics file
+      // (with ATTENDEE lines) AND open mailto so user can attach + send.
       if (extEmails.length && title.trim()) {
-        const icsBody = buildIcs({ title: title.trim(), startsAt, endsAt, location: location.trim(), meetUrl: meetUrl.trim(), rrule: buildRRule(recur) });
-        const mailto = `mailto:${extEmails.join(',')}?subject=${encodeURIComponent(title.trim())}&body=${encodeURIComponent('Dəvət təqvim faylı (ICS) əlavə edilib.\n\n' + icsBody)}`;
+        const icsBody = buildIcs({
+          title: title.trim(),
+          startsAt,
+          endsAt,
+          location: location.trim(),
+          meetUrl: meetUrl.trim(),
+          rrule: buildRRule(recur),
+          organizerEmail: undefined, // organizer is internal — webcal/mailto field
+          attendeeEmails: extEmails,
+        });
+        // 1. Download as proper .ics file
+        const blob = new Blob([icsBody], { type: 'text/calendar;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${title.trim().replace(/[^\p{L}\p{N}_-]+/gu, '_')}.ics`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        // 2. Also pop the mailto so user can finish the invite
+        const mailto = `mailto:${extEmails.join(',')}?subject=${encodeURIComponent(title.trim())}&body=${encodeURIComponent('Görüş dəvəti — yüklənmiş .ics faylını əlavə edin.')}`;
         window.open(mailto);
       }
     },
@@ -620,18 +641,45 @@ function rruleLabel(rule: string): string {
   return rule;
 }
 
-function buildIcs(opts: { title: string; startsAt: string; endsAt: string; location: string; meetUrl: string; rrule?: string | null }): string {
+function buildIcs(opts: {
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  location: string;
+  meetUrl: string;
+  rrule?: string | null;
+  organizerEmail?: string;
+  attendeeEmails?: string[];
+}): string {
   const fmt = (s: string) => s.replace(/[-:]/g, '').replace('T', 'T').slice(0, 15) + 'Z';
+  // RFC 5545 line-folding: keep escape simple; ATTENDEE per external email.
+  const escapeText = (t: string) => t.replace(/[\\;,\n]/g, (m) => ({ '\\': '\\\\', ';': '\\;', ',': '\\,', '\n': '\\n' }[m] ?? m));
+  const attendeeLines = (opts.attendeeEmails ?? [])
+    .filter((e) => e.includes('@'))
+    .map((e) => `ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN=${escapeText(e)}:mailto:${e}`);
+  const uid = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}@reflect.studio`;
   return [
-    'BEGIN:VCALENDAR', 'VERSION:2.0', 'BEGIN:VEVENT',
-    `SUMMARY:${opts.title}`,
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Reflect Architects OS//AZ//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:REQUEST',
+    'BEGIN:VEVENT',
+    `UID:${uid}`,
+    `DTSTAMP:${fmt(new Date().toISOString())}`,
+    `SUMMARY:${escapeText(opts.title)}`,
     `DTSTART:${fmt(opts.startsAt)}`,
     `DTEND:${fmt(opts.endsAt)}`,
     opts.rrule ? `RRULE:${opts.rrule}` : null,
-    opts.location ? `LOCATION:${opts.location}` : null,
+    opts.location ? `LOCATION:${escapeText(opts.location)}` : null,
     opts.meetUrl ? `URL:${opts.meetUrl}` : null,
-    'END:VEVENT', 'END:VCALENDAR',
-  ].filter(Boolean).join('\n');
+    opts.organizerEmail ? `ORGANIZER:mailto:${opts.organizerEmail}` : null,
+    ...attendeeLines,
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ]
+    .filter(Boolean)
+    .join('\r\n');
 }
 
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {

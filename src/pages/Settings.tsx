@@ -74,6 +74,9 @@ function GeneralSettings() {
   const [logoUrl, setLogoUrl] = useState('');
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoErr, setLogoErr] = useState<string | null>(null);
+  const [currency, setCurrency] = useState('AZN');
+  const [workHours, setWorkHours] = useState('8');
+  const [holidaysEnabled, setHolidaysEnabled] = useState(true);
 
   // PRD §8.1 / REQ-TG-03: cron reads `finance_alert_income_threshold` and
   // `finance_alert_expense_threshold` (jsonb { azn: number }). Stay aligned.
@@ -108,6 +111,19 @@ function GeneralSettings() {
   if (loaded && logoUrl === '') {
     const raw = loaded.firm_logo_url;
     if (typeof raw === 'string' && raw) setLogoUrl(raw);
+  }
+  if (loaded && currency === 'AZN') {
+    const raw = loaded.default_currency;
+    if (typeof raw === 'string' && raw) setCurrency(raw);
+  }
+  if (loaded && workHours === '8') {
+    const raw = loaded.working_hours_per_day;
+    if (typeof raw === 'number') setWorkHours(String(raw));
+    else if (typeof raw === 'string' && raw) setWorkHours(raw);
+  }
+  if (loaded) {
+    const raw = loaded.az_public_holidays_enabled;
+    if (typeof raw === 'boolean') setHolidaysEnabled(raw);
   }
 
   /** PRD §10.1 / REQ-SET-07 — Upload firm logo to Supabase Storage firm-assets bucket. */
@@ -156,6 +172,9 @@ function GeneralSettings() {
         { key: 'finance_alert_expense_threshold', value: { azn: expenseNum } },
         { key: 'mirai_monthly_budget', value: { usd: budgetNum } },
         { key: 'firm_name', value: firmName.trim() || 'Reflect' },
+        { key: 'default_currency', value: currency },
+        { key: 'working_hours_per_day', value: Number(workHours) || 8 },
+        { key: 'az_public_holidays_enabled', value: holidaysEnabled },
       ];
       for (const row of rows) {
         const { error } = await supabase.from('system_settings').upsert(row, { onConflict: 'key' });
@@ -186,6 +205,35 @@ function GeneralSettings() {
             onChange={(e) => setFirmName(e.target.value)}
             placeholder="Reflect"
           />
+        </label>
+        <label className="block">
+          <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Əsas valyuta</span>
+          <select className="input mt-1 max-w-[140px]" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            <option value="AZN">AZN (₼)</option>
+            <option value="USD">USD ($)</option>
+            <option value="EUR">EUR (€)</option>
+          </select>
+        </label>
+        <label className="block">
+          <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Gündəlik iş saatı</span>
+          <input
+            type="number"
+            min="1"
+            max="24"
+            className="input mt-1 max-w-[100px]"
+            value={workHours}
+            onChange={(e) => setWorkHours(e.target.value)}
+            placeholder="8"
+          />
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={holidaysEnabled}
+            onChange={(e) => setHolidaysEnabled(e.target.checked)}
+            style={{ width: 16, height: 16 }}
+          />
+          <span className="text-body">AZ dövlət bayramlarını qeyri-iş günü say</span>
         </label>
         {/* PRD §10.1 / REQ-SET-07 — Firm logo upload (Supabase Storage: firm-assets) */}
         <div>
@@ -706,7 +754,184 @@ function KnowledgeBaseSettings() {
   );
 }
 function NotificationsSettings() {
-  return <NotificationPreferencesPage />;
+  return (
+    <div className="space-y-8">
+      <NotificationPreferencesPage />
+      {/* PRD §9.4 — admin MIRAI cost dashboard */}
+      <MiraiCostDashboard />
+    </div>
+  );
+}
+
+// PRD §9.4 — MIRAI cost dashboard (admin only; route already gated by RequireAdmin)
+function MiraiCostDashboard() {
+  const { isAdmin } = useAuth();
+
+  const period = new Date().toISOString().slice(0, 7).replace('-', ''); // YYYYMM
+
+  const usage = useQuery({
+    queryKey: ['mirai-cost-dashboard', period],
+    enabled: isAdmin,
+    queryFn: async () => {
+      const { data: usageRows } = await supabase
+        .from('mirai_usage_log')
+        .select('user_id, tokens_in, tokens_out, cost_usd')
+        .eq('period_yyyymm', period);
+      const ids = Array.from(new Set((usageRows ?? []).map((r) => r.user_id)));
+      const { data: profileRows } = ids.length
+        ? await supabase.from('profiles').select('id, full_name, email').in('id', ids)
+        : { data: [] as Array<{ id: string; full_name: string | null; email: string }> };
+      const profMap = new Map((profileRows ?? []).map((p) => [p.id, p]));
+      return (usageRows ?? []).map((r) => ({
+        user_id: r.user_id as string,
+        tokens_in: (r.tokens_in ?? 0) as number,
+        tokens_out: (r.tokens_out ?? 0) as number,
+        cost_usd: (r.cost_usd ?? 0) as number,
+        profile: profMap.get(r.user_id) ?? null,
+      }));
+    },
+  });
+
+  const personaBreakdown = useQuery({
+    queryKey: ['mirai-cost-personas', period],
+    enabled: isAdmin,
+    queryFn: async () => {
+      // Last 30 days of messages — fetch costs + conversation_id, then join personas in JS
+      const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
+      const { data: msgs } = await supabase
+        .from('mirai_messages')
+        .select('cost_usd, conversation_id')
+        .gte('created_at', since)
+        .gt('cost_usd', 0);
+      const convIds = Array.from(new Set((msgs ?? []).map((m) => m.conversation_id).filter(Boolean) as string[]));
+      const { data: convs } = convIds.length
+        ? await supabase.from('mirai_conversations').select('id, persona').in('id', convIds)
+        : { data: [] as Array<{ id: string; persona: string }> };
+      const personaMap = new Map((convs ?? []).map((c) => [c.id, c.persona]));
+      const costMap = new Map<string, number>();
+      for (const m of msgs ?? []) {
+        const p = (m.conversation_id && personaMap.get(m.conversation_id)) || 'unknown';
+        costMap.set(p, (costMap.get(p) ?? 0) + (m.cost_usd ?? 0));
+      }
+      return Array.from(costMap.entries())
+        .map(([persona, cost]) => ({ persona, cost }))
+        .sort((a, b) => b.cost - a.cost);
+    },
+  });
+
+  if (!isAdmin) return null;
+
+  const rows = usage.data ?? [];
+  const totalCost = rows.reduce((s, r) => s + (r.cost_usd ?? 0), 0);
+  const totalIn = rows.reduce((s, r) => s + (r.tokens_in ?? 0), 0);
+  const totalOut = rows.reduce((s, r) => s + (r.tokens_out ?? 0), 0);
+
+  // Default per-user budget — PRD §7.6 Cost Guardian (5 USD/user/month default)
+  const userBudget = 5;
+
+  return (
+    <section>
+      <h2 className="text-h2 mb-1">MIRAI xərc paneli</h2>
+      <p className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
+        Bu ay ({period.slice(0, 4)}-{period.slice(4)}) — Anthropic Haiku 4.5 istifadəsi
+      </p>
+
+      {/* Summary tiles */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+        <div className="rounded-card p-4" style={{ background: 'var(--brand-glow-sm)' }}>
+          <div className="text-meta" style={{ color: 'var(--text-muted)' }}>Bu ay xərc</div>
+          <div className="text-h2" style={{ fontVariantNumeric: 'tabular-nums' }}>
+            ${totalCost.toFixed(2)}
+          </div>
+        </div>
+        <div className="rounded-card p-4" style={{ background: 'var(--brand-glow-sm)' }}>
+          <div className="text-meta" style={{ color: 'var(--text-muted)' }}>Input tokens</div>
+          <div className="text-h2" style={{ fontVariantNumeric: 'tabular-nums' }}>
+            {totalIn.toLocaleString('az-AZ')}
+          </div>
+        </div>
+        <div className="rounded-card p-4" style={{ background: 'var(--brand-glow-sm)' }}>
+          <div className="text-meta" style={{ color: 'var(--text-muted)' }}>Output tokens</div>
+          <div className="text-h2" style={{ fontVariantNumeric: 'tabular-nums' }}>
+            {totalOut.toLocaleString('az-AZ')}
+          </div>
+        </div>
+      </div>
+
+      {/* Per-user table */}
+      <h3 className="text-h3 mb-2">İstifadəçi üzrə</h3>
+      {usage.isLoading ? (
+        <div className="text-meta" style={{ color: 'var(--text-muted)' }}>Yüklənir…</div>
+      ) : rows.length === 0 ? (
+        <EmptyState title="Bu ay üçün məlumat yoxdur" body="MIRAI istifadə olunduqdan sonra burada görünəcək." />
+      ) : (
+        <div className="overflow-x-auto mb-6">
+          <table className="w-full text-body" style={{ minWidth: 480 }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--line)' }}>
+                <th className="text-meta text-left py-2 pr-3" style={{ color: 'var(--text-muted)' }}>İstifadəçi</th>
+                <th className="text-meta text-right py-2 px-3" style={{ color: 'var(--text-muted)' }}>Input</th>
+                <th className="text-meta text-right py-2 px-3" style={{ color: 'var(--text-muted)' }}>Output</th>
+                <th className="text-meta text-right py-2 px-3" style={{ color: 'var(--text-muted)' }}>Xərc</th>
+                <th className="text-meta text-right py-2 pl-3" style={{ color: 'var(--text-muted)' }}>Büdcə</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...rows]
+                .sort((a, b) => (b.cost_usd ?? 0) - (a.cost_usd ?? 0))
+                .map((r) => {
+                  const pct = Math.min(100, Math.round(((r.cost_usd ?? 0) / userBudget) * 100));
+                  const colour = pct >= 100 ? 'var(--error-deep)' : pct >= 80 ? '#c47d00' : 'var(--brand-text)';
+                  return (
+                    <tr key={r.user_id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                      <td className="py-2 pr-3">{r.profile?.full_name ?? r.profile?.email ?? r.user_id.slice(0, 8)}</td>
+                      <td className="py-2 px-3 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {(r.tokens_in ?? 0).toLocaleString('az-AZ')}
+                      </td>
+                      <td className="py-2 px-3 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {(r.tokens_out ?? 0).toLocaleString('az-AZ')}
+                      </td>
+                      <td className="py-2 px-3 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                        ${(r.cost_usd ?? 0).toFixed(2)}
+                      </td>
+                      <td className="py-2 pl-3 text-right" style={{ fontVariantNumeric: 'tabular-nums', color: colour }}>
+                        {pct}%
+                      </td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Per-persona breakdown */}
+      <h3 className="text-h3 mb-2">Persona üzrə (son 30 gün)</h3>
+      {personaBreakdown.isLoading ? (
+        <div className="text-meta" style={{ color: 'var(--text-muted)' }}>Yüklənir…</div>
+      ) : (personaBreakdown.data ?? []).length === 0 ? (
+        <div className="text-meta" style={{ color: 'var(--text-muted)' }}>Məlumat yoxdur</div>
+      ) : (
+        <ul className="space-y-1">
+          {(personaBreakdown.data ?? []).map((p) => {
+            const max = Math.max(...(personaBreakdown.data ?? []).map((x) => x.cost));
+            const pct = max > 0 ? Math.round((p.cost / max) * 100) : 0;
+            return (
+              <li key={p.persona} className="flex items-center gap-3">
+                <div className="text-body w-44 truncate">{p.persona}</div>
+                <div className="flex-1 h-2 rounded-full" style={{ background: 'var(--line-soft)' }}>
+                  <div className="h-full rounded-full" style={{ width: `${pct}%`, background: 'var(--brand-action)' }} />
+                </div>
+                <div className="text-meta w-20 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  ${p.cost.toFixed(2)}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -763,6 +988,14 @@ function InvitationsSettings() {
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error ?? 'Dəvət göndərilmədi');
       }
+
+      // PRD §9.1 / §9.4 — audit privileged action
+      if (profile?.id) {
+        await writeAudit(profile.id, 'invitation.create', 'invitations', {
+          email: email.trim().toLowerCase(),
+          role_key: role.key,
+        });
+      }
     },
     onSuccess: () => {
       setEmail('');
@@ -775,8 +1008,18 @@ function InvitationsSettings() {
 
   const revoke = useMutation({
     mutationFn: async (id: string) => {
+      // Look up invite first so we can record what was revoked
+      const target = (invitations.data ?? []).find((i) => i.id === id);
       const { error } = await supabase.from('invitations').delete().eq('id', id);
       if (error) throw error;
+      // PRD §9.1 / §9.4 — audit privileged action
+      if (profile?.id) {
+        await writeAudit(profile.id, 'invitation.revoke', 'invitations', {
+          invitation_id: id,
+          email: target?.email ?? null,
+          role_key: target?.role?.key ?? null,
+        });
+      }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['invitations'] }),
   });

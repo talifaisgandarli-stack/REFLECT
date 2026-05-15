@@ -97,6 +97,54 @@ export function OkrPage() {
         }
       />
 
+      {/* PRD §9.1 (Module 9) — weekly stale-KR nudge banner.
+          Cron `okr-nudge.ts` creates a notification, but the page itself
+          surfaces stale items so users can act in-context. */}
+      {scope === 'personal' && profile?.id ? (() => {
+        const myOkrs = (okrs.data ?? []).filter((o) => o.employee_id === profile.id);
+        const cutoff = Date.now() - 7 * 86_400_000;
+        const staleKrs = myOkrs.flatMap((o) =>
+          (o.key_results ?? [])
+            .filter((kr) => kr.target_value > 0 && kr.current_value < kr.target_value)
+            .filter((kr) => new Date(kr.updated_at).getTime() < cutoff),
+        );
+        if (staleKrs.length === 0) return null;
+        return (
+          <div
+            className="rounded-card p-3 mb-4 flex items-start gap-3"
+            style={{
+              background: 'var(--warning-bg, #fff3d6)',
+              border: '1px solid var(--warning, #c47d00)',
+              color: 'var(--ink)',
+            }}
+          >
+            <span style={{ fontSize: 20, lineHeight: 1 }}>⏰</span>
+            <div className="flex-1">
+              <div className="text-body font-medium">
+                {staleKrs.length} Key Result 7 gündən artıqdır yenilənməyib
+              </div>
+              <div className="text-meta mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                MIRAI səni izləyir — KR-larını aşağıda yenilə.
+              </div>
+            </div>
+            <button
+              type="button"
+              className="chip"
+              style={{ background: 'var(--brand-action)', color: 'var(--ink)', whiteSpace: 'nowrap' }}
+              onClick={() => {
+                // Auto-expand the first stale OKR for quick action
+                const firstStale = myOkrs.find((o) =>
+                  (o.key_results ?? []).some((kr) => staleKrs.find((s) => s.id === kr.id)),
+                );
+                if (firstStale) setExpanded(firstStale.id);
+              }}
+            >
+              Aç →
+            </button>
+          </div>
+        );
+      })() : null}
+
       {/* US-OKR-03 — admin health overview (company scope) */}
       {isAdmin && scope === 'company' && (okrs.data ?? []).length > 0 ? (
         <div className="flex gap-4 mb-4 flex-wrap">

@@ -19,7 +19,8 @@ type EventKind =
   | 'task_done'
   | 'task_cancelled'
   | 'deadline_reminder'
-  | 'finance_alert';
+  | 'finance_alert'
+  | 'mirai_feed'; // PRD §10.4 — MIRAI CMO feed posts (Elanlar)
 
 const CHANNELS: Array<{ key: Channel; label: string; hint?: string }> = [
   { key: 'inapp', label: 'Tətbiqdə' },
@@ -42,6 +43,11 @@ const EVENTS: Array<{ key: EventKind; label: string; description?: string }> = [
     key: 'finance_alert',
     label: 'Maliyyə xəbərdarlığı',
     description: 'Yalnız adminlər üçün — Telegramda gizlədilmir',
+  },
+  {
+    key: 'mirai_feed',
+    label: 'MIRAI xəbər lenti',
+    description: 'MIRAI CMO yeni arxitektura xəbərləri paylaşanda',
   },
 ];
 

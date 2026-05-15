@@ -32,16 +32,23 @@ type UIState = {
   sidebarOpen: boolean;
   miraiPanelOpen: boolean;
   cmdkOpen: boolean;
+  /** PRD §6.3 Cmd+N — global new-task modal */
+  taskCreateOpen: boolean;
   toggleSidebar: () => void;
   toggleMirai: () => void;
   setCmdK: (open: boolean) => void;
+  openTaskCreate: () => void;
+  closeTaskCreate: () => void;
 };
 
 export const useUI = create<UIState>((set) => ({
   sidebarOpen: false,
   miraiPanelOpen: false,
   cmdkOpen: false,
+  taskCreateOpen: false,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   toggleMirai: () => set((s) => ({ miraiPanelOpen: !s.miraiPanelOpen })),
   setCmdK: (open) => set({ cmdkOpen: open }),
+  openTaskCreate: () => set({ taskCreateOpen: true }),
+  closeTaskCreate: () => set({ taskCreateOpen: false }),
 }));

@@ -401,8 +401,8 @@ export function DashboardPage() {
               Aktivlik yoxdur.
             </div>
           ) : (
-            <ul className="space-y-3 max-h-[320px] overflow-y-auto">
-              {filteredActivity.slice(0, 20).map((a) => {
+            <ul className="space-y-3 max-h-[400px] overflow-y-auto">
+              {filteredActivity.map((a) => {
                 const actor = a.profiles;
                 const name = actor?.full_name ?? 'Sistem';
                 return (

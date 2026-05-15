@@ -384,32 +384,14 @@ export function ProjectDetailPage() {
             <ul className="divide-y" style={{ borderColor: 'var(--line-soft)' }}>
               {documents.map((d: {
                 id: string; title: string; category: string | null;
-                source: string; external_link: string | null; created_at: string;
+                source: string; external_link: string | null; storage_path: string | null;
+                share_token: string | null; created_at: string;
               }) => (
-                <li key={d.id} className="py-3 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-body font-medium truncate">{d.title}</div>
-                    <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                      {d.category ?? '—'} · {d.source}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {d.external_link ? (
-                      <a
-                        href={d.external_link}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                        className="chip"
-                        style={{ color: 'var(--brand-text)' }}
-                      >
-                        Aç →
-                      </a>
-                    ) : null}
-                    <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
-                      {relativeTime(d.created_at)}
-                    </span>
-                  </div>
-                </li>
+                <DocumentRow
+                  key={d.id}
+                  doc={d}
+                  onChanged={() => qc.invalidateQueries({ queryKey: ['project-documents', id] })}
+                />
               ))}
             </ul>
           )}
@@ -539,22 +521,41 @@ export function ProjectDetailPage() {
   );
 }
 
-// Inline document add button / mini form
+// REQ-PROJ-03 + REQ-CRM-06 — Inline document add: file upload OR external link
 function AddDocumentButton({ projectId, onAdded }: { projectId: string; onAdded: () => void }) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [link, setLink] = useState('');
   const [category, setCategory] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [err, setErr] = useState<string | null>(null);
 
   const add = useMutation({
     mutationFn: async () => {
+      setErr(null);
       if (!title.trim()) throw new Error('Başlıq tələb olunur');
+
+      let storagePath: string | null = null;
+      // Upload to Supabase Storage when a file is selected
+      if (file) {
+        if (file.size > 25 * 1024 * 1024) throw new Error('Fayl 25 MB-dən böyük ola bilməz');
+        const ext = (file.name.split('.').pop() ?? 'bin').toLowerCase();
+        const path = `${projectId}/${Date.now()}.${ext}`;
+        const { error: upErr } = await supabase.storage
+          .from('project-documents')
+          .upload(path, file, { upsert: false, contentType: file.type || undefined });
+        if (upErr) throw new Error(`Yükləmə xətası: ${upErr.message}`);
+        storagePath = path;
+      }
+
+      const source = file ? 'upload' : link.trim() ? 'drive_link' : 'auto_generated';
       const { error } = await supabase.from('project_documents').insert({
         project_id: projectId,
         title: title.trim(),
         external_link: link.trim() || null,
+        storage_path: storagePath,
         category: category.trim() || null,
-        source: link.trim() ? 'drive_link' : 'upload',
+        source,
       });
       if (error) throw error;
     },
@@ -563,8 +564,10 @@ function AddDocumentButton({ projectId, onAdded }: { projectId: string; onAdded:
       setTitle('');
       setLink('');
       setCategory('');
+      setFile(null);
       onAdded();
     },
+    onError: (e: Error) => setErr(e.message),
   });
 
   if (!open) {
@@ -576,36 +579,146 @@ function AddDocumentButton({ projectId, onAdded }: { projectId: string; onAdded:
   }
   return (
     <form
-      className="flex gap-2 items-end flex-wrap"
+      className="flex flex-col gap-2 w-full sm:max-w-[640px]"
       onSubmit={(e) => { e.preventDefault(); add.mutate(); }}
     >
-      <input
-        className="input max-w-[160px]"
-        placeholder="Başlıq"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        required
-        autoFocus
-      />
-      <input
-        className="input max-w-[200px]"
-        placeholder="Link (Drive/Dropbox)"
-        value={link}
-        onChange={(e) => setLink(e.target.value)}
-      />
-      <input
-        className="input max-w-[120px]"
-        placeholder="Kateqoriya"
-        value={category}
-        onChange={(e) => setCategory(e.target.value)}
-      />
-      <button type="submit" className="btn-primary" disabled={add.isPending}>
-        {add.isPending ? '…' : 'Əlavə et'}
-      </button>
-      <button type="button" className="btn-outline" onClick={() => setOpen(false)}>
-        Ləğv
-      </button>
+      <div className="flex gap-2 items-end flex-wrap">
+        <input
+          className="input flex-1 min-w-[160px]"
+          placeholder="Başlıq"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          required
+          autoFocus
+        />
+        <input
+          className="input max-w-[140px]"
+          placeholder="Kateqoriya"
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+        />
+      </div>
+      <div className="flex gap-2 items-end flex-wrap">
+        <input
+          className="input flex-1 min-w-[200px]"
+          placeholder="Link (Drive/Dropbox) — və ya fayl seçin ↓"
+          value={link}
+          onChange={(e) => setLink(e.target.value)}
+          disabled={!!file}
+        />
+        <label className="btn-outline cursor-pointer" style={{ whiteSpace: 'nowrap' }}>
+          {file ? `📎 ${file.name.slice(0, 24)}…` : '📎 Fayl seç'}
+          <input
+            type="file"
+            className="hidden"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          />
+        </label>
+        {file ? (
+          <button type="button" className="text-meta" style={{ color: 'var(--text-muted)' }} onClick={() => setFile(null)}>
+            ×
+          </button>
+        ) : null}
+      </div>
+      <div className="flex gap-2 justify-end">
+        <button type="button" className="btn-outline" onClick={() => { setOpen(false); setErr(null); }}>
+          Ləğv
+        </button>
+        <button type="submit" className="btn-primary" disabled={add.isPending}>
+          {add.isPending ? 'Yüklənir…' : 'Əlavə et'}
+        </button>
+      </div>
+      {err ? (
+        <p className="text-meta" style={{ color: 'var(--error-deep)' }}>{err}</p>
+      ) : null}
     </form>
+  );
+}
+
+// REQ-PROJ-03 + REQ-CRM-06 — single document row with download + share-link
+function DocumentRow({
+  doc,
+  onChanged,
+}: {
+  doc: {
+    id: string;
+    title: string;
+    category: string | null;
+    source: string;
+    external_link: string | null;
+    storage_path: string | null;
+    share_token: string | null;
+    created_at: string;
+  };
+  onChanged: () => void;
+}) {
+  const [copied, setCopied] = useState<'share' | 'download' | null>(null);
+
+  async function downloadStorage() {
+    if (!doc.storage_path) return;
+    const { data, error } = await supabase.storage
+      .from('project-documents')
+      .createSignedUrl(doc.storage_path, 60);
+    if (error || !data?.signedUrl) return;
+    window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+  }
+
+  async function shareLink() {
+    let token = doc.share_token;
+    if (!token) {
+      // Generate URL-safe token + persist
+      token = crypto.randomUUID().replace(/-/g, '');
+      const { error } = await supabase
+        .from('project_documents')
+        .update({ share_token: token })
+        .eq('id', doc.id);
+      if (error) return;
+      onChanged();
+    }
+    const url = `${window.location.origin}/docs/${token}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied('share');
+      setTimeout(() => setCopied(null), 1500);
+    } catch {
+      window.prompt('Linki kopyalayın:', url);
+    }
+  }
+
+  return (
+    <li className="py-3 flex items-center justify-between gap-3">
+      <div className="min-w-0">
+        <div className="text-body font-medium truncate">{doc.title}</div>
+        <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+          {doc.category ?? '—'} · {doc.source}
+          {doc.share_token ? ' · paylaşılıb' : ''}
+        </div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        {doc.storage_path ? (
+          <button type="button" className="chip" style={{ color: 'var(--brand-text)' }} onClick={downloadStorage}>
+            ↓ Yüklə
+          </button>
+        ) : null}
+        {doc.external_link ? (
+          <a
+            href={doc.external_link}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="chip"
+            style={{ color: 'var(--brand-text)' }}
+          >
+            Aç →
+          </a>
+        ) : null}
+        <button type="button" className="chip" style={{ color: 'var(--brand-text)' }} onClick={shareLink}>
+          {copied === 'share' ? '✓ Kopyalandı' : '🔗 Paylaş'}
+        </button>
+        <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+          {relativeTime(doc.created_at)}
+        </span>
+      </div>
+    </li>
   );
 }
 
