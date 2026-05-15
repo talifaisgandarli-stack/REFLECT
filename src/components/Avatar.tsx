@@ -8,8 +8,8 @@ type Props = {
 };
 
 const DOT_COLOR: Record<PresenceStatus, string> = {
-  online: 'var(--presence-online, #22C55E)',
-  away: '#F59E0B',
+  online: 'var(--presence-online)',
+  away: 'var(--warning)',
   offline: '#A8B0AB',
 };
 

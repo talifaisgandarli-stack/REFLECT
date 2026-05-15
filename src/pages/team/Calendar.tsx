@@ -196,7 +196,7 @@ export function CalendarPage() {
                   className="min-h-[90px] p-1.5 border-b border-r cursor-pointer hover:bg-surface-mist transition-colors"
                   style={{
                     borderColor: 'var(--line-soft)',
-                    background: isToday ? 'rgba(173,251,73,0.06)' : 'transparent',
+                    background: isToday ? 'var(--brand-glow-sm)' : 'transparent',
                     opacity: isCurrentMonth ? 1 : 0.4,
                   }}
                   onClick={() => { setCursor(day); setView('day'); }}
@@ -216,7 +216,7 @@ export function CalendarPage() {
                       key={ev.id}
                       className="truncate text-tiny px-1 py-0.5 rounded mb-0.5"
                       style={{
-                        background: 'rgba(173,251,73,0.15)',
+                        background: 'var(--brand-glow-xl)',
                         color: 'var(--brand-text)',
                         fontSize: 10,
                       }}
@@ -278,7 +278,7 @@ export function CalendarPage() {
                     <div
                       key={ev.id}
                       className="rounded p-1.5 mb-1 cursor-pointer"
-                      style={{ background: 'rgba(173,251,73,0.12)', color: 'var(--brand-text)' }}
+                      style={{ background: 'var(--brand-glow-lg)', color: 'var(--brand-text)' }}
                       onClick={() => setSelected(ev)}
                     >
                       <div className="font-medium truncate" style={{ fontSize: 12 }}>{ev.title}</div>
@@ -415,7 +415,7 @@ function EventModal({ event, onClose }: { event: CalEvent; onClose: () => void }
             <button
               type="button"
               className="text-meta"
-              style={{ color: '#B91C1C' }}
+              style={{ color: 'var(--error-deep)' }}
               disabled={del.isPending}
               onClick={() => del.mutate()}
             >
@@ -586,7 +586,7 @@ function CreateEventModal({ defaultDate, userId, onClose, onCreated }: CreatePro
           {recur !== 'none' ? (
             <div
               className="rounded-card px-3 py-2 text-meta flex items-center gap-2"
-              style={{ background: 'rgba(173,251,73,0.06)', border: '1px solid rgba(173,251,73,0.15)', color: 'var(--brand-text)' }}
+              style={{ background: 'var(--brand-glow-sm)', border: '1px solid var(--brand-glow-xl)', color: 'var(--brand-text)' }}
             >
               <span style={{ fontSize: 14 }}>↻</span>
               <span>{RECUR_LABELS[recur]} · RFC 5545: <code style={{ fontSize: 11, opacity: 0.8 }}>{buildRRule(recur)}</code></span>
@@ -595,7 +595,7 @@ function CreateEventModal({ defaultDate, userId, onClose, onCreated }: CreatePro
         </div>
 
         {create.error ? (
-          <p className="text-meta mt-3" style={{ color: '#B91C1C' }}>
+          <p className="text-meta mt-3" style={{ color: 'var(--error-deep)' }}>
             {(create.error as Error).message}
           </p>
         ) : null}
@@ -638,7 +638,7 @@ function Field({ label, required, children }: { label: string; required?: boolea
   return (
     <label className="block">
       <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-        {label}{required ? <span style={{ color: '#B91C1C' }}> *</span> : null}
+        {label}{required ? <span style={{ color: 'var(--error-deep)' }}> *</span> : null}
       </span>
       {children}
     </label>

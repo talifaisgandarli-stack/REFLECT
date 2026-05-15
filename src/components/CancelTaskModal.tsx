@@ -114,7 +114,7 @@ export function CancelTaskModal({ taskId, taskTitle, onCancel, onCancelled }: Pr
         ) : null}
 
         {err ? (
-          <p className="text-meta mt-3" style={{ color: '#B91C1C' }}>
+          <p className="text-meta mt-3" style={{ color: 'var(--error-deep)' }}>
             {err}
           </p>
         ) : null}

@@ -307,7 +307,7 @@ export function TaskCommentsModal({
             </button>
           </div>
           {addComment.error ? (
-            <p className="text-meta mt-1" style={{ color: '#B91C1C' }}>{(addComment.error as Error).message}</p>
+            <p className="text-meta mt-1" style={{ color: 'var(--error-deep)' }}>{(addComment.error as Error).message}</p>
           ) : null}
         </div>
       </div>

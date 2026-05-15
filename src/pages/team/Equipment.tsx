@@ -311,7 +311,7 @@ function CreateEquipmentModal({ onClose, onSaved }: { onClose: () => void; onSav
           <textarea className="input w-full" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </label>
 
-        {save.error ? <p className="text-meta mb-3" style={{ color: '#B91C1C' }}>{(save.error as Error).message}</p> : null}
+        {save.error ? <p className="text-meta mb-3" style={{ color: 'var(--error-deep)' }}>{(save.error as Error).message}</p> : null}
         <div className="flex justify-end gap-2">
           <button className="btn-outline" onClick={onClose}>Ləğv et</button>
           <button className="btn-primary" disabled={save.isPending} onClick={() => save.mutate()}>

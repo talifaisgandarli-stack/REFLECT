@@ -49,12 +49,36 @@
   --presence-away:    #D97706;
   --presence-offline: #94A3B8;
 
+  /* Status chip tints (StatusChip component — labels.ts) */
+  --chip-done-bg:       #ECF9EF;
+  --chip-done-text:     #15803D;
+  --chip-review-bg:     #FFF6E5;
+  --chip-review-text:   #92400E;
+  --chip-cancelled-bg:  #FEEEED;
+  --chip-queued-bg:     #F1F5F2;
+  --chip-queued-text:   #475569;
+
+  /* Brand-action glow scale — rgba(173,251,73, α) */
+  --brand-glow-xs:     rgba(173, 251, 73, 0.04);
+  --brand-glow-sm:     rgba(173, 251, 73, 0.06);
+  /* --mirai-glow = rgba(173,251,73,0.08) already defined below */
+  --brand-glow-md:     rgba(173, 251, 73, 0.10);
+  --brand-glow-lg:     rgba(173, 251, 73, 0.12);
+  --brand-glow-xl:     rgba(173, 251, 73, 0.15);
+  --brand-glow-border: rgba(173, 251, 73, 0.25);
+  --brand-glow-ring:   rgba(173, 251, 73, 0.30);
+  --brand-glow-active: rgba(173, 251, 73, 0.40);
+  --brand-glow-hero:   rgba(173, 251, 73, 0.55);
+  --brand-glow-zero:   rgba(173, 251, 73, 0.00);
+
   /* MIRAI extended */
-  --mirai-warning:      #FFD9A8;
-  --mirai-error-text:   #FCA5A5;
+  --mirai-warning:        #FFD9A8;
+  --mirai-warning-bg:     rgba(217, 119, 6, 0.12);
+  --mirai-warning-border: rgba(217, 119, 6, 0.40);
+  --mirai-error-text:     #FCA5A5;
   --mirai-error-text-alt: #F87171;
-  --mirai-error-bg:     rgba(185, 28, 28, 0.15);
-  --mirai-error-border: rgba(185, 28, 28, 0.40);
+  --mirai-error-bg:       rgba(185, 28, 28, 0.15);
+  --mirai-error-border:   rgba(185, 28, 28, 0.40);
 
   /* MIRAI */
   --mirai-surface: #0E1611;

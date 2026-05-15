@@ -33,7 +33,7 @@ function Gauge({ score }: { score: number }) {
   const pct = Math.max(0, Math.min(100, score));
   const r = 70;
   const circ = 2 * Math.PI * r;
-  const color = pct >= 70 ? 'var(--brand-action)' : pct >= 40 ? '#F59E0B' : '#EF4444';
+  const color = pct >= 70 ? 'var(--brand-action)' : pct >= 40 ? 'var(--warning)' : 'var(--error)';
   return (
     <div style={{ position: 'relative', width: 160, height: 160, flexShrink: 0 }}>
       <svg width={160} height={160} viewBox="0 0 160 160">
@@ -299,7 +299,7 @@ function AddReviewModal({
         </label>
 
         {save.error ? (
-          <p className="text-meta mb-3" style={{ color: '#B91C1C' }}>
+          <p className="text-meta mb-3" style={{ color: 'var(--error-deep)' }}>
             {(save.error as Error).message}
           </p>
         ) : null}

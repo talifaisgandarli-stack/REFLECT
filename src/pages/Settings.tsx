@@ -278,7 +278,7 @@ function GeneralSettings() {
             {save.isPending ? 'Saxlanılır…' : 'Saxla'}
           </button>
           {saved ? <span className="text-meta" style={{ color: 'var(--brand-text)' }}>Saxlandı ✓</span> : null}
-          {save.error ? <span className="text-meta" style={{ color: '#B91C1C' }}>{(save.error as Error).message}</span> : null}
+          {save.error ? <span className="text-meta" style={{ color: 'var(--error-deep)' }}>{(save.error as Error).message}</span> : null}
         </div>
       </div>
 
@@ -372,7 +372,7 @@ function RssFeedSettings({ settings, onSaved }: { settings: Record<string, unkno
             </span>
             <button
               className="chip"
-              style={{ color: '#B91C1C', background: 'rgba(185,28,28,0.08)', fontSize: 12 }}
+              style={{ color: 'var(--error-deep)', background: 'var(--error-bg)', fontSize: 12 }}
               onClick={() => setFeeds((f) => f.filter((x) => x !== url))}
             >
               Sil
@@ -397,7 +397,7 @@ function RssFeedSettings({ settings, onSaved }: { settings: Record<string, unkno
           {save.isPending ? 'Saxlanılır…' : 'Saxla'}
         </button>
         {saved ? <span className="text-meta" style={{ color: 'var(--brand-text)' }}>Saxlandı ✓</span> : null}
-        {save.error ? <span className="text-meta" style={{ color: '#B91C1C' }}>{(save.error as Error).message}</span> : null}
+        {save.error ? <span className="text-meta" style={{ color: 'var(--error-deep)' }}>{(save.error as Error).message}</span> : null}
       </div>
     </div>
   );
@@ -499,7 +499,7 @@ function TemplatesSettings() {
             <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Dəyişənlər:</span>
             <div className="flex flex-wrap gap-1.5 mt-1">
               {vars.map((v) => (
-                <span key={v} className="chip" style={{ background: 'rgba(173,251,73,0.1)', color: 'var(--brand-text)' }}>
+                <span key={v} className="chip" style={{ background: 'var(--brand-glow-md)', color: 'var(--brand-text)' }}>
                   {`{{${v}}}`}
                 </span>
               ))}
@@ -511,7 +511,7 @@ function TemplatesSettings() {
             {editing.body.replace(/\{\{(\w+)\}\}/g, (_, k) => `[${k}]`)}
           </div>
         ) : null}
-        {save.error ? <p className="text-meta" style={{ color: '#B91C1C' }}>{(save.error as Error).message}</p> : null}
+        {save.error ? <p className="text-meta" style={{ color: 'var(--error-deep)' }}>{(save.error as Error).message}</p> : null}
         <div className="flex gap-2">
           <button className="btn-primary" disabled={save.isPending} onClick={() => save.mutate()}>
             {save.isPending ? 'Saxlanılır…' : 'Saxla'}
@@ -566,7 +566,7 @@ function TemplatesSettings() {
               >
                 ↓
               </button>
-              <button className="chip" style={{ color: '#B91C1C' }} onClick={() => del.mutate(t.id)}>
+              <button className="chip" style={{ color: 'var(--error-deep)' }} onClick={() => del.mutate(t.id)}>
                 Sil
               </button>
             </div>
@@ -673,7 +673,7 @@ function KnowledgeBaseSettings() {
       </label>
 
       {uploadOk ? <p className="text-meta" style={{ color: 'var(--brand-text)' }}>{uploadOk}</p> : null}
-      {uploadErr ? <p className="text-meta" style={{ color: '#B91C1C' }}>{uploadErr}</p> : null}
+      {uploadErr ? <p className="text-meta" style={{ color: 'var(--error-deep)' }}>{uploadErr}</p> : null}
 
       {chunks.isLoading ? <p className="text-meta">Yüklənir…</p> : null}
 
@@ -695,7 +695,7 @@ function KnowledgeBaseSettings() {
                   {meta.count} hissə · {new Date(meta.uploaded_at).toLocaleDateString('az-AZ')}
                 </div>
               </div>
-              <span className="chip" style={{ background: 'rgba(173,251,73,0.1)', color: 'var(--brand-text)' }}>
+              <span className="chip" style={{ background: 'var(--brand-glow-md)', color: 'var(--brand-text)' }}>
                 RAG
               </span>
             </li>
@@ -824,7 +824,7 @@ function InvitationsSettings() {
           </button>
         </form>
         {formError ? (
-          <p className="text-meta mt-2" style={{ color: '#B91C1C' }}>
+          <p className="text-meta mt-2" style={{ color: 'var(--error-deep)' }}>
             {formError}
           </p>
         ) : null}
@@ -867,7 +867,7 @@ function InvitationsSettings() {
                       </td>
                       <td
                         className="py-2 pr-4 text-meta"
-                        style={{ color: expired ? '#B91C1C' : 'var(--text-muted)' }}
+                        style={{ color: expired ? 'var(--error-deep)' : 'var(--text-muted)' }}
                       >
                         {new Date(inv.expires_at).toLocaleDateString('az-AZ')}
                         {expired ? ' (vaxtı keçib)' : ''}
@@ -875,7 +875,7 @@ function InvitationsSettings() {
                       <td className="py-2 text-right">
                         <button
                           className="btn-outline text-meta"
-                          style={{ padding: '2px 10px', color: '#B91C1C' }}
+                          style={{ padding: '2px 10px', color: 'var(--error-deep)' }}
                           onClick={() => revoke.mutate(inv.id)}
                           disabled={revoke.isPending}
                           aria-label={`${inv.email} dəvətini ləğv et`}

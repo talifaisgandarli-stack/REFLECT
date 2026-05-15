@@ -36,7 +36,7 @@ function StarRating({
           onClick={() => onChange(s)}
           style={{
             fontSize: 24,
-            color: s <= value ? '#F59E0B' : 'var(--line)',
+            color: s <= value ? 'var(--warning)' : 'var(--line)',
             background: 'none',
             border: 'none',
             cursor: 'pointer',
@@ -205,7 +205,7 @@ export function RetroSurveyPage() {
         </div>
 
         {error ? (
-          <p className="text-meta" style={{ color: '#B91C1C' }}>{error}</p>
+          <p className="text-meta" style={{ color: 'var(--error-deep)' }}>{error}</p>
         ) : null}
 
         <button

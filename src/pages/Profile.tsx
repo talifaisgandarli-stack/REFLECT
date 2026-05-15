@@ -122,7 +122,7 @@ export function ProfilePage() {
           </label>
 
           {update.error ? (
-            <p className="text-meta" style={{ color: '#B91C1C' }}>
+            <p className="text-meta" style={{ color: 'var(--error-deep)' }}>
               {(update.error as Error).message}
             </p>
           ) : null}
@@ -146,7 +146,7 @@ export function ProfilePage() {
             <div className="flex items-center gap-3">
               <span
                 className="chip"
-                style={{ background: 'rgba(173,251,73,0.12)', color: 'var(--brand-text)' }}
+                style={{ background: 'var(--brand-glow-lg)', color: 'var(--brand-text)' }}
               >
                 Qoşulub
               </span>

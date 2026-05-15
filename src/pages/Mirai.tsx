@@ -303,7 +303,7 @@ export function MiraiPage() {
             style={{
               background: 'rgba(217, 119, 6, 0.12)',
               border: '1px solid rgba(217, 119, 6, 0.4)',
-              color: '#FFD9A8',
+              color: 'var(--mirai-warning)',
             }}
           >
             <span>
@@ -318,7 +318,7 @@ export function MiraiPage() {
           <div
             role="alert"
             className="rounded-card px-4 py-3 mb-4 text-body"
-            style={{ background: 'rgba(185,28,28,0.15)', border: '1px solid rgba(185,28,28,0.4)', color: '#FCA5A5' }}
+            style={{ background: 'var(--mirai-error-bg)', border: '1px solid var(--mirai-error-border)', color: 'var(--mirai-error-text)' }}
           >
             Bu ay MIRAI limitinə çatdınız. Növbəti ay yenilənəcək.
           </div>
@@ -345,7 +345,7 @@ export function MiraiPage() {
               {saveBudget.isPending ? '…' : 'Saxla'}
             </button>
             {budgetSaved ? <span className="text-meta" style={{ color: '#ADFB49' }}>✓</span> : null}
-            {saveBudget.error ? <span className="text-meta" style={{ color: '#FCA5A5' }}>{(saveBudget.error as Error).message}</span> : null}
+            {saveBudget.error ? <span className="text-meta" style={{ color: 'var(--mirai-error-text)' }}>{(saveBudget.error as Error).message}</span> : null}
           </div>
         ) : null}
 
@@ -388,7 +388,7 @@ export function MiraiPage() {
         </div>
 
         {error ? (
-          <p className="text-meta mt-3" style={{ color: '#F87171' }}>{error}</p>
+          <p className="text-meta mt-3" style={{ color: 'var(--mirai-error-text-alt)' }}>{error}</p>
         ) : null}
 
         {/* History loading placeholder */}
@@ -403,8 +403,8 @@ export function MiraiPage() {
               key={i}
               className="rounded-card p-4"
               style={{
-                background: m.role === 'user' ? 'rgba(255,255,255,0.06)' : 'rgba(173,251,73,0.04)',
-                border: `1px solid ${m.role === 'user' ? 'rgba(255,255,255,0.08)' : 'rgba(173,251,73,0.12)'}`,
+                background: m.role === 'user' ? 'rgba(255,255,255,0.06)' : 'var(--brand-glow-xs)',
+                border: `1px solid ${m.role === 'user' ? 'rgba(255,255,255,0.08)' : 'var(--brand-glow-lg)'}`,
                 marginLeft: m.role === 'user' ? 'auto' : 0,
                 maxWidth: '88%',
               }}
@@ -412,7 +412,7 @@ export function MiraiPage() {
               {m.role === 'assistant' ? (
                 <span
                   className="inline-block mb-2 px-2 h-[22px] leading-[22px] rounded-chip text-tiny"
-                  style={{ background: 'rgba(173,251,73,0.08)', color: 'var(--brand-action)' }}
+                  style={{ background: 'var(--mirai-glow)', color: 'var(--brand-action)' }}
                 >
                   {currentPersonaMeta.label}
                 </span>
@@ -446,8 +446,8 @@ export function MiraiPage() {
                       disabled={isDisabled}
                       aria-label={vote === 'up' ? 'Faydalı' : 'Faydasız'}
                       style={{
-                        background: isChosen ? 'rgba(173,251,73,0.15)' : 'transparent',
-                        border: `1px solid ${isChosen ? 'rgba(173,251,73,0.4)' : 'rgba(255,255,255,0.1)'}`,
+                        background: isChosen ? 'var(--brand-glow-xl)' : 'transparent',
+                        border: `1px solid ${isChosen ? 'var(--brand-glow-active)' : 'rgba(255,255,255,0.1)'}`,
                         borderRadius: 6,
                         padding: '2px 8px',
                         fontSize: 13,
