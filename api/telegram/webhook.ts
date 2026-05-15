@@ -7,6 +7,7 @@
  * POST forged updates.
  */
 import { admin, errorResponse, HttpError, jsonResponse } from '../_lib/auth';
+import { withSentry } from '../_lib/sentry';
 
 export const config = { runtime: 'edge' };
 
@@ -23,7 +24,7 @@ const HELP_TEXT = [
   '/help — bu mesajı göstər',
 ].join('\n');
 
-export default async function handler(req: Request) {
+async function handler(req: Request) {
   try {
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed');
 
@@ -125,3 +126,5 @@ async function sendMessage(chatId: number, text: string) {
     body: JSON.stringify({ chat_id: chatId, text }),
   });
 }
+
+export default withSentry(handler, 'telegram/webhook');

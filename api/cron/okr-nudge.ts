@@ -6,6 +6,7 @@
  * Skips users who already have a nudge in the last 6 days (idempotent).
  */
 import { admin, errorResponse, HttpError, jsonResponse } from '../_lib/auth';
+import { withSentry } from '../_lib/sentry';
 
 export const config = { runtime: 'edge' };
 
@@ -16,7 +17,7 @@ function bakuQuarter(): string {
   return `${d.getUTCFullYear()}Q${q}`;
 }
 
-export default async function handler(req: Request) {
+async function handler(req: Request) {
   try {
     const url = new URL(req.url);
     const cronAuth =
@@ -68,3 +69,5 @@ export default async function handler(req: Request) {
     return errorResponse(e);
   }
 }
+
+export default withSentry(handler, 'cron/okr-nudge');

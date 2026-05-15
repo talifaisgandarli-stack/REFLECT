@@ -5,6 +5,7 @@
  */
 import { z } from 'zod';
 import { admin, errorResponse, HttpError, jsonResponse, requireUser } from '../_lib/auth';
+import { withSentry } from '../_lib/sentry';
 import { checkRateLimit } from '../_lib/rate-limit';
 import { logAudit } from '../_lib/audit';
 
@@ -12,7 +13,7 @@ export const config = { runtime: 'edge' };
 
 const Body = z.object({ token: z.string().uuid() });
 
-export default async function handler(req: Request) {
+async function handler(req: Request) {
   try {
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed');
     const user = await requireUser(req);
@@ -60,3 +61,5 @@ export default async function handler(req: Request) {
     return errorResponse(e);
   }
 }
+
+export default withSentry(handler, 'invitations/accept');

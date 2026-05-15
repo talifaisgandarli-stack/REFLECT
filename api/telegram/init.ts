@@ -4,6 +4,7 @@
  * (telegram/webhook.ts) consumes it on /start <code>.
  */
 import { admin, errorResponse, HttpError, jsonResponse, requireUser } from '../_lib/auth';
+import { withSentry } from '../_lib/sentry';
 
 export const config = { runtime: 'edge' };
 
@@ -15,7 +16,7 @@ function generateCode(): string {
   return String(buf[0] % 1_000_000).padStart(6, '0');
 }
 
-export default async function handler(req: Request) {
+async function handler(req: Request) {
   try {
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed');
     const user = await requireUser(req);
@@ -44,3 +45,5 @@ export default async function handler(req: Request) {
     return errorResponse(e);
   }
 }
+
+export default withSentry(handler, 'telegram/init');

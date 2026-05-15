@@ -7,6 +7,7 @@
  * Caller MUST abort sign-in on 429.
  */
 import { createClient } from '@supabase/supabase-js';
+import { withSentry } from '../_lib/sentry';
 
 export const config = { runtime: 'edge' };
 
@@ -17,7 +18,7 @@ function serviceClient() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
-export default async function handler(req: Request) {
+async function handler(req: Request) {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
   }
@@ -71,3 +72,5 @@ export default async function handler(req: Request) {
     });
   }
 }
+
+export default withSentry(handler, 'auth/rate-check');

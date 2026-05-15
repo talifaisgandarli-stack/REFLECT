@@ -136,7 +136,6 @@ import { captureException } from './sentry';
 
 export function errorResponse(e: unknown) {
   if (e instanceof HttpError) return jsonResponse({ error: e.message }, e.status);
-  // eslint-disable-next-line no-console
   console.error('[api]', e);
   void captureException(e);
   return jsonResponse({ error: 'Internal error' }, 500);

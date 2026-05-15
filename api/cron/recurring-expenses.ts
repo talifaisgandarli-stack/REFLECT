@@ -6,6 +6,7 @@
  * Auth: x-vercel-cron header (Vercel Cron) OR ?key=<CRON_SECRET>.
  */
 import { admin, errorResponse, HttpError, jsonResponse } from '../_lib/auth';
+import { withSentry } from '../_lib/sentry';
 
 export const config = { runtime: 'edge' };
 
@@ -20,7 +21,7 @@ export function advance(date: Date, period: Period): Date {
   return d;
 }
 
-export default async function handler(req: Request) {
+async function handler(req: Request) {
   try {
     const url = new URL(req.url);
     const cronAuth =
@@ -74,3 +75,5 @@ export default async function handler(req: Request) {
     return errorResponse(e);
   }
 }
+
+export default withSentry(handler, 'cron/recurring-expenses');

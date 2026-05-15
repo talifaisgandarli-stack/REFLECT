@@ -142,15 +142,34 @@ async function handler(req: Request) {
 
     const sb = admin();
 
-    // 1. Pull a batch of un-dispatched rows
+    // 1. Pull a batch of rows that may still need dispatch.
+    //
+    // BUGFIX: previous filter `.eq('dispatched_channels', '{}')` only matched
+    // rows where NO channel had been dispatched. Once email succeeded but
+    // Telegram failed, the row was stamped `{email: ts}` and excluded forever
+    // — Telegram never retried. Now we widen to "any row from the last 7 days
+    // that isn't fully dispatched" and rely on per-channel `!n.dispatched_channels.<ch>`
+    // checks below to skip already-sent channels (which keeps it idempotent).
+    //
+    // 7-day window caps the candidate set so we don't reprocess ancient history
+    // every run; partial-failure retry typically resolves within hours.
+    const sevenDaysAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
     const { data: rows, error } = await sb
       .from('notifications')
       .select('id, user_id, kind, payload, created_at, dispatched_channels')
-      .eq('dispatched_channels', '{}')
+      .gte('created_at', sevenDaysAgo)
       .order('created_at', { ascending: true })
       .limit(BATCH);
     if (error) throw new HttpError(500, error.message);
-    const notifs = (rows ?? []) as NotifRow[];
+    const candidates = (rows ?? []) as NotifRow[];
+
+    // Drop rows where both email AND telegram are already stamped — those
+    // are fully-done. (We don't track inapp here; the realtime subscription
+    // delivers in-app reads directly.)
+    const notifs = candidates.filter(
+      (n) => !n.dispatched_channels.email || !n.dispatched_channels.telegram,
+    );
+
     if (notifs.length === 0) {
       return jsonResponse({ ok: true, processed: 0 });
     }

@@ -3,6 +3,7 @@
  * Accessed via /docs/:token — share_token from project_documents.
  * Shows proposal/invoice metadata + external_link if present.
  */
+import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -13,6 +14,7 @@ type SharedDocument = {
   category: string;
   source: string;
   external_link: string | null;
+  storage_path: string | null;
   created_at: string;
   projects: { name: string } | null;
   clients: { name: string } | null;
@@ -28,6 +30,8 @@ const CATEGORY_LABEL: Record<string, string> = {
 
 export function SharedDocPage() {
   const { token } = useParams<{ token: string }>();
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const { data: doc, isLoading, error } = useQuery<SharedDocument | null>({
     queryKey: ['shared_doc', token],
@@ -35,7 +39,7 @@ export function SharedDocPage() {
       if (!token) return null;
       const { data, error } = await supabase
         .from('project_documents')
-        .select('id, title, category, source, external_link, created_at, projects(name), clients(name)')
+        .select('id, title, category, source, external_link, storage_path, created_at, projects(name), clients(name)')
         .eq('share_token', token)
         .maybeSingle();
       if (error) throw error;
@@ -44,6 +48,26 @@ export function SharedDocPage() {
     enabled: !!token,
     retry: false,
   });
+
+  // For Storage uploads we hit /api/docs/signed which trades the share_token
+  // for a 60s signed URL (service-role gated server-side).
+  async function downloadStored() {
+    if (!token) return;
+    setDownloading(true);
+    setDownloadError(null);
+    try {
+      const res = await fetch(`/api/docs/signed?token=${encodeURIComponent(token)}`);
+      const data = (await res.json()) as { url?: string; error?: string };
+      if (!res.ok || !data.url) {
+        throw new Error(data.error ?? 'Yükləmə xətası');
+      }
+      window.open(data.url, '_blank', 'noopener,noreferrer');
+    } catch (e) {
+      setDownloadError((e as Error).message);
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   return (
     <div
@@ -147,7 +171,7 @@ export function SharedDocPage() {
               </dd>
             </dl>
 
-            {/* External link CTA */}
+            {/* CTA — prefer external_link (drive_link source) over storage download */}
             {doc.external_link ? (
               <a
                 href={doc.external_link}
@@ -168,6 +192,33 @@ export function SharedDocPage() {
               >
                 Sənədi aç ↗
               </a>
+            ) : doc.storage_path ? (
+              <>
+                <button
+                  type="button"
+                  onClick={downloadStored}
+                  disabled={downloading}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    background: '#ADFB49',
+                    color: '#0E1611',
+                    border: 'none',
+                    borderRadius: 8,
+                    padding: '10px 20px',
+                    fontWeight: 600,
+                    fontSize: 14,
+                    cursor: downloading ? 'wait' : 'pointer',
+                    opacity: downloading ? 0.6 : 1,
+                  }}
+                >
+                  {downloading ? 'Hazırlanır…' : 'Sənədi yüklə ↓'}
+                </button>
+                {downloadError ? (
+                  <p style={{ marginTop: 12, fontSize: 13, color: '#ff8585' }}>{downloadError}</p>
+                ) : null}
+              </>
             ) : (
               <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.35)', fontStyle: 'italic' }}>
                 Sənədin məzmunu bu şirkət tərəfindən bilavasitə göndəriləcək.

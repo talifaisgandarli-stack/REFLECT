@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { PageHead } from '@/components/PageHead';
@@ -22,18 +22,50 @@ function workloadLevel(openTasks: number): keyof typeof WORKLOAD_CHIP {
 }
 
 export function TeamRosterPage() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, profile: me } = useAuth();
+  const qc = useQueryClient();
+  // Admin can see deactivated users (to reactivate them); non-admins only active.
+  const [showInactive, setShowInactive] = useState(false);
+  const [confirmDeactivate, setConfirmDeactivate] = useState<string | null>(null);
 
   const profiles = useQuery({
-    queryKey: ['profiles-with-roles'],
+    queryKey: ['profiles-with-roles', isAdmin, showInactive],
     queryFn: async (): Promise<ProfileWithRole[]> => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('profiles')
         .select('*, role:roles(name)')
-        .eq('is_active', true)
         .order('full_name');
+      // Non-admins always restricted to active; admin can opt-in to see inactive
+      if (!isAdmin || !showInactive) q = q.eq('is_active', true);
+      const { data, error } = await q;
       if (error) throw error;
       return (data ?? []) as ProfileWithRole[];
+    },
+  });
+
+  // PRD §2.1 / §9.1 — admin can deactivate/reactivate users (creator + self protected)
+  const setActive = useMutation({
+    mutationFn: async ({ userId, active }: { userId: string; active: boolean }) => {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ is_active: active })
+        .eq('id', userId);
+      if (error) throw error;
+      // Audit log per PRD §9.4
+      if (me?.id) {
+        await supabase.from('audit_log').insert({
+          actor_id: me.id,
+          action: active ? 'profile.activate' : 'profile.deactivate',
+          resource: 'profiles',
+          ip: null,
+          user_agent: navigator.userAgent,
+          meta: { user_id: userId },
+        });
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['profiles-with-roles'] });
+      setConfirmDeactivate(null);
     },
   });
 
@@ -88,7 +120,26 @@ export function TeamRosterPage() {
 
   return (
     <>
-      <PageHead meta={`${ppl.length} nəfər`} title="İşçi Heyəti" />
+      <PageHead
+        meta={`${ppl.length} nəfər`}
+        title="İşçi Heyəti"
+        actions={
+          isAdmin ? (
+            <button
+              type="button"
+              className="chip"
+              style={{
+                background: showInactive ? 'var(--brand-action)' : undefined,
+                color: showInactive ? 'var(--ink)' : undefined,
+              }}
+              onClick={() => setShowInactive((v) => !v)}
+              aria-pressed={showInactive}
+            >
+              {showInactive ? '✓ Deaktivləri göstər' : 'Deaktivləri göstər'}
+            </button>
+          ) : null
+        }
+      />
       {ppl.length === 0 ? (
         <EmptyState
           title="Komanda hələ formalaşmayıb"
@@ -108,16 +159,33 @@ export function TeamRosterPage() {
             const eqCount = eqMap[p.id] ?? 0;
             const wl = workloadLevel(taskCount);
             const wlChip = WORKLOAD_CHIP[wl];
+            const isInactive = p.is_active === false;
+            // Cannot deactivate: self, the creator, or already-pending mutation target
+            const canToggle = isAdmin && p.id !== me?.id && !p.is_creator;
             return (
-              <div key={p.id} className="card flex items-center gap-3">
+              <div
+                key={p.id}
+                className="card flex items-center gap-3"
+                style={isInactive ? { opacity: 0.55 } : undefined}
+              >
                 <Avatar
                   name={p.full_name ?? p.email}
                   url={p.avatar_url}
                   size={48}
-                  presence={presenceMap[p.id]?.status}
+                  presence={isInactive ? undefined : presenceMap[p.id]?.status}
                 />
                 <div className="flex-1 min-w-0">
-                  <div className="text-body font-medium truncate">{p.full_name ?? p.email}</div>
+                  <div className="text-body font-medium truncate flex items-center gap-2">
+                    {p.full_name ?? p.email}
+                    {isInactive ? (
+                      <span
+                        className="text-meta rounded-full px-2 py-0.5"
+                        style={{ fontSize: 10, background: 'var(--line)', color: 'var(--text-muted)' }}
+                      >
+                        Deaktiv
+                      </span>
+                    ) : null}
+                  </div>
                   {/* Role label */}
                   <div className="text-meta truncate" style={{ color: 'var(--text-muted)' }}>
                     {p.role?.name ?? '—'}
@@ -142,6 +210,50 @@ export function TeamRosterPage() {
                     ) : null}
                   </div>
                 </div>
+
+                {/* Admin deactivate/reactivate (PRD §2.1 / §9.1) */}
+                {canToggle ? (
+                  isInactive ? (
+                    <button
+                      type="button"
+                      className="chip shrink-0"
+                      style={{ color: 'var(--success-deep)' }}
+                      disabled={setActive.isPending}
+                      onClick={() => setActive.mutate({ userId: p.id, active: true })}
+                    >
+                      Aktivləşdir
+                    </button>
+                  ) : confirmDeactivate === p.id ? (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        className="chip"
+                        style={{ background: 'var(--error-deep)', color: 'white' }}
+                        disabled={setActive.isPending}
+                        onClick={() => setActive.mutate({ userId: p.id, active: false })}
+                      >
+                        {setActive.isPending ? '…' : 'Bəli'}
+                      </button>
+                      <button
+                        type="button"
+                        className="chip"
+                        onClick={() => setConfirmDeactivate(null)}
+                      >
+                        Ləğv
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="chip shrink-0"
+                      style={{ color: 'var(--error-deep)' }}
+                      onClick={() => setConfirmDeactivate(p.id)}
+                      title="Bu istifadəçini deaktiv et — login bağlanır, məlumat saxlanır"
+                    >
+                      Deaktiv et
+                    </button>
+                  )
+                ) : null}
               </div>
             );
           })}

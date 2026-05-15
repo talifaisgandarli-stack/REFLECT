@@ -102,10 +102,17 @@ export function PerformancePage() {
     enabled: !!profile,
   });
 
-  const years = Array.from(
-    { length: Math.max(1, currentYear - 2025) },
-    (_, i) => 2026 + i,
-  );
+  // PRD §8.3 — Performance activates from 2026 onward, but past-year reviews
+  // must remain accessible. Show every year from 2026 through max(currentYear,
+  // currentYear+1) so users can navigate forward (next-year planning) AND
+  // backward across all historical reviews.
+  const years = (() => {
+    const start = 2026;
+    const end = Math.max(currentYear + 1, start);
+    const out: number[] = [];
+    for (let y = end; y >= start; y--) out.push(y);
+    return out;
+  })();
 
   return (
     <>

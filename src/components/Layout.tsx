@@ -74,6 +74,9 @@ export function Layout() {
     return () => window.removeEventListener('keydown', onKey);
   }, [setCmdK, toggleMirai, openTaskCreate, navigate]);
 
+  // Detect platform for the kbd hint label (⌘K on macOS, Ctrl+K elsewhere)
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent || '');
+
   return (
     <div className="flex min-h-screen">
       <Sidebar />
@@ -81,7 +84,37 @@ export function Layout() {
         {session ? (
           <div className="flex items-center justify-between mb-2 gap-3">
             <MobileNavToggle />
-            <NotificationBell />
+            <div className="flex items-center gap-2">
+              {/* PRD §6.3 — discoverable Cmd+K shortcut affordance */}
+              <button
+                type="button"
+                onClick={() => setCmdK(true)}
+                className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-btn text-meta hover:opacity-80"
+                style={{
+                  background: 'var(--ink)',
+                  color: 'var(--canvas)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                }}
+                title="Universal axtarış"
+                aria-label="Axtarış (Cmd+K)"
+              >
+                <span style={{ opacity: 0.6 }}>🔍 Axtar</span>
+                <kbd
+                  style={{
+                    fontFamily: 'inherit',
+                    fontSize: 10,
+                    background: 'rgba(255,255,255,0.12)',
+                    color: 'var(--canvas)',
+                    borderRadius: 4,
+                    padding: '1px 6px',
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  {isMac ? '⌘K' : 'Ctrl+K'}
+                </kbd>
+              </button>
+              <NotificationBell />
+            </div>
           </div>
         ) : null}
         <Outlet />

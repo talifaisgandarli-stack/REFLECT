@@ -7,10 +7,11 @@
  * sub-system is down. "down" when DB itself is unreachable.
  */
 import { admin, errorResponse, jsonResponse } from './_lib/auth';
+import { withSentry } from './_lib/sentry';
 
 export const config = { runtime: 'edge' };
 
-export default async function handler(_req: Request) {
+async function handler(_req: Request) {
   try {
     const checks: Record<string, { ok: boolean; ms?: number; error?: string }> = {};
 
@@ -52,3 +53,5 @@ export default async function handler(_req: Request) {
     return errorResponse(e);
   }
 }
+
+export default withSentry(handler, 'health');
