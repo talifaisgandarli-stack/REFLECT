@@ -74,6 +74,9 @@ function GeneralSettings() {
   const [logoUrl, setLogoUrl] = useState('');
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoErr, setLogoErr] = useState<string | null>(null);
+  const [currency, setCurrency] = useState('AZN');
+  const [workHours, setWorkHours] = useState('8');
+  const [holidaysEnabled, setHolidaysEnabled] = useState(true);
 
   // PRD §8.1 / REQ-TG-03: cron reads `finance_alert_income_threshold` and
   // `finance_alert_expense_threshold` (jsonb { azn: number }). Stay aligned.
@@ -108,6 +111,19 @@ function GeneralSettings() {
   if (loaded && logoUrl === '') {
     const raw = loaded.firm_logo_url;
     if (typeof raw === 'string' && raw) setLogoUrl(raw);
+  }
+  if (loaded && currency === 'AZN') {
+    const raw = loaded.default_currency;
+    if (typeof raw === 'string' && raw) setCurrency(raw);
+  }
+  if (loaded && workHours === '8') {
+    const raw = loaded.working_hours_per_day;
+    if (typeof raw === 'number') setWorkHours(String(raw));
+    else if (typeof raw === 'string' && raw) setWorkHours(raw);
+  }
+  if (loaded) {
+    const raw = loaded.az_public_holidays_enabled;
+    if (typeof raw === 'boolean') setHolidaysEnabled(raw);
   }
 
   /** PRD §10.1 / REQ-SET-07 — Upload firm logo to Supabase Storage firm-assets bucket. */
@@ -156,6 +172,9 @@ function GeneralSettings() {
         { key: 'finance_alert_expense_threshold', value: { azn: expenseNum } },
         { key: 'mirai_monthly_budget', value: { usd: budgetNum } },
         { key: 'firm_name', value: firmName.trim() || 'Reflect' },
+        { key: 'default_currency', value: currency },
+        { key: 'working_hours_per_day', value: Number(workHours) || 8 },
+        { key: 'az_public_holidays_enabled', value: holidaysEnabled },
       ];
       for (const row of rows) {
         const { error } = await supabase.from('system_settings').upsert(row, { onConflict: 'key' });
@@ -186,6 +205,35 @@ function GeneralSettings() {
             onChange={(e) => setFirmName(e.target.value)}
             placeholder="Reflect"
           />
+        </label>
+        <label className="block">
+          <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Əsas valyuta</span>
+          <select className="input mt-1 max-w-[140px]" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            <option value="AZN">AZN (₼)</option>
+            <option value="USD">USD ($)</option>
+            <option value="EUR">EUR (€)</option>
+          </select>
+        </label>
+        <label className="block">
+          <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Gündəlik iş saatı</span>
+          <input
+            type="number"
+            min="1"
+            max="24"
+            className="input mt-1 max-w-[100px]"
+            value={workHours}
+            onChange={(e) => setWorkHours(e.target.value)}
+            placeholder="8"
+          />
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={holidaysEnabled}
+            onChange={(e) => setHolidaysEnabled(e.target.checked)}
+            style={{ width: 16, height: 16 }}
+          />
+          <span className="text-body">AZ dövlət bayramlarını qeyri-iş günü say</span>
         </label>
         {/* PRD §10.1 / REQ-SET-07 — Firm logo upload (Supabase Storage: firm-assets) */}
         <div>

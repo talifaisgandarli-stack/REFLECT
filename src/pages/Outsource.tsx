@@ -9,8 +9,15 @@ import { formatAZN } from '@/lib/format';
 const STATUS_LABEL = { order: 'Sifariş', in_progress: 'İcrada', delivered: 'Təhvil', paid: 'Ödənildi' } as const;
 type Status = keyof typeof STATUS_LABEL;
 
+const STATUS_NEXT: Partial<Record<Status, Status>> = {
+  order: 'in_progress',
+  in_progress: 'delivered',
+  delivered: 'paid',
+};
+
 export function OutsourcePage() {
   const { isAdmin } = useAuth();
+  const qc = useQueryClient();
   const view = isAdmin ? 'outsource_items' : 'outsource_user_view';
   const [createOpen, setCreateOpen] = useState(false);
 
@@ -22,6 +29,19 @@ export function OutsourcePage() {
       return data ?? [];
     },
   });
+
+  const advanceStatus = useMutation({
+    mutationFn: async ({ id, nextStatus }: { id: string; nextStatus: Status }) => {
+      const { error } = await supabase
+        .from('outsource_items')
+        .update({ status: nextStatus })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['outsource'] }),
+  });
+
+  const headers = ['İş', 'Layihə', 'Deadline', 'Status / İrəlilə', ...(isAdmin ? ['Məbləğ'] : [])];
 
   return (
     <>
@@ -47,7 +67,7 @@ export function OutsourcePage() {
           <table className="w-full text-body">
             <thead>
               <tr style={{ borderBottom: '1px solid var(--line)' }}>
-                {['İş', 'Layihə', 'Deadline', 'Status', ...(isAdmin ? ['Məbləğ'] : [])].map((h) => (
+                {headers.map((h) => (
                   <th
                     key={h}
                     className="text-left py-3 px-3 text-meta"
@@ -64,7 +84,28 @@ export function OutsourcePage() {
                   <td className="py-3 px-3">{row.work_title}</td>
                   <td className="py-3 px-3">{row.project_id ?? '—'}</td>
                   <td className="py-3 px-3">{row.deadline ?? '—'}</td>
-                  <td className="py-3 px-3">{STATUS_LABEL[row.status as Status] ?? row.status}</td>
+                  <td className="py-3 px-3">
+                    <div className="flex items-center gap-2">
+                      <span className="chip" style={{ background: 'var(--surface-mist)', color: 'var(--text)', fontSize: 12 }}>
+                        {STATUS_LABEL[row.status as Status] ?? row.status}
+                      </span>
+                      {STATUS_NEXT[row.status as Status] ? (
+                        <button
+                          className="text-meta hover:underline"
+                          style={{ color: 'var(--brand-text)', fontSize: 12 }}
+                          disabled={advanceStatus.isPending}
+                          onClick={() =>
+                            advanceStatus.mutate({
+                              id: row.id,
+                              nextStatus: STATUS_NEXT[row.status as Status]!,
+                            })
+                          }
+                        >
+                          → {STATUS_LABEL[STATUS_NEXT[row.status as Status]!]}
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
                   {isAdmin ? (
                     <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
                       {formatAZN(row.amount)}
@@ -82,6 +123,7 @@ export function OutsourcePage() {
 }
 
 function CreateOutsourceModal({ onClose }: { onClose: () => void }) {
+  const { isAdmin } = useAuth();
   const qc = useQueryClient();
   const [workTitle, setWorkTitle] = useState('');
   const [contactCompany, setContactCompany] = useState('');
@@ -89,6 +131,9 @@ function CreateOutsourceModal({ onClose }: { onClose: () => void }) {
   const [amount, setAmount] = useState('');
   const [deadline, setDeadline] = useState('');
   const [status, setStatus] = useState<Status>('order');
+  const [projectId, setProjectId] = useState<string>('');
+  const [responsibleUserId, setResponsibleUserId] = useState<string>('');
+  const [paymentMethod, setPaymentMethod] = useState<string>('');
 
   const projects = useQuery({
     queryKey: ['projects', 'active-list'],
@@ -98,7 +143,15 @@ function CreateOutsourceModal({ onClose }: { onClose: () => void }) {
       return data ?? [];
     },
   });
-  const [projectId, setProjectId] = useState<string>('');
+
+  const profiles = useQuery({
+    queryKey: ['profiles', 'list'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('profiles').select('id, full_name').order('full_name');
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
 
   const create = useMutation({
     mutationFn: async () => {
@@ -111,6 +164,8 @@ function CreateOutsourceModal({ onClose }: { onClose: () => void }) {
         deadline: deadline || null,
         status,
         project_id: projectId || null,
+        responsible_user_id: responsibleUserId || null,
+        payment_method: isAdmin ? paymentMethod || null : null,
       });
       if (error) throw error;
     },
@@ -173,6 +228,26 @@ function CreateOutsourceModal({ onClose }: { onClose: () => void }) {
               ))}
             </select>
           </label>
+          <label className="block">
+            <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Məsul şəxs</span>
+            <select className="input w-full" value={responsibleUserId} onChange={(e) => setResponsibleUserId(e.target.value)}>
+              <option value="">— seç —</option>
+              {(profiles.data ?? []).map((p: any) => (
+                <option key={p.id} value={p.id}>{p.full_name ?? p.id}</option>
+              ))}
+            </select>
+          </label>
+          {isAdmin ? (
+            <label className="block">
+              <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Ödəniş üsulu</span>
+              <select className="input w-full" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+                <option value="">— seç —</option>
+                <option value="cash">Nağd</option>
+                <option value="bank_transfer">Bank köçürmə</option>
+                <option value="card">Kart</option>
+              </select>
+            </label>
+          ) : null}
           {create.error ? (
             <p className="text-meta" style={{ color: 'var(--error-deep)' }}>{(create.error as Error).message}</p>
           ) : null}
