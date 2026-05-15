@@ -93,6 +93,13 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
           );
         })}
 
+        <div className="sb-section">MIRAI</div>
+        <NavLink to="/mirai" onClick={onNavigate} className={({ isActive }) => `sb-item mx-2 ${isActive ? 'active' : ''}`}>
+          MIRAI
+        </NavLink>
+        <NavLink to="/telegram" onClick={onNavigate} className={({ isActive }) => `sb-item mx-2 ${isActive ? 'active' : ''}`}>
+          Telegram
+        </NavLink>
       </nav>
 
       <div className="p-4 flex items-center gap-3 border-t border-white/5">
