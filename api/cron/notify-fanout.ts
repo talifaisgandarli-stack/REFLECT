@@ -53,6 +53,8 @@ const KIND_TITLE: Record<string, string> = {
   content_due_soon: 'Məzmun planı yaxınlaşır',
   announcement: 'Yeni elan',
   salary_changed: 'Maaş cədvəliniz yeniləndi',
+  // PRD §7.8 + §10.4 — MIRAI CMO feed posts awaiting admin moderation
+  mirai_feed: 'MIRAI yeni məzmun əlavə etdi',
 };
 
 function bodyFor(n: NotifRow): string {

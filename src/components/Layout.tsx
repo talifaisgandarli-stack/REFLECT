@@ -5,12 +5,13 @@ import { LiveAnnouncer } from '@/lib/a11y';
 import { MiraiDrawer } from './MiraiDrawer';
 import { CmdK } from './CmdK';
 import { NotificationBell } from './NotificationBell';
+import { TaskCreateModal } from './TaskCreateModal';
 import { useUI, useAuth } from '@/lib/store';
 import { useRealtimeSync } from '@/lib/realtime';
 import { usePresenceHeartbeat } from '@/lib/hooks';
 
 export function Layout() {
-  const { setCmdK, toggleMirai } = useUI();
+  const { setCmdK, toggleMirai, taskCreateOpen, openTaskCreate, closeTaskCreate } = useUI();
   const { session } = useAuth();
   const navigate = useNavigate();
   useRealtimeSync(session?.userId);
@@ -40,6 +41,12 @@ export function Layout() {
         toggleMirai();
         return;
       }
+      // PRD §6.3 — Cmd/Ctrl+N opens new-task modal (context-aware)
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        openTaskCreate();
+        return;
+      }
       if (e.key === 'Escape') {
         gPending.current = false;
         return;
@@ -59,7 +66,7 @@ export function Layout() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [setCmdK, toggleMirai, navigate]);
+  }, [setCmdK, toggleMirai, openTaskCreate, navigate]);
 
   return (
     <div className="flex min-h-screen">
@@ -76,6 +83,8 @@ export function Layout() {
       <MiraiDrawer />
       <CmdK />
       <LiveAnnouncer />
+      {/* PRD §6.3 Cmd+N — global new-task modal */}
+      {taskCreateOpen ? <TaskCreateModal onClose={closeTaskCreate} /> : null}
     </div>
   );
 }

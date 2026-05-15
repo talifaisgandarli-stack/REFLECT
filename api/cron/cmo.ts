@@ -76,6 +76,27 @@ export default async function handler(req: Request) {
     let inserted = 0;
     let skipped = 0;
 
+    // Resolve admin user IDs once — we'll notify them when new posts arrive (PRD §7.8 / §10.4 mirai_feed).
+    const { data: adminProfiles } = await sb
+      .from('profiles')
+      .select('id, is_creator, role_id, roles!inner(is_admin)')
+      .or('is_creator.eq.true');
+    // Fetch separately for role-based admins
+    const { data: roleAdmins } = await sb
+      .from('profiles')
+      .select('id')
+      .not('role_id', 'is', null)
+      .in(
+        'role_id',
+        (await sb.from('roles').select('id').eq('is_admin', true)).data?.map((r) => r.id) ?? [],
+      );
+    const adminIds = Array.from(
+      new Set([
+        ...((adminProfiles ?? []) as Array<{ id: string }>).map((p) => p.id),
+        ...((roleAdmins ?? []) as Array<{ id: string }>).map((p) => p.id),
+      ]),
+    );
+
     for (const feed of FEEDS) {
       let xml: string;
       try {
@@ -130,6 +151,25 @@ export default async function handler(req: Request) {
             .from('mirai_feed_posts')
             .update({ posted_announcement_id: ann.id })
             .eq('id', feedRow.id);
+        }
+
+        // PRD §7.8 + §10.4 — notify all admins that a new MIRAI feed post awaits moderation.
+        // Dispatched in batches of 20 to stay within edge function time limits.
+        if (adminIds.length > 0) {
+          const notifRows = adminIds.map((userId) => ({
+            user_id: userId,
+            kind: 'mirai_feed',
+            payload: {
+              title: item.title.slice(0, 120),
+              source_kind: feed.kind,
+              source_url: item.link,
+              feed_post_id: feedRow.id,
+            },
+            dispatched_channels: {},
+          }));
+          for (let i = 0; i < notifRows.length; i += 20) {
+            await sb.from('notifications').insert(notifRows.slice(i, i + 20));
+          }
         }
 
         inserted++;

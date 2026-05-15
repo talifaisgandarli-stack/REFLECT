@@ -1,10 +1,12 @@
 import { useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { Mascot } from './Mascot';
 import { useAuth, useUI } from '@/lib/store';
 import { signOut } from '@/lib/auth';
+import { supabase } from '@/lib/supabase';
 
-type NavItem = { to: string; label: string; admin?: boolean };
+type NavItem = { to: string; label: string; admin?: boolean; badge?: number };
 type NavGroup = { label: string; items: NavItem[]; adminGroup?: boolean };
 
 /** Nav contract — PRD §4. Admin-only items hidden for non-admins. */
@@ -59,6 +61,35 @@ const NAV: NavGroup[] = [
 function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const { isAdmin, profile } = useAuth();
 
+  // REQ-ARC / PRD §8.6 — unread announcement count for badge
+  const { data: announcements } = useQuery({
+    queryKey: ['announcements', 'sidebar-unread'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('announcements')
+        .select('id, read_by')
+        .eq('approved', true);
+      return data ?? [];
+    },
+    enabled: !!profile?.id,
+    staleTime: 60_000,
+  });
+  const unreadCount = announcements
+    ? announcements.filter(
+        (a) => !a.read_by || !(a.read_by as Record<string, boolean>)[profile!.id],
+      ).length
+    : 0;
+
+  // Inject unread badge into Elanlar nav item at runtime
+  const NAV_WITH_BADGE: NavGroup[] = NAV.map((group) => ({
+    ...group,
+    items: group.items.map((item) =>
+      item.to === '/komanda/elanlar' && unreadCount > 0
+        ? { ...item, badge: unreadCount }
+        : item,
+    ),
+  }));
+
   return (
     <>
       <div className="px-5 pt-5 pb-3 flex items-center gap-3">
@@ -72,7 +103,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <nav className="flex-1 overflow-y-auto py-2">
-        {NAV.filter((g) => !(g.adminGroup && !isAdmin)).map((group) => {
+        {NAV_WITH_BADGE.filter((g) => !(g.adminGroup && !isAdmin)).map((group) => {
           const items = group.items.filter((i) => !i.admin || isAdmin);
           if (items.length === 0) return null;
           return (
@@ -86,7 +117,26 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
                   onClick={onNavigate}
                   className={({ isActive }) => `sb-item mx-2 ${isActive ? 'active' : ''}`}
                 >
-                  {item.label}
+                  <span className="flex items-center justify-between gap-2 w-full">
+                    {item.label}
+                    {item.badge ? (
+                      <span
+                        className="text-ui font-bold rounded-full flex items-center justify-center"
+                        style={{
+                          background: 'var(--brand-action)',
+                          color: 'var(--ink)',
+                          minWidth: 18,
+                          height: 18,
+                          padding: '0 5px',
+                          fontSize: 10,
+                          lineHeight: 1,
+                        }}
+                        aria-label={`${item.badge} oxunmamış elan`}
+                      >
+                        {item.badge > 99 ? '99+' : item.badge}
+                      </span>
+                    ) : null}
+                  </span>
                 </NavLink>
               ))}
             </div>

@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import { relativeTime } from '@/lib/format';
+import { sanitizeHtml } from '@/lib/sanitize';
 import { useAuth } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 
@@ -202,30 +203,61 @@ export function AnnouncementsPage() {
             <EmptyState title="Elan yoxdur" body="MIRAI CMO feed-dən təkliflər gəldikdə burada görünəcək." />
           ) : (
             <div className="space-y-3">
-              {filtered.map((a: any) => (
-                <article key={a.id} className="card">
-                  <div className="flex items-center gap-2 mb-1">
-                    {a.category ? <span className="chip text-meta" style={{ padding: '2px 6px', fontSize: 11 }}>{a.category}</span> : null}
-                    {a.is_featured ? <span className="chip chip-brand text-meta" style={{ padding: '2px 6px', fontSize: 11 }}>Featured</span> : null}
-                    {a.mirai_generated ? <span className="chip text-meta" style={{ padding: '2px 6px', fontSize: 11 }}>MIRAI</span> : null}
-                  </div>
-                  <h3 className="text-h3">{a.title}</h3>
-                  <p className="text-body mt-1">{a.body}</p>
-                  <div className="flex items-center justify-between mt-2 gap-3">
-                    <span className="text-meta" style={{ color: 'var(--text-muted)' }}>{relativeTime(a.published_at)}</span>
-                    {isAdmin ? (
-                      <label className="text-meta flex items-center gap-1.5 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={!!a.is_featured}
-                          onChange={(e) => toggleFeatured.mutate({ id: a.id, featured: e.target.checked })}
-                        />
-                        Featured
-                      </label>
+              {filtered.map((a: any) => {
+                const isUnread = profile?.id && !(a.read_by ?? {})[profile.id];
+                return (
+                  <article
+                    key={a.id}
+                    className="card"
+                    style={isUnread ? { borderLeft: '3px solid var(--brand-action)' } : undefined}
+                    onClick={() => {
+                      // Mark individual announcement as read on click
+                      if (!profile?.id || !isUnread) return;
+                      const next = { ...(a.read_by ?? {}), [profile.id]: new Date().toISOString() };
+                      supabase.from('announcements').update({ read_by: next }).eq('id', a.id).then(() => {
+                        qc.invalidateQueries({ queryKey: ['announcements'] });
+                        qc.invalidateQueries({ queryKey: ['announcements', 'sidebar-unread'] });
+                      });
+                    }}
+                  >
+                    {/* PRD §8.6 cover_url — hero image */}
+                    {a.cover_url ? (
+                      <img
+                        src={a.cover_url}
+                        alt={a.title}
+                        className="w-full rounded-card mb-3"
+                        style={{ maxHeight: 200, objectFit: 'cover' }}
+                        loading="lazy"
+                      />
                     ) : null}
-                  </div>
-                </article>
-              ))}
+                    <div className="flex items-center gap-2 mb-1">
+                      {a.category ? <span className="chip text-meta" style={{ padding: '2px 6px', fontSize: 11 }}>{a.category}</span> : null}
+                      {a.is_featured ? <span className="chip chip-brand text-meta" style={{ padding: '2px 6px', fontSize: 11 }}>Featured</span> : null}
+                      {a.mirai_generated ? <span className="chip text-meta" style={{ padding: '2px 6px', fontSize: 11 }}>MIRAI</span> : null}
+                      {isUnread ? <span className="chip text-meta" style={{ padding: '2px 6px', fontSize: 11, background: 'var(--brand-action)', color: 'var(--ink)' }}>Yeni</span> : null}
+                    </div>
+                    <h3 className="text-h3">{a.title}</h3>
+                    {/* PRD §9.1 — DOMPurify sanitized HTML body (safe: sanitizeHtml strips XSS) */}
+                    <div
+                      className="text-body mt-1"
+                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(a.body ?? '') }}
+                    />
+                    <div className="flex items-center justify-between mt-2 gap-3">
+                      <span className="text-meta" style={{ color: 'var(--text-muted)' }}>{relativeTime(a.published_at)}</span>
+                      {isAdmin ? (
+                        <label className="text-meta flex items-center gap-1.5 cursor-pointer" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={!!a.is_featured}
+                            onChange={(e) => toggleFeatured.mutate({ id: a.id, featured: e.target.checked })}
+                          />
+                          Featured
+                        </label>
+                      ) : null}
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           )}
         </>
