@@ -594,12 +594,20 @@ function EventModal({
         style={{ padding: 24 }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-h2 mb-2">{event.title}</h2>
+        {/* PRD §UX — inline title edit when canEdit */}
+        {canEdit ? (
+          <EventFieldInline eventId={event.id} field="title" initial={event.title} as="title" />
+        ) : (
+          <h2 className="text-h2 mb-2">{event.title}</h2>
+        )}
         <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
           {new Date(event.starts_at).toLocaleDateString('az-AZ', { timeZone: 'Asia/Baku', weekday: 'long', day: 'numeric', month: 'long' })}
           {' '}{fmtTime(event.starts_at)} – {fmtTime(event.ends_at)}
         </p>
-        {event.location ? <p className="mt-2 text-body">📍 {event.location}</p> : null}
+        {/* PRD §UX — inline location edit when canEdit; non-canEdit shows static */}
+        {canEdit ? (
+          <EventFieldInline eventId={event.id} field="location" initial={event.location ?? ''} as="location" />
+        ) : (event.location ? <p className="mt-2 text-body">📍 {event.location}</p> : null)}
         {event.recurrence_rule ? (
           <p className="mt-2 text-meta" style={{ color: 'var(--brand-text)' }}>
             ↻ {rruleLabel(event.recurrence_rule)}
@@ -991,5 +999,88 @@ function Field({ label, required, children }: { label: string; required?: boolea
       </span>
       {children}
     </label>
+  );
+}
+
+// PRD §UX — inline edit for a single calendar_events field (title or location).
+// Click-to-edit; Enter saves, Esc cancels. Empty location → clears column.
+function EventFieldInline({
+  eventId,
+  field,
+  initial,
+  as,
+}: {
+  eventId: string;
+  field: 'title' | 'location';
+  initial: string;
+  as: 'title' | 'location';
+}) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(initial);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { if (!editing) setVal(initial); }, [initial, editing]);
+
+  async function save() {
+    const trimmed = val.trim();
+    if (trimmed === initial) { setEditing(false); return; }
+    if (field === 'title' && !trimmed) { setEditing(false); setVal(initial); return; }
+    setSaving(true);
+    await supabase
+      .from('calendar_events')
+      .update({ [field]: trimmed || null })
+      .eq('id', eventId);
+    setSaving(false);
+    qc.invalidateQueries({ queryKey: ['calendar'] });
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <div className={as === 'title' ? 'mb-2 flex items-center gap-1' : 'mt-2 flex items-center gap-1'}>
+        <input
+          autoFocus
+          className="input flex-1"
+          style={as === 'title' ? { fontSize: 20, fontWeight: 700, height: 32 } : { fontSize: 14, height: 28 }}
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') save();
+            if (e.key === 'Escape') { setVal(initial); setEditing(false); }
+          }}
+          placeholder={as === 'location' ? 'Ünvan / link…' : undefined}
+        />
+        <button type="button" className="chip" disabled={saving} onClick={save} style={{ fontSize: 11, color: 'var(--brand-text)' }}>
+          {saving ? '…' : '✓'}
+        </button>
+        <button type="button" className="chip" onClick={() => { setVal(initial); setEditing(false); }} style={{ fontSize: 11 }}>×</button>
+      </div>
+    );
+  }
+
+  if (as === 'title') {
+    return (
+      <button
+        type="button"
+        className="text-h2 mb-2 text-left hover:opacity-80"
+        style={{ display: 'block', width: '100%' }}
+        onClick={() => setEditing(true)}
+        title="Başlığı dəyişdirmək üçün klik"
+      >
+        {initial}
+      </button>
+    );
+  }
+  // location
+  return (
+    <button
+      type="button"
+      className="mt-2 text-body text-left hover:opacity-80"
+      style={{ color: initial ? 'var(--text)' : 'var(--text-muted)', fontStyle: initial ? 'normal' : 'italic' }}
+      onClick={() => setEditing(true)}
+      title="Yeri dəyişdirmək üçün klik"
+    >
+      📍 {initial || '+ Yer əlavə et'}
+    </button>
   );
 }

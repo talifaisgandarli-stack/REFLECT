@@ -409,6 +409,8 @@ export function ProjectDetailPage() {
               )}
               {/* PRD §6.x — tag chips with × (admin) (migration 0053) */}
               <ProjectTagsEditor projectId={id!} initial={(project as { tags?: string[] }).tags ?? []} isAdmin={isAdmin} />
+              {/* PRD §6.x — project description (migration 0054) */}
+              <ProjectDescriptionEditor projectId={id!} initial={(project as { description?: string | null }).description ?? null} isAdmin={isAdmin} />
               <Row k="Status" v={project.status} />
               <Row k="Başlama" v={project.start_date ?? '—'} />
               {/* PRD §UX — inline deadline edit (admin) */}
@@ -1538,6 +1540,92 @@ function ProjectTimeTotal({ taskIds }: { taskIds: string[] }) {
   const sum = Array.from((totals.data ?? new Map()).values()).reduce((s: number, v: number) => s + v, 0);
   if (sum === 0) return null;
   return <Row k="İzlənmiş vaxt" v={formatDuration(sum)} />;
+}
+
+// PRD §6.x — project description editor (migration 0054). Click-to-edit
+// textarea; read-only italic placeholder for non-admin or empty value.
+function ProjectDescriptionEditor({ projectId, initial, isAdmin }: { projectId: string; initial: string | null; isAdmin: boolean }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(initial ?? '');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { if (!editing) setVal(initial ?? ''); }, [initial, editing]);
+
+  async function save() {
+    const trimmed = val.trim();
+    if (trimmed === (initial ?? '')) { setEditing(false); return; }
+    setSaving(true);
+    await supabase.from('projects').update({ description: trimmed || null }).eq('id', projectId);
+    setSaving(false);
+    qc.invalidateQueries({ queryKey: ['project', projectId] });
+    qc.invalidateQueries({ queryKey: ['projects'] });
+    setEditing(false);
+  }
+
+  // Non-admin + empty → hide entirely
+  if (!isAdmin && !initial) return null;
+
+  if (!isAdmin) {
+    return (
+      <div className="flex justify-between gap-4 items-start">
+        <dt style={{ color: 'var(--text-muted)' }}>Təsvir</dt>
+        <dd className="text-meta" style={{ color: 'var(--text)', textAlign: 'right', maxWidth: '70%', whiteSpace: 'pre-wrap' }}>
+          {initial}
+        </dd>
+      </div>
+    );
+  }
+
+  if (!editing) {
+    return (
+      <div className="flex justify-between gap-4 items-start">
+        <dt style={{ color: 'var(--text-muted)' }}>Təsvir</dt>
+        <dd className="flex-1 text-right">
+          <button
+            type="button"
+            className="text-meta hover:bg-surface-mist px-2 py-1 rounded-btn"
+            style={{
+              color: initial ? 'var(--text)' : 'var(--text-muted)',
+              fontStyle: initial ? 'normal' : 'italic',
+              fontSize: 12,
+              whiteSpace: 'pre-wrap',
+              textAlign: 'left',
+            }}
+            onClick={() => setEditing(true)}
+          >
+            {initial || '+ Təsvir əlavə et'}
+          </button>
+        </dd>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <dt className="mb-1" style={{ color: 'var(--text-muted)' }}>Təsvir</dt>
+      <textarea
+        autoFocus
+        className="input w-full"
+        rows={3}
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Escape') { setVal(initial ?? ''); setEditing(false); } }}
+        style={{ fontSize: 12 }}
+      />
+      <div className="flex justify-end gap-1 mt-1">
+        <button type="button" className="chip" onClick={() => { setVal(initial ?? ''); setEditing(false); }} style={{ fontSize: 11 }}>Ləğv</button>
+        <button
+          type="button"
+          className="chip"
+          style={{ color: 'var(--brand-text)', fontSize: 11 }}
+          disabled={saving}
+          onClick={save}
+        >
+          {saving ? '…' : 'Saxla'}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 // PRD §UX — inline admin editor for project deadline (date input + save chip)

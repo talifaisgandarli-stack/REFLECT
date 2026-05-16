@@ -309,19 +309,9 @@ export function TaskCommentsModal({
           <div className="min-w-0 flex-1">
             <div className="text-meta flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
               <span>Şərhlər</span>
-              {projectContext.data ? (
-                <>
-                  <span>·</span>
-                  <a
-                    href={`/layihelər/${projectContext.data.id}`}
-                    className="hover:underline truncate"
-                    style={{ color: 'var(--brand-text)', fontSize: 11, maxWidth: 180 }}
-                    title={projectContext.data.name}
-                  >
-                    📁 {projectContext.data.name}
-                  </a>
-                </>
-              ) : null}
+              <span>·</span>
+              {/* Admin can move task between projects via dropdown */}
+              <TaskProjectPicker taskId={taskId} currentProjectId={projectContext.data?.id ?? null} currentName={projectContext.data?.name ?? null} />
             </div>
             <TaskTitleInlineEditor taskId={taskId} initial={taskTitle} />
           </div>
@@ -414,31 +404,8 @@ export function TaskCommentsModal({
               </ul>
             </div>
           ) : null}
-          {/* PRD §REQ-TASK-06 — estimate vs tracked summary chip */}
-          {estimateVsActual.data && (estimateVsActual.data.estSec != null || estimateVsActual.data.trackedSec > 0) ? (() => {
-            const { estSec, trackedSec } = estimateVsActual.data!;
-            const overrun = estSec != null && trackedSec > estSec;
-            return (
-              <div
-                className="rounded-card px-2 py-1.5 mb-2 text-meta flex items-center justify-between"
-                style={{
-                  background: overrun ? 'var(--warning-bg, #fff3d6)' : 'var(--surface-mist)',
-                  color: overrun ? 'var(--ink)' : 'var(--text-muted)',
-                  fontSize: 11,
-                }}
-              >
-                <span>
-                  ⏱ İzlənmiş: <strong style={{ color: 'var(--text)' }}>{formatDuration(trackedSec)}</strong>
-                  {estSec != null ? (
-                    <>
-                      {' '}/ Plan: {formatDuration(estSec)}
-                    </>
-                  ) : null}
-                </span>
-                {overrun ? <span>⚠ Aşılıb</span> : null}
-              </div>
-            );
-          })() : null}
+          {/* PRD §REQ-TASK-06 — estimate vs tracked summary chip + inline edit */}
+          <TaskEstimateBar taskId={taskId} data={estimateVsActual.data} />
 
           {/* PRD §REQ-TASK — inline task description editor */}
           <TaskDescriptionEditor taskId={taskId} />
@@ -663,6 +630,180 @@ function SubtaskInlineCreate({ parentTaskId }: { parentTaskId: string }) {
       </button>
       <button type="button" className="chip" onClick={() => { setOpen(false); setTitle(''); }} style={{ fontSize: 11 }}>×</button>
     </form>
+  );
+}
+
+// PRD §UX — show project context + admin can reassign task to another project
+function TaskProjectPicker({
+  taskId,
+  currentProjectId,
+  currentName,
+}: {
+  taskId: string;
+  currentProjectId: string | null;
+  currentName: string | null;
+}) {
+  const { isAdmin } = useAuth();
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const projects = useQuery({
+    queryKey: ['projects', 'active-pick'],
+    enabled: editing,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('projects')
+        .select('id, name')
+        .neq('status', 'closed')
+        .order('name');
+      return (data ?? []) as Array<{ id: string; name: string }>;
+    },
+  });
+  const move = useMutation({
+    mutationFn: async (nextId: string | null) => {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ project_id: nextId })
+        .eq('id', taskId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task_project_context', taskId] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      setEditing(false);
+    },
+  });
+
+  if (!isAdmin) {
+    if (!currentName) return null;
+    return (
+      <a
+        href={`/layihelər/${currentProjectId}`}
+        className="hover:underline truncate"
+        style={{ color: 'var(--brand-text)', fontSize: 11, maxWidth: 180 }}
+        title={currentName}
+      >
+        📁 {currentName}
+      </a>
+    );
+  }
+
+  if (editing) {
+    return (
+      <select
+        autoFocus
+        className="input"
+        style={{ height: 22, fontSize: 11, maxWidth: 220 }}
+        value={currentProjectId ?? ''}
+        onChange={(e) => move.mutate(e.target.value || null)}
+        onBlur={() => setEditing(false)}
+      >
+        <option value="">— layihəsiz —</option>
+        {(projects.data ?? []).map((p) => (
+          <option key={p.id} value={p.id}>{p.name}</option>
+        ))}
+      </select>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      className="hover:underline truncate"
+      style={{ color: 'var(--brand-text)', fontSize: 11, maxWidth: 180, background: 'transparent', border: 'none', padding: 0 }}
+      title="Layihəni dəyiş"
+    >
+      📁 {currentName ?? '— layihəsiz —'}
+    </button>
+  );
+}
+
+// PRD §REQ-TASK-06 — estimate vs tracked bar with inline ✎ to edit estimated_duration
+function TaskEstimateBar({
+  taskId,
+  data,
+}: {
+  taskId: string;
+  data?: { trackedSec: number; estSec: number | null };
+}) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [hours, setHours] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const trackedSec = data?.trackedSec ?? 0;
+  const estSec = data?.estSec ?? null;
+  const overrun = estSec != null && trackedSec > estSec;
+
+  // Hide row entirely when there's nothing to show
+  if (!editing && !estSec && trackedSec === 0) return null;
+
+  async function save() {
+    const h = Number(hours.replace(',', '.'));
+    if (!Number.isFinite(h) || h < 0) { setEditing(false); return; }
+    setSaving(true);
+    await supabase
+      .from('tasks')
+      .update({ estimated_duration: h > 0 ? h : null, duration_unit: 'hours' })
+      .eq('id', taskId);
+    setSaving(false);
+    qc.invalidateQueries({ queryKey: ['task_estimate_vs_actual', taskId] });
+    qc.invalidateQueries({ queryKey: ['tasks'] });
+    setEditing(false);
+  }
+
+  return (
+    <div
+      className="rounded-card px-2 py-1.5 mb-2 text-meta flex items-center justify-between gap-2"
+      style={{
+        background: overrun ? 'var(--warning-bg, #fff3d6)' : 'var(--surface-mist)',
+        color: overrun ? 'var(--ink)' : 'var(--text-muted)',
+        fontSize: 11,
+      }}
+    >
+      <span>
+        ⏱ İzlənmiş: <strong style={{ color: 'var(--text)' }}>{formatDuration(trackedSec)}</strong>
+        {estSec != null && !editing ? <> / Plan: {formatDuration(estSec)}</> : null}
+      </span>
+      {editing ? (
+        <span className="flex items-center gap-1">
+          <input
+            autoFocus
+            type="number"
+            min={0}
+            step="0.25"
+            className="input"
+            style={{ height: 22, width: 64, fontSize: 11 }}
+            value={hours}
+            onChange={(e) => setHours(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') save();
+              if (e.key === 'Escape') setEditing(false);
+            }}
+            placeholder="saat"
+          />
+          <button type="button" disabled={saving} onClick={save} className="chip" style={{ fontSize: 10, color: 'var(--brand-text)' }}>
+            {saving ? '…' : '✓'}
+          </button>
+          <button type="button" onClick={() => setEditing(false)} className="chip" style={{ fontSize: 10 }}>×</button>
+        </span>
+      ) : (
+        <span className="flex items-center gap-2">
+          {overrun ? <span>⚠ Aşılıb</span> : null}
+          <button
+            type="button"
+            onClick={() => {
+              setHours(estSec != null ? String(Math.round((estSec / 3600) * 100) / 100) : '');
+              setEditing(true);
+            }}
+            className="chip"
+            style={{ fontSize: 10, color: 'var(--text-muted)' }}
+            title="Plan müddətini dəyiş"
+          >
+            ✎
+          </button>
+        </span>
+      )}
+    </div>
   );
 }
 
