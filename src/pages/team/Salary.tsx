@@ -326,6 +326,10 @@ function SalaryFormModal({ profiles, existing, onClose, onSaved }: FormProps) {
       if (!employeeId || !amount || !effectiveFrom) throw new Error('Zəruri sahələri doldurun');
       const amt = parseFloat(amount);
       if (isNaN(amt) || amt <= 0) throw new Error('Məbləğ müsbət rəqəm olmalıdır');
+      // PRD §REQ — date sanity: effective_to must be after effective_from
+      if (effectiveTo && effectiveTo < effectiveFrom) {
+        throw new Error('Bitmə tarixi başlanğıc tarixindən əvvəl ola bilməz');
+      }
 
       // Build components jsonb — only include keys with positive numeric values
       const components: SalaryComponents = {};

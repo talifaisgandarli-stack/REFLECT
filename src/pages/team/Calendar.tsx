@@ -111,7 +111,7 @@ export function CalendarPage() {
     return { rangeStart: s.toISOString(), rangeEnd: e.toISOString() };
   }, [view, cursor]);
 
-  const { data: events = [] } = useQuery({
+  const { data: allEvents = [] } = useQuery({
     queryKey: ['calendar', rangeStart, rangeEnd],
     queryFn: async (): Promise<CalEvent[]> => {
       const { data } = await supabase
@@ -123,6 +123,16 @@ export function CalendarPage() {
       return (data ?? []) as CalEvent[];
     },
   });
+
+  // PRD §UX — client-side search across rendered events (title/location)
+  const [eventSearch, setEventSearch] = useState('');
+  const events = useMemo(() => {
+    if (!eventSearch.trim()) return allEvents;
+    const q = eventSearch.toLowerCase();
+    return allEvents.filter((e) =>
+      e.title.toLowerCase().includes(q) || (e.location ?? '').toLowerCase().includes(q),
+    );
+  }, [allEvents, eventSearch]);
 
   function navigate(dir: -1 | 1) {
     const d = new Date(cursor);
@@ -191,7 +201,7 @@ export function CalendarPage() {
       />
 
       {/* Navigation bar */}
-      <div className="flex items-center gap-3 mb-4">
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
         <button className="btn-outline px-3 py-1" onClick={() => navigate(-1)}>‹</button>
         <button
           className="chip"
@@ -202,6 +212,14 @@ export function CalendarPage() {
         </button>
         <button className="btn-outline px-3 py-1" onClick={() => navigate(1)}>›</button>
         <span className="text-h3 ml-2">{headerLabel}</span>
+        <span style={{ flex: 1 }} />
+        {/* PRD §UX — search across rendered events (client-side) */}
+        <input
+          className="input max-w-[220px]"
+          placeholder="Görüş axtar…"
+          value={eventSearch}
+          onChange={(e) => setEventSearch(e.target.value)}
+        />
       </div>
 
       {/* ── Month view ── */}

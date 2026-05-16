@@ -74,17 +74,22 @@ export function ProjectsPage() {
   // PRD §UX — persist search filter in URL so refresh/share-link preserves it
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get('q') ?? '');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const initStatus = searchParams.get('status') as StatusFilter | null;
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(
+    initStatus && ['all', 'active', 'on_hold', 'closed'].includes(initStatus) ? initStatus : 'all',
+  );
 
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
     if (search) next.set('q', search);
     else next.delete('q');
+    if (statusFilter !== 'all') next.set('status', statusFilter);
+    else next.delete('status');
     if (next.toString() !== searchParams.toString()) {
       setSearchParams(next, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  }, [search, statusFilter]);
   // PRD §6.x — bulk archive (admin only). Selection mode is opt-in to keep
   // single-card click-to-open behaviour the default.
   const [bulkMode, setBulkMode] = useState(false);

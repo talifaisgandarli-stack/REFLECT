@@ -22,6 +22,7 @@ import {
 import { useAuth } from '@/lib/store';
 import { formatDate, relativeTime, taskHealth } from '@/lib/format';
 import { downloadCsv } from '@/lib/csv';
+import { useRecentEntries } from '@/lib/useRecentlyViewed';
 import { FocusWidget } from '@/components/FocusWidget';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -377,8 +378,9 @@ export function DashboardPage() {
           </section>
         ) : null}
 
-        {/* PRD §UX — favorited projects quick-access (user's per-account stars) */}
+        {/* PRD §UX — favorited projects + recently viewed (local) */}
         <FavoriteProjectsWidget />
+        <RecentlyViewedWidget />
 
         {/* Activity feed — REQ-DASH-03 filter pills */}
         <section className="lg:col-span-5 card">
@@ -805,6 +807,32 @@ function FavoriteProjectsWidget() {
             <div className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
               {p.status}{p.deadline ? ` · ${p.deadline}` : ''}
             </div>
+          </a>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// PRD §UX — last visited entities (local-only, no server query)
+function RecentlyViewedWidget() {
+  const recents = useRecentEntries();
+  if (recents.length === 0) return null;
+  return (
+    <section className="lg:col-span-12 card">
+      <h3 className="text-h3 mb-3">⏱ Yaxınlarda baxılıb</h3>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+        {recents.slice(0, 6).map((r) => (
+          <a
+            key={`${r.type}-${r.id}`}
+            href={r.href}
+            className="rounded-card p-3 hover:bg-surface-mist transition-colors"
+            style={{ border: '1px solid var(--line)' }}
+          >
+            <div className="text-meta uppercase tracking-wider" style={{ color: 'var(--text-muted)', fontSize: 10 }}>
+              {r.type === 'project' ? 'Layihə' : r.type === 'task' ? 'Tapşırıq' : 'Müştəri'}
+            </div>
+            <div className="text-body font-medium truncate">{r.title}</div>
           </a>
         ))}
       </div>

@@ -5,7 +5,8 @@
  * REQ-PROJ-05 — award/portfolio submission (referenced from Closeout tab).
  */
 import { useParams, Link } from 'react-router-dom';
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import { trackRecentEntry } from '@/lib/useRecentlyViewed';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
 import { useProject, useTasks, useActivityFeed } from '@/lib/hooks';
@@ -51,6 +52,18 @@ export function ProjectDetailPage() {
   const { data: tasks = [] } = useTasks({ projectId: id });
   const { isAdmin } = useAuth();
   const qc = useQueryClient();
+
+  // PRD §UX — log this project visit for the Dashboard "Recently viewed" widget
+  useEffect(() => {
+    if (project?.id && project.name) {
+      trackRecentEntry({
+        type: 'project',
+        id: project.id,
+        title: project.name,
+        href: `/layihelər/${project.id}`,
+      });
+    }
+  }, [project?.id, project?.name]);
 
   const tabs: Tab[] = isAdmin
     ? ['Overview', 'Tasks', 'Documents', 'Finance', 'Closeout', 'History']

@@ -107,12 +107,18 @@ export function EquipmentPage() {
 
   const profileMap = Object.fromEntries((profiles.data ?? []).map((p) => [p.id, p.full_name ?? p.id]));
 
-  // PRD §UX — availability filter (Hamısı / Boş / Tapşırılıb)
+  // PRD §UX — availability filter (Hamısı / Boş / Tapşırılıb) + free-text search
   const [availability, setAvailability] = useState<'all' | 'available' | 'assigned'>('all');
+  const [search, setSearch] = useState('');
   const filteredEquipment = (equipment.data ?? []).filter((e) => {
-    if (availability === 'all') return true;
-    if (availability === 'available') return !e.assigned_to;
-    return !!e.assigned_to;
+    if (availability === 'available' && e.assigned_to) return false;
+    if (availability === 'assigned' && !e.assigned_to) return false;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      const hay = `${e.name} ${e.serial ?? ''} ${(e as { qr_code?: string | null }).qr_code ?? ''} ${e.kind ?? ''}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
   });
 
   return (
@@ -121,9 +127,17 @@ export function EquipmentPage() {
         meta={`${equipment.data?.length ?? 0} avadanlıq`}
         title="Avadanlıq"
         actions={
-          isAdmin ? (
-            <button className="btn-primary" onClick={() => setCreating(true)}>+ Yeni</button>
-          ) : null
+          <>
+            <input
+              className="input max-w-[220px]"
+              placeholder="Axtar (ad, serial, QR…)"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            {isAdmin ? (
+              <button className="btn-primary" onClick={() => setCreating(true)}>+ Yeni</button>
+            ) : null}
+          </>
         }
       />
 
@@ -204,7 +218,7 @@ export function EquipmentPage() {
           <table className="w-full text-body">
             <thead>
               <tr style={{ borderBottom: '1px solid var(--line)' }}>
-                {['Ad', 'Növ', 'Serial', 'Tapşırılıb', 'Vəziyyət', ''].map((h) => (
+                {['Ad', 'Növ', 'Serial', 'QR', 'Tapşırılıb', 'Vəziyyət', ''].map((h) => (
                   <th key={h} className="text-left py-3 px-3 text-meta" style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
                 ))}
               </tr>
@@ -215,6 +229,10 @@ export function EquipmentPage() {
                   <td className="py-3 px-3 font-medium">{e.name}</td>
                   <td className="py-3 px-3">{e.kind ?? '—'}</td>
                   <td className="py-3 px-3 text-meta" style={{ color: 'var(--text-muted)' }}>{e.serial ?? '—'}</td>
+                  {/* PRD §8.7 — QR/asset tag (migration 0051) */}
+                  <td className="py-3 px-3 text-meta" style={{ color: 'var(--text-muted)', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 11 }}>
+                    {(e as { qr_code?: string | null }).qr_code ?? '—'}
+                  </td>
                   <td className="py-3 px-3">
                     {e.assigned_to ? profileMap[e.assigned_to] ?? e.assigned_to : (
                       <span className="text-meta" style={{ color: 'var(--text-muted)' }}>—</span>
@@ -326,6 +344,7 @@ function CreateEquipmentModal({ onClose, onSaved }: { onClose: () => void; onSav
   const [name, setName] = useState('');
   const [kind, setKind] = useState<string>(KINDS[0]);
   const [serial, setSerial] = useState('');
+  const [qrCode, setQrCode] = useState('');
   const [condition, setCondition] = useState<string>(CONDITIONS[0]);
   const [purchasedAt, setPurchasedAt] = useState('');
   const [notes, setNotes] = useState('');
@@ -337,6 +356,7 @@ function CreateEquipmentModal({ onClose, onSaved }: { onClose: () => void; onSav
         name: name.trim(),
         kind,
         serial: serial.trim() || null,
+        qr_code: qrCode.trim() || null,
         condition,
         purchased_at: purchasedAt || null,
         notes: notes.trim() || null,
@@ -364,6 +384,17 @@ function CreateEquipmentModal({ onClose, onSaved }: { onClose: () => void; onSav
         <label className="block mb-3">
           <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Serial nömrəsi</span>
           <input className="input" value={serial} onChange={(e) => setSerial(e.target.value)} />
+        </label>
+        {/* PRD §8.7 — QR / asset tag (migration 0051) */}
+        <label className="block mb-3">
+          <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>QR / Asset tag</span>
+          <input
+            className="input"
+            value={qrCode}
+            onChange={(e) => setQrCode(e.target.value)}
+            placeholder="məs: ASSET-0042"
+            style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}
+          />
         </label>
         <label className="block mb-3">
           <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Vəziyyət</span>

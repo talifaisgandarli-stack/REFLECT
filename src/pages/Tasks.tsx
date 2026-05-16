@@ -557,6 +557,7 @@ export function TasksPage() {
                       <div
                         className="font-medium cursor-pointer"
                         onClick={(e) => { e.stopPropagation(); setCommenting({ id: t.id, title: t.title }); }}
+                        title={t.description ?? undefined}
                       >
                         {t.title}
                       </div>

@@ -42,16 +42,33 @@ export function ClientsPage() {
   // full control; non-admin/non-BD-Lead is read-only.
   const canDrag = isAdmin || role?.key === 'bd_lead';
 
+  // PRD §REQ-CRM — industry filter chip (column from migration 0050)
+  const [industryFilter, setIndustryFilter] = useState<string>('');
+  const availableIndustries = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of clients) {
+      const ind = (c as { industry?: string | null }).industry;
+      if (ind) set.add(ind);
+    }
+    return Array.from(set).sort();
+  }, [clients]);
+
   const filteredClients = useMemo(() => {
-    if (!search.trim()) return clients;
-    const q = search.trim().toLowerCase();
-    return clients.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        (c.company ?? '').toLowerCase().includes(q) ||
-        (c.email ?? '').toLowerCase().includes(q),
-    );
-  }, [clients, search]);
+    let out = clients;
+    if (industryFilter) {
+      out = out.filter((c) => (c as { industry?: string | null }).industry === industryFilter);
+    }
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      out = out.filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          (c.company ?? '').toLowerCase().includes(q) ||
+          (c.email ?? '').toLowerCase().includes(q),
+      );
+    }
+    return out;
+  }, [clients, search, industryFilter]);
 
   const grouped = useMemo(() => {
     const map: Record<ClientPipelineStage, Client[]> = CLIENT_STAGE_ORDER.reduce(
@@ -97,6 +114,37 @@ export function ClientsPage() {
           </>
         }
       />
+
+      {/* PRD §REQ-CRM — industry filter (migration 0050) */}
+      {availableIndustries.length > 0 ? (
+        <div className="flex flex-wrap gap-2 mb-3">
+          <button
+            type="button"
+            className="chip"
+            style={{
+              background: industryFilter === '' ? 'var(--brand-action)' : 'var(--surface-mist)',
+              color: industryFilter === '' ? 'var(--ink)' : 'var(--text-muted)',
+            }}
+            onClick={() => setIndustryFilter('')}
+          >
+            Bütün sahələr
+          </button>
+          {availableIndustries.map((ind) => (
+            <button
+              key={ind}
+              type="button"
+              className="chip"
+              style={{
+                background: industryFilter === ind ? 'var(--brand-action)' : 'var(--surface-mist)',
+                color: industryFilter === ind ? 'var(--ink)' : 'var(--text-muted)',
+              }}
+              onClick={() => setIndustryFilter(industryFilter === ind ? '' : ind)}
+            >
+              {ind}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       {/* PRD §REQ-CRM — funnel: client count per stage (drop-off visual) */}
       {!isLoading && clients.length > 0 ? (
