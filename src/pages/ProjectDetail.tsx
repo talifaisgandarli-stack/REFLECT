@@ -19,6 +19,7 @@ import { TaskCreateModal } from '@/components/TaskCreateModal';
 import { supabase } from '@/lib/supabase';
 import { relativeTime } from '@/lib/format';
 import { fileSizeError } from '@/lib/validation';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { TASK_STATUS_LABEL, TASK_STATUS_ORDER } from '@/lib/labels';
 import type { TaskStatus } from '@/types/db';
 
@@ -1402,31 +1403,26 @@ function ArchiveDoneTasksChip({ projectId, doneCount }: { projectId: string; don
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
   });
   const [confirming, setConfirming] = useState(false);
-  if (confirming) {
-    return (
-      <span className="flex items-center gap-1">
-        <button
-          type="button"
-          className="chip"
-          style={{ background: 'var(--error-deep, #b3261e)', color: 'white' }}
-          disabled={archive.isPending}
-          onClick={() => archive.mutate()}
-        >
-          {archive.isPending ? '…' : 'Bəli, arxivlə'}
-        </button>
-        <button type="button" className="chip" onClick={() => setConfirming(false)}>Ləğv</button>
-      </span>
-    );
-  }
   return (
-    <button
-      type="button"
-      className="btn-outline"
-      onClick={() => setConfirming(true)}
-      title="Bu layihənin bütün 'Tamamlandı' tapşırıqlarını arxivlə"
-    >
-      Tamamlanmışları arxivlə ({doneCount})
-    </button>
+    <>
+      <button
+        type="button"
+        className="btn-outline"
+        onClick={() => setConfirming(true)}
+        title="Bu layihənin bütün 'Tamamlandı' tapşırıqlarını arxivlə"
+      >
+        Tamamlanmışları arxivlə ({doneCount})
+      </button>
+      <ConfirmDialog
+        open={confirming}
+        title={`${doneCount} tapşırıq arxivlənsin?`}
+        body="Tamamlanmış tapşırıqlar Arxiv səhifəsindən bərpa edilə bilər."
+        confirmLabel="Hə, arxivlə"
+        busy={archive.isPending}
+        onConfirm={() => { archive.mutate(); setConfirming(false); }}
+        onCancel={() => setConfirming(false)}
+      />
+    </>
   );
 }
 

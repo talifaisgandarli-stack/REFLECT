@@ -3,6 +3,7 @@ import { PageHead } from '@/components/PageHead';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/components/Toast';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { formatAZN, formatDate, bakuMonthKey, bakuCurrentMonthRange } from '@/lib/format';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, ComposedChart, Line, Area, CartesianGrid, Cell } from 'recharts';
 import { IncomeExpenseModal, type FinanceKind } from '@/components/IncomeExpenseModal';
@@ -38,6 +39,7 @@ export function FinancePage() {
   // PRD §REQ-FIN-03 — bulk mark-paid for Debitor tab (admin)
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirmBulkMarkPaid, setConfirmBulkMarkPaid] = useState(false);
   function toggleSelected(id: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -371,6 +373,21 @@ export function FinancePage() {
       ) : null}
       {invoiceModal ? <InvoiceFromTemplateModal onClose={() => setInvoiceModal(false)} /> : null}
 
+      {/* Confirm before mass-marking receivables paid (PRD §UX destructive guard) */}
+      <ConfirmDialog
+        open={confirmBulkMarkPaid}
+        title={`${selectedIds.size} debitor tam ödəniş kimi qeyd edilsin?`}
+        body="Hər biri üçün qalan məbləğ qədər `receivable_payments` sırası yaradılacaq. Bu əməliyyat geri qaytarıla bilər (admin sıraları siləndə paid_amount yenidən hesablanır)."
+        confirmLabel="Hə, qeyd et"
+        busy={bulkMarkPaid.isPending}
+        onConfirm={() => {
+          const rows = (receivables.data ?? []).filter((r) => selectedIds.has(r.id));
+          bulkMarkPaid.mutate(rows);
+          setConfirmBulkMarkPaid(false);
+        }}
+        onCancel={() => setConfirmBulkMarkPaid(false)}
+      />
+
       {/* PRD §REQ-FIN-03 — floating bulk action bar (admin) */}
       {bulkMode && selectedIds.size > 0 ? (
         <div
@@ -389,10 +406,7 @@ export function FinancePage() {
             className="chip"
             style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--canvas)' }}
             disabled={bulkMarkPaid.isPending}
-            onClick={() => {
-              const rows = (receivables.data ?? []).filter((r) => selectedIds.has(r.id));
-              bulkMarkPaid.mutate(rows);
-            }}
+            onClick={() => setConfirmBulkMarkPaid(true)}
           >
             {bulkMarkPaid.isPending ? 'Qeyd edilir…' : 'Tam ödəniş kimi qeyd et'}
           </button>

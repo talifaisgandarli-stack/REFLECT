@@ -39,6 +39,8 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
   const [requiresExpertise, setRequiresExpertise] = useState(false);
   const [expertiseDeadline, setExpertiseDeadline] = useState('');
   const [paymentBuffer, setPaymentBuffer] = useState(10);
+  // PRD §6.x — project tags (migration 0053)
+  const [tagsInput, setTagsInput] = useState('');
 
   function togglePhase(phase: string) {
     setPhases((prev) =>
@@ -87,6 +89,8 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
         expertise_deadline: requiresExpertise ? expertiseDeadline || null : null,
         payment_buffer_days: paymentBuffer,
         status: 'active',
+        // PRD §6.x — parse comma-separated tags
+        tags: tagsInput.split(',').map((t) => t.trim()).filter(Boolean),
         created_by: profile?.id ?? null,
       };
 
@@ -299,6 +303,20 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
             />
           </label>
         </div>
+
+        {/* PRD §6.x — tags (comma-separated, migration 0053) */}
+        <label className="block mt-3">
+          <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
+            Etiketlər (vergüllə)
+          </span>
+          <input
+            type="text"
+            className="input"
+            placeholder="məs: lüks, mənzil, Bakı"
+            value={tagsInput}
+            onChange={(e) => setTagsInput(e.target.value)}
+          />
+        </label>
 
         {create.error ? (
           <p className="text-meta mt-3" style={{ color: 'var(--error-deep)' }}>

@@ -62,6 +62,12 @@ export function TelegramLinkPage() {
     <>
       <PageHead meta="Şəxsi" title="Telegram bağlantısı" />
       <div className="card max-w-2xl">
+        <div className="flex items-center gap-2 mb-3 text-meta" style={{ color: 'var(--text-muted)' }}>
+          <span>Bot:</span>
+          <code style={{ background: 'var(--surface-mist)', padding: '2px 8px', borderRadius: 6, color: 'var(--brand-text)', fontVariantNumeric: 'tabular-nums' }}>
+            @{BOT_USERNAME}
+          </code>
+        </div>
         <p className="text-body">
           Bot tapşırıq, mention və müştəri qeydləri haqqında bildiriş göndərəcək.
           Aşağıdakı düyməni bas və Telegram-da açılan pəncərədə <strong>Start</strong> bölməsinə klik et.

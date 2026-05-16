@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
@@ -78,6 +78,13 @@ export function ProjectsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(
     initStatus && ['all', 'active', 'on_hold', 'closed'].includes(initStatus) ? initStatus : 'all',
   );
+  // PRD §6.x — project tag filter (migration 0053)
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const allTags = useMemo(() => {
+    const s = new Set<string>();
+    for (const p of projects) for (const t of ((p as { tags?: string[] }).tags ?? [])) s.add(t);
+    return Array.from(s).sort();
+  }, [projects]);
 
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
@@ -181,7 +188,9 @@ export function ProjectsPage() {
       p.name.toLowerCase().includes(search.trim().toLowerCase());
     const matchesStatus =
       statusFilter === 'all' || p.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesTag =
+      !tagFilter || ((p as { tags?: string[] }).tags ?? []).includes(tagFilter);
+    return matchesSearch && matchesStatus && matchesTag;
   });
 
   return (
@@ -230,6 +239,29 @@ export function ProjectsPage() {
           </button>
         ))}
       </div>
+
+      {/* PRD §6.x — tag filter row (migration 0053) */}
+      {allTags.length > 0 ? (
+        <div className="flex flex-wrap gap-2 mb-4">
+          <span className="text-meta self-center" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+            Etiketlər:
+          </span>
+          {allTags.map((tag) => (
+            <button
+              key={tag}
+              className="chip"
+              style={
+                tagFilter === tag
+                  ? { background: 'var(--brand-action)', color: 'var(--canvas)' }
+                  : undefined
+              }
+              onClick={() => setTagFilter(tagFilter === tag ? null : tag)}
+            >
+              #{tag}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       {isLoading ? (
         <SkeletonList rows={6} />

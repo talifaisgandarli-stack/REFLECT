@@ -823,9 +823,75 @@ function NotificationsSettings() {
       <NotificationPreferencesPage />
       {/* PRD §9.4 — admin MIRAI cost dashboard */}
       <MiraiCostDashboard />
+      {/* PRD §9.4 — audit log retention */}
+      <AuditLogRetentionSetting />
       {/* PRD §9.4 — admin audit log viewer */}
       <AuditLogViewer />
     </div>
+  );
+}
+
+// PRD §9.4 — admin sets how long audit_log rows are kept (days, default 365)
+function AuditLogRetentionSetting() {
+  const { isAdmin } = useAuth();
+  const qc = useQueryClient();
+  const setting = useQuery({
+    queryKey: ['system_setting', 'audit_log_retention_days'],
+    enabled: isAdmin,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'audit_log_retention_days')
+        .maybeSingle();
+      return Number((data?.value as { days?: number } | null)?.days ?? 365);
+    },
+  });
+  const [val, setVal] = useState<string>('');
+  useEffect(() => {
+    if (setting.data != null && val === '') setVal(String(setting.data));
+  }, [setting.data, val]);
+  const save = useMutation({
+    mutationFn: async () => {
+      const days = Math.max(30, Math.min(3650, Number(val) || 365));
+      const { error } = await supabase.from('system_settings').upsert({
+        key: 'audit_log_retention_days',
+        value: { days },
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['system_setting', 'audit_log_retention_days'] });
+    },
+  });
+  if (!isAdmin) return null;
+  return (
+    <section className="card flex items-center gap-3 flex-wrap" style={{ padding: 16 }}>
+      <div className="flex-1 min-w-0">
+        <h3 className="text-h3">Audit jurnalının saxlama müddəti</h3>
+        <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+          Köhnə qeydlərin avtomatik silinməsi üçün gün sayı (30–3650). Cron işi
+          bu dəyəri oxuyub uyğun sıraları arxivləyir.
+        </p>
+      </div>
+      <input
+        type="number"
+        min={30}
+        max={3650}
+        className="input max-w-[120px]"
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        style={{ fontVariantNumeric: 'tabular-nums' }}
+      />
+      <button
+        type="button"
+        className="btn-primary"
+        disabled={save.isPending || val === String(setting.data ?? '')}
+        onClick={() => save.mutate()}
+      >
+        {save.isPending ? '…' : 'Saxla'}
+      </button>
+    </section>
   );
 }
 

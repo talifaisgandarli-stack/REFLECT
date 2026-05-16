@@ -706,6 +706,26 @@ function TimeEntriesTodayCard({ userId }: { userId: string }) {
   });
 
   const rows = entries.data ?? [];
+
+  // Weekly total — separate query (last 7 days)
+  const weekly = useQuery({
+    queryKey: ['time-entries-week', userId],
+    queryFn: async () => {
+      const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
+      const { data } = await supabase
+        .from('time_entries')
+        .select('duration_seconds, started_at, ended_at')
+        .eq('user_id', userId)
+        .gte('started_at', since);
+      let total = 0;
+      for (const r of (data ?? []) as Array<{ duration_seconds: number | null; started_at: string; ended_at: string | null }>) {
+        if (r.duration_seconds != null) total += r.duration_seconds;
+        else if (!r.ended_at) total += Math.floor((Date.now() - new Date(r.started_at).getTime()) / 1000);
+      }
+      return total;
+    },
+  });
+
   if (rows.length === 0) return null;
 
   const total = rows.reduce((s, r) => {
@@ -722,8 +742,15 @@ function TimeEntriesTodayCard({ userId }: { userId: string }) {
 
   return (
     <div className="card space-y-2">
-      <div className="flex items-center justify-between">
-        <h3 className="text-h3">⏱ Bu gün ({formatDuration(total)})</h3>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h3 className="text-h3">
+          ⏱ Bu gün ({formatDuration(total)})
+          {weekly.data != null ? (
+            <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 12, marginLeft: 8 }}>
+              · həftə {formatDuration(weekly.data)}
+            </span>
+          ) : null}
+        </h3>
         <button
           type="button"
           className="chip"
