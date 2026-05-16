@@ -20,6 +20,7 @@ import { supabase } from '@/lib/supabase';
 import { relativeTime } from '@/lib/format';
 import { fileSizeError } from '@/lib/validation';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { formatDuration, useTaskTimeTotals } from '@/lib/useTimeTracking';
 import { TASK_STATUS_LABEL, TASK_STATUS_ORDER } from '@/lib/labels';
 import type { TaskStatus } from '@/types/db';
 
@@ -400,9 +401,16 @@ export function ProjectDetailPage() {
           <div className="card">
             <h3 className="text-h3 mb-3">Əsas məlumat</h3>
             <dl className="text-body space-y-2">
+              {/* PRD §UX — inline name edit (admin) */}
+              {isAdmin ? (
+                <ProjectNameEditor projectId={id!} initial={project.name} />
+              ) : (
+                <Row k="Ad" v={project.name} />
+              )}
               <Row k="Status" v={project.status} />
               <Row k="Başlama" v={project.start_date ?? '—'} />
               <Row k="Deadline" v={project.deadline ?? '—'} />
+              <ProjectTimeTotal taskIds={tasks.map((t) => t.id)} />
               <Row k="Ekspertiza" v={project.requires_expertise ? 'Lazımdır' : 'Yox'} />
               {project.requires_expertise && project.expertise_deadline ? (
                 <Row k="Eksp. deadline" v={project.expertise_deadline} />
@@ -1423,6 +1431,77 @@ function ArchiveDoneTasksChip({ projectId, doneCount }: { projectId: string; don
         onCancel={() => setConfirming(false)}
       />
     </>
+  );
+}
+
+// Project-wide tracked time = sum across all task time entries
+function ProjectTimeTotal({ taskIds }: { taskIds: string[] }) {
+  const totals = useTaskTimeTotals(taskIds);
+  const sum = Array.from((totals.data ?? new Map()).values()).reduce((s: number, v: number) => s + v, 0);
+  if (sum === 0) return null;
+  return <Row k="İzlənmiş vaxt" v={formatDuration(sum)} />;
+}
+
+// PRD §UX — inline admin editor for project name (click pencil → input → ✓)
+function ProjectNameEditor({ projectId, initial }: { projectId: string; initial: string }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(initial);
+  // Reset state if initial changes from outside
+  useEffect(() => { setVal(initial); }, [initial]);
+  const [saving, setSaving] = useState(false);
+  async function save() {
+    if (!val.trim() || val.trim() === initial) {
+      setEditing(false);
+      setVal(initial);
+      return;
+    }
+    setSaving(true);
+    await supabase.from('projects').update({ name: val.trim() }).eq('id', projectId);
+    setSaving(false);
+    qc.invalidateQueries({ queryKey: ['project', projectId] });
+    qc.invalidateQueries({ queryKey: ['projects'] });
+    setEditing(false);
+  }
+  return (
+    <div className="flex justify-between items-center gap-2">
+      <dt style={{ color: 'var(--text-muted)' }}>Ad</dt>
+      <dd className="flex items-center gap-1 min-w-0 flex-1 justify-end">
+        {editing ? (
+          <>
+            <input
+              autoFocus
+              className="input"
+              style={{ height: 28, fontSize: 13, maxWidth: 240 }}
+              value={val}
+              onChange={(e) => setVal(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') save();
+                if (e.key === 'Escape') { setVal(initial); setEditing(false); }
+              }}
+              disabled={saving}
+            />
+            <button type="button" className="chip" disabled={saving} onClick={save} style={{ fontSize: 11, color: 'var(--brand-text)' }}>
+              {saving ? '…' : '✓'}
+            </button>
+            <button type="button" className="chip" onClick={() => { setVal(initial); setEditing(false); }} style={{ fontSize: 11 }}>×</button>
+          </>
+        ) : (
+          <>
+            <span className="truncate">{initial}</span>
+            <button
+              type="button"
+              className="chip opacity-50 hover:opacity-100"
+              style={{ fontSize: 11 }}
+              onClick={() => setEditing(true)}
+              title="Adı dəyiş"
+            >
+              ✎
+            </button>
+          </>
+        )}
+      </dd>
+    </div>
   );
 }
 

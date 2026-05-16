@@ -820,7 +820,21 @@ function RecentlyViewedWidget() {
   if (recents.length === 0) return null;
   return (
     <section className="lg:col-span-12 card">
-      <h3 className="text-h3 mb-3">⏱ Yaxınlarda baxılıb</h3>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-h3">⏱ Yaxınlarda baxılıb</h3>
+        <button
+          type="button"
+          className="chip"
+          style={{ color: 'var(--text-muted)', fontSize: 11 }}
+          onClick={() => {
+            try { localStorage.removeItem('reflect.recently-viewed'); } catch { /* ignore */ }
+            window.dispatchEvent(new CustomEvent('reflect:recent-changed'));
+          }}
+          title="Tarixçəni təmizlə"
+        >
+          Təmizlə
+        </button>
+      </div>
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
         {recents.slice(0, 6).map((r) => (
           <a

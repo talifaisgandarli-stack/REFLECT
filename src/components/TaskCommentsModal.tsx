@@ -212,11 +212,13 @@ export function TaskCommentsModal({
         style={{ width: 400, height: '100vh', maxHeight: '100vh' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--line)' }}>
-          <div>
+        <div className="flex items-center justify-between px-5 py-4 gap-2" style={{ borderBottom: '1px solid var(--line)' }}>
+          <div className="min-w-0 flex-1">
             <div className="text-meta" style={{ color: 'var(--text-muted)' }}>Şərhlər</div>
-            <div className="text-h3 mt-0.5 truncate max-w-[300px]">{taskTitle}</div>
+            <div className="text-h3 mt-0.5 truncate">{taskTitle}</div>
           </div>
+          {/* PRD §REQ-TASK — quick subtask creation under this task */}
+          <SubtaskInlineCreate parentTaskId={taskId} />
           <button className="text-meta" style={{ fontSize: 20 }} onClick={onClose}>✕</button>
         </div>
 
@@ -318,5 +320,73 @@ export function TaskCommentsModal({
         </div>
       </div>
     </div>
+  );
+}
+
+// PRD §REQ-TASK — inline subtask creation from a parent task's comments modal.
+// Click-to-expand input; Enter submits; sets parent_task_id + inherits project.
+function SubtaskInlineCreate({ parentTaskId }: { parentTaskId: string }) {
+  const qc = useQueryClient();
+  const { profile } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState('');
+  const create = useMutation({
+    mutationFn: async () => {
+      if (!title.trim()) throw new Error('Başlıq tələb olunur');
+      // Inherit project_id from parent so the subtask appears in the same project
+      const { data: parent } = await supabase
+        .from('tasks')
+        .select('project_id, task_level')
+        .eq('id', parentTaskId)
+        .maybeSingle();
+      const { error } = await supabase.from('tasks').insert({
+        title: title.trim(),
+        status: 'queued',
+        parent_task_id: parentTaskId,
+        project_id: parent?.project_id ?? null,
+        task_level: (parent?.task_level ?? 0) + 1,
+        assignee_ids: profile?.id ? [profile.id] : [],
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      setTitle('');
+      setOpen(false);
+    },
+  });
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        className="chip"
+        style={{ color: 'var(--brand-text)', fontSize: 11 }}
+        onClick={() => setOpen(true)}
+        title="Yarımtapşırıq əlavə et"
+      >
+        + Alt
+      </button>
+    );
+  }
+  return (
+    <form
+      className="flex items-center gap-1"
+      onSubmit={(e) => { e.preventDefault(); create.mutate(); }}
+    >
+      <input
+        autoFocus
+        className="input"
+        style={{ width: 160, height: 28, fontSize: 12 }}
+        placeholder="Yarımtapşırıq başlığı"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Escape') { setOpen(false); setTitle(''); } }}
+      />
+      <button type="submit" className="chip" disabled={create.isPending || !title.trim()} style={{ color: 'var(--brand-text)', fontSize: 11 }}>
+        {create.isPending ? '…' : '✓'}
+      </button>
+      <button type="button" className="chip" onClick={() => { setOpen(false); setTitle(''); }} style={{ fontSize: 11 }}>×</button>
+    </form>
   );
 }

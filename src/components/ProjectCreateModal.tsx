@@ -5,7 +5,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useFocusTrap } from '@/lib/a11y';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { toast } from './Toast';
 import { useAuth } from '@/lib/store';
@@ -28,6 +28,20 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
   const { profile } = useAuth();
   const qc = useQueryClient();
   const clients = useClients();
+
+  // PRD §UX — suggest existing tags for autocomplete (migration 0053)
+  const existingTags = useQuery({
+    queryKey: ['project-tags-suggest'],
+    queryFn: async () => {
+      const { data } = await supabase.from('projects').select('tags').not('tags', 'is', null);
+      const set = new Set<string>();
+      for (const row of (data ?? []) as Array<{ tags: string[] | null }>) {
+        for (const t of row.tags ?? []) set.add(t);
+      }
+      return Array.from(set).sort();
+    },
+    staleTime: 60_000,
+  });
 
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
@@ -304,7 +318,7 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
           </label>
         </div>
 
-        {/* PRD §6.x — tags (comma-separated, migration 0053) */}
+        {/* PRD §6.x — tags (comma-separated, migration 0053) + autocomplete */}
         <label className="block mt-3">
           <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
             Etiketlər (vergüllə)
@@ -312,10 +326,16 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
           <input
             type="text"
             className="input"
-            placeholder="məs: lüks, mənzil, Bakı"
+            placeholder={existingTags.data?.length ? `məs: ${existingTags.data.slice(0, 3).join(', ')}` : 'məs: lüks, mənzil, Bakı'}
             value={tagsInput}
             onChange={(e) => setTagsInput(e.target.value)}
+            list="project-tag-suggestions"
           />
+          <datalist id="project-tag-suggestions">
+            {(existingTags.data ?? []).map((t) => (
+              <option key={t} value={t} />
+            ))}
+          </datalist>
         </label>
 
         {create.error ? (
