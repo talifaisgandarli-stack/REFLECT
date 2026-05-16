@@ -90,6 +90,20 @@ export function TasksPage() {
   const [cancelling, setCancelling] = useState<{ id: string; title: string } | null>(null);
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [commenting, setCommenting] = useState<{ id: string; title: string } | null>(null);
+
+  // PRD §REQ-TASK — subtask navigation: TaskCommentsModal dispatches
+  // 'reflect:open-task' when user clicks a subtask or the parent back-chip.
+  // Tasks.tsx (modal owner) swaps the open task without re-rendering tree.
+  useEffect(() => {
+    function onOpenTask(e: Event) {
+      const detail = (e as CustomEvent).detail as { id?: string; title?: string };
+      if (detail?.id && detail.title) {
+        setCommenting({ id: detail.id, title: detail.title });
+      }
+    }
+    window.addEventListener('reflect:open-task', onOpenTask);
+    return () => window.removeEventListener('reflect:open-task', onOpenTask);
+  }, []);
   const [editing, setEditing] = useState<Task | null>(null);
   // PRD §6.x — bulk action mode for the table/list view
   const [bulkMode, setBulkMode] = useState(false);

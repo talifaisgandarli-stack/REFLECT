@@ -11,6 +11,7 @@ import { useAuth } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { relativeTime } from '@/lib/format';
 import { trackRecentEntry } from '@/lib/useRecentlyViewed';
+import { formatDuration } from '@/lib/useTimeTracking';
 import { renderCommentMarkdown } from '@/lib/sanitize';
 
 type Comment = {
@@ -115,6 +116,50 @@ export function TaskCommentsModal({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['task_subtasks', taskId] });
       qc.invalidateQueries({ queryKey: ['tasks'] });
+    },
+  });
+
+  // PRD §REQ-TASK-06 — estimated (planned) vs actual tracked time
+  const estimateVsActual = useQuery({
+    queryKey: ['task_estimate_vs_actual', taskId],
+    queryFn: async () => {
+      const [taskRes, entriesRes] = await Promise.all([
+        supabase
+          .from('tasks')
+          .select('estimated_duration, duration_unit, workload')
+          .eq('id', taskId)
+          .maybeSingle(),
+        supabase
+          .from('time_entries')
+          .select('duration_seconds')
+          .eq('task_id', taskId)
+          .not('duration_seconds', 'is', null),
+      ]);
+      const task = taskRes.data as { estimated_duration: number | null; duration_unit: string | null; workload: number | null } | null;
+      const trackedSec = ((entriesRes.data ?? []) as Array<{ duration_seconds: number }>)
+        .reduce((s, r) => s + r.duration_seconds, 0);
+      // Convert estimate to seconds (assume hours unit by default)
+      const est = task?.estimated_duration ?? task?.workload ?? null;
+      const unit = task?.duration_unit ?? 'hours';
+      const estSec = est == null ? null : Math.round(est * (unit === 'days' ? 86400 : unit === 'minutes' ? 60 : 3600));
+      return { trackedSec, estSec };
+    },
+  });
+
+  // PRD §UX — show the parent project for context (so the title doesn't
+  // float without orientation)
+  const projectContext = useQuery({
+    queryKey: ['task_project_context', taskId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('tasks')
+        .select('project_id, projects(name)')
+        .eq('id', taskId)
+        .maybeSingle();
+      if (!data?.project_id) return null;
+      const projects = data.projects as { name: string }[] | { name: string } | null;
+      const name = Array.isArray(projects) ? projects[0]?.name : projects?.name;
+      return name ? { id: data.project_id as string, name } : null;
     },
   });
 
@@ -262,7 +307,22 @@ export function TaskCommentsModal({
       >
         <div className="flex items-center justify-between px-5 py-4 gap-2" style={{ borderBottom: '1px solid var(--line)' }}>
           <div className="min-w-0 flex-1">
-            <div className="text-meta" style={{ color: 'var(--text-muted)' }}>Şərhlər</div>
+            <div className="text-meta flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
+              <span>Şərhlər</span>
+              {projectContext.data ? (
+                <>
+                  <span>·</span>
+                  <a
+                    href={`/layihelər/${projectContext.data.id}`}
+                    className="hover:underline truncate"
+                    style={{ color: 'var(--brand-text)', fontSize: 11, maxWidth: 180 }}
+                    title={projectContext.data.name}
+                  >
+                    📁 {projectContext.data.name}
+                  </a>
+                </>
+              ) : null}
+            </div>
             <TaskTitleInlineEditor taskId={taskId} initial={taskTitle} />
           </div>
           {/* PRD §REQ-TASK — quick subtask creation under this task */}
@@ -354,6 +414,35 @@ export function TaskCommentsModal({
               </ul>
             </div>
           ) : null}
+          {/* PRD §REQ-TASK-06 — estimate vs tracked summary chip */}
+          {estimateVsActual.data && (estimateVsActual.data.estSec != null || estimateVsActual.data.trackedSec > 0) ? (() => {
+            const { estSec, trackedSec } = estimateVsActual.data!;
+            const overrun = estSec != null && trackedSec > estSec;
+            return (
+              <div
+                className="rounded-card px-2 py-1.5 mb-2 text-meta flex items-center justify-between"
+                style={{
+                  background: overrun ? 'var(--warning-bg, #fff3d6)' : 'var(--surface-mist)',
+                  color: overrun ? 'var(--ink)' : 'var(--text-muted)',
+                  fontSize: 11,
+                }}
+              >
+                <span>
+                  ⏱ İzlənmiş: <strong style={{ color: 'var(--text)' }}>{formatDuration(trackedSec)}</strong>
+                  {estSec != null ? (
+                    <>
+                      {' '}/ Plan: {formatDuration(estSec)}
+                    </>
+                  ) : null}
+                </span>
+                {overrun ? <span>⚠ Aşılıb</span> : null}
+              </div>
+            );
+          })() : null}
+
+          {/* PRD §REQ-TASK — inline task description editor */}
+          <TaskDescriptionEditor taskId={taskId} />
+
           {comments.isLoading ? <p className="text-meta">Yüklənir…</p> : null}
           {!comments.isLoading && (comments.data ?? []).length === 0 ? (
             <p className="text-meta" style={{ color: 'var(--text-muted)' }}>Hələ şərh yoxdur. İlk şərhi sən yaz!</p>
@@ -517,10 +606,10 @@ function SubtaskInlineCreate({ parentTaskId }: { parentTaskId: string }) {
   const create = useMutation({
     mutationFn: async () => {
       if (!title.trim()) throw new Error('Başlıq tələb olunur');
-      // Inherit project_id from parent so the subtask appears in the same project
+      // Inherit project_id + labels from parent so subtask shares context
       const { data: parent } = await supabase
         .from('tasks')
-        .select('project_id, task_level')
+        .select('project_id, task_level, labels')
         .eq('id', parentTaskId)
         .maybeSingle();
       const { error } = await supabase.from('tasks').insert({
@@ -529,6 +618,8 @@ function SubtaskInlineCreate({ parentTaskId }: { parentTaskId: string }) {
         parent_task_id: parentTaskId,
         project_id: parent?.project_id ?? null,
         task_level: (parent?.task_level ?? 0) + 1,
+        // PRD §REQ-TASK — inherit labels so subtask shows in same filter views
+        labels: (parent as { labels?: string[] } | null)?.labels ?? [],
         assignee_ids: profile?.id ? [profile.id] : [],
       });
       if (error) throw error;
@@ -572,5 +663,73 @@ function SubtaskInlineCreate({ parentTaskId }: { parentTaskId: string }) {
       </button>
       <button type="button" className="chip" onClick={() => { setOpen(false); setTitle(''); }} style={{ fontSize: 11 }}>×</button>
     </form>
+  );
+}
+
+// PRD §REQ-TASK — inline task description editor with autosave on blur
+function TaskDescriptionEditor({ taskId }: { taskId: string }) {
+  const qc = useQueryClient();
+  const desc = useQuery({
+    queryKey: ['task_description', taskId],
+    queryFn: async () => {
+      const { data } = await supabase.from('tasks').select('description').eq('id', taskId).maybeSingle();
+      return (data?.description ?? '') as string;
+    },
+  });
+  const [val, setVal] = useState('');
+  const [editing, setEditing] = useState(false);
+  const initial = desc.data ?? '';
+  useEffect(() => { if (!editing) setVal(initial); }, [initial, editing]);
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from('tasks').update({ description: val.trim() || null }).eq('id', taskId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task_description', taskId] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      setEditing(false);
+    },
+  });
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="text-meta text-left w-full px-2 py-1.5 rounded-btn hover:bg-surface-mist mb-2"
+        style={{ color: initial ? 'var(--text)' : 'var(--text-muted)', fontStyle: initial ? 'normal' : 'italic', fontSize: 12 }}
+      >
+        {initial || '+ Təsvir əlavə et'}
+      </button>
+    );
+  }
+  return (
+    <div className="mb-2">
+      <textarea
+        autoFocus
+        className="input w-full"
+        rows={3}
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') { setVal(initial); setEditing(false); }
+        }}
+        style={{ fontSize: 12 }}
+      />
+      <div className="flex justify-end gap-1 mt-1">
+        <button type="button" className="chip" onClick={() => { setVal(initial); setEditing(false); }} style={{ fontSize: 11 }}>Ləğv</button>
+        <button
+          type="button"
+          className="chip"
+          style={{ color: 'var(--brand-text)', fontSize: 11 }}
+          disabled={save.isPending || val === initial}
+          onClick={() => save.mutate()}
+        >
+          {save.isPending ? '…' : 'Saxla'}
+        </button>
+      </div>
+    </div>
   );
 }
