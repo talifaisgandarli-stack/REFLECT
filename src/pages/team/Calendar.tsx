@@ -623,6 +623,12 @@ function EventModal({
             📹 {event.meet_url}
           </a>
         ) : null)}
+        {/* PRD §8.2 — external attendees list with × remove + inline add (canEdit) */}
+        {canEdit ? (
+          <EventExternalEmailsEditor eventId={event.id} initial={event.external_emails ?? []} />
+        ) : (event.external_emails && event.external_emails.length > 0 ? (
+          <p className="mt-2 text-body">📧 {event.external_emails.join(', ')}</p>
+        ) : null)}
         {event.recurrence_rule ? (
           <p className="mt-2 text-meta" style={{ color: 'var(--brand-text)' }}>
             ↻ {rruleLabel(event.recurrence_rule)}
@@ -1024,6 +1030,66 @@ function Field({ label, required, children }: { label: string; required?: boolea
       </span>
       {children}
     </label>
+  );
+}
+
+// PRD §8.2 — external attendees inline editor: chip list with × + email add input
+function EventExternalEmailsEditor({ eventId, initial }: { eventId: string; initial: string[] }) {
+  const qc = useQueryClient();
+  const [emails, setEmails] = useState(initial);
+  const [draft, setDraft] = useState('');
+  useEffect(() => { setEmails(initial); }, [initial]);
+
+  async function persist(next: string[]) {
+    setEmails(next);
+    await supabase
+      .from('calendar_events')
+      .update({ external_emails: next.length ? next : null })
+      .eq('id', eventId);
+    qc.invalidateQueries({ queryKey: ['calendar'] });
+  }
+
+  function add() {
+    const v = draft.trim().toLowerCase();
+    if (!v || !v.includes('@') || emails.includes(v)) { setDraft(''); return; }
+    void persist([...emails, v]);
+    setDraft('');
+  }
+
+  return (
+    <div className="mt-2 flex items-center gap-1 flex-wrap text-body">
+      <span>📧</span>
+      {emails.map((e) => (
+        <span
+          key={e}
+          className="chip flex items-center gap-1"
+          style={{ background: 'var(--surface-mist)', fontSize: 11 }}
+        >
+          {e}
+          <button
+            type="button"
+            onClick={() => persist(emails.filter((x) => x !== e))}
+            style={{ color: 'var(--text-muted)', opacity: 0.6, fontSize: 11 }}
+            title="Çıxar"
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      <input
+        type="email"
+        className="input"
+        style={{ height: 22, fontSize: 11, width: 160 }}
+        placeholder="+ ad@firma.com"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); add(); }
+          if (e.key === ',') { e.preventDefault(); add(); }
+        }}
+        onBlur={() => draft.trim() && add()}
+      />
+    </div>
   );
 }
 

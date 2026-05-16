@@ -407,6 +407,9 @@ export function TaskCommentsModal({
           {/* PRD §REQ-TASK-06 — estimate vs tracked summary chip + inline edit */}
           <TaskEstimateBar taskId={taskId} data={estimateVsActual.data} />
 
+          {/* PRD §REQ-TASK-03 — status + priority + labels inline editors */}
+          <TaskStatusPriorityLabels taskId={taskId} />
+
           {/* PRD §REQ-TASK — assignees chip row */}
           <TaskAssigneesChip taskId={taskId} />
 
@@ -633,6 +636,133 @@ function SubtaskInlineCreate({ parentTaskId }: { parentTaskId: string }) {
       </button>
       <button type="button" className="chip" onClick={() => { setOpen(false); setTitle(''); }} style={{ fontSize: 11 }}>×</button>
     </form>
+  );
+}
+
+// PRD §REQ-TASK-03 + 6.x — inline status / priority / labels editors row
+const STATUS_LABEL_LOCAL: Record<string, string> = {
+  idea: 'İdeya',
+  queued: 'Növbədə',
+  active: 'Aktiv',
+  review: 'Yoxlanır',
+  expert: 'Ekspertizada',
+  done: 'Tamamlandı',
+  cancelled: 'Ləğv edildi',
+};
+const STATUS_KEYS = ['idea', 'queued', 'active', 'review', 'expert', 'done', 'cancelled'] as const;
+const PRIORITY_VISUAL: Record<string, { icon: string; bg: string; color: string }> = {
+  high:   { icon: '↑', bg: 'var(--error-aa, #8a1e18)', color: 'white' },
+  medium: { icon: '→', bg: 'var(--warning-aa, #8a5800)', color: 'white' },
+  low:    { icon: '↓', bg: 'var(--surface-mist)', color: 'var(--text-muted)' },
+};
+
+function TaskStatusPriorityLabels({ taskId }: { taskId: string }) {
+  const qc = useQueryClient();
+  const task = useQuery({
+    queryKey: ['task_meta_editable', taskId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('tasks')
+        .select('status, priority, labels')
+        .eq('id', taskId)
+        .maybeSingle();
+      return (data ?? { status: 'queued', priority: null, labels: [] }) as {
+        status: string;
+        priority: 'high' | 'medium' | 'low' | null;
+        labels: string[] | null;
+      };
+    },
+  });
+
+  const updateField = useMutation({
+    mutationFn: async (patch: Partial<{ status: string; priority: string | null; labels: string[] }>) => {
+      const { error } = await supabase.from('tasks').update(patch).eq('id', taskId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task_meta_editable', taskId] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+    },
+  });
+
+  const status = task.data?.status ?? 'queued';
+  const priority = task.data?.priority ?? null;
+  const labels = task.data?.labels ?? [];
+  const [draftLabel, setDraftLabel] = useState('');
+
+  function addLabel() {
+    const v = draftLabel.trim();
+    if (!v || labels.includes(v)) { setDraftLabel(''); return; }
+    updateField.mutate({ labels: [...labels, v] });
+    setDraftLabel('');
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap mb-2 text-meta" style={{ fontSize: 11 }}>
+      {/* Status inline dropdown */}
+      <select
+        className="input"
+        style={{ height: 22, fontSize: 11, padding: '0 4px' }}
+        value={status}
+        onChange={(e) => updateField.mutate({ status: e.target.value })}
+        disabled={updateField.isPending}
+      >
+        {STATUS_KEYS.map((s) => <option key={s} value={s}>{STATUS_LABEL_LOCAL[s] ?? s}</option>)}
+      </select>
+
+      {/* Priority inline dropdown — small visual chip */}
+      <select
+        className="input"
+        style={{
+          height: 22,
+          fontSize: 11,
+          padding: '0 4px',
+          background: priority ? PRIORITY_VISUAL[priority].bg : 'var(--surface-mist)',
+          color: priority ? PRIORITY_VISUAL[priority].color : 'var(--text-muted)',
+        }}
+        value={priority ?? ''}
+        onChange={(e) => updateField.mutate({ priority: e.target.value || null })}
+        disabled={updateField.isPending}
+        title="Prioritet"
+      >
+        <option value="">— prioritet —</option>
+        <option value="high">↑ Yüksək</option>
+        <option value="medium">→ Orta</option>
+        <option value="low">↓ Aşağı</option>
+      </select>
+
+      {/* Labels — chip with × + inline add */}
+      {labels.map((l) => (
+        <span
+          key={l}
+          className="chip flex items-center gap-1"
+          style={{ background: 'var(--surface-mist)', fontSize: 11 }}
+        >
+          #{l}
+          <button
+            type="button"
+            onClick={() => updateField.mutate({ labels: labels.filter((x) => x !== l) })}
+            style={{ color: 'var(--text-muted)', opacity: 0.6, fontSize: 11 }}
+            title="Çıxar"
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      <input
+        type="text"
+        className="input"
+        style={{ height: 22, fontSize: 11, width: 80 }}
+        placeholder="+ etiket"
+        value={draftLabel}
+        onChange={(e) => setDraftLabel(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); addLabel(); }
+          if (e.key === ',') { e.preventDefault(); addLabel(); }
+        }}
+        onBlur={() => draftLabel.trim() && addLabel()}
+      />
+    </div>
   );
 }
 

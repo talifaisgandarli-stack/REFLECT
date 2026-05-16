@@ -425,7 +425,11 @@ export function ProjectDetailPage() {
               )}
               <ProjectTimeTotal taskIds={tasks.map((t) => t.id)} />
               <ProjectClientLink projectId={id!} clientId={project.client_id} isAdmin={isAdmin} />
-              <Row k="Ekspertiza" v={project.requires_expertise ? 'Lazımdır' : 'Yox'} />
+              {isAdmin ? (
+                <ProjectExpertiseToggle projectId={id!} initial={project.requires_expertise} />
+              ) : (
+                <Row k="Ekspertiza" v={project.requires_expertise ? 'Lazımdır' : 'Yox'} />
+              )}
               {project.requires_expertise ? (
                 isAdmin ? (
                   <ProjectDateField
@@ -1756,6 +1760,55 @@ function ProjectDescriptionEditor({ projectId, initial, isAdmin }: { projectId: 
           {saving ? '…' : 'Saxla'}
         </button>
       </div>
+    </div>
+  );
+}
+
+// PRD §REQ-PROJ-02 — admin toggle for requires_expertise (drives §10.5
+// expertise timeline planning). Click chip to flip; persists immediately.
+function ProjectExpertiseToggle({ projectId, initial }: { projectId: string; initial: boolean }) {
+  const qc = useQueryClient();
+  const [val, setVal] = useState(initial);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setVal(initial); }, [initial]);
+
+  async function toggle() {
+    const next = !val;
+    setVal(next);
+    setSaving(true);
+    await supabase
+      .from('projects')
+      .update({
+        requires_expertise: next,
+        // Clear expertise_deadline when toggling off so backward planning
+        // doesn't drift on stale data
+        ...(next ? {} : { expertise_deadline: null }),
+      })
+      .eq('id', projectId);
+    setSaving(false);
+    qc.invalidateQueries({ queryKey: ['project', projectId] });
+    qc.invalidateQueries({ queryKey: ['projects'] });
+  }
+
+  return (
+    <div className="flex justify-between items-center gap-2">
+      <dt style={{ color: 'var(--text-muted)' }}>Ekspertiza</dt>
+      <dd>
+        <button
+          type="button"
+          className="chip"
+          style={{
+            background: val ? 'var(--brand-action)' : 'var(--surface-mist)',
+            color: val ? 'var(--ink)' : 'var(--text-muted)',
+            fontSize: 11,
+          }}
+          disabled={saving}
+          onClick={toggle}
+          title="Layihə ekspertizadan keçirməlidirmi?"
+        >
+          {val ? '✓ Lazımdır' : '○ Yox'}
+        </button>
+      </dd>
     </div>
   );
 }
