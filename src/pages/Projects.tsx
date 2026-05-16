@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import { useProjects } from '@/lib/hooks';
@@ -10,6 +10,7 @@ import { ProjectCreateModal } from '@/components/ProjectCreateModal';
 import { SkeletonList } from '@/components/Skeleton';
 import { AvatarGroup } from '@/components/AvatarGroup';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/store';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -33,11 +34,46 @@ const STATUS_CHIPS: { label: string; value: StatusFilter }[] = [
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function ProjectsPage() {
+  const { isAdmin } = useAuth();
+  const qc = useQueryClient();
   const { data: projects = [], isLoading } = useProjects();
 
   const [showCreate, setShowCreate] = useState(false);
   const [search, setSearch]         = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  // PRD §6.x — bulk archive (admin only). Selection mode is opt-in to keep
+  // single-card click-to-open behaviour the default.
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function exitBulkMode() {
+    setBulkMode(false);
+    setSelectedIds(new Set());
+  }
+
+  const bulkArchive = useMutation({
+    mutationFn: async () => {
+      const ids = Array.from(selectedIds);
+      if (ids.length === 0) return;
+      const { error } = await supabase
+        .from('projects')
+        .update({ status: 'closed', archived_at: new Date().toISOString() })
+        .in('id', ids);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['projects'] });
+      exitBulkMode();
+    },
+  });
 
   // Task stats: project_id, status, assignee_ids
   const { data: taskStats = [] } = useQuery({
@@ -90,6 +126,15 @@ export function ProjectsPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+            {isAdmin ? (
+              <button
+                className={`btn-outline ${bulkMode ? 'border-brand-text' : ''}`}
+                onClick={() => bulkMode ? exitBulkMode() : setBulkMode(true)}
+                style={bulkMode ? { background: 'var(--brand-action)', color: 'var(--ink)' } : undefined}
+              >
+                {bulkMode ? `✓ Seçim (${selectedIds.size})` : 'Seç'}
+              </button>
+            ) : null}
             <button className="btn-primary" onClick={() => setShowCreate(true)}>
               + Yeni layihə
             </button>
@@ -165,15 +210,19 @@ export function ProjectsPage() {
               avatar_url: profileMap[id]?.avatar_url ?? null,
             }));
 
-            return (
-              <Link
-                key={p.id}
-                to={`/layihelər/${p.id}`}
-                className={`card-interactive rounded-card p-5 min-h-[180px] flex flex-col justify-between ${tone}`}
-                style={{ color: dark ? 'var(--canvas)' : 'var(--ink)' }}
-              >
-                {/* Top: phase chip */}
-                <div>
+            const isSelected = selectedIds.has(p.id);
+            const cardStyle: React.CSSProperties = {
+              color: dark ? 'var(--canvas)' : 'var(--ink)',
+              ...(bulkMode && isSelected
+                ? { outline: '3px solid var(--brand-action)', outlineOffset: 2 }
+                : {}),
+              ...(bulkMode ? { cursor: 'pointer' } : {}),
+            };
+
+            const cardInner = (
+              <>
+                {/* Top: phase chip + selection indicator */}
+                <div className="flex items-start justify-between gap-2">
                   <span
                     className="chip"
                     style={{
@@ -185,6 +234,26 @@ export function ProjectsPage() {
                   >
                     {p.phases[0] ?? '—'}
                   </span>
+                  {bulkMode ? (
+                    <span
+                      aria-label={isSelected ? 'Seçildi' : 'Seçilməyib'}
+                      style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: '50%',
+                        border: `2px solid ${isSelected ? 'var(--brand-action)' : (dark ? 'rgba(255,255,255,0.5)' : 'rgba(14,22,17,0.3)')}`,
+                        background: isSelected ? 'var(--brand-action)' : 'transparent',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'var(--ink)',
+                        fontSize: 12,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {isSelected ? '✓' : ''}
+                    </span>
+                  ) : null}
                 </div>
 
                 {/* Middle: name + status/deadline */}
@@ -219,6 +288,28 @@ export function ProjectsPage() {
                     </div>
                   )}
                 </div>
+              </>
+            );
+
+            // Bulk mode swaps Link → button so clicks toggle selection
+            return bulkMode ? (
+              <button
+                key={p.id}
+                type="button"
+                className={`card-interactive rounded-card p-5 min-h-[180px] flex flex-col justify-between text-left ${tone}`}
+                style={cardStyle}
+                onClick={() => toggleSelected(p.id)}
+              >
+                {cardInner}
+              </button>
+            ) : (
+              <Link
+                key={p.id}
+                to={`/layihelər/${p.id}`}
+                className={`card-interactive rounded-card p-5 min-h-[180px] flex flex-col justify-between ${tone}`}
+                style={cardStyle}
+              >
+                {cardInner}
               </Link>
             );
           })}
@@ -234,6 +325,40 @@ export function ProjectsPage() {
           </button>
         </div>
       )}
+
+      {/* PRD §6.x — bulk action floating bar (admin only) */}
+      {bulkMode && selectedIds.size > 0 ? (
+        <div
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-capsule px-4 py-3 flex items-center gap-3 shadow-xl z-40"
+          style={{
+            background: 'var(--ink)',
+            color: 'var(--canvas)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            minWidth: 320,
+          }}
+        >
+          <span className="text-body font-medium">{selectedIds.size} layihə seçili</span>
+          <span style={{ flex: 1 }} />
+          <button
+            type="button"
+            className="chip"
+            style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--canvas)' }}
+            disabled={bulkArchive.isPending}
+            onClick={() => bulkArchive.mutate()}
+          >
+            {bulkArchive.isPending ? 'Arxivlənir…' : 'Arxivlə (Bağla)'}
+          </button>
+          <button
+            type="button"
+            className="chip"
+            style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--canvas)' }}
+            onClick={exitBulkMode}
+            aria-label="Seçim rejimini bağla"
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
 
       {showCreate && <ProjectCreateModal onClose={() => setShowCreate(false)} />}
     </>

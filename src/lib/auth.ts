@@ -73,7 +73,12 @@ export async function signInWithPassword(email: string, password: string) {
     if (res.status === 429) {
       const body = await res.json().catch(() => ({}));
       const msg = (body as { error?: string }).error ?? 'Çox sayda cəhd. 15 dəqiqə gözləyin.';
-      return { data: { user: null, session: null }, error: { message: msg } as never };
+      // Forward Retry-After (seconds) so the UI can render a live countdown.
+      const retryAfter = Number(res.headers.get('retry-after')) || 900;
+      return {
+        data: { user: null, session: null },
+        error: { message: msg, status: 429, retryAfterSeconds: retryAfter } as never,
+      };
     }
   } catch {
     // network error → fail-open, proceed to Supabase

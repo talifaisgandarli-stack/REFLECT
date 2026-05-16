@@ -1,9 +1,16 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { Mascot } from '@/components/Mascot';
 import { useAuth } from '@/lib/store';
 import { sendMagicLink, sendPasswordReset, signInWithPassword } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
+
+function formatCountdown(seconds: number): string {
+  if (seconds <= 0) return '0:00';
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
 
 export function LoginPage() {
   const { session, hydrated } = useAuth();
@@ -15,6 +22,26 @@ export function LoginPage() {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
+  // PRD §REQ-AUTH-01 — visible countdown when locked out (429 from rate-check)
+  const [lockedUntilTs, setLockedUntilTs] = useState<number | null>(null);
+  const [now, setNow] = useState(Date.now());
+
+  // Tick once a second while locked so the countdown updates live.
+  useEffect(() => {
+    if (!lockedUntilTs) return;
+    const id = window.setInterval(() => {
+      const t = Date.now();
+      setNow(t);
+      if (t >= lockedUntilTs) {
+        setLockedUntilTs(null);
+        window.clearInterval(id);
+      }
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [lockedUntilTs]);
+
+  const lockedSecondsLeft = lockedUntilTs ? Math.max(0, Math.ceil((lockedUntilTs - now) / 1000)) : 0;
+  const isLocked = lockedSecondsLeft > 0;
 
   if (!hydrated) return null;
   if (session) return <Navigate to="/" replace />;
@@ -38,13 +65,21 @@ export function LoginPage() {
   // string; the user can still tell on the next attempt with correct creds.
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (isLocked) return; // belt-and-suspenders against rapid Enter presses
     setErr(null);
     setInfo(null);
     setBusy(true);
     const { error } = await signInWithPassword(email, password);
     if (error) {
       setBusy(false);
-      setErr('Email və ya şifrə yanlışdır.');
+      // Detect 429 from rate-check and start the countdown
+      const e429 = error as { status?: number; retryAfterSeconds?: number; message?: string };
+      if (e429?.status === 429 && e429.retryAfterSeconds) {
+        setLockedUntilTs(Date.now() + e429.retryAfterSeconds * 1000);
+        setErr(e429.message ?? 'Çox sayda cəhd. Gözləyin.');
+      } else {
+        setErr('Email və ya şifrə yanlışdır.');
+      }
       return;
     }
     if (inviteToken) await acceptInvite(inviteToken);
@@ -58,7 +93,6 @@ export function LoginPage() {
     setBusy(false);
     setInfo('Əgər bu email Reflect-də qeydiyyatdadırsa, linki göndərdik.');
     if (error && import.meta.env.DEV) {
-      // eslint-disable-next-line no-console
       console.warn('[magic-link]', error.message);
     }
   }
@@ -74,7 +108,6 @@ export function LoginPage() {
     setBusy(false);
     setInfo('Əgər bu email qeydiyyatdadırsa, şifrə bərpa linki göndərdik.');
     if (error && import.meta.env.DEV) {
-      // eslint-disable-next-line no-console
       console.warn('[password-reset]', error.message);
     }
   }
@@ -128,12 +161,30 @@ export function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
             />
           </label>
-          {err ? <p className="text-meta" style={{ color: 'var(--error-deep)' }}>{err}</p> : null}
+          {/* PRD §REQ-AUTH-01 — visible lockout countdown after 429 */}
+          {isLocked ? (
+            <div
+              role="alert"
+              className="rounded-card px-3 py-2 text-meta flex items-center justify-between"
+              style={{
+                background: 'rgba(217, 119, 6, 0.12)',
+                border: '1px solid rgba(217, 119, 6, 0.4)',
+                color: 'var(--warning, #c47d00)',
+              }}
+            >
+              <span>{err ?? 'Çox sayda cəhd. Gözləyin.'}</span>
+              <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                {formatCountdown(lockedSecondsLeft)}
+              </span>
+            </div>
+          ) : err ? (
+            <p className="text-meta" style={{ color: 'var(--error-deep)' }}>{err}</p>
+          ) : null}
           {info ? <p className="text-meta" style={{ color: 'var(--brand-text)' }}>{info}</p> : null}
-          <button type="submit" className="btn-primary w-full" disabled={busy}>
-            Daxil ol
+          <button type="submit" className="btn-primary w-full" disabled={busy || isLocked}>
+            {isLocked ? `Daxil ol (${formatCountdown(lockedSecondsLeft)})` : 'Daxil ol'}
           </button>
-          <button type="button" className="btn-ghost w-full" onClick={onMagic} disabled={busy || !email}>
+          <button type="button" className="btn-ghost w-full" onClick={onMagic} disabled={busy || !email || isLocked}>
             Magic link göndər
           </button>
           <button

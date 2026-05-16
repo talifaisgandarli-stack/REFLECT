@@ -11,6 +11,7 @@ import {
   type NotificationRow,
   useMarkNotificationRead,
   useNotifications,
+  useSnoozeNotification,
 } from '@/lib/hooks';
 import { relativeTime } from '@/lib/format';
 
@@ -79,7 +80,9 @@ function groupNotifications(rows: NotificationRow[]): GroupedItem[] {
 export function NotificationBell() {
   const { data = [] } = useNotifications();
   const markRead = useMarkNotificationRead();
+  const snooze = useSnoozeNotification();
   const [open, setOpen] = useState(false);
+  const [snoozeOpenId, setSnoozeOpenId] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   const unread = data.filter((n) => !n.read_at);
@@ -166,10 +169,11 @@ export function NotificationBell() {
               {groupNotifications(data).map((item) => {
                 if (item.kind === 'single') {
                   const n = item.row;
+                  const isSnoozeOpen = snoozeOpenId === n.id;
                   return (
                     <li
                       key={n.id}
-                      className="px-4 py-3 flex gap-3 cursor-pointer"
+                      className="px-4 py-3 flex gap-3 cursor-pointer relative"
                       style={{
                         borderBottom: '1px solid var(--line-soft)',
                         background: n.read_at ? 'transparent' : 'var(--brand-mist)',
@@ -200,6 +204,53 @@ export function NotificationBell() {
                           {relativeTime(n.created_at)}
                         </time>
                       </div>
+                      {/* PRD §6.4 — snooze chip (unread rows only) */}
+                      {!n.read_at ? (
+                        <button
+                          type="button"
+                          className="text-tiny opacity-50 hover:opacity-100 self-start mt-1"
+                          style={{ color: 'var(--text-muted)' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSnoozeOpenId(isSnoozeOpen ? null : n.id);
+                          }}
+                          title="Sonra xatırlat"
+                        >
+                          ⏰
+                        </button>
+                      ) : null}
+                      {isSnoozeOpen ? (
+                        <div
+                          className="absolute top-12 right-2 rounded-card p-2 z-10 flex flex-col gap-1"
+                          style={{
+                            background: 'var(--ink)',
+                            color: 'var(--canvas)',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            minWidth: 140,
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {[
+                            { hours: 1, label: '1 saat' },
+                            { hours: 4, label: '4 saat' },
+                            { hours: 24, label: 'Sabaha qədər' },
+                            { hours: 24 * 7, label: 'Bir həftə' },
+                          ].map((opt) => (
+                            <button
+                              key={opt.hours}
+                              type="button"
+                              className="text-meta text-left px-2 py-1 rounded hover:bg-white/5"
+                              style={{ color: 'var(--canvas)' }}
+                              onClick={() => {
+                                snooze.mutate({ id: n.id, hours: opt.hours });
+                                setSnoozeOpenId(null);
+                              }}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
                     </li>
                   );
                 }

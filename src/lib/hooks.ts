@@ -287,6 +287,7 @@ export interface NotificationRow {
   kind: NotificationKind | string;
   payload: Record<string, unknown>;
   read_at: string | null;
+  snoozed_until: string | null;
   created_at: string;
 }
 
@@ -295,14 +296,35 @@ export function useNotifications(limit = 20) {
     queryKey: ['notifications', limit],
     // realtime subscription in src/lib/realtime.ts invalidates this key
     queryFn: async (): Promise<NotificationRow[]> => {
+      const nowIso = new Date().toISOString();
+      // PRD §6.4 — exclude rows whose snooze hasn't elapsed yet (column added
+      // in migration 0041). Postgres treats NULL OR > now() correctly when
+      // using the .or() filter below.
       const { data, error } = await supabase
         .from('notifications')
         .select('*')
+        .or(`snoozed_until.is.null,snoozed_until.lte.${nowIso}`)
         .order('created_at', { ascending: false })
         .limit(limit);
       if (error) throw error;
       return (data ?? []) as NotificationRow[];
     },
+  });
+}
+
+// PRD §6.4 — snooze a notification for N hours (writes snoozed_until = now + N*3600s)
+export function useSnoozeNotification() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; hours: number }) => {
+      const until = new Date(Date.now() + input.hours * 3600 * 1000).toISOString();
+      const { error } = await supabase
+        .from('notifications')
+        .update({ snoozed_until: until })
+        .eq('id', input.id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
   });
 }
 

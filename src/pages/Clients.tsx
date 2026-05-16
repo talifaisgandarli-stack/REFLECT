@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from 'recharts';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import {
@@ -95,6 +96,67 @@ export function ClientsPage() {
           </>
         }
       />
+
+      {/* PRD §REQ-CRM-02 — visual pipeline value per stage (bar chart) */}
+      {!isLoading && clients.length > 0 ? (
+        <div className="card mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-h3">Pipeline dəyəri (mərhələ üzrə)</h3>
+            <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+              Σ (gözlənilən × confidence%)
+            </span>
+          </div>
+          <div style={{ width: '100%', height: 200 }}>
+            <ResponsiveContainer>
+              <BarChart
+                data={CLIENT_STAGE_ORDER.map((s) => ({
+                  stage: CLIENT_STAGE_LABEL[s],
+                  value: stageValue(s),
+                  count: grouped[s].length,
+                  key: s,
+                }))}
+                margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+              >
+                <XAxis
+                  dataKey="stage"
+                  stroke="var(--text-muted)"
+                  fontSize={11}
+                  interval={0}
+                  angle={-15}
+                  textAnchor="end"
+                  height={50}
+                />
+                <YAxis
+                  stroke="var(--text-muted)"
+                  fontSize={11}
+                  tickFormatter={(v) => `${(Number(v) / 1000).toFixed(0)}k`}
+                />
+                <Tooltip
+                  cursor={{ fill: 'var(--brand-glow-sm)' }}
+                  contentStyle={{
+                    background: 'var(--ink)',
+                    border: '1px solid var(--line)',
+                    borderRadius: 8,
+                    color: 'var(--canvas)',
+                  }}
+                  formatter={(value, _name, item) => {
+                    const count = (item?.payload as { count?: number } | undefined)?.count ?? 0;
+                    return [`${formatAZN(Number(value))} · ${count} müştəri`, 'Dəyər'];
+                  }}
+                />
+                <Bar dataKey="value" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+                  {CLIENT_STAGE_ORDER.map((s) => (
+                    <Cell
+                      key={s}
+                      fill={s === 'lost' ? 'var(--error)' : s === 'portfolio' ? 'var(--success)' : 'var(--brand-action)'}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      ) : null}
 
       {isLoading ? (
         <SkeletonList rows={6} />

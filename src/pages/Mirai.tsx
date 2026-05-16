@@ -356,6 +356,39 @@ export function MiraiPage() {
 
   const currentPersonaMeta = PERSONAS.find((p) => p.key === persona)!;
 
+  // PRD §7 — export the active conversation as Markdown so users can paste
+  // into emails, meeting notes, or external docs. Pure-client; no API call.
+  function exportConversation() {
+    if (msgs.length === 0) return;
+    const dt = new Date().toLocaleString('az-AZ', { timeZone: 'Asia/Baku' });
+    const header =
+      `# MIRAI — ${currentPersonaMeta.label}\n` +
+      `> ${dt} · ${profile?.full_name ?? profile?.email ?? '—'}\n\n`;
+    const body = msgs
+      .map((m) => {
+        const who = m.role === 'user' ? '**Sən:**' : `**MIRAI (${currentPersonaMeta.label}):**`;
+        const content = m.content.trim();
+        const sources = m.sources && m.sources.length
+          ? '\n\n_Mənbələr:_ ' + m.sources.map((s) => `${s.name}${s.page != null ? ` · ${s.page}` : ''}`).join('; ')
+          : '';
+        return `${who}\n${content}${sources}`;
+      })
+      .join('\n\n---\n\n');
+    const md = header + body + '\n';
+
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const slug = (currentPersonaMeta.label || 'mirai').replace(/[^\p{L}\p{N}_-]+/gu, '_');
+    const stamp = new Date().toISOString().slice(0, 10);
+    a.download = `mirai-${slug}-${stamp}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div
       className="min-h-screen -mx-6 lg:-mx-10 -my-6 px-4 lg:px-8 py-10 flex flex-col items-center"
@@ -400,6 +433,22 @@ export function MiraiPage() {
         >
           ⏱ Tarixçə
         </button>
+        {/* PRD §7 — export current conversation as Markdown */}
+        {msgs.length > 0 ? (
+          <button
+            type="button"
+            onClick={exportConversation}
+            className="chip"
+            title="Söhbəti Markdown olaraq endir"
+            style={{
+              background: 'rgba(255,255,255,0.06)',
+              color: 'var(--canvas)',
+              border: '1px solid rgba(255,255,255,0.08)',
+            }}
+          >
+            ↓ İxrac
+          </button>
+        ) : null}
       </div>
 
       {/* Conversation history dropdown */}

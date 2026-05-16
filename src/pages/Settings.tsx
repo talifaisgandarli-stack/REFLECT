@@ -829,10 +829,25 @@ function AuditLogViewer() {
   const { isAdmin } = useAuth();
   const [page, setPage] = useState(0);
   const [actionFilter, setActionFilter] = useState('');
+  const [actorId, setActorId] = useState('');
   const PAGE_SIZE = 30;
 
+  // PRD §9.4 — actor dropdown for "what did user X do?" forensics
+  const profilesForFilter = useQuery({
+    queryKey: ['profiles', 'audit-actor-filter'],
+    enabled: isAdmin,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .order('full_name');
+      return (data ?? []) as Array<{ id: string; full_name: string | null; email: string }>;
+    },
+    staleTime: 5 * 60_000,
+  });
+
   const audit = useQuery({
-    queryKey: ['audit-log', page, actionFilter],
+    queryKey: ['audit-log', page, actionFilter, actorId],
     enabled: isAdmin,
     queryFn: async () => {
       let q = supabase
@@ -841,6 +856,7 @@ function AuditLogViewer() {
         .order('created_at', { ascending: false })
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
       if (actionFilter.trim()) q = q.ilike('action', `%${actionFilter.trim()}%`);
+      if (actorId) q = q.eq('actor_id', actorId);
       const { data, count, error } = await q;
       if (error) throw error;
       return { rows: data ?? [], total: count ?? 0 };
@@ -860,13 +876,33 @@ function AuditLogViewer() {
         Privileged əməliyyatların qeydi (PRD §9.4) — rol dəyişiklikləri, dəvətlər, ayar yeniləmələri.
       </p>
 
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
         <input
           className="input max-w-[260px]"
           placeholder="Action filter (məs: invitation, settings)"
           value={actionFilter}
           onChange={(e) => { setActionFilter(e.target.value); setPage(0); }}
         />
+        <select
+          className="input max-w-[220px]"
+          value={actorId}
+          onChange={(e) => { setActorId(e.target.value); setPage(0); }}
+          aria-label="Aktor filtri"
+        >
+          <option value="">Bütün aktorlar</option>
+          {(profilesForFilter.data ?? []).map((p) => (
+            <option key={p.id} value={p.id}>{p.full_name ?? p.email}</option>
+          ))}
+        </select>
+        {(actionFilter || actorId) ? (
+          <button
+            type="button"
+            className="chip"
+            onClick={() => { setActionFilter(''); setActorId(''); setPage(0); }}
+          >
+            Sıfırla
+          </button>
+        ) : null}
         <span className="text-meta" style={{ color: 'var(--text-muted)' }}>{total} qeyd</span>
       </div>
 

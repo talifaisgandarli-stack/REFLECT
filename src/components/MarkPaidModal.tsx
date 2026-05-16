@@ -91,6 +91,22 @@ export function MarkPaidModal({ receivable, onClose }: Props) {
     },
   });
 
+  // PRD §REQ-FIN-03 — delete a wrong payment row. The receivable_payment_apply
+  // trigger (migration 0040) reverses the paid_amount + status atomically on DELETE.
+  const removePayment = useMutation({
+    mutationFn: async (paymentId: string) => {
+      const { error } = await supabase.from('receivable_payments').delete().eq('id', paymentId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fin', 'receivables'] });
+      qc.invalidateQueries({ queryKey: ['receivable_payments', receivable.id] });
+    },
+  });
+
+  // Per-row confirm state for the delete chip
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
   const trapRef = useFocusTrap<HTMLFormElement>(true);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -229,6 +245,38 @@ export function MarkPaidModal({ receivable, onClose }: Props) {
                   <span className="shrink-0" style={{ fontSize: 11 }}>
                     {new Date(p.paid_at).toLocaleDateString('az-AZ', { timeZone: 'Asia/Baku' })}
                   </span>
+                  {/* PRD §REQ-FIN-03 — delete reverses paid_amount via DB trigger */}
+                  {confirmDeleteId === p.id ? (
+                    <span className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        className="chip"
+                        style={{ background: 'var(--error-deep)', color: 'white', fontSize: 10, padding: '0 6px' }}
+                        disabled={removePayment.isPending}
+                        onClick={() => removePayment.mutate(p.id)}
+                      >
+                        {removePayment.isPending ? '…' : 'Bəli'}
+                      </button>
+                      <button
+                        type="button"
+                        className="chip"
+                        style={{ fontSize: 10, padding: '0 6px' }}
+                        onClick={() => setConfirmDeleteId(null)}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="chip shrink-0 opacity-60 hover:opacity-100"
+                      style={{ color: 'var(--error-deep)', fontSize: 10, padding: '0 6px' }}
+                      onClick={() => setConfirmDeleteId(p.id)}
+                      title="Bu ödənişi sil"
+                    >
+                      🗑
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
