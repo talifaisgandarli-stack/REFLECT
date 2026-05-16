@@ -602,7 +602,12 @@ function ClientPanel({ client, onClose }: { client: Client; onClose: () => void 
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between mb-1 gap-2">
-          <h2 className="text-h2 flex-1 min-w-0 truncate">{client.name}</h2>
+          {/* PRD §REQ-CRM — admin inline edit client name */}
+          {isAdmin ? (
+            <ClientNameEditor clientId={client.id} initial={client.name} />
+          ) : (
+            <h2 className="text-h2 flex-1 min-w-0 truncate">{client.name}</h2>
+          )}
           {/* PRD §REQ-CRM — admin client merge */}
           {isAdmin ? (
             <button
@@ -1313,5 +1318,52 @@ function ClientMergeModal({
         </div>
       </div>
     </div>
+  );
+}
+
+// PRD §REQ-CRM — inline edit client name (admin, in ClientPanel header)
+function ClientNameEditor({ clientId, initial }: { clientId: string; initial: string }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(initial);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { if (!editing) setVal(initial); }, [initial, editing]);
+  async function save() {
+    const trimmed = val.trim();
+    if (!trimmed || trimmed === initial) { setEditing(false); setVal(initial); return; }
+    setSaving(true);
+    await supabase.from('clients').update({ name: trimmed }).eq('id', clientId);
+    setSaving(false);
+    qc.invalidateQueries({ queryKey: ['clients'] });
+    setEditing(false);
+  }
+  if (editing) {
+    return (
+      <div className="flex-1 min-w-0 flex items-center gap-1">
+        <input
+          autoFocus
+          className="input"
+          style={{ height: 32, fontSize: 20, fontWeight: 700 }}
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') save();
+            if (e.key === 'Escape') { setVal(initial); setEditing(false); }
+          }}
+          disabled={saving}
+        />
+        <button type="button" className="chip" disabled={saving} onClick={save} style={{ fontSize: 11, color: 'var(--brand-text)' }}>{saving ? '…' : '✓'}</button>
+        <button type="button" className="chip" onClick={() => { setVal(initial); setEditing(false); }} style={{ fontSize: 11 }}>×</button>
+      </div>
+    );
+  }
+  return (
+    <h2
+      className="text-h2 flex-1 min-w-0 truncate cursor-pointer hover:opacity-80"
+      onClick={() => setEditing(true)}
+      title="Adı dəyişdirmək üçün klik"
+    >
+      {initial}
+    </h2>
   );
 }

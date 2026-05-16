@@ -228,10 +228,12 @@ export function EquipmentPage() {
                 <tr key={e.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
                   <td className="py-3 px-3 font-medium">{e.name}</td>
                   <td className="py-3 px-3">{e.kind ?? '—'}</td>
-                  <td className="py-3 px-3 text-meta" style={{ color: 'var(--text-muted)' }}>{e.serial ?? '—'}</td>
+                  <td className="py-3 px-3">
+                    <EquipmentTextCell id={e.id} field="serial" initial={e.serial ?? null} isAdmin={isAdmin} mono={false} />
+                  </td>
                   {/* PRD §8.7 — QR/asset tag (migration 0051) */}
-                  <td className="py-3 px-3 text-meta" style={{ color: 'var(--text-muted)', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 11 }}>
-                    {(e as { qr_code?: string | null }).qr_code ?? '—'}
+                  <td className="py-3 px-3">
+                    <EquipmentTextCell id={e.id} field="qr_code" initial={(e as { qr_code?: string | null }).qr_code ?? null} isAdmin={isAdmin} mono={true} />
                   </td>
                   <td className="py-3 px-3">
                     {e.assigned_to ? profileMap[e.assigned_to] ?? e.assigned_to : (
@@ -427,8 +429,23 @@ function CreateEquipmentModal({ onClose, onSaved }: { onClose: () => void; onSav
   );
 }
 
-// PRD §8.7 — inline notes editor for an equipment row (admin only writes)
-function EquipmentNotesCell({ id, initial, isAdmin }: { id: string; initial: string | null; isAdmin: boolean }) {
+// PRD §8.7 — generic inline text editor for an equipment field (admin-only writes).
+// Used by serial / qr_code / notes. Mono styling for ID-like fields (qr_code).
+function EquipmentTextCell({
+  id,
+  field,
+  initial,
+  isAdmin,
+  mono = false,
+  placeholder,
+}: {
+  id: string;
+  field: 'serial' | 'qr_code' | 'notes';
+  initial: string | null;
+  isAdmin: boolean;
+  mono?: boolean;
+  placeholder?: string;
+}) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(initial ?? '');
@@ -439,15 +456,18 @@ function EquipmentNotesCell({ id, initial, isAdmin }: { id: string; initial: str
     const trimmed = val.trim();
     if (trimmed === (initial ?? '')) { setEditing(false); return; }
     setSaving(true);
-    await supabase.from('equipment').update({ notes: trimmed || null }).eq('id', id);
+    await supabase.from('equipment').update({ [field]: trimmed || null }).eq('id', id);
     setSaving(false);
     qc.invalidateQueries({ queryKey: ['equipment'] });
     setEditing(false);
   }
 
+  const monoStyle: React.CSSProperties = mono ? { fontFamily: 'ui-monospace, Menlo, monospace' } : {};
+  const placeholderText = placeholder ?? (field === 'notes' ? '+ qeyd' : `+ ${field}`);
+
   if (!isAdmin) {
     return (
-      <span className="text-meta truncate block" style={{ color: 'var(--text-muted)', fontSize: 12 }} title={initial ?? undefined}>
+      <span className="text-meta truncate block" style={{ color: 'var(--text-muted)', fontSize: 12, ...monoStyle }} title={initial ?? undefined}>
         {initial ?? '—'}
       </span>
     );
@@ -458,7 +478,7 @@ function EquipmentNotesCell({ id, initial, isAdmin }: { id: string; initial: str
         <input
           autoFocus
           className="input"
-          style={{ height: 24, fontSize: 12 }}
+          style={{ height: 24, fontSize: 12, ...monoStyle }}
           value={val}
           onChange={(e) => setVal(e.target.value)}
           onKeyDown={(e) => {
@@ -480,10 +500,16 @@ function EquipmentNotesCell({ id, initial, isAdmin }: { id: string; initial: str
         color: initial ? 'var(--text)' : 'var(--text-muted)',
         fontStyle: initial ? 'normal' : 'italic',
         fontSize: 12,
+        ...monoStyle,
       }}
       title={initial ?? undefined}
     >
-      {initial ?? '+ qeyd'}
+      {initial ?? placeholderText}
     </button>
   );
+}
+
+// Backwards-compat: keep the old name pointing to the generic component for notes
+function EquipmentNotesCell({ id, initial, isAdmin }: { id: string; initial: string | null; isAdmin: boolean }) {
+  return <EquipmentTextCell id={id} field="notes" initial={initial} isAdmin={isAdmin} />;
 }

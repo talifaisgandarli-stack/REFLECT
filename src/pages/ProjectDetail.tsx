@@ -411,7 +411,11 @@ export function ProjectDetailPage() {
               <ProjectTagsEditor projectId={id!} initial={(project as { tags?: string[] }).tags ?? []} isAdmin={isAdmin} />
               {/* PRD §6.x — project description (migration 0054) */}
               <ProjectDescriptionEditor projectId={id!} initial={(project as { description?: string | null }).description ?? null} isAdmin={isAdmin} />
-              <Row k="Status" v={project.status} />
+              {isAdmin ? (
+                <ProjectStatusEditor projectId={id!} initial={project.status} />
+              ) : (
+                <Row k="Status" v={project.status} />
+              )}
               {isAdmin ? (
                 <ProjectDateField projectId={id!} field="start_date" label="Başlama" initial={project.start_date} />
               ) : (
@@ -1766,6 +1770,47 @@ function ProjectDescriptionEditor({ projectId, initial, isAdmin }: { projectId: 
           {saving ? '…' : 'Saxla'}
         </button>
       </div>
+    </div>
+  );
+}
+
+// PRD §REQ-PROJ — admin inline status dropdown (active/on_hold/closed/cancelled)
+function ProjectStatusEditor({ projectId, initial }: { projectId: string; initial: string }) {
+  const qc = useQueryClient();
+  const update = useMutation({
+    mutationFn: async (next: string) => {
+      // Closing the project stamps archived_at; reopening clears it.
+      const patch: { status: string; archived_at?: string | null } = { status: next };
+      if (next === 'closed') patch.archived_at = new Date().toISOString();
+      else if (initial === 'closed') patch.archived_at = null;
+      const { error } = await supabase.from('projects').update(patch).eq('id', projectId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['project', projectId] });
+      qc.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
+  const STATUS_LABEL: Record<string, string> = {
+    active: 'Aktiv',
+    on_hold: 'Planlama',
+    closed: 'Bağlı',
+    cancelled: 'Ləğv',
+  };
+  return (
+    <div className="flex justify-between items-center gap-2">
+      <dt style={{ color: 'var(--text-muted)' }}>Status</dt>
+      <dd>
+        <select
+          className="input"
+          style={{ height: 28, fontSize: 13, padding: '0 6px' }}
+          value={initial}
+          onChange={(e) => update.mutate(e.target.value)}
+          disabled={update.isPending}
+        >
+          {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+      </dd>
     </div>
   );
 }

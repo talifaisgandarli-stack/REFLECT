@@ -642,7 +642,7 @@ function SubtaskInlineCreate({ parentTaskId }: { parentTaskId: string }) {
   );
 }
 
-// PRD §REQ-TASK — inline date pickers for start_date + deadline
+// PRD §REQ-TASK — inline date pickers + risk_buffer_pct
 function TaskDateFields({ taskId }: { taskId: string }) {
   const qc = useQueryClient();
   const dates = useQuery({
@@ -650,22 +650,24 @@ function TaskDateFields({ taskId }: { taskId: string }) {
     queryFn: async () => {
       const { data } = await supabase
         .from('tasks')
-        .select('start_date, deadline')
+        .select('start_date, deadline, risk_buffer_pct')
         .eq('id', taskId)
         .maybeSingle();
-      return (data ?? { start_date: null, deadline: null }) as {
+      return (data ?? { start_date: null, deadline: null, risk_buffer_pct: 0 }) as {
         start_date: string | null;
         deadline: string | null;
+        risk_buffer_pct: number | null;
       };
     },
   });
   const update = useMutation({
-    mutationFn: async (patch: Partial<{ start_date: string | null; deadline: string | null }>) => {
+    mutationFn: async (patch: Partial<{ start_date: string | null; deadline: string | null; risk_buffer_pct: number }>) => {
       const { error } = await supabase.from('tasks').update(patch).eq('id', taskId);
       if (error) throw error;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['task_dates_editable', taskId] });
+      qc.invalidateQueries({ queryKey: ['task_estimate_vs_actual', taskId] });
       qc.invalidateQueries({ queryKey: ['tasks'] });
     },
   });
@@ -689,6 +691,20 @@ function TaskDateFields({ taskId }: { taskId: string }) {
         onChange={(e) => update.mutate({ deadline: e.target.value || null })}
         min={dates.data?.start_date ?? undefined}
         disabled={update.isPending}
+      />
+      {/* PRD §REQ-TASK-06 — risk buffer % (workload formula multiplier) */}
+      <span>· Risk %</span>
+      <input
+        type="number"
+        min={0}
+        max={100}
+        step={5}
+        className="input"
+        style={{ height: 22, fontSize: 11, width: 60, fontVariantNumeric: 'tabular-nums' }}
+        value={dates.data?.risk_buffer_pct ?? 0}
+        onChange={(e) => update.mutate({ risk_buffer_pct: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
+        disabled={update.isPending}
+        title="Plan müddətinə əlavə risk buferi (workload formula)"
       />
     </div>
   );
