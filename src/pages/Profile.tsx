@@ -778,6 +778,8 @@ function TimeEntriesTodayCard({ userId }: { userId: string }) {
           ↓ CSV
         </button>
       </div>
+      {/* Last 7 days mini-bars (newest right) */}
+      <WeeklyTimeBars userId={userId} />
       <ul className="divide-y" style={{ borderColor: 'var(--line-soft)' }}>
         {rows.map((r) => (
           <li key={r.id} className="py-2 flex items-center justify-between gap-3 text-meta">
@@ -790,6 +792,59 @@ function TimeEntriesTodayCard({ userId }: { userId: string }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+// 7-day mini bar chart of tracked seconds per day (Mon-Sun in Asia/Baku)
+function WeeklyTimeBars({ userId }: { userId: string }) {
+  const week = useQuery({
+    queryKey: ['time-entries-week-bars', userId],
+    queryFn: async () => {
+      const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
+      const { data } = await supabase
+        .from('time_entries')
+        .select('duration_seconds, started_at, ended_at')
+        .eq('user_id', userId)
+        .gte('started_at', since);
+      const buckets = new Map<string, number>();
+      for (const r of (data ?? []) as Array<{ duration_seconds: number | null; started_at: string; ended_at: string | null }>) {
+        const key = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baku' }).format(new Date(r.started_at));
+        const sec = r.duration_seconds ?? (!r.ended_at ? Math.floor((Date.now() - new Date(r.started_at).getTime()) / 1000) : 0);
+        buckets.set(key, (buckets.get(key) ?? 0) + sec);
+      }
+      const out: Array<{ day: string; seconds: number; label: string }> = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(Date.now() - i * 86_400_000);
+        const key = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baku' }).format(d);
+        const dow = d.toLocaleDateString('az-AZ', { weekday: 'narrow', timeZone: 'Asia/Baku' });
+        out.push({ day: key, seconds: buckets.get(key) ?? 0, label: dow });
+      }
+      return out;
+    },
+  });
+  const items = week.data ?? [];
+  const max = Math.max(1, ...items.map((d) => d.seconds));
+  if (items.every((d) => d.seconds === 0)) return null;
+  return (
+    <div className="mb-3 flex items-end gap-1.5" style={{ height: 60 }}>
+      {items.map((d) => {
+        const h = Math.max(2, (d.seconds / max) * 50);
+        const isToday = d.day === new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baku' }).format(new Date());
+        return (
+          <div key={d.day} className="flex flex-col items-center gap-1" style={{ flex: 1 }} title={`${d.day}: ${formatDuration(d.seconds)}`}>
+            <div
+              style={{
+                height: `${h}px`,
+                width: '100%',
+                background: isToday ? 'var(--brand-action)' : 'var(--brand-glow-sm)',
+                borderRadius: 3,
+              }}
+            />
+            <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 9 }}>{d.label}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }

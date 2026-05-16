@@ -5,6 +5,7 @@
  * meet.new integration: opens tab, user pastes URL back.
  */
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
 import { supabase } from '@/lib/supabase';
@@ -125,7 +126,16 @@ export function CalendarPage() {
   });
 
   // PRD §UX — client-side search across rendered events (title/location)
-  const [eventSearch, setEventSearch] = useState('');
+  // URL-persisted so refresh / share-link preserves the query
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [eventSearch, setEventSearch] = useState(searchParams.get('q') ?? '');
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (eventSearch) next.set('q', eventSearch);
+    else next.delete('q');
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventSearch]);
   const events = useMemo(() => {
     if (!eventSearch.trim()) return allEvents;
     const q = eventSearch.toLowerCase();

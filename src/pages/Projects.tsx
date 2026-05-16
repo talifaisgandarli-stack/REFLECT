@@ -78,6 +78,8 @@ export function ProjectsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(
     initStatus && ['all', 'active', 'on_hold', 'closed'].includes(initStatus) ? initStatus : 'all',
   );
+  // PRD §UX — favorites-only filter chip
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
   // PRD §6.x — project tag filter (migration 0053)
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const allTags = useMemo(() => {
@@ -190,7 +192,8 @@ export function ProjectsPage() {
       statusFilter === 'all' || p.status === statusFilter;
     const matchesTag =
       !tagFilter || ((p as { tags?: string[] }).tags ?? []).includes(tagFilter);
-    return matchesSearch && matchesStatus && matchesTag;
+    const matchesFav = !favoritesOnly || favorites.data?.has(p.id);
+    return matchesSearch && matchesStatus && matchesTag && matchesFav;
   });
 
   return (
@@ -224,6 +227,21 @@ export function ProjectsPage() {
 
       {/* Status filter chips */}
       <div className="flex flex-wrap gap-2 mb-4">
+        {/* PRD §UX — favorites-only quick filter */}
+        {favorites.data && favorites.data.size > 0 ? (
+          <button
+            className="chip"
+            style={
+              favoritesOnly
+                ? { background: 'var(--brand-action)', color: 'var(--canvas)' }
+                : undefined
+            }
+            onClick={() => setFavoritesOnly((v) => !v)}
+            title="Yalnız sevimliləri göstər"
+          >
+            {favoritesOnly ? '★' : '☆'} Sevimlilər ({favorites.data.size})
+          </button>
+        ) : null}
         {STATUS_CHIPS.map((chip) => (
           <button
             key={chip.value}

@@ -407,6 +407,8 @@ export function ProjectDetailPage() {
               ) : (
                 <Row k="Ad" v={project.name} />
               )}
+              {/* PRD §6.x — tag chips with × (admin) (migration 0053) */}
+              <ProjectTagsEditor projectId={id!} initial={(project as { tags?: string[] }).tags ?? []} isAdmin={isAdmin} />
               <Row k="Status" v={project.status} />
               <Row k="Başlama" v={project.start_date ?? '—'} />
               <Row k="Deadline" v={project.deadline ?? '—'} />
@@ -1431,6 +1433,77 @@ function ArchiveDoneTasksChip({ projectId, doneCount }: { projectId: string; don
         onCancel={() => setConfirming(false)}
       />
     </>
+  );
+}
+
+// PRD §6.x — admin manages tags inline (add via input, remove via × on chip)
+function ProjectTagsEditor({ projectId, initial, isAdmin }: { projectId: string; initial: string[]; isAdmin: boolean }) {
+  const qc = useQueryClient();
+  const [tags, setTags] = useState(initial);
+  const [draft, setDraft] = useState('');
+  useEffect(() => { setTags(initial); }, [initial]);
+
+  async function persist(next: string[]) {
+    setTags(next);
+    await supabase.from('projects').update({ tags: next }).eq('id', projectId);
+    qc.invalidateQueries({ queryKey: ['project', projectId] });
+    qc.invalidateQueries({ queryKey: ['projects'] });
+  }
+
+  function add() {
+    const v = draft.trim();
+    if (!v) return;
+    if (tags.includes(v)) { setDraft(''); return; }
+    void persist([...tags, v]);
+    setDraft('');
+  }
+
+  if (!isAdmin && tags.length === 0) return null;
+  if (!isAdmin) {
+    return (
+      <div className="flex justify-between gap-4">
+        <dt style={{ color: 'var(--text-muted)' }}>Etiketlər</dt>
+        <dd className="flex flex-wrap gap-1 justify-end">
+          {tags.map((t) => (
+            <span key={t} className="chip" style={{ background: 'var(--surface-mist)', fontSize: 11 }}>#{t}</span>
+          ))}
+        </dd>
+      </div>
+    );
+  }
+  return (
+    <div className="flex justify-between gap-4 items-start">
+      <dt style={{ color: 'var(--text-muted)' }}>Etiketlər</dt>
+      <dd className="flex flex-wrap gap-1 justify-end items-center" style={{ maxWidth: '70%' }}>
+        {tags.map((t) => (
+          <span key={t} className="chip flex items-center gap-1" style={{ background: 'var(--surface-mist)', fontSize: 11 }}>
+            #{t}
+            <button
+              type="button"
+              onClick={() => persist(tags.filter((x) => x !== t))}
+              style={{ color: 'var(--text-muted)', opacity: 0.6, fontSize: 11 }}
+              title={`#${t} silinsin`}
+              aria-label={`#${t} silinsin`}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        <input
+          type="text"
+          className="input"
+          style={{ height: 24, fontSize: 11, width: 100 }}
+          placeholder="+ etiket"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); add(); }
+            if (e.key === ',') { e.preventDefault(); add(); }
+          }}
+          onBlur={() => draft.trim() && add()}
+        />
+      </dd>
+    </div>
   );
 }
 

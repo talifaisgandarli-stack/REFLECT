@@ -89,6 +89,20 @@ export function TaskCommentsModal({
     });
   }, [taskId, taskTitle]);
 
+  // PRD §REQ-TASK — show child subtasks at a glance
+  const subtasks = useQuery({
+    queryKey: ['task_subtasks', taskId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('tasks')
+        .select('id, title, status')
+        .eq('parent_task_id', taskId)
+        .is('archived_at', null)
+        .order('created_at', { ascending: true });
+      return (data ?? []) as Array<{ id: string; title: string; status: string }>;
+    },
+  });
+
   const profiles = useQuery({
     queryKey: ['profiles', 'list'],
     queryFn: async (): Promise<Profile[]> => (await supabase.from('profiles').select('id, full_name')).data ?? [],
@@ -215,7 +229,7 @@ export function TaskCommentsModal({
         <div className="flex items-center justify-between px-5 py-4 gap-2" style={{ borderBottom: '1px solid var(--line)' }}>
           <div className="min-w-0 flex-1">
             <div className="text-meta" style={{ color: 'var(--text-muted)' }}>Şərhlər</div>
-            <div className="text-h3 mt-0.5 truncate">{taskTitle}</div>
+            <TaskTitleInlineEditor taskId={taskId} initial={taskTitle} />
           </div>
           {/* PRD §REQ-TASK — quick subtask creation under this task */}
           <SubtaskInlineCreate parentTaskId={taskId} />
@@ -223,6 +237,32 @@ export function TaskCommentsModal({
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {/* PRD §REQ-TASK-05 — subtask list (when this task has children) */}
+          {(subtasks.data ?? []).length > 0 ? (
+            <div
+              className="rounded-card p-2 mb-2"
+              style={{ background: 'var(--surface-mist)', fontSize: 12 }}
+            >
+              <div className="text-meta mb-1" style={{ color: 'var(--text-muted)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Yarımtapşırıqlar ({(subtasks.data ?? []).length})
+              </div>
+              <ul className="space-y-0.5">
+                {(subtasks.data ?? []).map((s) => (
+                  <li key={s.id} className="flex items-center gap-2">
+                    <span style={{ color: s.status === 'done' ? 'var(--success-deep, #16794a)' : 'var(--text-muted)', fontSize: 11 }}>
+                      {s.status === 'done' ? '✓' : '○'}
+                    </span>
+                    <span style={{
+                      color: s.status === 'done' ? 'var(--text-muted)' : 'var(--text)',
+                      textDecoration: s.status === 'done' ? 'line-through' : 'none',
+                    }}>
+                      {s.title}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           {comments.isLoading ? <p className="text-meta">Yüklənir…</p> : null}
           {!comments.isLoading && (comments.data ?? []).length === 0 ? (
             <p className="text-meta" style={{ color: 'var(--text-muted)' }}>Hələ şərh yoxdur. İlk şərhi sən yaz!</p>
@@ -320,6 +360,59 @@ export function TaskCommentsModal({
         </div>
       </div>
     </div>
+  );
+}
+
+// PRD §UX — inline edit task title (click h3 → input → ✓/×)
+function TaskTitleInlineEditor({ taskId, initial }: { taskId: string; initial: string }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(initial);
+  useEffect(() => { setVal(initial); }, [initial]);
+  const [saving, setSaving] = useState(false);
+  async function save() {
+    if (!val.trim() || val.trim() === initial) {
+      setEditing(false);
+      setVal(initial);
+      return;
+    }
+    setSaving(true);
+    await supabase.from('tasks').update({ title: val.trim() }).eq('id', taskId);
+    setSaving(false);
+    qc.invalidateQueries({ queryKey: ['tasks'] });
+    qc.invalidateQueries({ queryKey: ['task_comments', taskId] });
+    setEditing(false);
+  }
+  if (editing) {
+    return (
+      <div className="mt-0.5 flex items-center gap-1">
+        <input
+          autoFocus
+          className="input"
+          style={{ height: 30, fontSize: 16, fontWeight: 600 }}
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') save();
+            if (e.key === 'Escape') { setVal(initial); setEditing(false); }
+          }}
+          disabled={saving}
+        />
+        <button type="button" className="chip" disabled={saving} onClick={save} style={{ fontSize: 11, color: 'var(--brand-text)' }}>{saving ? '…' : '✓'}</button>
+        <button type="button" className="chip" onClick={() => { setVal(initial); setEditing(false); }} style={{ fontSize: 11 }}>×</button>
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="text-h3 mt-0.5 truncate text-left hover:opacity-80"
+      style={{ display: 'block', width: '100%' }}
+      title="Başlığı dəyişdirmək üçün klikləyin"
+      onClick={() => setEditing(true)}
+    >
+      {initial}
+    </button>
   );
 }
 
