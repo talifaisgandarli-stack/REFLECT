@@ -7,6 +7,7 @@ import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
 import { Avatar } from '@/components/Avatar';
+import { SkeletonBox } from '@/components/Skeleton';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import type { Profile } from '@/types/db';
@@ -110,7 +111,19 @@ export function ProfilePage() {
     }
   }
 
-  if (!profile) return null;
+  // PRD §6.7 — skeleton while profile is hydrating (auth bootstrap)
+  if (!profile) {
+    return (
+      <>
+        <PageHead meta="Hesabım" title="Profil" />
+        <div className="max-w-xl space-y-3">
+          <SkeletonBox height={120} radius={14} />
+          <SkeletonBox height={180} radius={14} />
+          <SkeletonBox height={120} radius={14} />
+        </div>
+      </>
+    );
+  }
 
   return (
     <>

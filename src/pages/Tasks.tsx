@@ -566,6 +566,42 @@ export function TasksPage() {
                           <AvatarGroup people={assigneePeople(t.assignee_ids)} size={20} />
                         </div>
                       )}
+                      {/* PRD §6.x — priority + label chips on board card */}
+                      {(t.priority || (t.labels ?? []).length > 0) ? (
+                        <div className="flex gap-1 mt-1 flex-wrap">
+                          {t.priority ? (
+                            <span
+                              className="chip"
+                              style={{
+                                background:
+                                  t.priority === 'high' ? 'var(--error-aa, #8a1e18)' :
+                                  t.priority === 'medium' ? 'var(--warning-aa, #8a5800)' :
+                                  'var(--surface-mist)',
+                                color: t.priority === 'low' ? 'var(--text-muted)' : 'white',
+                                fontSize: 9,
+                                padding: '0 5px',
+                              }}
+                              title={`Prioritet: ${t.priority}`}
+                            >
+                              {t.priority === 'high' ? '↑' : t.priority === 'medium' ? '→' : '↓'}
+                            </span>
+                          ) : null}
+                          {(t.labels ?? []).slice(0, 2).map((l) => (
+                            <span
+                              key={l}
+                              className="chip"
+                              style={{
+                                background: isToday ? 'var(--card-dark-border)' : 'var(--surface-mist)',
+                                color: isToday ? 'var(--canvas)' : 'var(--text-muted)',
+                                fontSize: 9,
+                                padding: '0 5px',
+                              }}
+                            >
+                              #{l}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
                       <div className="flex items-center justify-between mt-1">
                         {t.deadline ? (
                           <span

@@ -377,6 +377,9 @@ export function DashboardPage() {
           </section>
         ) : null}
 
+        {/* PRD §UX — favorited projects quick-access (user's per-account stars) */}
+        <FavoriteProjectsWidget />
+
         {/* Activity feed — REQ-DASH-03 filter pills */}
         <section className="lg:col-span-5 card">
           <div className="flex items-center justify-between mb-2">
@@ -760,5 +763,51 @@ function ActivityHeatmap({
         ))}
       </div>
     </div>
+  );
+}
+
+// PRD §UX — user's starred projects (migration 0049) as a Dashboard widget
+function FavoriteProjectsWidget() {
+  const { profile } = useAuth();
+  const favs = useQuery({
+    queryKey: ['fav-projects-widget', profile?.id],
+    enabled: !!profile?.id,
+    queryFn: async () => {
+      const { data: favRows } = await supabase
+        .from('project_favorites')
+        .select('project_id')
+        .eq('user_id', profile!.id);
+      const ids = (favRows ?? []).map((r) => r.project_id as string).slice(0, 6);
+      if (ids.length === 0) return [];
+      const { data: projectRows } = await supabase
+        .from('projects')
+        .select('id, name, status, deadline')
+        .in('id', ids);
+      return (projectRows ?? []) as Array<{ id: string; name: string; status: string; deadline: string | null }>;
+    },
+  });
+  const items = favs.data ?? [];
+  if (items.length === 0) return null;
+  return (
+    <section className="lg:col-span-12 card">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-h3">★ Sevimli layihələr</h3>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+        {items.map((p) => (
+          <a
+            key={p.id}
+            href={`/layihelər/${p.id}`}
+            className="rounded-card p-3 hover:bg-surface-mist transition-colors"
+            style={{ border: '1px solid var(--line)' }}
+          >
+            <div className="text-body font-medium truncate">{p.name}</div>
+            <div className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+              {p.status}{p.deadline ? ` · ${p.deadline}` : ''}
+            </div>
+          </a>
+        ))}
+      </div>
+    </section>
   );
 }

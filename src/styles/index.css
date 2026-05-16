@@ -259,6 +259,14 @@
     border-radius: 4px;
   }
 
+  /* WCAG AA color contrast helpers — slightly darker variants for chips
+     that previously sat at marginal contrast against light backgrounds. */
+  :root {
+    --warning-aa: #8a5800;     /* WCAG-tested vs --canvas */
+    --error-aa: #8a1e18;       /* WCAG-tested vs --canvas */
+    --success-aa: #0e5d38;     /* WCAG-tested vs --canvas */
+  }
+
   /* Skip-to-content link (a11y) */
   .skip-link {
     position: absolute;
