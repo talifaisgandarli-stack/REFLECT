@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from 'recharts';
 import { PageHead } from '@/components/PageHead';
@@ -36,7 +37,16 @@ export function ClientsPage() {
   const [active, setActive] = useState<Client | null>(null);
   const [creating, setCreating] = useState(false);
   const [lostPrompt, setLostPrompt] = useState<LostPrompt | null>(null);
-  const [search, setSearch] = useState('');
+  // PRD §UX — search persisted in URL (refresh / share-link preserves it)
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [search, setSearch] = useState(searchParams.get('q') ?? '');
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (search) next.set('q', search);
+    else next.delete('q');
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
   // BD Lead may also drag (PRD §8 RLS allows insert/update). Admin retains
   // full control; non-admin/non-BD-Lead is read-only.
@@ -358,6 +368,36 @@ function CreateClientModal({ onClose, onCreated }: { onClose: () => void; onCrea
   const [industry, setIndustry] = useState('');
   const [overrideDuplicate, setOverrideDuplicate] = useState(false);
 
+  // PRD §UX — auto-save draft to localStorage (1h expiry)
+  const CLIENT_DRAFT_KEY = 'reflect.client-draft';
+  useEffect(() => {
+    if (!name.trim() && !company.trim()) return;
+    try {
+      localStorage.setItem(
+        CLIENT_DRAFT_KEY,
+        JSON.stringify({ name, company, email, phone, expectedValue, industry, ts: Date.now() }),
+      );
+    } catch { /* ignore */ }
+  }, [name, company, email, phone, expectedValue, industry]);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CLIENT_DRAFT_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw) as Record<string, string | number | undefined>;
+      if (d.ts && Date.now() - Number(d.ts) > 3600_000) {
+        localStorage.removeItem(CLIENT_DRAFT_KEY);
+        return;
+      }
+      if (typeof d.name === 'string' && !name) setName(d.name);
+      if (typeof d.company === 'string' && !company) setCompany(d.company);
+      if (typeof d.email === 'string' && !email) setEmail(d.email);
+      if (typeof d.phone === 'string' && !phone) setPhone(d.phone);
+      if (typeof d.expectedValue === 'string' && !expectedValue) setExpectedValue(d.expectedValue);
+      if (typeof d.industry === 'string' && !industry) setIndustry(d.industry);
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // PRD §REQ-CRM — fuzzy duplicate detection: normalize + token-set overlap
   // against existing client names/companies. Conservative — only flags very
   // close matches so we don't annoy users with false positives.
@@ -407,6 +447,7 @@ function CreateClientModal({ onClose, onCreated }: { onClose: () => void; onCrea
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['clients'] });
+      try { localStorage.removeItem(CLIENT_DRAFT_KEY); } catch { /* ignore */ }
       onCreated();
     },
   });

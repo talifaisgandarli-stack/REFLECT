@@ -31,6 +31,15 @@ const TYPE_LABEL: Record<Hit['type'], string> = {
   profile: 'Heyət',
 };
 
+// PRD §UX — entity-type icons in CmdK results
+const TYPE_ICON: Record<Hit['type'], string> = {
+  task: '☑',
+  project: '📁',
+  client: '🤝',
+  announcement: '📢',
+  profile: '👤',
+};
+
 // PRD §6.2 — recent entity hits cached in localStorage; surfaced as a top
 // section when the search box is empty so frequently-revisited items are
 // one keystroke away.
@@ -259,6 +268,14 @@ export function CmdK() {
                   onMouseEnter={() => setCursor(idx)}
                   onClick={() => activate(it)}
                 >
+                  {/* PRD §UX — entity icon */}
+                  {it.kind === 'hit' || it.kind === 'recent' ? (
+                    <span aria-hidden style={{ fontSize: 14, opacity: 0.7 }}>
+                      {TYPE_ICON[it.hit.type]}
+                    </span>
+                  ) : (
+                    <span aria-hidden style={{ fontSize: 14, opacity: 0.5 }}>→</span>
+                  )}
                   <div className="flex-1 min-w-0">
                     <div className="text-body truncate" style={{ color: 'var(--text)' }}>
                       {label}

@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { useFocusTrap } from '@/lib/a11y';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { toast } from './Toast';
 import { useAuth } from '@/lib/store';
 import { useClients } from '@/lib/hooks';
 import type { Project } from '@/types/db';
@@ -95,9 +96,11 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
     },
     onSuccess: (project) => {
       qc.invalidateQueries({ queryKey: ['projects'] });
+      toast.success(`"${project.name}" yaradıldı`);
       onCreated?.(project);
       onClose();
     },
+    onError: (e) => toast.error((e as Error).message),
   });
 
   const trapRef = useFocusTrap<HTMLFormElement>(true);

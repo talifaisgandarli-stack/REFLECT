@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
 import { Avatar } from '@/components/Avatar';
 import { SkeletonBox } from '@/components/Skeleton';
+import { toast } from '@/components/Toast';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import type { Profile } from '@/types/db';
@@ -52,6 +53,7 @@ export function ProfilePage() {
       setProfile(data as Profile, role);
       qc.invalidateQueries({ queryKey: ['profile'] });
       setSaved(true);
+      toast.success('Profil yeniləndi');
       setTimeout(() => setSaved(false), 2000);
     },
   });

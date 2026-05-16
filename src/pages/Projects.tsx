@@ -292,18 +292,35 @@ export function ProjectsPage() {
 
             const cardInner = (
               <>
-                {/* Top: phase chip + selection indicator */}
+                {/* Top: phase chip + completion % badge + selection indicator */}
                 <div className="flex items-start justify-between gap-2">
-                  <span
-                    className="chip"
-                    style={{
-                      background: dark
-                        ? 'rgba(255,255,255,0.12)'
-                        : 'rgba(14,22,17,0.06)',
-                      color: dark ? 'var(--canvas)' : 'var(--ink)',
-                    }}
-                  >
-                    {p.phases[0] ?? '—'}
+                  <span className="flex items-center gap-2">
+                    <span
+                      className="chip"
+                      style={{
+                        background: dark
+                          ? 'rgba(255,255,255,0.12)'
+                          : 'rgba(14,22,17,0.06)',
+                        color: dark ? 'var(--canvas)' : 'var(--ink)',
+                      }}
+                    >
+                      {p.phases[0] ?? '—'}
+                    </span>
+                    {/* PRD §UX — completion % badge when ≥1 task */}
+                    {pct !== null ? (
+                      <span
+                        className="chip"
+                        style={{
+                          background: 'transparent',
+                          color: dark ? 'var(--canvas)' : 'var(--ink)',
+                          fontVariantNumeric: 'tabular-nums',
+                          fontSize: 10,
+                          opacity: 0.7,
+                        }}
+                      >
+                        {pct}%
+                      </span>
+                    ) : null}
                   </span>
                   {bulkMode ? (
                     <span

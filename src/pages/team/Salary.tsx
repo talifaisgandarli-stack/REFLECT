@@ -146,6 +146,39 @@ export function SalaryPage() {
         <SalaryTrendChart rows={rows.data ?? []} />
       ) : null}
 
+      {/* PRD §8.2 — admin sum-by-currency this year (cumulative spend) */}
+      {isAdmin && (rows.data ?? []).length > 0 ? (() => {
+        const year = new Date().getFullYear();
+        const totals = new Map<string, number>();
+        for (const r of rows.data ?? []) {
+          const startYear = new Date(r.effective_from).getFullYear();
+          if (startYear !== year) continue;
+          totals.set(r.currency, (totals.get(r.currency) ?? 0) + Number(r.amount));
+        }
+        if (totals.size === 0) return null;
+        return (
+          <div className="card mb-4 flex items-center gap-3 flex-wrap">
+            <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+              {year} cəmi:
+            </span>
+            {Array.from(totals.entries()).map(([cur, sum]) => (
+              <span
+                key={cur}
+                className="chip"
+                style={{
+                  background: 'var(--brand-glow-sm)',
+                  color: 'var(--brand-text)',
+                  fontSize: 12,
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {sum.toLocaleString('az-AZ')} {cur}
+              </span>
+            ))}
+          </div>
+        );
+      })() : null}
+
       {rows.isLoading ? (
         <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
           Yüklənir…
