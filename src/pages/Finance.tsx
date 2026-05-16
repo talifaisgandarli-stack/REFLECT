@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { PageHead } from '@/components/PageHead';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { toast } from '@/components/Toast';
 import { formatAZN, formatDate, bakuMonthKey, bakuCurrentMonthRange } from '@/lib/format';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, ComposedChart, Line, Area, CartesianGrid, Cell } from 'recharts';
 import { IncomeExpenseModal, type FinanceKind } from '@/components/IncomeExpenseModal';
@@ -28,10 +29,54 @@ type Receivable = {
 };
 
 export function FinancePage() {
+  const qc = useQueryClient();
   const [tab, setTab] = useState<(typeof TABS)[number]>('Cash Cockpit');
   const [modal, setModal] = useState<FinanceKind | null>(null);
   const [markPaid, setMarkPaid] = useState<Receivable | null>(null);
   const [invoiceModal, setInvoiceModal] = useState(false);
+
+  // PRD §REQ-FIN-03 — bulk mark-paid for Debitor tab (admin)
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function exitBulkMode() {
+    setBulkMode(false);
+    setSelectedIds(new Set());
+  }
+  const bulkMarkPaid = useMutation({
+    mutationFn: async (rows: Array<{ id: string; amount: number; paid_amount: number }>) => {
+      // Insert one payment row per receivable for the remaining amount.
+      // DB trigger (migration 0040) updates receivables.paid_amount + status.
+      const { data: sess } = await supabase.auth.getSession();
+      const recorderId = sess.session?.user?.id ?? null;
+      const inserts = rows
+        .map((r) => ({
+          receivable_id: r.id,
+          amount: Number(r.amount) - Number(r.paid_amount),
+          payment_method: 'bank_transfer' as const,
+          note: 'Toplu işarələmə',
+          recorded_by: recorderId,
+        }))
+        .filter((r) => r.amount > 0);
+      if (inserts.length === 0) return 0;
+      const { error } = await supabase.from('receivable_payments').insert(inserts);
+      if (error) throw error;
+      return inserts.length;
+    },
+    onSuccess: (count) => {
+      qc.invalidateQueries({ queryKey: ['fin', 'receivables'] });
+      exitBulkMode();
+      if (count) toast.success(`${count} debitor tam ödəniş kimi qeyd edildi`);
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
 
   const incomes = useQuery({
     queryKey: ['fin', 'incomes'],
@@ -146,9 +191,27 @@ export function FinancePage() {
           {(receivables.data ?? []).length > 0 ? (
             <ReceivableAgingChart receivables={receivables.data ?? []} />
           ) : null}
+        {/* PRD §REQ-FIN-03 — bulk mode toggle */}
+        {(receivables.data ?? []).filter((r) => r.status !== 'paid').length > 1 ? (
+          <div className="flex justify-end mb-2">
+            <button
+              type="button"
+              className={`btn-outline ${bulkMode ? 'border-brand-text' : ''}`}
+              style={bulkMode ? { background: 'var(--brand-action)', color: 'var(--ink)' } : undefined}
+              onClick={() => bulkMode ? exitBulkMode() : setBulkMode(true)}
+            >
+              {bulkMode ? `✓ Seçim (${selectedIds.size})` : 'Toplu seç'}
+            </button>
+          </div>
+        ) : null}
         <table className="w-full text-body">
           <thead>
             <tr style={{ borderBottom: '1px solid var(--line)' }}>
+              {bulkMode ? (
+                <th className="text-left py-3 pl-3 text-meta" style={{ color: 'var(--text-muted)', width: 32 }}>
+                  {' '}
+                </th>
+              ) : null}
               {['Müştəri', 'Məbləğ', 'Ödənilib', 'Status', 'Müddət', ''].map((h) => (
                 <th
                   key={h}
@@ -176,9 +239,21 @@ export function FinancePage() {
                   key={r.id}
                   style={{
                     borderBottom: '1px solid var(--line-soft)',
-                    background: isOverdue ? 'var(--error-bg, #fde0e0)' : undefined,
+                    background: selectedIds.has(r.id) ? 'var(--brand-glow-sm)' : (isOverdue ? 'var(--error-bg, #fde0e0)' : undefined),
                   }}
                 >
+                  {bulkMode ? (
+                    <td className="py-3 pl-3" style={{ width: 32 }}>
+                      {r.status !== 'paid' ? (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(r.id)}
+                          onChange={() => toggleSelected(r.id)}
+                          aria-label={`Seç ${r.clients?.name ?? r.id.slice(0, 8)}`}
+                        />
+                      ) : null}
+                    </td>
+                  ) : null}
                   <td className="py-3 px-3">
                     {r.clients?.company ?? r.clients?.name ?? (r.client_id ? '—' : '—')}
                   </td>
@@ -229,7 +304,7 @@ export function FinancePage() {
             {(receivables.data ?? []).length === 0 ? (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={bulkMode ? 7 : 6}
                   className="py-6 text-center text-meta"
                   style={{ color: 'var(--text-muted)' }}
                 >
@@ -295,6 +370,43 @@ export function FinancePage() {
         <MarkPaidModal receivable={markPaid} onClose={() => setMarkPaid(null)} />
       ) : null}
       {invoiceModal ? <InvoiceFromTemplateModal onClose={() => setInvoiceModal(false)} /> : null}
+
+      {/* PRD §REQ-FIN-03 — floating bulk action bar (admin) */}
+      {bulkMode && selectedIds.size > 0 ? (
+        <div
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-capsule px-4 py-3 flex items-center gap-3 shadow-xl z-40"
+          style={{
+            background: 'var(--ink)',
+            color: 'var(--canvas)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            minWidth: 340,
+          }}
+        >
+          <span className="text-body font-medium">{selectedIds.size} debitor seçili</span>
+          <span style={{ flex: 1 }} />
+          <button
+            type="button"
+            className="chip"
+            style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--canvas)' }}
+            disabled={bulkMarkPaid.isPending}
+            onClick={() => {
+              const rows = (receivables.data ?? []).filter((r) => selectedIds.has(r.id));
+              bulkMarkPaid.mutate(rows);
+            }}
+          >
+            {bulkMarkPaid.isPending ? 'Qeyd edilir…' : 'Tam ödəniş kimi qeyd et'}
+          </button>
+          <button
+            type="button"
+            className="chip"
+            style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--canvas)' }}
+            onClick={exitBulkMode}
+            aria-label="Seçim rejimini bağla"
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
     </>
   );
 }

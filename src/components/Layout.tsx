@@ -8,6 +8,7 @@ import { NotificationBell } from './NotificationBell';
 import { TaskCreateModal } from './TaskCreateModal';
 import { ToastHost } from './Toast';
 import { ShortcutHelp } from './ShortcutHelp';
+import { ActiveTimerChip } from './ActiveTimerChip';
 import { useUI, useAuth } from '@/lib/store';
 import { useRealtimeSync } from '@/lib/realtime';
 import { usePresenceHeartbeat } from '@/lib/hooks';
@@ -97,6 +98,8 @@ export function Layout() {
           <div className="flex items-center justify-between mb-2 gap-3">
             <MobileNavToggle />
             <div className="flex items-center gap-2">
+              {/* Active timer indicator (PRD time tracking) */}
+              <ActiveTimerChip />
               {/* PRD §FIN-09 — display Asia/Baku timezone hint */}
               <span
                 className="hidden md:inline text-meta"

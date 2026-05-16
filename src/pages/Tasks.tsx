@@ -16,6 +16,7 @@ import { TaskCommentsModal } from '@/components/TaskCommentsModal';
 import { TaskEditModal } from '@/components/TaskEditModal';
 import { downloadCsv } from '@/lib/csv';
 import { toast } from '@/components/Toast';
+import { useActiveTimeEntry, useStartTimer, useStopTimer } from '@/lib/useTimeTracking';
 
 // US-TASK-06 — deadline-based groups for personal view
 const todayStr = new Date().toISOString().slice(0, 10);
@@ -218,6 +219,11 @@ export function TasksPage() {
       },
     );
   }
+
+  // Time tracking — global active timer + start/stop mutations
+  const { data: activeTimer } = useActiveTimeEntry();
+  const startTimer = useStartTimer();
+  const stopTimer = useStopTimer();
 
   // PRD §6.x — task templates (admin defines, anyone instantiates)
   const templates = useQuery({
@@ -690,6 +696,32 @@ export function TasksPage() {
                           >
                             ⎘
                           </button>
+                          {/* Time tracking — start/stop timer for this task */}
+                          {activeTimer?.task_id === t.id ? (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); stopTimer.mutate(); }}
+                              disabled={stopTimer.isPending}
+                              className="text-meta opacity-100"
+                              style={{ color: 'var(--brand-action)' }}
+                              aria-label="Timer-i dayandır"
+                              title="Timer-i dayandır"
+                            >
+                              ⏹
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); startTimer.mutate(t.id); }}
+                              disabled={startTimer.isPending}
+                              className="text-meta opacity-60 hover:opacity-100"
+                              style={{ color: isToday ? 'var(--text-faint)' : 'var(--text-muted)' }}
+                              aria-label="Timer başlat"
+                              title="Timer başlat"
+                            >
+                              ▶
+                            </button>
+                          )}
                         </div>
                       </div>
                     </article>
