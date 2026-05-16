@@ -91,6 +91,32 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus }: Pr
   const isDirty = title.trim().length > 0 || description.trim().length > 0;
   useUnsavedChanges(isDirty);
 
+  // PRD §UX — auto-save draft to localStorage so accidental close → reopen
+  // restores the in-progress task. Cleared on successful create.
+  const DRAFT_KEY = 'reflect.task-draft';
+  useEffect(() => {
+    if (!isDirty) return;
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ title, description, ts: Date.now() }));
+    } catch { /* ignore quota errors */ }
+  }, [title, description, isDirty]);
+  useEffect(() => {
+    // On mount, hydrate from draft if present and fields are empty
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const draft = JSON.parse(raw) as { title?: string; description?: string; ts?: number };
+      // Discard drafts older than 1h to avoid stale rehydration
+      if (draft.ts && Date.now() - draft.ts > 3600_000) {
+        localStorage.removeItem(DRAFT_KEY);
+        return;
+      }
+      if (draft.title && !title) setTitle(draft.title);
+      if (draft.description && !description) setDescription(draft.description);
+    } catch { /* corrupt JSON — ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const create = useMutation({
     mutationFn: async () => {
       const trimmed = title.trim();
@@ -134,6 +160,7 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus }: Pr
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] });
+      try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
       onClose();
     },
   });

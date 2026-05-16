@@ -196,6 +196,8 @@ export interface Task {
   created_at: string;
   /** PRD §6.x — free-form labels for cross-status grouping (Design/Bug/etc.) */
   labels?: string[];
+  /** PRD §6.x — priority for sort/filter (migration 0050) */
+  priority?: 'low' | 'medium' | 'high' | null;
 }
 
 export interface TaskStatusHistory {

@@ -97,6 +97,14 @@ export function Layout() {
           <div className="flex items-center justify-between mb-2 gap-3">
             <MobileNavToggle />
             <div className="flex items-center gap-2">
+              {/* PRD §FIN-09 — display Asia/Baku timezone hint */}
+              <span
+                className="hidden md:inline text-meta"
+                style={{ color: 'var(--text-muted)', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}
+                title="Bütün tarixlər Bakı vaxtı ilədir"
+              >
+                {new Date().toLocaleTimeString('az-AZ', { timeZone: 'Asia/Baku', hour: '2-digit', minute: '2-digit' })} · Bakı
+              </span>
               {/* PRD §6.3 — discoverable Cmd+K shortcut affordance */}
               <button
                 type="button"

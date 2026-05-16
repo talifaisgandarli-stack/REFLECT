@@ -284,3 +284,26 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* PRD §UX — print-friendly stylesheet (invoices, reports, single-page views).
+   Hide chrome (sidebar, toasts, modals) and force white background. */
+@media print {
+  aside,
+  .skip-link,
+  [role="dialog"],
+  [aria-live],
+  nav[aria-label="Əsas naviqasiya"],
+  .no-print {
+    display: none !important;
+  }
+  body, main {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  .card {
+    box-shadow: none !important;
+    border: 1px solid #ccc !important;
+  }
+  a { text-decoration: underline; color: #000 !important; }
+  button { display: none !important; }
+}

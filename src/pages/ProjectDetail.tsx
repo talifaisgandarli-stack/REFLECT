@@ -393,6 +393,10 @@ export function ProjectDetailPage() {
               {project.requires_expertise && project.expertise_deadline ? (
                 <Row k="Eksp. deadline" v={project.expertise_deadline} />
               ) : null}
+              {/* PRD §REQ-FIN-06 — admin can edit project budget inline */}
+              {isAdmin ? (
+                <ProjectBudgetEditor projectId={id!} initialBudget={(project as { budget_amount?: number | null }).budget_amount ?? null} />
+              ) : null}
             </dl>
           </div>
         </div>
@@ -1361,6 +1365,50 @@ function Row({ k, v }: { k: string; v: string }) {
     <div className="flex justify-between gap-4">
       <dt style={{ color: 'var(--text-muted)' }}>{k}</dt>
       <dd>{v}</dd>
+    </div>
+  );
+}
+
+// PRD §REQ-FIN-06 — inline admin editor for project budget (migration 0048)
+function ProjectBudgetEditor({ projectId, initialBudget }: { projectId: string; initialBudget: number | null }) {
+  const qc = useQueryClient();
+  const [val, setVal] = useState(initialBudget != null ? String(initialBudget) : '');
+  const [saving, setSaving] = useState(false);
+  const dirty = (initialBudget != null ? String(initialBudget) : '') !== val.trim();
+  async function save() {
+    setSaving(true);
+    const num = val.trim() ? Number(val.replace(',', '.')) : null;
+    await supabase.from('projects').update({ budget_amount: num }).eq('id', projectId);
+    setSaving(false);
+    qc.invalidateQueries({ queryKey: ['project', projectId] });
+    qc.invalidateQueries({ queryKey: ['project-budget', projectId] });
+  }
+  return (
+    <div className="flex justify-between items-center gap-2">
+      <dt style={{ color: 'var(--text-muted)' }}>Büdcə (AZN)</dt>
+      <dd className="flex items-center gap-1">
+        <input
+          type="number"
+          min={0}
+          step="100"
+          className="input"
+          style={{ width: 120, height: 28, fontVariantNumeric: 'tabular-nums', fontSize: 13 }}
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+          placeholder="—"
+        />
+        {dirty ? (
+          <button
+            type="button"
+            className="chip"
+            style={{ color: 'var(--brand-text)', fontSize: 11 }}
+            disabled={saving}
+            onClick={save}
+          >
+            {saving ? '…' : '✓'}
+          </button>
+        ) : null}
+      </dd>
     </div>
   );
 }

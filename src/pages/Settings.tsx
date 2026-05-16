@@ -752,6 +752,9 @@ function KnowledgeBaseSettings() {
       {uploadOk ? <p className="text-meta" style={{ color: 'var(--brand-text)' }}>{uploadOk}</p> : null}
       {uploadErr ? <p className="text-meta" style={{ color: 'var(--error-deep)' }}>{uploadErr}</p> : null}
 
+      {/* PRD §10.3 — chunk content search across uploaded PDFs */}
+      <KnowledgeBaseSearch />
+
       {chunks.isLoading ? <p className="text-meta">Yüklənir…</p> : null}
 
       {pdfs.length === 0 && !chunks.isLoading ? (
@@ -822,6 +825,62 @@ function NotificationsSettings() {
       <MiraiCostDashboard />
       {/* PRD §9.4 — admin audit log viewer */}
       <AuditLogViewer />
+    </div>
+  );
+}
+
+// PRD §10.3 — search across knowledge_base chunks (FTS-backed RPC)
+function KnowledgeBaseSearch() {
+  const [q, setQ] = useState('');
+  const [debounced, setDebounced] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(q.trim()), 250);
+    return () => clearTimeout(t);
+  }, [q]);
+  const results = useQuery({
+    queryKey: ['kb-search', debounced],
+    enabled: debounced.length >= 3,
+    queryFn: async () => {
+      const { data } = await supabase.rpc('match_knowledge_base', {
+        query_text: debounced,
+        match_count: 8,
+      });
+      return (data ?? []) as Array<{ source_pdf: string; chunk_index: number; content: string }>;
+    },
+  });
+  return (
+    <div className="mt-4">
+      <input
+        type="text"
+        className="input w-full"
+        placeholder="Bilik bazasında axtar (min 3 simvol)…"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+      />
+      {debounced.length >= 3 ? (
+        <ul className="mt-2 space-y-2">
+          {results.isLoading ? (
+            <li className="text-meta" style={{ color: 'var(--text-muted)' }}>Axtarılır…</li>
+          ) : (results.data ?? []).length === 0 ? (
+            <li className="text-meta" style={{ color: 'var(--text-muted)' }}>Nəticə tapılmadı</li>
+          ) : (
+            (results.data ?? []).map((r, i) => (
+              <li
+                key={`${r.source_pdf}-${r.chunk_index}-${i}`}
+                className="rounded-card p-2 text-meta"
+                style={{ background: 'var(--surface-mist)' }}
+              >
+                <div className="font-medium" style={{ color: 'var(--text)' }}>
+                  {r.source_pdf} <span style={{ color: 'var(--text-muted)' }}>· Hissə {r.chunk_index}</span>
+                </div>
+                <div className="mt-1" style={{ color: 'var(--text-soft)' }}>
+                  {r.content.slice(0, 240)}{r.content.length > 240 ? '…' : ''}
+                </div>
+              </li>
+            ))
+          )}
+        </ul>
+      ) : null}
     </div>
   );
 }

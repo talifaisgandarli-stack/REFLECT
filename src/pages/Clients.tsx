@@ -297,6 +297,8 @@ export function ClientsPage() {
 }
 
 // ── Create client modal (REQ-CRM-01) ──
+const INDUSTRY_OPTIONS = ['Tikinti', 'Mağaza', 'Restoran', 'Ofis', 'Mənzil', 'Mehmanxana', 'İctimai obyekt', 'Sənaye', 'Digər'] as const;
+
 function CreateClientModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const qc = useQueryClient();
   const { data: existing = [] } = useClients();
@@ -305,6 +307,7 @@ function CreateClientModal({ onClose, onCreated }: { onClose: () => void; onCrea
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [expectedValue, setExpectedValue] = useState('');
+  const [industry, setIndustry] = useState('');
   const [overrideDuplicate, setOverrideDuplicate] = useState(false);
 
   // PRD §REQ-CRM — fuzzy duplicate detection: normalize + token-set overlap
@@ -347,6 +350,7 @@ function CreateClientModal({ onClose, onCreated }: { onClose: () => void; onCrea
         company: company.trim() || null,
         email: email.trim() || null,
         phone: phone.trim() || null,
+        industry: industry || null,
         expected_value: expectedValue ? roundAzn(expectedValue) : null,
         pipeline_stage: 'lead',
         confidence_pct: 10,
@@ -387,6 +391,15 @@ function CreateClientModal({ onClose, onCreated }: { onClose: () => void; onCrea
               <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} />
             </CField>
           </div>
+          {/* PRD §REQ-CRM — industry tag (migration 0050) */}
+          <CField label="Sahə (sənaye)">
+            <select className="input" value={industry} onChange={(e) => setIndustry(e.target.value)}>
+              <option value="">Seçin…</option>
+              {INDUSTRY_OPTIONS.map((o) => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+            </select>
+          </CField>
           <CField label="Gözlənilən dəyər (AZN)">
             <input
               type="number"

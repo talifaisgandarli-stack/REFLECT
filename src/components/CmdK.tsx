@@ -61,6 +61,8 @@ function pushRecent(hit: Hit) {
   }
 }
 
+type EntityFilter = 'all' | Hit['type'];
+
 export function CmdK() {
   const { cmdkOpen, setCmdK } = useUI();
   const [q, setQ] = useState('');
@@ -68,6 +70,7 @@ export function CmdK() {
   const [recents, setRecents] = useState<Hit[]>([]);
   const [loading, setLoading] = useState(false);
   const [cursor, setCursor] = useState(0);
+  const [entityFilter, setEntityFilter] = useState<EntityFilter>('all');
   const nav = useNavigate();
 
   useEffect(() => {
@@ -137,14 +140,21 @@ export function CmdK() {
     const list: ListItem[] = [];
     // Recents shown only when the search box is empty (no query)
     if (!q.trim() && recents.length > 0) {
-      for (const r of recents.slice(0, RECENTS_DISPLAY)) {
+      const filtRec = entityFilter === 'all'
+        ? recents
+        : recents.filter((r) => r.type === entityFilter);
+      for (const r of filtRec.slice(0, RECENTS_DISPLAY)) {
         list.push({ kind: 'recent', hit: r });
       }
     }
-    for (const n of navHits) list.push({ kind: 'nav', label: n.label, to: n.to });
-    for (const h of serverHits) list.push({ kind: 'hit', hit: h });
+    // Nav items only when no entity filter (otherwise we want pure entity results)
+    if (entityFilter === 'all') {
+      for (const n of navHits) list.push({ kind: 'nav', label: n.label, to: n.to });
+    }
+    const filtered = entityFilter === 'all' ? serverHits : serverHits.filter((h) => h.type === entityFilter);
+    for (const h of filtered) list.push({ kind: 'hit', hit: h });
     return list;
-  }, [navHits, serverHits, recents, q]);
+  }, [navHits, serverHits, recents, q, entityFilter]);
 
   if (!cmdkOpen) return null;
 
@@ -172,6 +182,27 @@ export function CmdK() {
         onClick={(e) => e.stopPropagation()}
         style={{ borderRadius: 14 }}
       >
+        {/* PRD §6.2 — entity type filter chips */}
+        <div
+          className="flex gap-1 px-3 py-2 flex-wrap"
+          style={{ borderBottom: '1px solid var(--line-soft)' }}
+        >
+          {(['all', 'task', 'project', 'client', 'announcement', 'profile'] as const).map((f) => (
+            <button
+              key={f}
+              type="button"
+              className="chip"
+              style={{
+                background: entityFilter === f ? 'var(--brand-action)' : 'var(--surface-mist)',
+                color: entityFilter === f ? 'var(--ink)' : 'var(--text-muted)',
+                fontSize: 11,
+              }}
+              onClick={(e) => { e.preventDefault(); setEntityFilter(f); setCursor(0); }}
+            >
+              {f === 'all' ? 'Hamısı' : TYPE_LABEL[f]}
+            </button>
+          ))}
+        </div>
         <input
           autoFocus
           className="input border-0 rounded-none"
