@@ -80,14 +80,35 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       ).length
     : 0;
 
-  // Inject unread badge into Elanlar nav item at runtime
+  // PRD §UX — surface user's open task count in the sidebar so they see workload
+  // at a glance from any page. RLS scopes this to assignee_ids ∋ self for non-admin.
+  const { data: openTasksCount = 0 } = useQuery({
+    queryKey: ['sidebar-open-tasks', profile?.id],
+    enabled: !!profile?.id,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { count } = await supabase
+        .from('tasks')
+        .select('id', { count: 'exact', head: true })
+        .contains('assignee_ids', [profile!.id])
+        .is('archived_at', null)
+        .not('status', 'in', '("done","cancelled")');
+      return count ?? 0;
+    },
+  });
+
+  // Inject runtime badges into matching nav items
   const NAV_WITH_BADGE: NavGroup[] = NAV.map((group) => ({
     ...group,
-    items: group.items.map((item) =>
-      item.to === '/komanda/elanlar' && unreadCount > 0
-        ? { ...item, badge: unreadCount }
-        : item,
-    ),
+    items: group.items.map((item) => {
+      if (item.to === '/komanda/elanlar' && unreadCount > 0) {
+        return { ...item, badge: unreadCount };
+      }
+      if (item.to === '/tapşırıqlar' && openTasksCount > 0) {
+        return { ...item, badge: openTasksCount };
+      }
+      return item;
+    }),
   }));
 
   return (

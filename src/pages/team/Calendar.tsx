@@ -1300,15 +1300,31 @@ function EventFieldInline({
   }
   if (as === 'meet_url') {
     return (
-      <button
-        type="button"
-        className="mt-2 text-body text-left hover:opacity-80 block"
-        style={{ color: initial ? 'var(--brand-text)' : 'var(--text-muted)', fontStyle: initial ? 'normal' : 'italic' }}
-        onClick={() => setEditing(true)}
-        title="Görüş linkini dəyişdir"
-      >
-        📹 {initial || '+ Görüş linki əlavə et'}
-      </button>
+      <div className="mt-2 flex items-center gap-2 flex-wrap">
+        <button
+          type="button"
+          className="text-body text-left hover:opacity-80"
+          style={{ color: initial ? 'var(--brand-text)' : 'var(--text-muted)', fontStyle: initial ? 'normal' : 'italic' }}
+          onClick={() => setEditing(true)}
+          title="Görüş linkini dəyişdir"
+        >
+          📹 {initial || '+ Görüş linki əlavə et'}
+        </button>
+        {!initial ? (
+          // PRD §8.2 — "Button opens https://meet.new; user pastes link to event"
+          // Open in a new tab so the user can grab the meet link, then paste it.
+          <a
+            href="https://meet.new"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="chip"
+            style={{ fontSize: 11, color: 'var(--brand-text)' }}
+            title="meet.new açıb link yarat, sonra yapışdır"
+          >
+            meet.new aç →
+          </a>
+        ) : null}
+      </div>
     );
   }
   // location

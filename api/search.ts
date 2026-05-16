@@ -17,7 +17,7 @@ export const config = { runtime: 'edge' };
 const PER_GROUP = 8;
 
 type Hit = {
-  type: 'task' | 'project' | 'client' | 'announcement' | 'profile';
+  type: 'task' | 'project' | 'client' | 'announcement' | 'profile' | 'document';
   id: string;
   title: string;
   subtitle?: string;
@@ -45,7 +45,7 @@ async function handler(req: Request) {
     const q = `%${escapeIlike(raw)}%`;
     const sb = userClient(user.token);
 
-    const [tasks, projects, clients, announcements, profiles] = await Promise.all([
+    const [tasks, projects, clients, announcements, profiles, documents] = await Promise.all([
       sb
         .from('tasks')
         .select('id, title, status, project_id, deadline')
@@ -75,6 +75,13 @@ async function handler(req: Request) {
         .from('profiles')
         .select('id, full_name, email')
         .or(`full_name.ilike.${q},email.ilike.${q}`)
+        .limit(PER_GROUP),
+      // PRD §6.2 — documents (project_documents) included in universal search;
+      // RLS gates by membership / shared_with so users only see their own.
+      sb
+        .from('project_documents')
+        .select('id, title, category, project_id')
+        .ilike('title', q)
         .limit(PER_GROUP),
     ]);
 
@@ -146,6 +153,21 @@ async function handler(req: Request) {
         title: u.full_name || u.email,
         subtitle: u.full_name ? u.email : undefined,
         href: '/komanda/heyət',
+      });
+    }
+    for (const d of (documents.data ?? []) as Array<{
+      id: string;
+      title: string;
+      category: string | null;
+      project_id: string | null;
+    }>) {
+      results.push({
+        type: 'document',
+        id: d.id,
+        title: d.title,
+        subtitle: d.category ?? undefined,
+        // Project documents live inside the project detail page (Documents tab).
+        href: d.project_id ? `/layihelər/${d.project_id}` : '/layihelər',
       });
     }
 

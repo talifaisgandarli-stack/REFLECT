@@ -11,6 +11,7 @@ import { SkeletonBox } from '@/components/Skeleton';
 import { toast } from '@/components/Toast';
 import { formatDuration } from '@/lib/useTimeTracking';
 import { downloadCsv } from '@/lib/csv';
+import { relativeTime } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import type { Profile } from '@/types/db';
@@ -307,9 +308,15 @@ export function ProfilePage() {
               >
                 Qoşulub
               </span>
-              <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+              <span
+                className="text-meta"
+                style={{ color: 'var(--text-muted)' }}
+                title={profile.telegram_linked_at
+                  ? new Date(profile.telegram_linked_at).toLocaleString('az-AZ', { timeZone: 'Asia/Baku' })
+                  : undefined}
+              >
                 {profile.telegram_linked_at
-                  ? `${new Date(profile.telegram_linked_at).toLocaleDateString('az-AZ')} tarixindən`
+                  ? `${relativeTime(profile.telegram_linked_at)} qoşulub`
                   : ''}
               </span>
             </div>

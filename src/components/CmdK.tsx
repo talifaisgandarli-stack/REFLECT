@@ -16,7 +16,7 @@ const QUICK = [
 ];
 
 type Hit = {
-  type: 'task' | 'project' | 'client' | 'announcement' | 'profile';
+  type: 'task' | 'project' | 'client' | 'announcement' | 'profile' | 'document';
   id: string;
   title: string;
   subtitle?: string;
@@ -29,6 +29,7 @@ const TYPE_LABEL: Record<Hit['type'], string> = {
   client: 'Müştəri',
   announcement: 'Elan',
   profile: 'Heyət',
+  document: 'Sənəd',
 };
 
 // PRD §UX — entity-type icons in CmdK results
@@ -38,6 +39,7 @@ const TYPE_ICON: Record<Hit['type'], string> = {
   client: '🤝',
   announcement: '📢',
   profile: '👤',
+  document: '📄',
 };
 
 // PRD §6.2 — recent entity hits cached in localStorage; surfaced as a top
@@ -137,7 +139,7 @@ export function CmdK() {
   // PRD §6.2 — per-type result counts so chips signal where matches live
   const typeCounts = useMemo(() => {
     const counts: Record<Hit['type'], number> = {
-      task: 0, project: 0, client: 0, announcement: 0, profile: 0,
+      task: 0, project: 0, client: 0, announcement: 0, profile: 0, document: 0,
     };
     for (const h of serverHits) counts[h.type] += 1;
     return counts;
@@ -205,7 +207,7 @@ export function CmdK() {
           className="flex gap-1 px-3 py-2 flex-wrap"
           style={{ borderBottom: '1px solid var(--line-soft)' }}
         >
-          {(['all', 'task', 'project', 'client', 'announcement', 'profile'] as const).map((f) => {
+          {(['all', 'task', 'project', 'client', 'document', 'announcement', 'profile'] as const).map((f) => {
             const count = f === 'all' ? serverHits.length : typeCounts[f];
             const dim = q.trim().length >= 2 && f !== 'all' && count === 0;
             return (
