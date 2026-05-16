@@ -31,10 +31,41 @@ const TYPE_LABEL: Record<Hit['type'], string> = {
   profile: 'Heyət',
 };
 
+// PRD §6.2 — recent entity hits cached in localStorage; surfaced as a top
+// section when the search box is empty so frequently-revisited items are
+// one keystroke away.
+const RECENTS_KEY = 'reflect.cmdk.recents';
+const RECENTS_MAX = 10;
+const RECENTS_DISPLAY = 5;
+
+function loadRecents(): Hit[] {
+  try {
+    const raw = localStorage.getItem(RECENTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Hit[];
+    return Array.isArray(parsed) ? parsed.slice(0, RECENTS_MAX) : [];
+  } catch {
+    return [];
+  }
+}
+
+function pushRecent(hit: Hit) {
+  try {
+    const cur = loadRecents();
+    const key = `${hit.type}:${hit.id}`;
+    const filtered = cur.filter((h) => `${h.type}:${h.id}` !== key);
+    const next = [hit, ...filtered].slice(0, RECENTS_MAX);
+    localStorage.setItem(RECENTS_KEY, JSON.stringify(next));
+  } catch {
+    // localStorage disabled or full — ignore, feature degrades gracefully
+  }
+}
+
 export function CmdK() {
   const { cmdkOpen, setCmdK } = useUI();
   const [q, setQ] = useState('');
   const [serverHits, setServerHits] = useState<Hit[]>([]);
+  const [recents, setRecents] = useState<Hit[]>([]);
   const [loading, setLoading] = useState(false);
   const [cursor, setCursor] = useState(0);
   const nav = useNavigate();
@@ -44,6 +75,9 @@ export function CmdK() {
       setQ('');
       setServerHits([]);
       setCursor(0);
+    } else {
+      // Refresh recents each time the palette opens (cheap localStorage read)
+      setRecents(loadRecents());
     }
   }, [cmdkOpen]);
 
@@ -96,20 +130,32 @@ export function CmdK() {
 
   type ListItem =
     | { kind: 'nav'; label: string; to: string }
-    | { kind: 'hit'; hit: Hit };
+    | { kind: 'hit'; hit: Hit }
+    | { kind: 'recent'; hit: Hit };
 
   const items: ListItem[] = useMemo(() => {
     const list: ListItem[] = [];
+    // Recents shown only when the search box is empty (no query)
+    if (!q.trim() && recents.length > 0) {
+      for (const r of recents.slice(0, RECENTS_DISPLAY)) {
+        list.push({ kind: 'recent', hit: r });
+      }
+    }
     for (const n of navHits) list.push({ kind: 'nav', label: n.label, to: n.to });
     for (const h of serverHits) list.push({ kind: 'hit', hit: h });
     return list;
-  }, [navHits, serverHits]);
+  }, [navHits, serverHits, recents, q]);
 
   if (!cmdkOpen) return null;
 
   function activate(item: ListItem) {
-    const to = item.kind === 'nav' ? item.to : item.hit.href;
-    nav(to);
+    if (item.kind === 'nav') {
+      nav(item.to);
+    } else {
+      // Record entity hits + recents in the recents list
+      pushRecent(item.hit);
+      nav(item.hit.href);
+    }
     setCmdK(false);
   }
 
@@ -166,8 +212,13 @@ export function CmdK() {
           {items.map((it, idx) => {
             const active = idx === cursor;
             const label = it.kind === 'nav' ? it.label : it.hit.title;
-            const subtitle = it.kind === 'hit' ? it.hit.subtitle : undefined;
-            const tag = it.kind === 'nav' ? 'Naviqasiya' : TYPE_LABEL[it.hit.type];
+            const subtitle = it.kind === 'hit' || it.kind === 'recent' ? it.hit.subtitle : undefined;
+            const tag =
+              it.kind === 'nav'
+                ? 'Naviqasiya'
+                : it.kind === 'recent'
+                ? `Yaxınlarda · ${TYPE_LABEL[it.hit.type]}`
+                : TYPE_LABEL[it.hit.type];
             return (
               <li key={`${it.kind}-${idx}`}>
                 <button

@@ -629,10 +629,37 @@ function TemplatesSettings() {
 // Gracefully hides upload UI when RAG is disabled server-side (no OpenAI key),
 // so admins don't see a feature that only ever returns errors.
 function KnowledgeBaseSettings() {
+  const { profile } = useAuth();
   const qc = useQueryClient();
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState<string | null>(null);
   const [uploadOk, setUploadOk] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  // PRD §10.3 — admin can prune obsolete PDF sources so RAG retrieval stays clean
+  const deletePdf = useMutation({
+    mutationFn: async (pdfName: string) => {
+      const { error } = await supabase
+        .from('knowledge_base')
+        .delete()
+        .eq('source_pdf', pdfName);
+      if (error) throw error;
+      if (profile?.id) {
+        await supabase.from('audit_log').insert({
+          actor_id: profile.id,
+          action: 'knowledge_base.delete',
+          resource: 'knowledge_base',
+          ip: null,
+          user_agent: navigator.userAgent,
+          meta: { source_pdf: pdfName },
+        });
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['knowledge-base'] });
+      setConfirmDelete(null);
+    },
+  });
 
   const diag = useQuery({
     queryKey: ['diag', 'features'],
@@ -737,15 +764,47 @@ function KnowledgeBaseSettings() {
               className="flex items-center justify-between gap-3 py-2 border-b"
               style={{ borderColor: 'var(--line-soft)' }}
             >
-              <div>
-                <div className="text-body font-medium truncate max-w-xs">{pdf}</div>
+              <div className="min-w-0 flex-1">
+                <div className="text-body font-medium truncate">{pdf}</div>
                 <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
                   {meta.count} hissə · {new Date(meta.uploaded_at).toLocaleDateString('az-AZ')}
                 </div>
               </div>
-              <span className="chip" style={{ background: 'var(--brand-glow-md)', color: 'var(--brand-text)' }}>
-                RAG
-              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="chip" style={{ background: 'var(--brand-glow-md)', color: 'var(--brand-text)' }}>
+                  RAG
+                </span>
+                {confirmDelete === pdf ? (
+                  <>
+                    <button
+                      type="button"
+                      className="chip"
+                      style={{ background: 'var(--error-deep)', color: 'white' }}
+                      disabled={deletePdf.isPending}
+                      onClick={() => deletePdf.mutate(pdf)}
+                    >
+                      {deletePdf.isPending ? 'Silinir…' : 'Bəli'}
+                    </button>
+                    <button
+                      type="button"
+                      className="chip"
+                      onClick={() => setConfirmDelete(null)}
+                    >
+                      Ləğv
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="chip"
+                    style={{ color: 'var(--error-deep)' }}
+                    onClick={() => setConfirmDelete(pdf)}
+                    title={`${meta.count} hissə silinəcək`}
+                  >
+                    Sil
+                  </button>
+                )}
+              </div>
             </li>
           ))}
         </ul>

@@ -88,6 +88,58 @@ export function TasksPage() {
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [commenting, setCommenting] = useState<{ id: string; title: string } | null>(null);
   const [editing, setEditing] = useState<Task | null>(null);
+  // PRD §6.x — bulk action mode for the table/list view
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [reassignOpen, setReassignOpen] = useState(false);
+  const [reassignTarget, setReassignTarget] = useState('');
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function exitBulkMode() {
+    setBulkMode(false);
+    setSelectedIds(new Set());
+    setReassignOpen(false);
+  }
+
+  const bulkArchiveSelected = useMutation({
+    mutationFn: async () => {
+      const ids = Array.from(selectedIds);
+      if (ids.length === 0) return;
+      const { error } = await supabase
+        .from('tasks')
+        .update({ archived_at: new Date().toISOString() })
+        .in('id', ids);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      exitBulkMode();
+    },
+  });
+
+  const bulkReassign = useMutation({
+    mutationFn: async (newAssigneeId: string) => {
+      const ids = Array.from(selectedIds);
+      if (ids.length === 0 || !newAssigneeId) return;
+      // Multi-assignee model: replace entire assignee_ids array on each row.
+      const { error } = await supabase
+        .from('tasks')
+        .update({ assignee_ids: [newAssigneeId] })
+        .in('id', ids);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      exitBulkMode();
+    },
+  });
   // Persist search filter in URL so refresh / share-link preserves it.
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get('q') ?? '');
@@ -188,6 +240,15 @@ export function TasksPage() {
                 Arxivlə ({archivableCount})
               </button>
             ) : null}
+            {view === 'table' ? (
+              <button
+                className={`btn-outline ${bulkMode ? 'border-brand-text' : ''}`}
+                onClick={() => bulkMode ? exitBulkMode() : setBulkMode(true)}
+                style={bulkMode ? { background: 'var(--brand-action)', color: 'var(--ink)' } : undefined}
+              >
+                {bulkMode ? `✓ Seçim (${selectedIds.size})` : 'Seç'}
+              </button>
+            ) : null}
             <button className="btn-primary" onClick={() => setCreating(true)}>
               + Yeni
             </button>
@@ -238,14 +299,17 @@ export function TasksPage() {
                     <div
                       key={t.id}
                       className="flex items-center gap-3 py-2 px-3 rounded-card"
-                      style={{ background: 'var(--surface)', border: '1px solid var(--line)' }}
+                      style={{
+                        background: bulkMode && selectedIds.has(t.id) ? 'var(--brand-glow-sm)' : 'var(--surface)',
+                        border: '1px solid var(--line)',
+                      }}
                     >
                       <input
                         type="checkbox"
-                        checked={false}
-                        onChange={() => moveTask(t.id, 'done', t.status)}
+                        checked={bulkMode ? selectedIds.has(t.id) : false}
+                        onChange={() => bulkMode ? toggleSelected(t.id) : moveTask(t.id, 'done', t.status)}
                         style={{ accentColor: 'var(--brand-action)', width: 16, height: 16, flexShrink: 0, cursor: 'pointer' }}
-                        aria-label={`${t.title} tamamlandı`}
+                        aria-label={bulkMode ? `${t.title} seç` : `${t.title} tamamlandı`}
                       />
                       <span
                         className="flex-1 text-body cursor-pointer"
@@ -537,6 +601,91 @@ export function TasksPage() {
 
       {editing ? (
         <TaskEditModal task={editing} onClose={() => setEditing(null)} />
+      ) : null}
+
+      {/* PRD §6.x — bulk action floating bar (table view only) */}
+      {bulkMode && selectedIds.size > 0 ? (
+        <div
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-capsule px-4 py-3 flex items-center gap-3 shadow-xl z-40"
+          style={{
+            background: 'var(--ink)',
+            color: 'var(--canvas)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            minWidth: 320,
+          }}
+        >
+          <span className="text-body font-medium">{selectedIds.size} seçili</span>
+          <span style={{ flex: 1 }} />
+          {isAdmin ? (
+            <div className="relative">
+              <button
+                type="button"
+                className="chip"
+                style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--canvas)' }}
+                onClick={() => setReassignOpen((v) => !v)}
+              >
+                Yenidən təyin et
+              </button>
+              {reassignOpen ? (
+                <div
+                  className="absolute bottom-full mb-2 right-0 rounded-card p-2 w-[220px]"
+                  style={{
+                    background: 'var(--ink)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                  }}
+                >
+                  <select
+                    className="input w-full mb-2"
+                    style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--canvas)' }}
+                    value={reassignTarget}
+                    onChange={(e) => setReassignTarget(e.target.value)}
+                  >
+                    <option value="">İcraçı seçin…</option>
+                    {allProfiles.map((p) => (
+                      <option key={p.id} value={p.id}>{p.full_name ?? p.id}</option>
+                    ))}
+                  </select>
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      type="button"
+                      className="chip text-meta"
+                      onClick={() => { setReassignOpen(false); setReassignTarget(''); }}
+                    >
+                      Ləğv
+                    </button>
+                    <button
+                      type="button"
+                      className="chip"
+                      style={{ background: 'var(--brand-action)', color: 'var(--ink)' }}
+                      disabled={!reassignTarget || bulkReassign.isPending}
+                      onClick={() => bulkReassign.mutate(reassignTarget)}
+                    >
+                      {bulkReassign.isPending ? '…' : 'Təyin et'}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          <button
+            type="button"
+            className="chip"
+            style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--canvas)' }}
+            disabled={bulkArchiveSelected.isPending}
+            onClick={() => bulkArchiveSelected.mutate()}
+          >
+            {bulkArchiveSelected.isPending ? 'Arxivlənir…' : 'Arxivlə'}
+          </button>
+          <button
+            type="button"
+            className="chip"
+            style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--canvas)' }}
+            onClick={exitBulkMode}
+            aria-label="Seçim rejimini bağla"
+          >
+            ×
+          </button>
+        </div>
       ) : null}
 
       {confirmArchive ? (

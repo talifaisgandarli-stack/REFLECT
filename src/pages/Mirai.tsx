@@ -76,7 +76,7 @@ export function MiraiPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from('mirai_conversations')
-        .select('id, persona, started_at, last_message_at')
+        .select('id, persona, title, started_at, last_message_at')
         .eq('user_id', profile!.id)
         .is('archived_at', null)
         .order('last_message_at', { ascending: false })
@@ -84,11 +84,49 @@ export function MiraiPage() {
       return (data ?? []) as Array<{
         id: string;
         persona: string;
+        title: string | null;
         started_at: string;
         last_message_at: string;
       }>;
     },
   });
+
+  // PRD §7 — rename a conversation (title column added in migration 0038)
+  const renameConv = useMutation({
+    mutationFn: async ({ id, title }: { id: string; title: string }) => {
+      const { error } = await supabase
+        .from('mirai_conversations')
+        .update({ title: title.trim() || null })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['mirai-conversations'] }),
+  });
+
+  // Soft-delete: archived_at stamp keeps the row + messages for audit; history
+  // query already filters `.is('archived_at', null)` so it disappears from UI.
+  const deleteConv = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('mirai_conversations')
+        .update({ archived_at: new Date().toISOString() })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: (_, id) => {
+      qc.invalidateQueries({ queryKey: ['mirai-conversations'] });
+      // If user deleted the currently-open conversation, clear the thread
+      if (id === conversationId) {
+        setMsgs([]);
+        setConversationId(null);
+      }
+    },
+  });
+
+  // Per-row UI state for the history dropdown
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   async function switchToConversation(conv: { id: string; persona: string }) {
     skipAutoLoadRef.current = true; // suppress the persona-change auto-loader
@@ -389,31 +427,113 @@ export function MiraiPage() {
           ) : (conversationHistory.data ?? []).length === 0 ? (
             <div className="text-meta opacity-50 py-2 text-center">Hələ söhbət yoxdur</div>
           ) : (
-            <ul className="max-h-[260px] overflow-y-auto divide-y" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+            <ul className="max-h-[320px] overflow-y-auto divide-y" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
               {(conversationHistory.data ?? []).map((c) => {
                 const personaLabel = PERSONAS.find((p) => p.key === c.persona)?.label ?? c.persona;
                 const dt = new Date(c.last_message_at);
                 const isCurrent = c.id === conversationId;
+                const isRenaming = renamingId === c.id;
+                const isConfirming = confirmDeleteId === c.id;
+                const displayTitle = c.title?.trim() || personaLabel;
                 return (
                   <li key={c.id}>
-                    <button
-                      type="button"
-                      className="w-full text-left py-2 px-2 hover:bg-white/5 rounded-btn flex items-center justify-between gap-3"
-                      style={{ background: isCurrent ? 'rgba(173, 251, 73, 0.08)' : undefined }}
-                      onClick={() => switchToConversation(c)}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="text-body truncate">{personaLabel}</div>
-                        <div className="text-meta opacity-60" style={{ fontSize: 11 }}>
-                          {dt.toLocaleString('az-AZ', { timeZone: 'Asia/Baku' })}
+                    {isRenaming ? (
+                      <div className="py-2 px-2 flex items-center gap-2">
+                        <input
+                          autoFocus
+                          className="flex-1 text-body bg-transparent border-b focus:outline-none"
+                          style={{ borderColor: 'rgba(255,255,255,0.2)', color: 'var(--canvas)' }}
+                          value={renameDraft}
+                          onChange={(e) => setRenameDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              renameConv.mutate({ id: c.id, title: renameDraft });
+                              setRenamingId(null);
+                            } else if (e.key === 'Escape') {
+                              setRenamingId(null);
+                            }
+                          }}
+                          placeholder={personaLabel}
+                        />
+                        <button
+                          type="button"
+                          className="chip text-meta"
+                          onClick={() => { renameConv.mutate({ id: c.id, title: renameDraft }); setRenamingId(null); }}
+                        >
+                          ✓
+                        </button>
+                        <button
+                          type="button"
+                          className="chip text-meta"
+                          onClick={() => setRenamingId(null)}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ) : (
+                      <div
+                        className="py-2 px-2 hover:bg-white/5 rounded-btn flex items-center justify-between gap-2"
+                        style={{ background: isCurrent ? 'rgba(173, 251, 73, 0.08)' : undefined }}
+                      >
+                        <button
+                          type="button"
+                          className="text-left flex-1 min-w-0"
+                          onClick={() => switchToConversation(c)}
+                        >
+                          <div className="text-body truncate">{displayTitle}</div>
+                          <div className="text-meta opacity-60" style={{ fontSize: 11 }}>
+                            {c.title ? `${personaLabel} · ` : ''}
+                            {dt.toLocaleString('az-AZ', { timeZone: 'Asia/Baku' })}
+                          </div>
+                        </button>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {isCurrent ? (
+                            <span className="text-meta" style={{ color: 'var(--brand-action)', fontSize: 11, marginRight: 4 }}>
+                              aktiv
+                            </span>
+                          ) : null}
+                          {isConfirming ? (
+                            <>
+                              <button
+                                type="button"
+                                className="chip text-meta"
+                                style={{ background: 'rgba(239,68,68,0.4)', color: 'white' }}
+                                onClick={() => deleteConv.mutate(c.id)}
+                              >
+                                Bəli
+                              </button>
+                              <button
+                                type="button"
+                                className="chip text-meta"
+                                onClick={() => setConfirmDeleteId(null)}
+                              >
+                                Ləğv
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="chip text-meta opacity-60 hover:opacity-100"
+                                title="Adını dəyiş"
+                                onClick={() => { setRenameDraft(c.title ?? ''); setRenamingId(c.id); }}
+                              >
+                                ✎
+                              </button>
+                              <button
+                                type="button"
+                                className="chip text-meta opacity-60 hover:opacity-100"
+                                title="Söhbəti sil"
+                                style={{ color: '#ff8585' }}
+                                onClick={() => setConfirmDeleteId(c.id)}
+                              >
+                                🗑
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
-                      {isCurrent ? (
-                        <span className="text-meta" style={{ color: 'var(--brand-action)', fontSize: 11 }}>
-                          aktiv
-                        </span>
-                      ) : null}
-                    </button>
+                    )}
                   </li>
                 );
               })}
@@ -559,7 +679,7 @@ export function MiraiPage() {
                   ))}
                 </div>
               ) : null}
-              {/* REQ-7.9 — thumbs up/down feedback (assistant only) */}
+              {/* REQ-7.9 — thumbs up/down feedback + copy (assistant only) */}
               {m.role === 'assistant' ? <div className="flex items-center gap-2 mt-3">
                 {(['up', 'down'] as const).map((vote) => {
                   const icon = vote === 'up' ? '👍' : '👎';
@@ -588,6 +708,8 @@ export function MiraiPage() {
                     </button>
                   );
                 })}
+                {/* Copy-to-clipboard for assistant responses */}
+                <CopyMessageButton text={m.content} />
               </div> : null}
             </article>
           ))}
@@ -601,5 +723,39 @@ export function MiraiPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Reusable click-to-copy button for MIRAI assistant messages
+function CopyMessageButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard API requires secure context; fall back gracefully
+      window.prompt('Kopyalamaq üçün seçin:', text);
+    }
+  }
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      aria-label="Cavabı kopyala"
+      title="Cavabı kopyala"
+      style={{
+        background: copied ? 'var(--brand-glow-xl)' : 'transparent',
+        border: `1px solid ${copied ? 'var(--brand-glow-active)' : 'rgba(255,255,255,0.1)'}`,
+        borderRadius: 6,
+        padding: '2px 8px',
+        fontSize: 13,
+        cursor: 'pointer',
+        transition: 'background 0.15s',
+      }}
+    >
+      {copied ? '✓' : '📋'}
+    </button>
   );
 }

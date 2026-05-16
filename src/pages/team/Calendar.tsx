@@ -58,6 +58,7 @@ export function CalendarPage() {
   const [view, setView] = useState<'month' | 'week' | 'day'>('month');
   const [cursor, setCursor] = useState(() => new Date());
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<CalEvent | null>(null);
   const [selected, setSelected] = useState<CalEvent | null>(null);
 
   // Range for fetching events
@@ -343,7 +344,14 @@ export function CalendarPage() {
 
       {/* Event detail modal */}
       {selected ? (
-        <EventModal event={selected} onClose={() => setSelected(null)} />
+        <EventModal
+          event={selected}
+          onClose={() => setSelected(null)}
+          onEdit={() => {
+            setEditing(selected);
+            setSelected(null);
+          }}
+        />
       ) : null}
 
       {/* Event creation modal */}
@@ -358,15 +366,37 @@ export function CalendarPage() {
           }}
         />
       ) : null}
+
+      {editing ? (
+        <CreateEventModal
+          defaultDate={new Date(editing.starts_at)}
+          userId={profile?.id ?? ''}
+          existingEvent={editing}
+          onClose={() => setEditing(null)}
+          onCreated={() => {
+            qc.invalidateQueries({ queryKey: ['calendar'] });
+            setEditing(null);
+          }}
+        />
+      ) : null}
     </>
   );
 }
 
 // --------- Event detail modal ---------
-function EventModal({ event, onClose }: { event: CalEvent; onClose: () => void }) {
+function EventModal({
+  event,
+  onClose,
+  onEdit,
+}: {
+  event: CalEvent;
+  onClose: () => void;
+  onEdit: () => void;
+}) {
   const qc = useQueryClient();
   const { profile, isAdmin } = useAuth();
-  const canDelete = isAdmin || event.organizer_id === profile?.id;
+  const canEdit = isAdmin || event.organizer_id === profile?.id;
+  const canDelete = canEdit;
   const del = useMutation({
     mutationFn: async () => {
       if (!confirm('Bu görüşü silmək istədiyinə əminsənmi?')) throw new Error('aborted');
@@ -422,20 +452,37 @@ function EventModal({ event, onClose }: { event: CalEvent; onClose: () => void }
               {del.isPending ? 'Silinir…' : 'Sil'}
             </button>
           ) : <span />}
-          <button className="btn-outline" onClick={onClose}>Bağla</button>
+          <div className="flex items-center gap-2">
+            {canEdit ? (
+              <button className="btn-outline" onClick={onEdit}>Redaktə</button>
+            ) : null}
+            <button className="btn-outline" onClick={onClose}>Bağla</button>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-// --------- Create event modal (US-CAL-01..02) ---------
+// --------- Create / Edit event modal (US-CAL-01..02 + edit) ---------
 type CreateProps = {
   defaultDate: Date;
   userId: string;
   onClose: () => void;
   onCreated: () => void;
+  /** When present, switches to edit mode: form pre-filled, mutation does UPDATE. */
+  existingEvent?: CalEvent;
 };
+
+// Parse "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR" back into the RecurFreq enum used by
+// the form select. Mirror of buildRRule(); silently falls back to 'none'.
+function parseRRule(rule: string | null): 'none' | 'DAILY' | 'WEEKDAYS' | 'WEEKLY' | 'MONTHLY' | 'YEARLY' {
+  if (!rule) return 'none';
+  if (rule === 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR') return 'WEEKDAYS';
+  const freq = rule.match(/FREQ=(\w+)/)?.[1];
+  if (freq === 'DAILY' || freq === 'WEEKLY' || freq === 'MONTHLY' || freq === 'YEARLY') return freq;
+  return 'none';
+}
 // RFC 5545 recurrence options (§8.2 — recurrence_rule field)
 type RecurFreq = 'none' | 'DAILY' | 'WEEKDAYS' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
 
@@ -454,17 +501,24 @@ function buildRRule(freq: RecurFreq): string | null {
   return `FREQ=${freq}`;
 }
 
-function CreateEventModal({ defaultDate, userId, onClose, onCreated }: CreateProps) {
+function CreateEventModal({ defaultDate, userId, onClose, onCreated, existingEvent }: CreateProps) {
+  const isEdit = !!existingEvent;
   const defaultDateStr = defaultDate.toISOString().slice(0, 10);
-  const [title, setTitle] = useState('');
-  const [dateStr, setDateStr] = useState(defaultDateStr);
-  const [startTime, setStartTime] = useState('10:00');
-  const [endTime, setEndTime] = useState('11:00');
-  const [location, setLocation] = useState('');
-  const [meetUrl, setMeetUrl] = useState('');
-  const [externalEmails, setExternalEmails] = useState('');
-  const [allDay, setAllDay] = useState(false);
-  const [recur, setRecur] = useState<RecurFreq>('none');
+  const [title, setTitle] = useState(existingEvent?.title ?? '');
+  const [dateStr, setDateStr] = useState(
+    existingEvent ? new Date(existingEvent.starts_at).toISOString().slice(0, 10) : defaultDateStr,
+  );
+  const [startTime, setStartTime] = useState(
+    existingEvent ? new Date(existingEvent.starts_at).toISOString().slice(11, 16) : '10:00',
+  );
+  const [endTime, setEndTime] = useState(
+    existingEvent ? new Date(existingEvent.ends_at).toISOString().slice(11, 16) : '11:00',
+  );
+  const [location, setLocation] = useState(existingEvent?.location ?? '');
+  const [meetUrl, setMeetUrl] = useState(existingEvent?.meet_url ?? '');
+  const [externalEmails, setExternalEmails] = useState((existingEvent?.external_emails ?? []).join(', '));
+  const [allDay, setAllDay] = useState(existingEvent?.all_day ?? false);
+  const [recur, setRecur] = useState<RecurFreq>(parseRRule(existingEvent?.recurrence_rule ?? null));
 
   const create = useMutation({
     mutationFn: async () => {
@@ -475,7 +529,7 @@ function CreateEventModal({ defaultDate, userId, onClose, onCreated }: CreatePro
         .split(/[,\s]+/)
         .map((e) => e.trim())
         .filter(Boolean);
-      const { error } = await supabase.from('calendar_events').insert({
+      const payload = {
         title: title.trim(),
         starts_at: startsAt,
         ends_at: endsAt,
@@ -483,11 +537,25 @@ function CreateEventModal({ defaultDate, userId, onClose, onCreated }: CreatePro
         location: location.trim() || null,
         meet_url: meetUrl.trim() || null,
         recurrence_rule: buildRRule(recur),
-        organizer_id: userId,
-        attendees: [userId],
         external_emails: extEmails.length ? extEmails : null,
-      });
-      if (error) throw error;
+      };
+
+      if (isEdit && existingEvent) {
+        // Edit mode: UPDATE the existing row (preserves UID/ATTENDEE continuity)
+        const { error } = await supabase
+          .from('calendar_events')
+          .update(payload)
+          .eq('id', existingEvent.id);
+        if (error) throw error;
+      } else {
+        // Create mode: INSERT a new row
+        const { error } = await supabase.from('calendar_events').insert({
+          ...payload,
+          organizer_id: userId,
+          attendees: [userId],
+        });
+        if (error) throw error;
+      }
 
       // Send .ics to external emails (§8.2): trigger downloadable .ics file
       // (with ATTENDEE lines) AND open mailto so user can attach + send.
@@ -532,7 +600,7 @@ function CreateEventModal({ defaultDate, userId, onClose, onCreated }: CreatePro
         onClick={(e) => e.stopPropagation()}
         onSubmit={(e) => { e.preventDefault(); create.mutate(); }}
       >
-        <h2 className="text-h2 mb-4">Yeni görüş</h2>
+        <h2 className="text-h2 mb-4">{isEdit ? 'Görüşü redaktə et' : 'Yeni görüş'}</h2>
 
         <div className="space-y-3">
           <Field label="Başlıq" required>
@@ -624,7 +692,7 @@ function CreateEventModal({ defaultDate, userId, onClose, onCreated }: CreatePro
         <div className="flex justify-end gap-2 mt-6">
           <button type="button" className="btn-outline" onClick={onClose} disabled={create.isPending}>Geri</button>
           <button type="submit" className="btn-primary" disabled={create.isPending || !title.trim()}>
-            {create.isPending ? 'Yaradılır…' : 'Yarat'}
+            {create.isPending ? (isEdit ? 'Yenilənir…' : 'Yaradılır…') : isEdit ? 'Yenilə' : 'Yarat'}
           </button>
         </div>
       </form>

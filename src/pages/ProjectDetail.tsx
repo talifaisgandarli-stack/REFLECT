@@ -33,8 +33,10 @@ function daysUntil(date: Date): number {
   return Math.ceil((date.getTime() - Date.now()) / 86_400_000);
 }
 
-// Closeout checklist items (REQ-PROJ-04)
-const CLOSEOUT_ITEMS = [
+// Closeout checklist defaults (REQ-PROJ-04). Per-project custom items are
+// stored in closeout_checklists.custom_items (migration 0039) and merged at
+// render time.
+const CLOSEOUT_DEFAULTS = [
   'Akt imzalanıb',
   'Final sənədlər təhvil verilib',
   'Arxiv hazırlanıb',
@@ -107,14 +109,65 @@ export function ProjectDetailPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from('closeout_checklists')
-        .select('items, completed_at')
+        .select('items, custom_items, completed_at')
         .eq('project_id', id!)
         .maybeSingle();
-      return data ?? { items: [] as string[], completed_at: null };
+      return data ?? { items: [] as string[], custom_items: [] as string[], completed_at: null };
     },
   });
   const checked = new Set<string>(((closeoutQ.data?.items as string[]) ?? []));
-  const allChecked = CLOSEOUT_ITEMS.every((item) => checked.has(item));
+  // Memoize customItems by its underlying data ref so the merged useMemo below
+  // doesn't recompute on every render (was triggering an eslint warning).
+  const customItems = useMemo<string[]>(
+    () => (closeoutQ.data?.custom_items as string[]) ?? [],
+    [closeoutQ.data?.custom_items],
+  );
+  // Merged list = defaults + per-project custom items (de-duplicated)
+  const allItems = useMemo(
+    () => Array.from(new Set([...CLOSEOUT_DEFAULTS, ...customItems])),
+    [customItems],
+  );
+  const allChecked = allItems.every((item) => checked.has(item));
+
+  // Local UI state for adding custom items
+  const [newItemDraft, setNewItemDraft] = useState('');
+
+  const addCustomItem = useMutation({
+    mutationFn: async (label: string) => {
+      if (!id) return;
+      const trimmed = label.trim();
+      if (!trimmed) throw new Error('Maddə boş ola bilməz');
+      if (allItems.includes(trimmed)) throw new Error('Bu maddə artıq mövcuddur');
+      const nextCustom = [...customItems, trimmed];
+      const { error } = await supabase
+        .from('closeout_checklists')
+        .upsert(
+          { project_id: id, items: Array.from(checked), custom_items: nextCustom },
+          { onConflict: 'project_id' },
+        );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setNewItemDraft('');
+      qc.invalidateQueries({ queryKey: ['closeout', id] });
+    },
+  });
+
+  const removeCustomItem = useMutation({
+    mutationFn: async (label: string) => {
+      if (!id) return;
+      const nextCustom = customItems.filter((i) => i !== label);
+      const nextChecked = Array.from(checked).filter((i) => i !== label);
+      const { error } = await supabase
+        .from('closeout_checklists')
+        .upsert(
+          { project_id: id, items: nextChecked, custom_items: nextCustom },
+          { onConflict: 'project_id' },
+        );
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['closeout', id] }),
+  });
 
   const toggleCloseout = useMutation({
     mutationFn: async (next: string[]) => {
@@ -419,33 +472,80 @@ export function ProjectDetailPage() {
               </div>
             ) : (
               <>
-                <ul className="space-y-2 mb-6">
-                  {CLOSEOUT_ITEMS.map((item) => (
-                    <li key={item}>
-                      <label className="flex items-center gap-3 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={checked.has(item)}
-                          onChange={(e) => {
-                            const next = new Set(checked);
-                            if (e.target.checked) next.add(item);
-                            else next.delete(item);
-                            toggleCloseout.mutate(Array.from(next));
-                          }}
-                        />
-                        <span
-                          className="text-body"
-                          style={{
-                            color: checked.has(item) ? 'var(--text-muted)' : 'var(--text)',
-                            textDecoration: checked.has(item) ? 'line-through' : 'none',
-                          }}
-                        >
-                          {item}
-                        </span>
-                      </label>
-                    </li>
-                  ))}
+                <ul className="space-y-2 mb-4">
+                  {allItems.map((item) => {
+                    const isCustom = !CLOSEOUT_DEFAULTS.includes(item as typeof CLOSEOUT_DEFAULTS[number]);
+                    return (
+                      <li key={item} className="flex items-center justify-between gap-2">
+                        <label className="flex items-center gap-3 cursor-pointer flex-1 min-w-0">
+                          <input
+                            type="checkbox"
+                            checked={checked.has(item)}
+                            onChange={(e) => {
+                              const next = new Set(checked);
+                              if (e.target.checked) next.add(item);
+                              else next.delete(item);
+                              toggleCloseout.mutate(Array.from(next));
+                            }}
+                          />
+                          <span
+                            className="text-body truncate"
+                            style={{
+                              color: checked.has(item) ? 'var(--text-muted)' : 'var(--text)',
+                              textDecoration: checked.has(item) ? 'line-through' : 'none',
+                            }}
+                          >
+                            {item}
+                            {isCustom ? (
+                              <span className="text-meta ml-2" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                                xüsusi
+                              </span>
+                            ) : null}
+                          </span>
+                        </label>
+                        {/* Admin can remove only custom items (not defaults) */}
+                        {isAdmin && isCustom ? (
+                          <button
+                            type="button"
+                            className="text-meta shrink-0"
+                            style={{ color: 'var(--text-muted)', fontSize: 11 }}
+                            onClick={() => removeCustomItem.mutate(item)}
+                            title="Bu xüsusi maddəni sil"
+                          >
+                            ×
+                          </button>
+                        ) : null}
+                      </li>
+                    );
+                  })}
                 </ul>
+
+                {/* Admin: add a per-project checklist item (PRD §3.2 jsonb items) */}
+                {isAdmin ? (
+                  <form
+                    className="flex gap-2 mb-4"
+                    onSubmit={(e) => { e.preventDefault(); addCustomItem.mutate(newItemDraft); }}
+                  >
+                    <input
+                      className="input flex-1"
+                      placeholder="Xüsusi məntəqə əlavə et…"
+                      value={newItemDraft}
+                      onChange={(e) => setNewItemDraft(e.target.value)}
+                    />
+                    <button
+                      type="submit"
+                      className="btn-outline"
+                      disabled={!newItemDraft.trim() || addCustomItem.isPending}
+                    >
+                      {addCustomItem.isPending ? '…' : '+ Əlavə et'}
+                    </button>
+                  </form>
+                ) : null}
+                {addCustomItem.error ? (
+                  <p className="text-meta mb-3" style={{ color: 'var(--error-deep)' }}>
+                    {(addCustomItem.error as Error).message}
+                  </p>
+                ) : null}
                 {closeProject.error ? (
                   <p className="text-meta mb-3" style={{ color: 'var(--error-deep)' }}>
                     {(closeProject.error as Error).message}
