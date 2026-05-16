@@ -16,10 +16,59 @@ type SalaryRow = Salary & { profile?: Pick<Profile, 'id' | 'full_name' | 'email'
 const CURRENCIES = ['AZN', 'USD', 'EUR'] as const;
 type Currency = (typeof CURRENCIES)[number];
 
+// PRD §3.2 — `salaries.components jsonb` for base/bonus breakdown
+type SalaryComponents = {
+  base?: number;
+  bonus?: number;
+  allowance?: number;
+  other?: number;
+};
+
+const COMPONENT_LABELS: Record<keyof SalaryComponents, string> = {
+  base: 'Əsas',
+  bonus: 'Bonus',
+  allowance: 'Əlavə',
+  other: 'Digər',
+};
+
+function formatComponents(c: SalaryComponents | null | undefined): string {
+  if (!c) return '—';
+  const parts: string[] = [];
+  for (const k of Object.keys(COMPONENT_LABELS) as (keyof SalaryComponents)[]) {
+    const v = c[k];
+    if (typeof v === 'number' && v > 0) {
+      parts.push(`${COMPONENT_LABELS[k]} ${v.toLocaleString('az-AZ')}`);
+    }
+  }
+  return parts.length ? parts.join(' · ') : '—';
+}
+
 export function SalaryPage() {
   const { isAdmin, profile } = useAuth();
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<SalaryRow | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const removeRow = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('salaries').delete().eq('id', id);
+      if (error) throw error;
+      try {
+        await supabase.from('audit_log').insert({
+          actor_id: profile?.id ?? null,
+          action: 'salary_deleted',
+          resource: `salary:${id}`,
+          ip: null,
+          user_agent: navigator.userAgent,
+        });
+      } catch { /* fire-and-forget */ }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['salaries'] });
+      setConfirmDeleteId(null);
+    },
+  });
 
   const rows = useQuery({
     queryKey: ['salaries', isAdmin],
@@ -100,9 +149,17 @@ export function SalaryPage() {
                 <th className="text-meta text-left py-3 px-4" style={{ color: 'var(--text-muted)' }}>
                   Başlanğıc
                 </th>
-                <th className="text-meta text-left py-3 pl-4" style={{ color: 'var(--text-muted)' }}>
+                <th className="text-meta text-left py-3 px-4" style={{ color: 'var(--text-muted)' }}>
                   Bitmə
                 </th>
+                <th className="text-meta text-left py-3 px-4" style={{ color: 'var(--text-muted)' }}>
+                  Komponentlər
+                </th>
+                {isAdmin && (
+                  <th className="text-meta text-right py-3 pl-4" style={{ color: 'var(--text-muted)' }}>
+                    {' '}
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -125,9 +182,55 @@ export function SalaryPage() {
                   <td className="py-3 px-4" style={{ color: 'var(--text)' }}>
                     {r.effective_from}
                   </td>
-                  <td className="py-3 pl-4" style={{ color: 'var(--text-muted)' }}>
+                  <td className="py-3 px-4" style={{ color: 'var(--text-muted)' }}>
                     {r.effective_to ?? '—'}
                   </td>
+                  <td className="py-3 px-4 text-meta" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                    {formatComponents(r.components as SalaryComponents | null)}
+                  </td>
+                  {isAdmin && (
+                    <td className="py-3 pl-4 text-right">
+                      {confirmDeleteId === r.id ? (
+                        <div className="flex items-center gap-1 justify-end">
+                          <button
+                            type="button"
+                            className="chip"
+                            style={{ background: 'var(--error-deep)', color: 'white' }}
+                            disabled={removeRow.isPending}
+                            onClick={() => removeRow.mutate(r.id)}
+                          >
+                            {removeRow.isPending ? '…' : 'Bəli'}
+                          </button>
+                          <button
+                            type="button"
+                            className="chip"
+                            onClick={() => setConfirmDeleteId(null)}
+                          >
+                            Ləğv
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1 justify-end">
+                          <button
+                            type="button"
+                            className="chip"
+                            style={{ color: 'var(--brand-text)' }}
+                            onClick={() => setEditing(r)}
+                          >
+                            Redaktə
+                          </button>
+                          <button
+                            type="button"
+                            className="chip"
+                            style={{ color: 'var(--error-deep)' }}
+                            onClick={() => setConfirmDeleteId(r.id)}
+                          >
+                            Sil
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -136,7 +239,7 @@ export function SalaryPage() {
       )}
 
       {showForm && isAdmin && (
-        <AddSalaryModal
+        <SalaryFormModal
           profiles={profiles.data ?? []}
           onClose={() => setShowForm(false)}
           onSaved={() => {
@@ -145,22 +248,42 @@ export function SalaryPage() {
           }}
         />
       )}
+
+      {editing && isAdmin && (
+        <SalaryFormModal
+          profiles={profiles.data ?? []}
+          existing={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: ['salaries'] });
+            setEditing(null);
+          }}
+        />
+      )}
     </>
   );
 }
 
-type AddProps = {
+type FormProps = {
   profiles: Pick<Profile, 'id' | 'full_name' | 'email'>[];
+  existing?: SalaryRow;
   onClose: () => void;
   onSaved: () => void;
 };
 
-function AddSalaryModal({ profiles, onClose, onSaved }: AddProps) {
-  const [employeeId, setEmployeeId] = useState('');
-  const [amount, setAmount] = useState('');
-  const [currency, setCurrency] = useState<Currency>('AZN');
-  const [effectiveFrom, setEffectiveFrom] = useState('');
-  const [effectiveTo, setEffectiveTo] = useState('');
+// PRD §8.2 — single modal supports both insert (no `existing`) and update.
+function SalaryFormModal({ profiles, existing, onClose, onSaved }: FormProps) {
+  const isEdit = !!existing;
+  const initialComp = (existing?.components ?? {}) as SalaryComponents;
+  const [employeeId, setEmployeeId] = useState(existing?.employee_id ?? '');
+  const [amount, setAmount] = useState(existing ? String(existing.amount) : '');
+  const [currency, setCurrency] = useState<Currency>((existing?.currency as Currency) ?? 'AZN');
+  const [effectiveFrom, setEffectiveFrom] = useState(existing?.effective_from ?? '');
+  const [effectiveTo, setEffectiveTo] = useState(existing?.effective_to ?? '');
+  const [base, setBase] = useState(initialComp.base != null ? String(initialComp.base) : '');
+  const [bonus, setBonus] = useState(initialComp.bonus != null ? String(initialComp.bonus) : '');
+  const [allowance, setAllowance] = useState(initialComp.allowance != null ? String(initialComp.allowance) : '');
+  const [other, setOther] = useState(initialComp.other != null ? String(initialComp.other) : '');
 
   const save = useMutation({
     mutationFn: async () => {
@@ -168,36 +291,63 @@ function AddSalaryModal({ profiles, onClose, onSaved }: AddProps) {
       const amt = parseFloat(amount);
       if (isNaN(amt) || amt <= 0) throw new Error('Məbləğ müsbət rəqəm olmalıdır');
 
-      const { data: row, error } = await supabase
-        .from('salaries')
-        .insert({
-          employee_id: employeeId,
-          amount: amt,
-          currency,
-          effective_from: effectiveFrom,
-          effective_to: effectiveTo || null,
-        })
-        .select('id')
-        .single();
-      if (error) throw error;
+      // Build components jsonb — only include keys with positive numeric values
+      const components: SalaryComponents = {};
+      const num = (s: string) => (s.trim() ? parseFloat(s) : NaN);
+      const baseN = num(base);
+      const bonusN = num(bonus);
+      const allowN = num(allowance);
+      const otherN = num(other);
+      if (!isNaN(baseN) && baseN > 0) components.base = baseN;
+      if (!isNaN(bonusN) && bonusN > 0) components.bonus = bonusN;
+      if (!isNaN(allowN) && allowN > 0) components.allowance = allowN;
+      if (!isNaN(otherN) && otherN > 0) components.other = otherN;
+      const componentsForDb = Object.keys(components).length ? components : null;
 
-      // Audit trail — PRD §8.2
-      try {
-        await supabase.from('audit_log').insert({
-          action: 'salary_created',
-          resource: `salary:${row.id}`,
-        });
-      } catch { /* fire-and-forget audit */ }
+      const payload = {
+        employee_id: employeeId,
+        amount: amt,
+        currency,
+        effective_from: effectiveFrom,
+        effective_to: effectiveTo || null,
+        components: componentsForDb,
+      };
 
-      // Notify employee via existing fan-out (Telegram + email if configured)
-      try {
-        await supabase.from('notifications').insert({
-          user_id: employeeId,
-          kind: 'salary_changed',
-          payload: { amount: amt, currency, effective_from: effectiveFrom },
-          dispatched_channels: {},
-        });
-      } catch { /* fire-and-forget notification */ }
+      if (isEdit && existing) {
+        const { error } = await supabase
+          .from('salaries')
+          .update(payload)
+          .eq('id', existing.id);
+        if (error) throw error;
+        try {
+          await supabase.from('audit_log').insert({
+            action: 'salary_updated',
+            resource: `salary:${existing.id}`,
+          });
+        } catch { /* fire-and-forget */ }
+      } else {
+        const { data: row, error } = await supabase
+          .from('salaries')
+          .insert(payload)
+          .select('id')
+          .single();
+        if (error) throw error;
+        try {
+          await supabase.from('audit_log').insert({
+            action: 'salary_created',
+            resource: `salary:${row.id}`,
+          });
+        } catch { /* fire-and-forget */ }
+        // Notify the employee on insert only — edits often correct typos
+        try {
+          await supabase.from('notifications').insert({
+            user_id: employeeId,
+            kind: 'salary_changed',
+            payload: { amount: amt, currency, effective_from: effectiveFrom },
+            dispatched_channels: {},
+          });
+        } catch { /* fire-and-forget notification */ }
+      }
     },
     onSuccess: onSaved,
   });
@@ -219,7 +369,7 @@ function AddSalaryModal({ profiles, onClose, onSaved }: AddProps) {
           save.mutate();
         }}
       >
-        <h2 className="text-h2 mb-4">Maaş cədvəli</h2>
+        <h2 className="text-h2 mb-4">{isEdit ? 'Maaş cədvəlini redaktə et' : 'Maaş cədvəli'}</h2>
         <div className="space-y-3">
           <label className="block">
             <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
@@ -230,6 +380,7 @@ function AddSalaryModal({ profiles, onClose, onSaved }: AddProps) {
               value={employeeId}
               onChange={(e) => setEmployeeId(e.target.value)}
               required
+              disabled={isEdit}
             >
               <option value="">Seçin…</option>
               {profiles.map((p) => (
@@ -300,6 +451,73 @@ function AddSalaryModal({ profiles, onClose, onSaved }: AddProps) {
               />
             </label>
           </div>
+
+          {/* PRD §3.2 — components jsonb breakdown (optional). Sum may differ
+              from `amount` if you want to record gross vs. allowances; neither
+              field is enforced as a constraint. */}
+          <div>
+            <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
+              Komponentlər (könüllü)
+            </span>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                  Əsas
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="input"
+                  value={base}
+                  onChange={(e) => setBase(e.target.value)}
+                  style={{ fontVariantNumeric: 'tabular-nums' }}
+                />
+              </label>
+              <label className="block">
+                <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                  Bonus
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="input"
+                  value={bonus}
+                  onChange={(e) => setBonus(e.target.value)}
+                  style={{ fontVariantNumeric: 'tabular-nums' }}
+                />
+              </label>
+              <label className="block">
+                <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                  Əlavə
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="input"
+                  value={allowance}
+                  onChange={(e) => setAllowance(e.target.value)}
+                  style={{ fontVariantNumeric: 'tabular-nums' }}
+                />
+              </label>
+              <label className="block">
+                <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                  Digər
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="input"
+                  value={other}
+                  onChange={(e) => setOther(e.target.value)}
+                  style={{ fontVariantNumeric: 'tabular-nums' }}
+                />
+              </label>
+            </div>
+          </div>
         </div>
 
         {save.error ? (
@@ -313,7 +531,7 @@ function AddSalaryModal({ profiles, onClose, onSaved }: AddProps) {
             Geri
           </button>
           <button type="submit" className="btn-primary" disabled={save.isPending}>
-            {save.isPending ? 'Yadda saxlanılır…' : 'Saxla'}
+            {save.isPending ? 'Yadda saxlanılır…' : isEdit ? 'Yenilə' : 'Saxla'}
           </button>
         </div>
       </form>

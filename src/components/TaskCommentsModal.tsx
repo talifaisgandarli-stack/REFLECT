@@ -10,6 +10,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { relativeTime } from '@/lib/format';
+import { renderCommentMarkdown } from '@/lib/sanitize';
 
 type Comment = {
   id: string;
@@ -223,21 +224,15 @@ export function TaskCommentsModal({
               </div>
               <div style={{ maxWidth: '75%' }}>
                 <div
-                  className="rounded-card px-3 py-2 text-body"
+                  className={`rounded-card px-3 py-2 text-body comment-body ${c.user_id === profile?.id ? 'comment-body-mine' : ''}`}
                   style={{
                     background: c.user_id === profile?.id ? 'var(--brand-action)' : 'var(--surface)',
                     color: c.user_id === profile?.id ? 'var(--ink)' : 'var(--text)',
                   }}
-                >
-                  {/* Highlight @mentions in lime */}
-                  {c.body.split(/(@\S+)/g).map((part, i) =>
-                    part.startsWith('@') ? (
-                      <strong key={i} style={{ color: c.user_id === profile?.id ? 'var(--ink)' : 'var(--brand-action)', fontWeight: 600 }}>
-                        {part}
-                      </strong>
-                    ) : part,
-                  )}
-                </div>
+                  // Markdown rendering (PRD §9.1 sanitized via DOMPurify):
+                  // **bold**, *italic*, `code`, [text](url), bare URLs, @mentions
+                  dangerouslySetInnerHTML={{ __html: renderCommentMarkdown(c.body) }}
+                />
                 <div className="text-meta mt-1" style={{ color: 'var(--text-muted)', fontSize: 11, textAlign: c.user_id === profile?.id ? 'right' : 'left' }}>
                   {c.profiles?.full_name ?? '—'} · {relativeTime(c.created_at)}
                 </div>

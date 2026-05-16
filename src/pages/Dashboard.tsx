@@ -102,7 +102,9 @@ export function DashboardPage() {
   const { profile, isAdmin } = useAuth();
   const { data: tasks = [] } = useTasks(profile?.id ? { assigneeId: profile.id } : undefined);
   const { data: presence = [] } = useTeamPresence();
-  const { data: activity = [] } = useActivityFeed(50);
+  // REQ-DASH-02 / PRD §9.1 — admin sees firm-wide; users see only their own
+  // (the activity_log RLS policy is permissive, so the gating must happen here).
+  const { data: activity = [] } = useActivityFeed(50, isAdmin ? 'firm' : profile?.id ?? 'firm');
   const { data: announcements = [] } = useRecentAnnouncements(3);
   const { data: meetings = [] } = useUpcomingMeetings(7);
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all');

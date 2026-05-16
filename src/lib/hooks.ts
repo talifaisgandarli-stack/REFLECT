@@ -187,15 +187,24 @@ export function useClientStageHistory(clientId: string | undefined) {
 }
 
 // ---------------- Activity log (PRD §6.1) ----------------
-export function useActivityFeed(limit = 50) {
+/**
+ * Activity feed.
+ * @param limit max rows
+ * @param scope `'firm'` returns the firm-wide feed (admin dashboards); pass a
+ *              userId string to scope to that user's own activity (REQ-DASH-02
+ *              + PRD §9.1 — non-admins must not see other users' actions).
+ */
+export function useActivityFeed(limit = 50, scope: 'firm' | string = 'firm') {
   return useQuery({
-    queryKey: ['activity', limit],
+    queryKey: ['activity', limit, scope],
     queryFn: async (): Promise<ActivityLogEntry[]> => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('activity_log')
         .select('*, profiles!activity_log_user_id_fkey(id, full_name, avatar_url)')
         .order('created_at', { ascending: false })
         .limit(limit);
+      if (scope !== 'firm') q = q.eq('user_id', scope);
+      const { data, error } = await q;
       if (error) throw error;
       return (data ?? []) as ActivityLogEntry[];
     },

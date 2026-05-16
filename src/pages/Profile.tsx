@@ -310,6 +310,9 @@ export function ProfilePage() {
           </button>
         </div>
 
+        {/* Password change — REQ-AUTH-03 */}
+        <PasswordChangeCard email={profile.email} />
+
         {/* Notification preferences shortcut */}
         <div className="card">
           <h3 className="text-h3 mb-2">Bildiriş tənzimləmələri</h3>
@@ -329,5 +332,138 @@ export function ProfilePage() {
       {/* Inline spinner keyframe — scoped to avoid global pollution */}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </>
+  );
+}
+
+// REQ-AUTH-03 — change Supabase Auth password (Profile-only; admin role mgmt
+// stays in Settings → Dəvətlər). Re-authentication via current password
+// before issuing the updateUser call to mitigate session-hijack risk.
+function PasswordChangeCard({ email }: { email: string }) {
+  const [open, setOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [ok, setOk] = useState(false);
+
+  function reset() {
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setErr(null);
+    setOk(false);
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    setOk(false);
+
+    if (newPassword.length < 8) {
+      setErr('Yeni şifrə ən azı 8 simvol olmalıdır');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setErr('Yeni şifrə təsdiq ilə üst-üstə düşmür');
+      return;
+    }
+
+    setBusy(true);
+    try {
+      // Re-authenticate by signing in again with the current password.
+      // signInWithPassword refreshes the session — if it fails, password is wrong.
+      const { error: signErr } = await supabase.auth.signInWithPassword({
+        email,
+        password: currentPassword,
+      });
+      if (signErr) throw new Error('Cari şifrə yanlışdır');
+
+      const { error: updErr } = await supabase.auth.updateUser({ password: newPassword });
+      if (updErr) throw updErr;
+
+      setOk(true);
+      reset();
+      setOpen(false);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card space-y-3">
+      <h3 className="text-h3">Şifrə</h3>
+      {!open ? (
+        <>
+          <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+            Şifrəni mütəmadi olaraq dəyişmək məsləhətdir.
+          </p>
+          <button type="button" className="btn-outline" onClick={() => { setOpen(true); reset(); }}>
+            Şifrəni dəyiş
+          </button>
+          {ok ? (
+            <p className="text-meta" style={{ color: 'var(--success-deep)' }}>
+              ✓ Şifrə uğurla dəyişdirildi
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <form onSubmit={submit} className="space-y-3">
+          <label className="block">
+            <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Cari şifrə</span>
+            <input
+              type="password"
+              className="input w-full"
+              autoComplete="current-password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              required
+            />
+          </label>
+          <label className="block">
+            <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Yeni şifrə (min 8)</span>
+            <input
+              type="password"
+              className="input w-full"
+              autoComplete="new-password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              required
+              minLength={8}
+            />
+          </label>
+          <label className="block">
+            <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Yeni şifrəni təsdiq et</span>
+            <input
+              type="password"
+              className="input w-full"
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              minLength={8}
+            />
+          </label>
+          {err ? (
+            <p className="text-meta" style={{ color: 'var(--error-deep)' }}>{err}</p>
+          ) : null}
+          <div className="flex gap-2 justify-end">
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={() => { setOpen(false); reset(); }}
+              disabled={busy}
+            >
+              Ləğv
+            </button>
+            <button type="submit" className="btn-primary" disabled={busy}>
+              {busy ? 'Dəyişdirilir…' : 'Şifrəni yenilə'}
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
   );
 }

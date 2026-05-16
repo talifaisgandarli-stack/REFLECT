@@ -3,7 +3,7 @@ import { PageHead } from '@/components/PageHead';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { formatAZN, formatDate, bakuMonthKey, bakuCurrentMonthRange } from '@/lib/format';
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, ComposedChart, Line, Area, CartesianGrid } from 'recharts';
 import { IncomeExpenseModal, type FinanceKind } from '@/components/IncomeExpenseModal';
 import { MarkPaidModal } from '@/components/MarkPaidModal';
 import { InvoiceFromTemplateModal } from '@/components/InvoiceFromTemplateModal';
@@ -206,35 +206,43 @@ export function FinancePage() {
       ) : null}
 
       {tab === 'Forecast' ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="space-y-4">
           {(forecasts.data ?? []).length === 0 ? (
-            <div className="card text-meta col-span-3">
+            <div className="card text-meta">
               Forecast hələ qurulmayıb. /api/cron/forecast cron-u işə düşəndən sonra görünəcək.
             </div>
-          ) : null}
-          {(forecasts.data ?? []).map(
-            (f: {
-              id: string;
-              horizon_days: number;
-              projected_balance: number;
-              confidence_low: number;
-              confidence_high: number;
-            }) => (
-              <div key={f.id} className="card">
-                <div
-                  className="text-meta uppercase tracking-wider"
-                  style={{ color: 'var(--text-muted)' }}
-                >
-                  {f.horizon_days} gün
-                </div>
-                <div className="text-h2 mt-1" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  {formatAZN(f.projected_balance)}
-                </div>
-                <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                  {formatAZN(f.confidence_low)} – {formatAZN(f.confidence_high)}
-                </div>
+          ) : (
+            <>
+              {/* PRD §REQ-FIN-08 — visual confidence band across 30/60/90 horizons */}
+              <ForecastChart forecasts={forecasts.data ?? []} />
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {(forecasts.data ?? []).map(
+                  (f: {
+                    id: string;
+                    horizon_days: number;
+                    projected_balance: number;
+                    confidence_low: number;
+                    confidence_high: number;
+                  }) => (
+                    <div key={f.id} className="card">
+                      <div
+                        className="text-meta uppercase tracking-wider"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        {f.horizon_days} gün
+                      </div>
+                      <div className="text-h2 mt-1" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {formatAZN(f.projected_balance)}
+                      </div>
+                      <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                        {formatAZN(f.confidence_low)} – {formatAZN(f.confidence_high)}
+                      </div>
+                    </div>
+                  ),
+                )}
               </div>
-            ),
+            </>
           )}
         </div>
       ) : null}
@@ -268,6 +276,90 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
         }}
       >
         {value}
+      </div>
+    </div>
+  );
+}
+
+// PRD §REQ-FIN-08 — visualize MIRAI cash forecast as a confidence band.
+// Plots projected_balance as a line with a low/high shaded area so the
+// uncertainty range is immediately legible (vs. raw text was earlier).
+function ForecastChart({
+  forecasts,
+}: {
+  forecasts: Array<{
+    id: string;
+    horizon_days: number;
+    projected_balance: number;
+    confidence_low: number;
+    confidence_high: number;
+  }>;
+}) {
+  // Recharts wants ascending x-axis; sort by horizon, prepend a "today" zero anchor
+  const sorted = [...forecasts].sort((a, b) => a.horizon_days - b.horizon_days);
+  if (sorted.length === 0) return null;
+  const data = sorted.map((f) => ({
+    horizon: `${f.horizon_days} gün`,
+    projected: f.projected_balance,
+    low: f.confidence_low,
+    high: f.confidence_high,
+    // For the band: Recharts Area uses two values (low, high) — encode as `band`
+    band: [f.confidence_low, f.confidence_high],
+  }));
+
+  return (
+    <div className="card">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-h3">Forecast etibar diapazonu</h3>
+        <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+          MIRAI Maliyyə Analitiki · gündəlik cron
+        </span>
+      </div>
+      <div style={{ width: '100%', height: 240 }}>
+        <ResponsiveContainer>
+          <ComposedChart data={data} margin={{ top: 16, right: 16, left: 0, bottom: 0 }}>
+            <CartesianGrid stroke="var(--line-soft)" strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="horizon" stroke="var(--text-muted)" fontSize={12} />
+            <YAxis
+              stroke="var(--text-muted)"
+              fontSize={12}
+              tickFormatter={(v) => `${(Number(v) / 1000).toFixed(0)}k`}
+            />
+            <Tooltip
+              contentStyle={{
+                background: 'var(--ink)',
+                border: '1px solid var(--line)',
+                borderRadius: 8,
+                color: 'var(--canvas)',
+              }}
+              formatter={(value, name) => {
+                if (name === 'band') {
+                  const [lo, hi] = value as [number, number];
+                  return [`${formatAZN(lo)} – ${formatAZN(hi)}`, 'Etibar diapazonu'];
+                }
+                return [formatAZN(Number(value)), name === 'projected' ? 'Proqnoz' : String(name)];
+              }}
+            />
+            {/* Confidence band — shaded area between low and high */}
+            <Area
+              type="monotone"
+              dataKey="band"
+              stroke="none"
+              fill="var(--brand-action)"
+              fillOpacity={0.15}
+              isAnimationActive={false}
+            />
+            {/* Projected balance — line on top of the band */}
+            <Line
+              type="monotone"
+              dataKey="projected"
+              stroke="var(--brand-action)"
+              strokeWidth={2.5}
+              dot={{ r: 5, fill: 'var(--brand-action)', strokeWidth: 0 }}
+              isAnimationActive={false}
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
       </div>
     </div>
   );

@@ -629,6 +629,21 @@ function AddDocumentButton({ projectId, onAdded }: { projectId: string; onAdded:
   const [category, setCategory] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  // PRD §UX — drag-drop file handling. Auto-fills title from filename
+  // when the title field is empty (UX nicety).
+  function handleDrop(e: React.DragEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setDragOver(false);
+    const dropped = e.dataTransfer.files?.[0];
+    if (dropped) {
+      setFile(dropped);
+      if (!title.trim()) {
+        setTitle(dropped.name.replace(/\.[^.]+$/, ''));
+      }
+    }
+  }
 
   const add = useMutation({
     mutationFn: async () => {
@@ -679,8 +694,16 @@ function AddDocumentButton({ projectId, onAdded }: { projectId: string; onAdded:
   }
   return (
     <form
-      className="flex flex-col gap-2 w-full sm:max-w-[640px]"
+      className="flex flex-col gap-2 w-full sm:max-w-[640px] rounded-card transition-all"
+      style={{
+        padding: dragOver ? 12 : 0,
+        background: dragOver ? 'var(--brand-glow-sm)' : undefined,
+        border: dragOver ? '2px dashed var(--brand-action)' : '2px dashed transparent',
+      }}
       onSubmit={(e) => { e.preventDefault(); add.mutate(); }}
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
+      onDrop={handleDrop}
     >
       <div className="flex gap-2 items-end flex-wrap">
         <input
@@ -701,7 +724,7 @@ function AddDocumentButton({ projectId, onAdded }: { projectId: string; onAdded:
       <div className="flex gap-2 items-end flex-wrap">
         <input
           className="input flex-1 min-w-[200px]"
-          placeholder="Link (Drive/Dropbox) — və ya fayl seçin ↓"
+          placeholder="Link (Drive/Dropbox) — və ya fayl seçin / sürüşdürün ↓"
           value={link}
           onChange={(e) => setLink(e.target.value)}
           disabled={!!file}
@@ -720,6 +743,9 @@ function AddDocumentButton({ projectId, onAdded }: { projectId: string; onAdded:
           </button>
         ) : null}
       </div>
+      <p className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+        💡 Faylı buraya sürüşdürə bilərsiz (drag &amp; drop)
+      </p>
       <div className="flex gap-2 justify-end">
         <button type="button" className="btn-outline" onClick={() => { setOpen(false); setErr(null); }}>
           Ləğv
