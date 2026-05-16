@@ -9,6 +9,7 @@ import { TaskCreateModal } from './TaskCreateModal';
 import { ToastHost } from './Toast';
 import { ShortcutHelp } from './ShortcutHelp';
 import { ActiveTimerChip } from './ActiveTimerChip';
+import { IdleSessionWarning } from './IdleSessionWarning';
 import { useUI, useAuth } from '@/lib/store';
 import { useRealtimeSync } from '@/lib/realtime';
 import { usePresenceHeartbeat } from '@/lib/hooks';
@@ -147,6 +148,7 @@ export function Layout() {
       <LiveAnnouncer />
       <ToastHost />
       <ShortcutHelp />
+      <IdleSessionWarning />
       {/* PRD §6.3 Cmd+N — global new-task modal, context-aware via route */}
       {taskCreateOpen ? (
         <TaskCreateModal onClose={closeTaskCreate} defaultProjectId={defaultProjectId} />

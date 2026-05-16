@@ -134,6 +134,15 @@ export function CmdK() {
     };
   }, [q, cmdkOpen]);
 
+  // PRD §6.2 — per-type result counts so chips signal where matches live
+  const typeCounts = useMemo(() => {
+    const counts: Record<Hit['type'], number> = {
+      task: 0, project: 0, client: 0, announcement: 0, profile: 0,
+    };
+    for (const h of serverHits) counts[h.type] += 1;
+    return counts;
+  }, [serverHits]);
+
   const navHits = useMemo(() => {
     const ql = q.toLowerCase().trim();
     if (!ql) return QUICK;
@@ -196,21 +205,31 @@ export function CmdK() {
           className="flex gap-1 px-3 py-2 flex-wrap"
           style={{ borderBottom: '1px solid var(--line-soft)' }}
         >
-          {(['all', 'task', 'project', 'client', 'announcement', 'profile'] as const).map((f) => (
-            <button
-              key={f}
-              type="button"
-              className="chip"
-              style={{
-                background: entityFilter === f ? 'var(--brand-action)' : 'var(--surface-mist)',
-                color: entityFilter === f ? 'var(--ink)' : 'var(--text-muted)',
-                fontSize: 11,
-              }}
-              onClick={(e) => { e.preventDefault(); setEntityFilter(f); setCursor(0); }}
-            >
-              {f === 'all' ? 'Hamısı' : TYPE_LABEL[f]}
-            </button>
-          ))}
+          {(['all', 'task', 'project', 'client', 'announcement', 'profile'] as const).map((f) => {
+            const count = f === 'all' ? serverHits.length : typeCounts[f];
+            const dim = q.trim().length >= 2 && f !== 'all' && count === 0;
+            return (
+              <button
+                key={f}
+                type="button"
+                className="chip"
+                style={{
+                  background: entityFilter === f ? 'var(--brand-action)' : 'var(--surface-mist)',
+                  color: entityFilter === f ? 'var(--ink)' : 'var(--text-muted)',
+                  fontSize: 11,
+                  opacity: dim ? 0.4 : 1,
+                }}
+                onClick={(e) => { e.preventDefault(); setEntityFilter(f); setCursor(0); }}
+              >
+                {f === 'all' ? 'Hamısı' : TYPE_LABEL[f]}
+                {q.trim().length >= 2 ? (
+                  <span style={{ marginLeft: 4, fontVariantNumeric: 'tabular-nums', opacity: 0.7 }}>
+                    {count}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
         </div>
         <input
           autoFocus

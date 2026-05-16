@@ -204,6 +204,9 @@ export function DashboardPage() {
     });
   const overdue = tasks.filter((t) => taskHealth(t.deadline) === 'red');
   const onlineCount = presence.filter((p) => p.status === 'online').length;
+  // REQ-PRESENCE — show breakdown (online/away/offline) so admin sees full picture
+  const awayCount = presence.filter((p) => p.status === 'away').length;
+  const offlineCount = presence.filter((p) => p.status === 'offline').length;
 
   const filteredActivity = useMemo(() => {
     if (activityFilter === 'all') return activity;
@@ -463,8 +466,14 @@ export function DashboardPage() {
         <section className="lg:col-span-3 card">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-h3">Komanda</h3>
-            <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
-              {onlineCount} onlayn
+            <span
+              className="text-meta inline-flex items-center gap-2"
+              style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}
+              title={`${onlineCount} onlayn · ${awayCount} uzaqda · ${offlineCount} oflayn`}
+            >
+              <span style={{ color: 'var(--presence-online)' }}>● {onlineCount}</span>
+              {awayCount > 0 ? <span style={{ color: 'var(--presence-away)' }}>● {awayCount}</span> : null}
+              <span style={{ color: 'var(--presence-offline)', opacity: 0.7 }}>● {offlineCount}</span>
             </span>
           </div>
           {presence.length === 0 ? (

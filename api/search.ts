@@ -13,7 +13,8 @@ import { checkRateLimit } from './_lib/rate-limit';
 
 export const config = { runtime: 'edge' };
 
-const PER_GROUP = 5;
+// PRD §6.2 — "top 8 results per group, grouped by entity type"
+const PER_GROUP = 8;
 
 type Hit = {
   type: 'task' | 'project' | 'client' | 'announcement' | 'profile';

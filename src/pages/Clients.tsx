@@ -1024,18 +1024,35 @@ function OverviewTab({ client }: { client: Client }) {
     }
   }
 
+  const { isAdmin } = useAuth();
   return (
     <div>
       <dl className="text-body space-y-2">
         <Row label="Mərhələ" value={CLIENT_STAGE_LABEL[client.pipeline_stage]} />
         <Row label="Etibar %" value={`${client.confidence_pct}%`} />
-        <Row label="Dəyər" value={formatAZN(client.expected_value)} />
-        <Row label="Email" value={client.email ?? '—'} />
+        {/* PRD §REQ-CRM — inline editable fields (admin) */}
+        {isAdmin ? (
+          <ClientFieldEditor clientId={client.id} field="company" label="Şirkət" initial={client.company} type="text" />
+        ) : <Row label="Şirkət" value={client.company ?? '—'} />}
+        {isAdmin ? (
+          <ClientFieldEditor clientId={client.id} field="email" label="Email" initial={client.email} type="email" />
+        ) : <Row label="Email" value={client.email ?? '—'} />}
         <Row label="Telefon" value={client.phone ?? '—'} />
+        {isAdmin ? (
+          <ClientFieldEditor clientId={client.id} field="expected_value" label="Dəyər" initial={client.expected_value != null ? String(client.expected_value) : null} type="number" displayFormat="azn" />
+        ) : <Row label="Dəyər" value={formatAZN(client.expected_value)} />}
+        {isAdmin ? (
+          <ClientIndustryEditor clientId={client.id} initial={(client as { industry?: string | null }).industry ?? null} />
+        ) : ((client as { industry?: string | null }).industry ? <Row label="Sahə" value={(client as { industry?: string | null }).industry ?? ''} /> : null)}
         <Row label="Son əlaqə" value={relativeTime(client.last_interaction_at)} />
+        {/* REQ-CRM-04 — surface staleness so users see when ICP was last calculated */}
         <Row
           label="ICP uyğunluğu"
-          value={client.ai_icp_fit != null ? `${Math.round(client.ai_icp_fit)}%` : '—'}
+          value={
+            client.ai_icp_fit != null
+              ? `${Math.round(client.ai_icp_fit)}%${lastRun ? ` · ${relativeTime(client.ai_icp_calculated_at)}` : ''}`
+              : '—'
+          }
         />
       </dl>
       <div className="mt-4">
@@ -1365,5 +1382,137 @@ function ClientNameEditor({ clientId, initial }: { clientId: string; initial: st
     >
       {initial}
     </h2>
+  );
+}
+
+// PRD §REQ-CRM — generic inline editor for a clients column (admin only)
+function ClientFieldEditor({
+  clientId,
+  field,
+  label,
+  initial,
+  type,
+  displayFormat,
+}: {
+  clientId: string;
+  field: 'company' | 'email' | 'phone' | 'expected_value';
+  label: string;
+  initial: string | null;
+  type: 'text' | 'email' | 'number';
+  displayFormat?: 'azn';
+}) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(initial ?? '');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { if (!editing) setVal(initial ?? ''); }, [initial, editing]);
+
+  async function save() {
+    setErr(null);
+    const trimmed = val.trim();
+    if (trimmed === (initial ?? '')) { setEditing(false); return; }
+    if (type === 'email' && trimmed && !isValidEmail(trimmed)) {
+      setErr('Etibarsız email');
+      return;
+    }
+    let payload: string | number | null = trimmed || null;
+    if (type === 'number') {
+      if (trimmed === '') payload = null;
+      else {
+        const n = roundAzn(trimmed);
+        if (n == null) { setErr('Rəqəm daxil edin'); return; }
+        payload = n;
+      }
+    }
+    setSaving(true);
+    const { error } = await supabase.from('clients').update({ [field]: payload }).eq('id', clientId);
+    setSaving(false);
+    if (error) { setErr(error.message); return; }
+    qc.invalidateQueries({ queryKey: ['clients'] });
+    setEditing(false);
+  }
+
+  // Read-only display
+  const displayValue = (() => {
+    if (initial == null || initial === '') return '—';
+    if (displayFormat === 'azn') return formatAZN(Number(initial));
+    return initial;
+  })();
+
+  if (!editing) {
+    return (
+      <div className="flex justify-between gap-2">
+        <dt style={{ color: 'var(--text-muted)' }}>{label}</dt>
+        <dd className="flex items-center gap-1">
+          <span>{displayValue}</span>
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="chip opacity-40 hover:opacity-100"
+            style={{ fontSize: 10 }}
+            title={`${label} dəyiş`}
+            aria-label={`${label} dəyiş`}
+          >
+            ✎
+          </button>
+        </dd>
+      </div>
+    );
+  }
+  return (
+    <div className="flex justify-between gap-2 items-start">
+      <dt style={{ color: 'var(--text-muted)' }}>{label}</dt>
+      <dd className="flex items-center gap-1 flex-wrap justify-end">
+        <input
+          autoFocus
+          type={type}
+          className="input"
+          style={{ height: 26, fontSize: 12, maxWidth: 200 }}
+          value={val}
+          onChange={(e) => { setVal(e.target.value); setErr(null); }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') save();
+            if (e.key === 'Escape') { setVal(initial ?? ''); setErr(null); setEditing(false); }
+          }}
+          step={type === 'number' ? '0.01' : undefined}
+          min={type === 'number' ? 0 : undefined}
+        />
+        <button type="button" className="chip" disabled={saving} onClick={save} style={{ fontSize: 11, color: 'var(--brand-text)' }}>{saving ? '…' : '✓'}</button>
+        <button type="button" className="chip" onClick={() => { setVal(initial ?? ''); setErr(null); setEditing(false); }} style={{ fontSize: 11 }}>×</button>
+        {err ? <span className="text-meta block w-full text-right" style={{ color: 'var(--error-deep)', fontSize: 10 }}>{err}</span> : null}
+      </dd>
+    </div>
+  );
+}
+
+// PRD §REQ-CRM — admin inline edit clients.industry (migration 0050)
+function ClientIndustryEditor({ clientId, initial }: { clientId: string; initial: string | null }) {
+  const qc = useQueryClient();
+  const update = useMutation({
+    mutationFn: async (next: string | null) => {
+      const { error } = await supabase.from('clients').update({ industry: next }).eq('id', clientId);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['clients'] }),
+  });
+  return (
+    <div className="flex justify-between gap-2">
+      <dt style={{ color: 'var(--text-muted)' }}>Sahə</dt>
+      <dd>
+        <select
+          className="input"
+          style={{ height: 28, fontSize: 12, padding: '0 6px' }}
+          value={initial ?? ''}
+          onChange={(e) => update.mutate(e.target.value || null)}
+          disabled={update.isPending}
+        >
+          <option value="">— seçilməyib —</option>
+          {INDUSTRY_OPTIONS.map((o) => (
+            <option key={o} value={o}>{o}</option>
+          ))}
+        </select>
+      </dd>
+    </div>
   );
 }
