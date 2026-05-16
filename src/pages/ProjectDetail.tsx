@@ -424,10 +424,21 @@ export function ProjectDetailPage() {
                 <Row k="Deadline" v={project.deadline ?? '—'} />
               )}
               <ProjectTimeTotal taskIds={tasks.map((t) => t.id)} />
-              <ProjectClientLink clientId={project.client_id} />
+              <ProjectClientLink projectId={id!} clientId={project.client_id} isAdmin={isAdmin} />
               <Row k="Ekspertiza" v={project.requires_expertise ? 'Lazımdır' : 'Yox'} />
-              {project.requires_expertise && project.expertise_deadline ? (
-                <Row k="Eksp. deadline" v={project.expertise_deadline} />
+              {project.requires_expertise ? (
+                isAdmin ? (
+                  <ProjectDateField
+                    projectId={id!}
+                    field="expertise_deadline"
+                    label="Eksp. deadline"
+                    initial={project.expertise_deadline}
+                  />
+                ) : (
+                  project.expertise_deadline ? (
+                    <Row k="Eksp. deadline" v={project.expertise_deadline} />
+                  ) : null
+                )
               ) : null}
               {/* PRD §REQ-FIN-06 — admin can edit project budget inline */}
               {isAdmin ? (
@@ -1539,8 +1550,18 @@ function ProjectTagsEditor({ projectId, initial, isAdmin }: { projectId: string;
   );
 }
 
-// Project client name with clickable link to /müştərilər?focus=<id>
-function ProjectClientLink({ clientId }: { clientId: string | null }) {
+// Project client — read-only link for non-admin; admin can reassign via dropdown
+function ProjectClientLink({
+  projectId,
+  clientId,
+  isAdmin,
+}: {
+  projectId: string;
+  clientId: string | null;
+  isAdmin: boolean;
+}) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
   const client = useQuery({
     queryKey: ['project-client', clientId],
     enabled: !!clientId,
@@ -1549,19 +1570,97 @@ function ProjectClientLink({ clientId }: { clientId: string | null }) {
       return data as { id: string; name: string; company: string | null } | null;
     },
   });
-  if (!clientId) return null;
+  const allClients = useQuery({
+    queryKey: ['clients', 'active-pick'],
+    enabled: editing,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('clients')
+        .select('id, name, company')
+        .neq('pipeline_stage', 'archived')
+        .order('name');
+      return (data ?? []) as Array<{ id: string; name: string; company: string | null }>;
+    },
+  });
+  const reassign = useMutation({
+    mutationFn: async (nextId: string | null) => {
+      const { error } = await supabase.from('projects').update({ client_id: nextId }).eq('id', projectId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['project', projectId] });
+      qc.invalidateQueries({ queryKey: ['project-client'] });
+      setEditing(false);
+    },
+  });
+
+  // Non-admin: read-only or hidden
+  if (!isAdmin) {
+    if (!clientId) return null;
+    const c = client.data;
+    return (
+      <div className="flex justify-between gap-4">
+        <dt style={{ color: 'var(--text-muted)' }}>Müştəri</dt>
+        <dd>
+          {c ? (
+            <a href={`/müştərilər?focus=${c.id}`} className="hover:underline" style={{ color: 'var(--brand-text)' }}>
+              🤝 {c.name}{c.company ? ` · ${c.company}` : ''}
+            </a>
+          ) : (
+            <span style={{ color: 'var(--text-muted)' }}>Yüklənir…</span>
+          )}
+        </dd>
+      </div>
+    );
+  }
+
+  // Admin
+  if (editing) {
+    return (
+      <div className="flex justify-between gap-4 items-center">
+        <dt style={{ color: 'var(--text-muted)' }}>Müştəri</dt>
+        <dd>
+          <select
+            autoFocus
+            className="input"
+            style={{ height: 28, fontSize: 12, maxWidth: 240 }}
+            value={clientId ?? ''}
+            onChange={(e) => reassign.mutate(e.target.value || null)}
+            onBlur={() => setEditing(false)}
+            disabled={reassign.isPending}
+          >
+            <option value="">— təyin edilməyib —</option>
+            {(allClients.data ?? []).map((c) => (
+              <option key={c.id} value={c.id}>{c.name}{c.company ? ` · ${c.company}` : ''}</option>
+            ))}
+          </select>
+        </dd>
+      </div>
+    );
+  }
   const c = client.data;
   return (
-    <div className="flex justify-between gap-4">
+    <div className="flex justify-between gap-4 items-center">
       <dt style={{ color: 'var(--text-muted)' }}>Müştəri</dt>
-      <dd>
+      <dd className="flex items-center gap-1">
         {c ? (
           <a href={`/müştərilər?focus=${c.id}`} className="hover:underline" style={{ color: 'var(--brand-text)' }}>
             🤝 {c.name}{c.company ? ` · ${c.company}` : ''}
           </a>
-        ) : (
+        ) : clientId ? (
           <span style={{ color: 'var(--text-muted)' }}>Yüklənir…</span>
+        ) : (
+          <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>— təyin edilməyib —</span>
         )}
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="chip opacity-50 hover:opacity-100"
+          style={{ fontSize: 10 }}
+          title="Müştərini dəyiş"
+        >
+          ✎
+        </button>
       </dd>
     </div>
   );

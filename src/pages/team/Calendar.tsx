@@ -615,6 +615,14 @@ function EventModal({
         {canEdit ? (
           <EventFieldInline eventId={event.id} field="location" initial={event.location ?? ''} as="location" />
         ) : (event.location ? <p className="mt-2 text-body">📍 {event.location}</p> : null)}
+        {/* Meet URL — inline editable for canEdit, static link for non-canEdit */}
+        {canEdit ? (
+          <EventFieldInline eventId={event.id} field="meet_url" initial={event.meet_url ?? ''} as="meet_url" />
+        ) : (event.meet_url ? (
+          <a href={event.meet_url} target="_blank" rel="noreferrer noopener" className="mt-2 text-body block" style={{ color: 'var(--brand-text)' }}>
+            📹 {event.meet_url}
+          </a>
+        ) : null)}
         {event.recurrence_rule ? (
           <p className="mt-2 text-meta" style={{ color: 'var(--brand-text)' }}>
             ↻ {rruleLabel(event.recurrence_rule)}
@@ -1090,9 +1098,9 @@ function EventFieldInline({
   as,
 }: {
   eventId: string;
-  field: 'title' | 'location';
+  field: 'title' | 'location' | 'meet_url';
   initial: string;
-  as: 'title' | 'location';
+  as: 'title' | 'location' | 'meet_url';
 }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -1147,6 +1155,19 @@ function EventFieldInline({
         title="Başlığı dəyişdirmək üçün klik"
       >
         {initial}
+      </button>
+    );
+  }
+  if (as === 'meet_url') {
+    return (
+      <button
+        type="button"
+        className="mt-2 text-body text-left hover:opacity-80 block"
+        style={{ color: initial ? 'var(--brand-text)' : 'var(--text-muted)', fontStyle: initial ? 'normal' : 'italic' }}
+        onClick={() => setEditing(true)}
+        title="Görüş linkini dəyişdir"
+      >
+        📹 {initial || '+ Görüş linki əlavə et'}
       </button>
     );
   }

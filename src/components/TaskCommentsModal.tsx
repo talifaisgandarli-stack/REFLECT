@@ -636,39 +636,93 @@ function SubtaskInlineCreate({ parentTaskId }: { parentTaskId: string }) {
   );
 }
 
-// PRD §REQ-TASK-02 — current assignees displayed as compact chip row
+// PRD §REQ-TASK-02 — assignee chip row. Admin can add/remove via inline
+// select; non-admin sees read-only chips.
 function TaskAssigneesChip({ taskId }: { taskId: string }) {
-  const assignees = useQuery({
-    queryKey: ['task_assignees_display', taskId],
+  const { isAdmin } = useAuth();
+  const qc = useQueryClient();
+  const task = useQuery({
+    queryKey: ['task_assignees_ids', taskId],
     queryFn: async () => {
-      const { data: task } = await supabase
+      const { data } = await supabase
         .from('tasks')
         .select('assignee_ids')
         .eq('id', taskId)
         .maybeSingle();
-      const ids = (task?.assignee_ids ?? []) as string[];
-      if (ids.length === 0) return [];
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, full_name')
-        .in('id', ids);
-      return (profiles ?? []) as Array<{ id: string; full_name: string | null }>;
+      return ((data?.assignee_ids ?? []) as string[]);
     },
   });
-  const items = assignees.data ?? [];
-  if (items.length === 0) return null;
+  const ids = task.data ?? [];
+  const allProfiles = useQuery({
+    queryKey: ['profiles', 'assignee-pick'],
+    enabled: ids.length > 0 || isAdmin,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .eq('is_active', true)
+        .order('full_name');
+      return (data ?? []) as Array<{ id: string; full_name: string | null }>;
+    },
+  });
+  const updateIds = useMutation({
+    mutationFn: async (nextIds: string[]) => {
+      const { error } = await supabase.from('tasks').update({ assignee_ids: nextIds }).eq('id', taskId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task_assignees_ids', taskId] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+    },
+  });
+  const profileMap = new Map((allProfiles.data ?? []).map((p) => [p.id, p.full_name ?? p.id.slice(0, 8)]));
+  const candidates = (allProfiles.data ?? []).filter((p) => !ids.includes(p.id));
+
+  if (ids.length === 0 && !isAdmin) return null;
+
   return (
     <div className="text-meta mb-2 flex items-center gap-1.5 flex-wrap" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
       <span>👤</span>
-      {items.map((p) => (
+      {ids.map((id) => (
         <span
-          key={p.id}
-          className="chip"
+          key={id}
+          className="chip flex items-center gap-1"
           style={{ background: 'var(--surface-mist)', fontSize: 11 }}
         >
-          {p.full_name ?? p.id.slice(0, 8)}
+          {profileMap.get(id) ?? id.slice(0, 8)}
+          {isAdmin ? (
+            <button
+              type="button"
+              onClick={() => updateIds.mutate(ids.filter((x) => x !== id))}
+              disabled={updateIds.isPending}
+              style={{ color: 'var(--text-muted)', opacity: 0.6, fontSize: 11 }}
+              title="Çıxar"
+              aria-label={`${profileMap.get(id) ?? id} çıxarılsın`}
+            >
+              ×
+            </button>
+          ) : null}
         </span>
       ))}
+      {isAdmin && candidates.length > 0 ? (
+        <select
+          className="input"
+          style={{ height: 22, fontSize: 11, padding: '0 4px', minWidth: 90 }}
+          value=""
+          onChange={(e) => {
+            if (e.target.value) {
+              updateIds.mutate([...ids, e.target.value]);
+              e.target.value = '';
+            }
+          }}
+          disabled={updateIds.isPending}
+        >
+          <option value="">+ İcraçı</option>
+          {candidates.map((p) => (
+            <option key={p.id} value={p.id}>{p.full_name ?? p.id.slice(0, 8)}</option>
+          ))}
+        </select>
+      ) : null}
     </div>
   );
 }
@@ -767,7 +821,8 @@ function TaskEstimateBar({
 }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
-  const [hours, setHours] = useState('');
+  const [duration, setDuration] = useState('');
+  const [unit, setUnit] = useState<'minutes' | 'hours' | 'days'>('hours');
   const [saving, setSaving] = useState(false);
 
   const trackedSec = data?.trackedSec ?? 0;
@@ -778,12 +833,12 @@ function TaskEstimateBar({
   if (!editing && !estSec && trackedSec === 0) return null;
 
   async function save() {
-    const h = Number(hours.replace(',', '.'));
-    if (!Number.isFinite(h) || h < 0) { setEditing(false); return; }
+    const d = Number(duration.replace(',', '.'));
+    if (!Number.isFinite(d) || d < 0) { setEditing(false); return; }
     setSaving(true);
     await supabase
       .from('tasks')
-      .update({ estimated_duration: h > 0 ? h : null, duration_unit: 'hours' })
+      .update({ estimated_duration: d > 0 ? d : null, duration_unit: unit })
       .eq('id', taskId);
     setSaving(false);
     qc.invalidateQueries({ queryKey: ['task_estimate_vs_actual', taskId] });
@@ -812,15 +867,25 @@ function TaskEstimateBar({
             min={0}
             step="0.25"
             className="input"
-            style={{ height: 22, width: 64, fontSize: 11 }}
-            value={hours}
-            onChange={(e) => setHours(e.target.value)}
+            style={{ height: 22, width: 60, fontSize: 11 }}
+            value={duration}
+            onChange={(e) => setDuration(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') save();
               if (e.key === 'Escape') setEditing(false);
             }}
-            placeholder="saat"
+            placeholder="0"
           />
+          <select
+            className="input"
+            style={{ height: 22, fontSize: 11, padding: '0 4px' }}
+            value={unit}
+            onChange={(e) => setUnit(e.target.value as typeof unit)}
+          >
+            <option value="minutes">dəq</option>
+            <option value="hours">saat</option>
+            <option value="days">gün</option>
+          </select>
           <button type="button" disabled={saving} onClick={save} className="chip" style={{ fontSize: 10, color: 'var(--brand-text)' }}>
             {saving ? '…' : '✓'}
           </button>
@@ -831,8 +896,16 @@ function TaskEstimateBar({
           {overrun ? <span>⚠ Aşılıb</span> : null}
           <button
             type="button"
-            onClick={() => {
-              setHours(estSec != null ? String(Math.round((estSec / 3600) * 100) / 100) : '');
+            onClick={async () => {
+              // Pre-fill input with current unit + value (read separately)
+              const { data: task } = await supabase
+                .from('tasks')
+                .select('estimated_duration, duration_unit')
+                .eq('id', taskId)
+                .maybeSingle();
+              const u = (task?.duration_unit as 'minutes' | 'hours' | 'days') ?? 'hours';
+              setUnit(u);
+              setDuration(task?.estimated_duration != null ? String(task.estimated_duration) : '');
               setEditing(true);
             }}
             className="chip"
