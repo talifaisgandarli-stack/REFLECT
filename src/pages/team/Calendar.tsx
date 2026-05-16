@@ -623,6 +623,10 @@ function EventModal({
             📹 {event.meet_url}
           </a>
         ) : null)}
+        {/* PRD §8.2 — internal attendees (team) inline editor */}
+        {canEdit ? (
+          <EventInternalAttendeesEditor eventId={event.id} initial={(event.attendees as string[] | null) ?? []} />
+        ) : null}
         {/* PRD §8.2 — external attendees list with × remove + inline add (canEdit) */}
         {canEdit ? (
           <EventExternalEmailsEditor eventId={event.id} initial={event.external_emails ?? []} />
@@ -1030,6 +1034,76 @@ function Field({ label, required, children }: { label: string; required?: boolea
       </span>
       {children}
     </label>
+  );
+}
+
+// PRD §8.2 — internal attendees inline editor: chip per profile + add dropdown
+function EventInternalAttendeesEditor({ eventId, initial }: { eventId: string; initial: string[] }) {
+  const qc = useQueryClient();
+  const [ids, setIds] = useState(initial);
+  useEffect(() => { setIds(initial); }, [initial]);
+  const profiles = useQuery({
+    queryKey: ['profiles', 'attendee-pick'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .eq('is_active', true)
+        .order('full_name');
+      return (data ?? []) as Array<{ id: string; full_name: string | null }>;
+    },
+  });
+  const profileMap = new Map((profiles.data ?? []).map((p) => [p.id, p.full_name ?? p.id.slice(0, 8)]));
+  const candidates = (profiles.data ?? []).filter((p) => !ids.includes(p.id));
+
+  async function persist(next: string[]) {
+    setIds(next);
+    await supabase
+      .from('calendar_events')
+      .update({ attendees: next })
+      .eq('id', eventId);
+    qc.invalidateQueries({ queryKey: ['calendar'] });
+  }
+
+  return (
+    <div className="mt-2 flex items-center gap-1 flex-wrap text-body">
+      <span>👥</span>
+      {ids.map((id) => (
+        <span
+          key={id}
+          className="chip flex items-center gap-1"
+          style={{ background: 'var(--surface-mist)', fontSize: 11 }}
+        >
+          {profileMap.get(id) ?? id.slice(0, 8)}
+          <button
+            type="button"
+            onClick={() => persist(ids.filter((x) => x !== id))}
+            style={{ color: 'var(--text-muted)', opacity: 0.6, fontSize: 11 }}
+            title="Çıxar"
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      {candidates.length > 0 ? (
+        <select
+          className="input"
+          style={{ height: 22, fontSize: 11, padding: '0 4px' }}
+          value=""
+          onChange={(e) => {
+            if (e.target.value) {
+              persist([...ids, e.target.value]);
+              e.target.value = '';
+            }
+          }}
+        >
+          <option value="">+ İştirakçı</option>
+          {candidates.map((p) => (
+            <option key={p.id} value={p.id}>{p.full_name ?? p.id.slice(0, 8)}</option>
+          ))}
+        </select>
+      ) : null}
+    </div>
   );
 }
 

@@ -3,7 +3,7 @@
  * Schema: equipment(id, name, kind, serial, assigned_to uuid|null, condition, purchased_at, notes)
  * Transfer history via activity_log(entity_type='equipment', entity_id, action, old_value, new_value)
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
@@ -218,7 +218,7 @@ export function EquipmentPage() {
           <table className="w-full text-body">
             <thead>
               <tr style={{ borderBottom: '1px solid var(--line)' }}>
-                {['Ad', 'Növ', 'Serial', 'QR', 'Tapşırılıb', 'Vəziyyət', ''].map((h) => (
+                {['Ad', 'Növ', 'Serial', 'QR', 'Tapşırılıb', 'Vəziyyət', 'Qeyd', ''].map((h) => (
                   <th key={h} className="text-left py-3 px-3 text-meta" style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
                 ))}
               </tr>
@@ -252,6 +252,10 @@ export function EquipmentPage() {
                     ) : (
                       e.condition ?? '—'
                     )}
+                  </td>
+                  {/* PRD §8.7 — inline notes edit (admin) */}
+                  <td className="py-3 px-3" style={{ maxWidth: 200 }}>
+                    <EquipmentNotesCell id={e.id} initial={(e as { notes?: string | null }).notes ?? null} isAdmin={isAdmin} />
                   </td>
                   <td className="py-3 px-3">
                     {isAdmin ? (
@@ -420,5 +424,66 @@ function CreateEquipmentModal({ onClose, onSaved }: { onClose: () => void; onSav
         </div>
       </div>
     </div>
+  );
+}
+
+// PRD §8.7 — inline notes editor for an equipment row (admin only writes)
+function EquipmentNotesCell({ id, initial, isAdmin }: { id: string; initial: string | null; isAdmin: boolean }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(initial ?? '');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { if (!editing) setVal(initial ?? ''); }, [initial, editing]);
+
+  async function save() {
+    const trimmed = val.trim();
+    if (trimmed === (initial ?? '')) { setEditing(false); return; }
+    setSaving(true);
+    await supabase.from('equipment').update({ notes: trimmed || null }).eq('id', id);
+    setSaving(false);
+    qc.invalidateQueries({ queryKey: ['equipment'] });
+    setEditing(false);
+  }
+
+  if (!isAdmin) {
+    return (
+      <span className="text-meta truncate block" style={{ color: 'var(--text-muted)', fontSize: 12 }} title={initial ?? undefined}>
+        {initial ?? '—'}
+      </span>
+    );
+  }
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1">
+        <input
+          autoFocus
+          className="input"
+          style={{ height: 24, fontSize: 12 }}
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') save();
+            if (e.key === 'Escape') { setVal(initial ?? ''); setEditing(false); }
+          }}
+        />
+        <button type="button" className="chip" disabled={saving} onClick={save} style={{ fontSize: 11, color: 'var(--brand-text)' }}>{saving ? '…' : '✓'}</button>
+        <button type="button" className="chip" onClick={() => { setVal(initial ?? ''); setEditing(false); }} style={{ fontSize: 11 }}>×</button>
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      className="text-meta truncate block text-left hover:bg-surface-mist px-1 -mx-1 rounded-btn w-full"
+      style={{
+        color: initial ? 'var(--text)' : 'var(--text-muted)',
+        fontStyle: initial ? 'normal' : 'italic',
+        fontSize: 12,
+      }}
+      title={initial ?? undefined}
+    >
+      {initial ?? '+ qeyd'}
+    </button>
   );
 }

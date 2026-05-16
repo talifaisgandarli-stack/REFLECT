@@ -410,6 +410,9 @@ export function TaskCommentsModal({
           {/* PRD §REQ-TASK-03 — status + priority + labels inline editors */}
           <TaskStatusPriorityLabels taskId={taskId} />
 
+          {/* PRD §REQ-TASK — start_date + deadline inline editors */}
+          <TaskDateFields taskId={taskId} />
+
           {/* PRD §REQ-TASK — assignees chip row */}
           <TaskAssigneesChip taskId={taskId} />
 
@@ -636,6 +639,58 @@ function SubtaskInlineCreate({ parentTaskId }: { parentTaskId: string }) {
       </button>
       <button type="button" className="chip" onClick={() => { setOpen(false); setTitle(''); }} style={{ fontSize: 11 }}>×</button>
     </form>
+  );
+}
+
+// PRD §REQ-TASK — inline date pickers for start_date + deadline
+function TaskDateFields({ taskId }: { taskId: string }) {
+  const qc = useQueryClient();
+  const dates = useQuery({
+    queryKey: ['task_dates_editable', taskId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('tasks')
+        .select('start_date, deadline')
+        .eq('id', taskId)
+        .maybeSingle();
+      return (data ?? { start_date: null, deadline: null }) as {
+        start_date: string | null;
+        deadline: string | null;
+      };
+    },
+  });
+  const update = useMutation({
+    mutationFn: async (patch: Partial<{ start_date: string | null; deadline: string | null }>) => {
+      const { error } = await supabase.from('tasks').update(patch).eq('id', taskId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task_dates_editable', taskId] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+    },
+  });
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap mb-2 text-meta" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+      <span>📅 Başlama</span>
+      <input
+        type="date"
+        className="input"
+        style={{ height: 22, fontSize: 11 }}
+        value={dates.data?.start_date ?? ''}
+        onChange={(e) => update.mutate({ start_date: e.target.value || null })}
+        disabled={update.isPending}
+      />
+      <span>· Bitmə</span>
+      <input
+        type="date"
+        className="input"
+        style={{ height: 22, fontSize: 11 }}
+        value={dates.data?.deadline ?? ''}
+        onChange={(e) => update.mutate({ deadline: e.target.value || null })}
+        min={dates.data?.start_date ?? undefined}
+        disabled={update.isPending}
+      />
+    </div>
   );
 }
 

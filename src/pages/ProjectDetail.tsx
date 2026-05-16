@@ -444,6 +444,12 @@ export function ProjectDetailPage() {
                   ) : null
                 )
               ) : null}
+              {/* PRD §REQ-PROJ-01 — payment buffer days (default 10) */}
+              {isAdmin ? (
+                <ProjectPaymentBufferEditor projectId={id!} initial={project.payment_buffer_days ?? 10} />
+              ) : (
+                <Row k="Ödəniş gecikməsi" v={`${project.payment_buffer_days ?? 10} gün`} />
+              )}
               {/* PRD §REQ-FIN-06 — admin can edit project budget inline */}
               {isAdmin ? (
                 <ProjectBudgetEditor projectId={id!} initialBudget={(project as { budget_amount?: number | null }).budget_amount ?? null} />
@@ -1760,6 +1766,45 @@ function ProjectDescriptionEditor({ projectId, initial, isAdmin }: { projectId: 
           {saving ? '…' : 'Saxla'}
         </button>
       </div>
+    </div>
+  );
+}
+
+// PRD §REQ-PROJ-01 — admin inline number editor for payment_buffer_days
+function ProjectPaymentBufferEditor({ projectId, initial }: { projectId: string; initial: number }) {
+  const qc = useQueryClient();
+  const [val, setVal] = useState(String(initial));
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setVal(String(initial)); }, [initial]);
+  const dirty = String(initial) !== val.trim();
+  async function save() {
+    const n = Math.max(0, Math.min(365, Number(val) || 0));
+    setSaving(true);
+    await supabase.from('projects').update({ payment_buffer_days: n }).eq('id', projectId);
+    setSaving(false);
+    qc.invalidateQueries({ queryKey: ['project', projectId] });
+    qc.invalidateQueries({ queryKey: ['projects'] });
+    setVal(String(n));
+  }
+  return (
+    <div className="flex justify-between items-center gap-2">
+      <dt style={{ color: 'var(--text-muted)' }}>Ödəniş gecikməsi (gün)</dt>
+      <dd className="flex items-center gap-1">
+        <input
+          type="number"
+          min={0}
+          max={365}
+          className="input"
+          style={{ height: 28, fontSize: 13, width: 80, fontVariantNumeric: 'tabular-nums' }}
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+        />
+        {dirty ? (
+          <button type="button" className="chip" disabled={saving} onClick={save} style={{ fontSize: 11, color: 'var(--brand-text)' }}>
+            {saving ? '…' : '✓'}
+          </button>
+        ) : null}
+      </dd>
     </div>
   );
 }
