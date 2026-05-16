@@ -19,6 +19,7 @@ export function LoginPage() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
@@ -152,14 +153,26 @@ export function LoginPage() {
           </label>
           <label className="block">
             <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Şifrə</span>
-            <input
-              required
-              type="password"
-              autoComplete="current-password"
-              className="input mt-1"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <div className="relative mt-1">
+              <input
+                required
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                className="input w-full pr-10"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute inset-y-0 right-0 px-3 flex items-center text-meta opacity-60 hover:opacity-100"
+                style={{ color: 'var(--text-muted)' }}
+                aria-label={showPassword ? 'Şifrəni gizlət' : 'Şifrəni göstər'}
+                tabIndex={-1}
+              >
+                {showPassword ? '🙈' : '👁'}
+              </button>
+            </div>
           </label>
           {/* PRD §REQ-AUTH-01 — visible lockout countdown after 429 */}
           {isLocked ? (

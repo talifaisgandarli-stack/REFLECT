@@ -52,10 +52,30 @@ function fmtDay(d: Date) {
 const MONTH_NAMES = ['Yanvar','Fevral','Mart','Aprel','May','İyun','İyul','Avqust','Sentyabr','Oktyabr','Noyabr','Dekabr'];
 const WEEKDAY_SHORT = ['B.e.','Ç.a.','Ç.','C.a.','C.','Ş.','B.'];
 
+// Stable per-project color palette so the same project always renders the
+// same chip color across views. Hash project_id → palette index. Events
+// without a project fall back to the brand glow.
+const PROJECT_PALETTE = [
+  { bg: 'rgba(173, 251, 73, 0.18)', fg: '#3a6f0e' },   // brand-action lime
+  { bg: 'rgba(82, 152, 219, 0.18)', fg: '#1e4d75' },   // sky
+  { bg: 'rgba(225, 119, 167, 0.18)', fg: '#7d2854' },  // rose
+  { bg: 'rgba(255, 158, 64, 0.20)', fg: '#7a3a06' },   // peach
+  { bg: 'rgba(149, 117, 205, 0.20)', fg: '#3e2a7a' },  // lavender
+  { bg: 'rgba(78, 196, 168, 0.20)', fg: '#155e4d' },   // teal
+  { bg: 'rgba(212, 175, 55, 0.22)', fg: '#6b5210' },   // gold
+];
+function projectColor(projectId: string | null | undefined): { bg: string; fg: string } {
+  if (!projectId) return { bg: 'var(--brand-glow-xl)', fg: 'var(--brand-text)' };
+  // djb2-ish lightweight hash → palette index
+  let h = 5381;
+  for (let i = 0; i < projectId.length; i++) h = ((h << 5) + h + projectId.charCodeAt(i)) | 0;
+  return PROJECT_PALETTE[Math.abs(h) % PROJECT_PALETTE.length];
+}
+
 export function CalendarPage() {
   const { profile } = useAuth();
   const qc = useQueryClient();
-  const [view, setView] = useState<'month' | 'week' | 'day'>('month');
+  const [view, setView] = useState<'month' | 'week' | 'day' | 'agenda'>('month');
   const [cursor, setCursor] = useState(() => new Date());
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<CalEvent | null>(null);
@@ -137,7 +157,7 @@ export function CalendarPage() {
         actions={
           <>
             <div className="flex gap-1">
-              {(['month', 'week', 'day'] as const).map((v) => (
+              {(['month', 'week', 'day', 'agenda'] as const).map((v) => (
                 <button
                   key={v}
                   className="chip"
@@ -147,7 +167,7 @@ export function CalendarPage() {
                   }}
                   onClick={() => setView(v)}
                 >
-                  {v === 'month' ? 'Ay' : v === 'week' ? 'Həftə' : 'Gün'}
+                  {v === 'month' ? 'Ay' : v === 'week' ? 'Həftə' : v === 'day' ? 'Gün' : 'Gündəlik'}
                 </button>
               ))}
             </div>
@@ -212,20 +232,23 @@ export function CalendarPage() {
                   >
                     {day.getDate()}
                   </div>
-                  {dayEvents.slice(0, 2).map((ev) => (
-                    <div
-                      key={ev.id}
-                      className="truncate text-tiny px-1 py-0.5 rounded mb-0.5"
-                      style={{
-                        background: 'var(--brand-glow-xl)',
-                        color: 'var(--brand-text)',
-                        fontSize: 10,
-                      }}
-                      onClick={(e) => { e.stopPropagation(); setSelected(ev); }}
-                    >
-                      {ev.recurrence_rule ? '↻ ' : ''}{ev.title}
-                    </div>
-                  ))}
+                  {dayEvents.slice(0, 2).map((ev) => {
+                    const c = projectColor(ev.project_id);
+                    return (
+                      <div
+                        key={ev.id}
+                        className="truncate text-tiny px-1 py-0.5 rounded mb-0.5"
+                        style={{
+                          background: c.bg,
+                          color: c.fg,
+                          fontSize: 10,
+                        }}
+                        onClick={(e) => { e.stopPropagation(); setSelected(ev); }}
+                      >
+                        {ev.recurrence_rule ? '↻ ' : ''}{ev.title}
+                      </div>
+                    );
+                  })}
                   {dayEvents.length > 2 ? (
                     <div className="text-tiny" style={{ color: 'var(--text-muted)', fontSize: 10 }}>
                       +{dayEvents.length - 2}
@@ -275,17 +298,20 @@ export function CalendarPage() {
                   className="min-h-[200px] p-1.5 border-r"
                   style={{ borderColor: 'var(--line-soft)' }}
                 >
-                  {dayEvents.map((ev) => (
-                    <div
-                      key={ev.id}
-                      className="rounded p-1.5 mb-1 cursor-pointer"
-                      style={{ background: 'var(--brand-glow-lg)', color: 'var(--brand-text)' }}
-                      onClick={() => setSelected(ev)}
-                    >
-                      <div className="font-medium truncate" style={{ fontSize: 12 }}>{ev.title}</div>
-                      <div style={{ fontSize: 11, opacity: 0.75 }}>{fmtTime(ev.starts_at)}</div>
-                    </div>
-                  ))}
+                  {dayEvents.map((ev) => {
+                    const c = projectColor(ev.project_id);
+                    return (
+                      <div
+                        key={ev.id}
+                        className="rounded p-1.5 mb-1 cursor-pointer"
+                        style={{ background: c.bg, color: c.fg, borderLeft: `3px solid ${c.fg}` }}
+                        onClick={() => setSelected(ev)}
+                      >
+                        <div className="font-medium truncate" style={{ fontSize: 12 }}>{ev.title}</div>
+                        <div style={{ fontSize: 11, opacity: 0.75 }}>{fmtTime(ev.starts_at)}</div>
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}
@@ -306,11 +332,17 @@ export function CalendarPage() {
             </div>
           ) : (
             <ul className="space-y-2">
-              {eventsForDay(cursor).map((ev) => (
+              {eventsForDay(cursor).map((ev) => {
+                const c = projectColor(ev.project_id);
+                return (
                 <li
                   key={ev.id}
                   className="rounded-card p-3 cursor-pointer hover:opacity-80"
-                  style={{ background: 'var(--surface-mist)', border: '1px solid var(--line-soft)' }}
+                  style={{
+                    background: 'var(--surface-mist)',
+                    border: '1px solid var(--line-soft)',
+                    borderLeft: `4px solid ${c.fg}`,
+                  }}
                   onClick={() => setSelected(ev)}
                 >
                   <div className="flex items-center justify-between">
@@ -336,9 +368,86 @@ export function CalendarPage() {
                     </a>
                   ) : null}
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
+        </div>
+      ) : null}
+
+      {/* ── Agenda view ── upcoming 14 days, grouped by date */}
+      {view === 'agenda' ? (
+        <div className="card">
+          <h3 className="text-h3 mb-4">Növbəti 14 gün</h3>
+          {(() => {
+            const start = new Date(cursor);
+            start.setHours(0, 0, 0, 0);
+            const days: Date[] = [];
+            for (let i = 0; i < 14; i++) {
+              const d = new Date(start);
+              d.setDate(start.getDate() + i);
+              days.push(d);
+            }
+            const populated = days
+              .map((d) => ({ date: d, events: eventsForDay(d) }))
+              .filter((g) => g.events.length > 0);
+            if (populated.length === 0) {
+              return (
+                <div className="text-meta text-center py-8" style={{ color: 'var(--text-muted)' }}>
+                  Növbəti 14 gün üçün görüş yoxdur.
+                </div>
+              );
+            }
+            return (
+              <ul className="space-y-3">
+                {populated.map((g) => (
+                  <li key={g.date.toISOString()}>
+                    <div
+                      className="text-meta mb-2"
+                      style={{
+                        color: isSameDay(g.date, today) ? 'var(--brand-text)' : 'var(--text-muted)',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.06em',
+                        fontSize: 11,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {isSameDay(g.date, today) ? 'BU GÜN · ' : ''}
+                      {g.date.toLocaleDateString('az-AZ', { weekday: 'short', day: 'numeric', month: 'short' })}
+                    </div>
+                    <ul className="space-y-1.5 ml-2">
+                      {g.events.map((ev) => {
+                        const c = projectColor(ev.project_id);
+                        return (
+                          <li
+                            key={ev.id}
+                            className="rounded-card p-2 cursor-pointer hover:opacity-80 flex items-center gap-2"
+                            style={{
+                              background: 'var(--surface-mist)',
+                              border: '1px solid var(--line-soft)',
+                              borderLeft: `3px solid ${c.fg}`,
+                            }}
+                            onClick={() => setSelected(ev)}
+                          >
+                            <span
+                              className="text-meta shrink-0"
+                              style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums', minWidth: 80 }}
+                            >
+                              {ev.all_day ? 'Bütün gün' : `${fmtTime(ev.starts_at)} – ${fmtTime(ev.ends_at)}`}
+                            </span>
+                            <span className="text-body flex-1 truncate">{ev.title}</span>
+                            {ev.recurrence_rule ? (
+                              <span className="text-meta shrink-0" style={{ color: 'var(--brand-text)', fontSize: 11 }}>↻</span>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            );
+          })()}
         </div>
       ) : null}
 

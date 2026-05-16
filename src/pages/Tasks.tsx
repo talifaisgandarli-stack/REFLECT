@@ -14,6 +14,7 @@ import { TaskCreateModal } from '@/components/TaskCreateModal';
 import { CancelTaskModal } from '@/components/CancelTaskModal';
 import { TaskCommentsModal } from '@/components/TaskCommentsModal';
 import { TaskEditModal } from '@/components/TaskEditModal';
+import { downloadCsv } from '@/lib/csv';
 
 // US-TASK-06 — deadline-based groups for personal view
 const todayStr = new Date().toISOString().slice(0, 10);
@@ -140,6 +141,31 @@ export function TasksPage() {
       exitBulkMode();
     },
   });
+
+  // PRD §6.x — clone a task (title + project + duration + assignees).
+  // New task lands in "queued" status with a "(kopya)" suffix.
+  const cloneTask = useMutation({
+    mutationFn: async (sourceId: string) => {
+      const src = tasks.find((t) => t.id === sourceId);
+      if (!src) throw new Error('Tapşırıq tapılmadı');
+      const { error } = await supabase.from('tasks').insert({
+        title: `${src.title} (kopya)`,
+        description: src.description,
+        project_id: src.project_id,
+        status: 'queued',
+        assignee_ids: src.assignee_ids,
+        deadline: src.deadline,
+        estimated_duration: src.estimated_duration,
+        duration_unit: src.duration_unit,
+        risk_buffer_pct: src.risk_buffer_pct,
+        is_expertise_subtask: src.is_expertise_subtask,
+        task_level: src.task_level,
+        // parent_task_id intentionally not copied — clone is a top-level task
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  });
   // Persist search filter in URL so refresh / share-link preserves it.
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get('q') ?? '');
@@ -249,6 +275,27 @@ export function TasksPage() {
                 {bulkMode ? `✓ Seçim (${selectedIds.size})` : 'Seç'}
               </button>
             ) : null}
+            <button
+              className="btn-outline"
+              disabled={filtered.length === 0}
+              onClick={() => {
+                downloadCsv(
+                  `tasks-${new Date().toISOString().slice(0, 10)}`,
+                  ['Başlıq', 'Status', 'Layihə', 'Deadline', 'İcraçılar', 'Yaradıldı'],
+                  filtered.map((t) => ({
+                    'Başlıq': t.title,
+                    'Status': t.status,
+                    'Layihə': t.project_id ?? '',
+                    'Deadline': t.deadline ?? '',
+                    'İcraçılar': (t.assignee_ids ?? []).join('; '),
+                    'Yaradıldı': t.created_at ? new Date(t.created_at).toISOString() : '',
+                  })),
+                );
+              }}
+              title={`${filtered.length} sıra ixrac et`}
+            >
+              ↓ CSV
+            </button>
             <button className="btn-primary" onClick={() => setCreating(true)}>
               + Yeni
             </button>
@@ -493,6 +540,21 @@ export function TasksPage() {
                               Ləğv et
                             </button>
                           ) : null}
+                          {/* PRD §6.x — clone task chip (board view) */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              cloneTask.mutate(t.id);
+                            }}
+                            className="text-meta opacity-60 hover:opacity-100"
+                            style={{ color: isToday ? 'var(--text-faint)' : 'var(--text-muted)' }}
+                            aria-label={`Tapşırığı klonla: ${t.title}`}
+                            title="Tapşırığı klonla"
+                            disabled={cloneTask.isPending}
+                          >
+                            ⎘
+                          </button>
                         </div>
                       </div>
                     </article>

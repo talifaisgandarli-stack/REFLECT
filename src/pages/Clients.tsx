@@ -359,7 +359,10 @@ const PANEL_TABS: { key: ClientPanelTab; label: string }[] = [
 ];
 
 function ClientPanel({ client, onClose }: { client: Client; onClose: () => void }) {
+  const { isAdmin } = useAuth();
+  const qc = useQueryClient();
   const [tab, setTab] = useState<ClientPanelTab>('overview');
+  const [mergeOpen, setMergeOpen] = useState(false);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -377,8 +380,20 @@ function ClientPanel({ client, onClose }: { client: Client; onClose: () => void 
         className="w-[520px] h-full bg-surface p-6 overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between mb-1">
-          <h2 className="text-h2">{client.name}</h2>
+        <div className="flex items-start justify-between mb-1 gap-2">
+          <h2 className="text-h2 flex-1 min-w-0 truncate">{client.name}</h2>
+          {/* PRD §REQ-CRM — admin client merge */}
+          {isAdmin ? (
+            <button
+              type="button"
+              onClick={() => setMergeOpen(true)}
+              className="chip shrink-0"
+              style={{ color: 'var(--brand-text)' }}
+              title="Bu müştərini başqası ilə birləşdir"
+            >
+              ⇆ Birləşdir
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onClose}
@@ -389,6 +404,17 @@ function ClientPanel({ client, onClose }: { client: Client; onClose: () => void 
             ✕
           </button>
         </div>
+        {mergeOpen ? (
+          <ClientMergeModal
+            source={client}
+            onClose={() => setMergeOpen(false)}
+            onMerged={() => {
+              setMergeOpen(false);
+              qc.invalidateQueries({ queryKey: ['clients'] });
+              onClose();
+            }}
+          />
+        ) : null}
         <div className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
           {client.company ?? '—'}
         </div>
@@ -962,6 +988,106 @@ function LostReasonModal({
             onClick={() => valid && onConfirm(reason)}
           >
             Təsdiqlə
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// PRD §REQ-CRM — admin merges duplicate clients. Server RPC handles all FK
+// rewrites + soft-archives the source row (migration 0043).
+function ClientMergeModal({
+  source,
+  onClose,
+  onMerged,
+}: {
+  source: Client;
+  onClose: () => void;
+  onMerged: () => void;
+}) {
+  const { data: clients = [] } = useClients();
+  const [targetId, setTargetId] = useState<string>('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Exclude the source itself + already-archived rows from target options
+  const candidates = clients.filter((c) => c.id !== source.id && c.pipeline_stage !== 'archived');
+
+  async function confirm() {
+    if (!targetId) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const { error } = await supabase.rpc('clients_merge', {
+        p_source: source.id,
+        p_target: targetId,
+      });
+      if (error) throw error;
+      onMerged();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const target = candidates.find((c) => c.id === targetId);
+
+  return (
+    <div
+      role="dialog"
+      aria-label="Müştəriləri birləşdir"
+      className="fixed inset-0 z-[55] flex items-center justify-center px-4"
+      style={{ background: 'rgba(14,22,17,0.55)' }}
+      onClick={onClose}
+    >
+      <div className="card w-full max-w-md" style={{ padding: 20 }} onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-h2 mb-2">Müştəriləri birləşdir</h2>
+        <p className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
+          Bütün layihələr, debitorlar, qarşılıqlı əlaqələr və sənədlər hədəf müştəriyə köçürüləcək.
+          <br />
+          <strong>{source.name}</strong> arxivlənəcək (silinmir — audit izi qalır).
+        </p>
+
+        <label className="block mb-3">
+          <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Hədəf müştəri</span>
+          <select
+            className="input w-full"
+            value={targetId}
+            onChange={(e) => setTargetId(e.target.value)}
+          >
+            <option value="">Seçin…</option>
+            {candidates.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}{c.company ? ` · ${c.company}` : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {target ? (
+          <div
+            className="rounded-card px-3 py-2 text-meta mb-3"
+            style={{ background: 'var(--brand-glow-sm)', color: 'var(--brand-text)' }}
+          >
+            <strong>{source.name}</strong> → <strong>{target.name}</strong>
+          </div>
+        ) : null}
+
+        {err ? (
+          <p className="text-meta mb-3" style={{ color: 'var(--error-deep)' }}>{err}</p>
+        ) : null}
+
+        <div className="flex justify-end gap-2">
+          <button type="button" className="btn-outline" onClick={onClose} disabled={busy}>Ləğv</button>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={!targetId || busy}
+            onClick={confirm}
+          >
+            {busy ? 'Birləşdirilir…' : 'Birləşdir'}
           </button>
         </div>
       </div>

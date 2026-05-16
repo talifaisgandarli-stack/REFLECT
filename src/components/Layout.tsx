@@ -6,6 +6,8 @@ import { MiraiDrawer } from './MiraiDrawer';
 import { CmdK } from './CmdK';
 import { NotificationBell } from './NotificationBell';
 import { TaskCreateModal } from './TaskCreateModal';
+import { ToastHost } from './Toast';
+import { ShortcutHelp } from './ShortcutHelp';
 import { useUI, useAuth } from '@/lib/store';
 import { useRealtimeSync } from '@/lib/realtime';
 import { usePresenceHeartbeat } from '@/lib/hooks';
@@ -122,6 +124,8 @@ export function Layout() {
       <MiraiDrawer />
       <CmdK />
       <LiveAnnouncer />
+      <ToastHost />
+      <ShortcutHelp />
       {/* PRD §6.3 Cmd+N — global new-task modal, context-aware via route */}
       {taskCreateOpen ? (
         <TaskCreateModal onClose={closeTaskCreate} defaultProjectId={defaultProjectId} />

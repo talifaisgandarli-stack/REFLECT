@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { supabase } from './supabase';
 import { useAuth } from './store';
+import { setSentryUser } from './sentry';
 import type { Profile, Role } from '@/types/db';
 
 /** Boots auth from Supabase: session + profile + role. Run once at app root. */
@@ -23,6 +24,7 @@ export function useAuthBootstrap() {
         if (!cancelled) {
           setSession(null);
           setProfile(null, null);
+          setSentryUser(null);
         }
         return;
       }
@@ -36,7 +38,12 @@ export function useAuthBootstrap() {
           .maybeSingle<Role>();
         role = data;
       }
-      if (!cancelled) setProfile(profile ?? null, role);
+      if (!cancelled) {
+        setProfile(profile ?? null, role);
+        // PRD §9.4 — attribute frontend Sentry events to the signed-in user
+        if (profile) setSentryUser({ id: profile.id, email: profile.email });
+        else setSentryUser(null);
+      }
     }
 
     supabase.auth.getSession().then(({ data }) => {
@@ -51,7 +58,10 @@ export function useAuthBootstrap() {
       const uid = session?.user?.id ?? null;
       setSession(uid ? { userId: uid } : null);
       if (uid) loadProfile(uid);
-      else setProfile(null, null);
+      else {
+        setProfile(null, null);
+        setSentryUser(null);
+      }
     });
 
     return () => {

@@ -3,8 +3,9 @@
  * Admin: sees all employees + can add rows.
  * User: sees own salary history only (RLS enforced at DB).
  */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { PageHead } from '@/components/PageHead';
@@ -119,6 +120,11 @@ export function SalaryPage() {
           ) : null
         }
       />
+
+      {/* PRD §8.2 — admin trend chart per employee */}
+      {isAdmin && (rows.data ?? []).length > 1 ? (
+        <SalaryTrendChart rows={rows.data ?? []} />
+      ) : null}
 
       {rows.isLoading ? (
         <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>
@@ -535,6 +541,91 @@ function SalaryFormModal({ profiles, existing, onClose, onSaved }: FormProps) {
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+// PRD §8.2 — admin per-employee salary trend (chronological line chart)
+function SalaryTrendChart({ rows }: { rows: SalaryRow[] }) {
+  // Per-employee dropdown: pick which employee's history to plot
+  const employees = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const r of rows) {
+      if (!seen.has(r.employee_id)) {
+        seen.set(r.employee_id, r.profile?.full_name ?? r.profile?.email ?? r.employee_id.slice(0, 8));
+      }
+    }
+    return Array.from(seen.entries()).map(([id, label]) => ({ id, label }));
+  }, [rows]);
+
+  const [employeeId, setEmployeeId] = useState<string>(employees[0]?.id ?? '');
+
+  // Filter + sort ascending so the line reads left-to-right
+  const series = useMemo(() => {
+    return rows
+      .filter((r) => r.employee_id === employeeId)
+      .sort((a, b) => a.effective_from.localeCompare(b.effective_from))
+      .map((r) => ({
+        date: r.effective_from,
+        amount: Number(r.amount),
+        currency: r.currency,
+      }));
+  }, [rows, employeeId]);
+
+  if (employees.length === 0) return null;
+
+  return (
+    <div className="card mb-4">
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+        <h3 className="text-h3">Maaş trendi</h3>
+        <select
+          className="input max-w-[220px]"
+          value={employeeId}
+          onChange={(e) => setEmployeeId(e.target.value)}
+        >
+          {employees.map((e) => (
+            <option key={e.id} value={e.id}>{e.label}</option>
+          ))}
+        </select>
+      </div>
+      {series.length < 2 ? (
+        <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+          Trend üçün ən azı 2 maaş cədvəli lazımdır.
+        </p>
+      ) : (
+        <div style={{ width: '100%', height: 200 }}>
+          <ResponsiveContainer>
+            <LineChart data={series} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+              <XAxis dataKey="date" stroke="var(--text-muted)" fontSize={11} />
+              <YAxis
+                stroke="var(--text-muted)"
+                fontSize={11}
+                tickFormatter={(v) => `${(Number(v) / 1000).toFixed(0)}k`}
+              />
+              <Tooltip
+                contentStyle={{
+                  background: 'var(--ink)',
+                  border: '1px solid var(--line)',
+                  borderRadius: 8,
+                  color: 'var(--canvas)',
+                }}
+                formatter={(value, _name, item) => {
+                  const cur = (item?.payload as { currency?: string } | undefined)?.currency ?? '';
+                  return [`${Number(value).toLocaleString('az-AZ')} ${cur}`, 'Məbləğ'];
+                }}
+              />
+              <Line
+                type="monotone"
+                dataKey="amount"
+                stroke="var(--brand-action)"
+                strokeWidth={2.5}
+                dot={{ r: 4, fill: 'var(--brand-action)', strokeWidth: 0 }}
+                isAnimationActive={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
     </div>
   );
 }

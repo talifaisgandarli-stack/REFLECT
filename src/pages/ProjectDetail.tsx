@@ -472,6 +472,36 @@ export function ProjectDetailPage() {
               </div>
             ) : (
               <>
+                {/* Closeout progress % — visible at-a-glance signal */}
+                {(() => {
+                  const totalItems = allItems.length;
+                  const checkedCount = allItems.filter((i) => checked.has(i)).length;
+                  const pct = totalItems > 0 ? Math.round((checkedCount / totalItems) * 100) : 0;
+                  return (
+                    <div className="mb-4">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                          Bağlanış proqresi
+                        </span>
+                        <span className="text-meta" style={{ color: 'var(--text)', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                          {checkedCount} / {totalItems} · {pct}%
+                        </span>
+                      </div>
+                      <div style={{ height: 6, background: 'var(--line)', borderRadius: 999 }}>
+                        <div
+                          style={{
+                            width: `${pct}%`,
+                            height: '100%',
+                            background: pct === 100 ? 'var(--success-deep)' : 'var(--brand-action)',
+                            borderRadius: 999,
+                            transition: 'width 0.2s',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <ul className="space-y-2 mb-4">
                   {allItems.map((item) => {
                     const isCustom = !CLOSEOUT_DEFAULTS.includes(item as typeof CLOSEOUT_DEFAULTS[number]);
@@ -782,6 +812,7 @@ function DocumentRow({
 }) {
   const [copied, setCopied] = useState<'share' | 'download' | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   // Lazy-load profiles only when the share popover is opened
   const profiles = useQuery({
@@ -803,6 +834,15 @@ function DocumentRow({
       .createSignedUrl(doc.storage_path, 60);
     if (error || !data?.signedUrl) return;
     window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+  }
+
+  async function previewStorage() {
+    if (!doc.storage_path) return;
+    const { data, error } = await supabase.storage
+      .from('project-documents')
+      .createSignedUrl(doc.storage_path, 300); // 5 min for in-modal preview
+    if (error || !data?.signedUrl) return;
+    setPreviewUrl(data.signedUrl);
   }
 
   async function copyPublicLink() {
@@ -854,9 +894,14 @@ function DocumentRow({
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {doc.storage_path ? (
-            <button type="button" className="chip" style={{ color: 'var(--brand-text)' }} onClick={downloadStorage}>
-              ↓ Yüklə
-            </button>
+            <>
+              <button type="button" className="chip" style={{ color: 'var(--brand-text)' }} onClick={previewStorage} title="Bax">
+                ↗ Bax
+              </button>
+              <button type="button" className="chip" style={{ color: 'var(--brand-text)' }} onClick={downloadStorage}>
+                ↓ Yüklə
+              </button>
+            </>
           ) : null}
           {doc.external_link ? (
             <a
@@ -938,6 +983,49 @@ function DocumentRow({
                 })}
               </div>
             )}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Inline preview modal — iframe to the signed Storage URL */}
+      {previewUrl ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8"
+          style={{ background: 'rgba(14,22,17,0.65)' }}
+          onClick={() => setPreviewUrl(null)}
+        >
+          <div
+            className="bg-surface rounded-card overflow-hidden flex flex-col w-full max-w-4xl"
+            style={{ height: '85vh' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-2 border-b" style={{ borderColor: 'var(--line-soft)' }}>
+              <h3 className="text-h3 truncate flex-1">{doc.title}</h3>
+              <a
+                href={previewUrl}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="chip mr-2"
+                style={{ color: 'var(--brand-text)' }}
+              >
+                Yeni səkmədə aç ↗
+              </a>
+              <button
+                type="button"
+                onClick={() => setPreviewUrl(null)}
+                className="text-meta opacity-60 hover:opacity-100"
+                style={{ color: 'var(--text-muted)', fontSize: 20 }}
+                aria-label="Bağla"
+              >
+                ✕
+              </button>
+            </div>
+            <iframe
+              src={previewUrl}
+              title={`Sənəd: ${doc.title}`}
+              className="flex-1"
+              style={{ border: 'none', background: 'var(--canvas)' }}
+            />
           </div>
         </div>
       ) : null}

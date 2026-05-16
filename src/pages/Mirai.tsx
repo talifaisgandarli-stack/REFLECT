@@ -51,6 +51,20 @@ const SUGGESTIONS: Record<PersonaKey, string[]> = {
   team_assistant: ['Bugün nə etməliyəm?', 'Ən vacib tapşırığım hansıdır?'],
 };
 
+// Post-response follow-up suggestions — surfaced after each assistant turn
+// to keep the conversation moving. Distinct from SUGGESTIONS (which seed an
+// empty thread): these are "and then what?" prompts.
+const FOLLOWUPS: Record<PersonaKey, string[]> = {
+  general: ['Daha ətraflı izah et', 'Misal göstər', 'Kim məsuldur?'],
+  operations_director: ['Risk faktorları hansılardır?', 'Avtomatlaşdırmaq olar mı?', 'Ölçülə bilən KPI təklif et'],
+  project_manager: ['Növbəti 7 günə fokus', 'Hansı tapşırıqları paralel etmək olar?', 'Buraxılış planı yarat'],
+  legal: ['Mənbəni göstər', 'İstisnalar varmı?', 'Bənzər digər maddə varmı?'],
+  cmo: ['Sosial şəbəkə üçün uyğunlaşdır', 'Hashtag təklif et', 'Hədəf auditoriyası kimdir?'],
+  finance_analyst: ['Trend qrafiki ver', 'Risk ssenariləri (90% / 50% / 10%)', 'Müqayisə: keçən ay'],
+  strategist: ['Başlıca maneələr nədir?', '3 ay vs 12 ay', 'Rəqib analizi təklif et'],
+  team_assistant: ['Növbəti addım?', 'Necə başlamağa kömək et', 'Bənzər keçmiş tapşırıqlar'],
+};
+
 export function MiraiPage() {
   const { isAdmin, profile } = useAuth();
   const qc = useQueryClient();
@@ -74,21 +88,43 @@ export function MiraiPage() {
     queryKey: ['mirai-conversations', profile?.id],
     enabled: !!profile?.id && historyOpen,
     queryFn: async () => {
+      // PRD §7 — pinned conversations sort first, then by recent activity.
+      // Postgrest can't multi-key sort easily, so sort client-side.
       const { data } = await supabase
         .from('mirai_conversations')
-        .select('id, persona, title, started_at, last_message_at')
+        .select('id, persona, title, started_at, last_message_at, pinned_at')
         .eq('user_id', profile!.id)
         .is('archived_at', null)
         .order('last_message_at', { ascending: false })
         .limit(30);
-      return (data ?? []) as Array<{
+      const rows = (data ?? []) as Array<{
         id: string;
         persona: string;
         title: string | null;
         started_at: string;
         last_message_at: string;
+        pinned_at: string | null;
       }>;
+      // Pinned first (newer pin first), then everything else by last_message_at desc
+      return rows.sort((a, b) => {
+        if (a.pinned_at && !b.pinned_at) return -1;
+        if (!a.pinned_at && b.pinned_at) return 1;
+        if (a.pinned_at && b.pinned_at) return b.pinned_at.localeCompare(a.pinned_at);
+        return b.last_message_at.localeCompare(a.last_message_at);
+      });
     },
+  });
+
+  // Pin/unpin a conversation (toggle pinned_at)
+  const togglePin = useMutation({
+    mutationFn: async (input: { id: string; pinned: boolean }) => {
+      const { error } = await supabase
+        .from('mirai_conversations')
+        .update({ pinned_at: input.pinned ? new Date().toISOString() : null })
+        .eq('id', input.id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['mirai-conversations'] }),
   });
 
   // PRD §7 — rename a conversation (title column added in migration 0038)
@@ -240,10 +276,15 @@ export function MiraiPage() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [msgs, thinking]);
 
-  async function ask(text: string) {
+  async function ask(text: string, opts: { replay?: boolean } = {}) {
     if (!text.trim() || budgetExhausted) return;
-    setMsgs((m) => [...m, { role: 'user', content: text }]);
-    setQ('');
+    // replay=true is used by regenerate() — caller has already pruned the
+    // assistant response and wants a fresh attempt for the same user message
+    // already present in msgs.
+    if (!opts.replay) {
+      setMsgs((m) => [...m, { role: 'user', content: text }]);
+      setQ('');
+    }
     setThinking(true);
     setError(null);
 
@@ -355,6 +396,23 @@ export function MiraiPage() {
   }
 
   const currentPersonaMeta = PERSONAS.find((p) => p.key === persona)!;
+
+  // PRD §7 — regenerate the last assistant response. Removes the current tail
+  // (assistant + any trailing) then re-asks with the most-recent user message.
+  function regenerateLast() {
+    if (thinking || budgetExhausted) return;
+    // Find the last user message; everything before it stays, the rest is dropped
+    let lastUserIdx = -1;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === 'user') { lastUserIdx = i; break; }
+    }
+    if (lastUserIdx === -1) return;
+    const prompt = msgs[lastUserIdx].content;
+    // Truncate to (and including) the last user message — drops the prior reply
+    setMsgs((m) => m.slice(0, lastUserIdx + 1));
+    // Replay without re-pushing the user message
+    void ask(prompt, { replay: true });
+  }
 
   // PRD §7 — export the active conversation as Markdown so users can paste
   // into emails, meeting notes, or external docs. Pure-client; no API call.
@@ -564,6 +622,15 @@ export function MiraiPage() {
                               <button
                                 type="button"
                                 className="chip text-meta opacity-60 hover:opacity-100"
+                                title={c.pinned_at ? 'Açma' : 'Üstdə sabitlə'}
+                                style={c.pinned_at ? { color: 'var(--brand-action)', opacity: 1 } : undefined}
+                                onClick={() => togglePin.mutate({ id: c.id, pinned: !c.pinned_at })}
+                              >
+                                {c.pinned_at ? '★' : '☆'}
+                              </button>
+                              <button
+                                type="button"
+                                className="chip text-meta opacity-60 hover:opacity-100"
                                 title="Adını dəyiş"
                                 onClick={() => { setRenameDraft(c.title ?? ''); setRenamingId(c.id); }}
                               >
@@ -759,7 +826,51 @@ export function MiraiPage() {
                 })}
                 {/* Copy-to-clipboard for assistant responses */}
                 <CopyMessageButton text={m.content} />
+                {/* PRD §7 — regenerate ↻ on the LAST assistant message only */}
+                {i === msgs.length - 1 ? (
+                  <button
+                    type="button"
+                    onClick={regenerateLast}
+                    disabled={thinking || budgetExhausted}
+                    aria-label="Cavabı yenidən yarat"
+                    title="Cavabı yenidən yarat"
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      borderRadius: 6,
+                      padding: '2px 8px',
+                      fontSize: 13,
+                      cursor: thinking ? 'not-allowed' : 'pointer',
+                      opacity: thinking ? 0.4 : 1,
+                    }}
+                  >
+                    ↻
+                  </button>
+                ) : null}
               </div> : null}
+
+              {/* PRD §7 — suggested follow-ups (only after the last assistant message) */}
+              {m.role === 'assistant' && i === msgs.length - 1 && !thinking ? (
+                <div className="flex flex-wrap gap-1.5 mt-3">
+                  {(FOLLOWUPS[persona] ?? []).map((q) => (
+                    <button
+                      key={q}
+                      type="button"
+                      onClick={() => ask(q)}
+                      disabled={budgetExhausted}
+                      className="chip"
+                      style={{
+                        background: 'rgba(255,255,255,0.04)',
+                        color: 'rgba(255,255,255,0.7)',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        fontSize: 11,
+                      }}
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </article>
           ))}
           {thinking ? (

@@ -114,6 +114,51 @@ export function PerformancePage() {
     return out;
   })();
 
+  // PRD §8.3 — print-friendly single-page review (browser print → Save as PDF)
+  function printReview(rev: Review) {
+    const w = window.open('', '_blank', 'width=820,height=1100');
+    if (!w) return;
+    const ratingsRows = RATING_KEYS
+      .map((rk) => {
+        const v = (rev.ratings as Record<string, number>)?.[rk.key] ?? 0;
+        return `<tr><td>${rk.label}</td><td style="text-align:right">${v} / 5</td></tr>`;
+      })
+      .join('');
+    const employee = rev.profiles?.full_name ?? 'İşçi';
+    w.document.write(`<!doctype html>
+<html lang="az"><head><meta charset="utf-8"/>
+<title>Performans · ${employee} · ${rev.year}</title>
+<style>
+  @page { size: A4; margin: 24mm; }
+  body { font-family: Inter, system-ui, sans-serif; color: #0E1611; line-height: 1.5; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .meta { color: #6b7165; font-size: 13px; margin-bottom: 24px; }
+  .score-card { border: 1px solid #d6dad3; border-radius: 12px; padding: 18px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+  .score-card .big { font-size: 56px; font-weight: 700; color: ${rev.score >= 70 ? '#16794a' : rev.score >= 40 ? '#c47d00' : '#b3261e'}; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+  td { padding: 8px 0; border-bottom: 1px solid #eef0eb; }
+  td:first-child { color: #6b7165; }
+  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.06em; color: #6b7165; margin: 24px 0 8px; }
+  .summary { white-space: pre-wrap; padding: 12px; background: #f5f7f3; border-radius: 8px; font-size: 14px; }
+  .footer { margin-top: 40px; font-size: 11px; color: #9ca39c; }
+</style></head><body>
+  <h1>Performans qiymətləndirməsi</h1>
+  <div class="meta">${employee} · ${rev.year}-ci il · Yaradıldı: ${new Date(rev.created_at).toLocaleDateString('az-AZ')}</div>
+  <div class="score-card">
+    <div>
+      <div style="font-size:13px;color:#6b7165;text-transform:uppercase;letter-spacing:0.06em">Ümumi bal</div>
+      <div class="big">${rev.score} <span style="font-size:18px;color:#9ca39c;font-weight:400">/100</span></div>
+    </div>
+  </div>
+  <h2>Kateqoriya reytinqləri</h2>
+  <table>${ratingsRows}</table>
+  ${rev.summary ? `<h2>Xülasə</h2><div class="summary">${rev.summary.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] ?? c))}</div>` : ''}
+  <div class="footer">Reflect Architects OS · ${new Date().toLocaleString('az-AZ', { timeZone: 'Asia/Baku' })}</div>
+  <script>setTimeout(() => window.print(), 100);</script>
+</body></html>`);
+    w.document.close();
+  }
+
   return (
     <>
       <PageHead
@@ -172,6 +217,15 @@ export function PerformancePage() {
                   {/* PRD §8.3 — admin edit/delete actions */}
                   {isAdmin ? (
                     <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        className="chip"
+                        style={{ color: 'var(--brand-text)' }}
+                        onClick={() => printReview(rev)}
+                        title="Çap et / PDF olaraq saxla"
+                      >
+                        🖨 Çap
+                      </button>
                       <button
                         type="button"
                         className="chip"

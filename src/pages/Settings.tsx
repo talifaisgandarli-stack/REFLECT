@@ -6,6 +6,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { NotificationPreferencesPage } from './NotificationPreferences';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
+import { downloadCsv } from '@/lib/csv';
 import type { Invitation, Role } from '@/types/db';
 
 async function writeAudit(actorId: string, action: string, resource: string, meta?: Record<string, unknown>) {
@@ -904,6 +905,42 @@ function AuditLogViewer() {
           </button>
         ) : null}
         <span className="text-meta" style={{ color: 'var(--text-muted)' }}>{total} qeyd</span>
+        <span style={{ flex: 1 }} />
+        <button
+          type="button"
+          className="chip"
+          disabled={total === 0}
+          onClick={async () => {
+            // Export ALL filtered rows (not just current page) — admin needs the full set for forensics
+            let q = supabase
+              .from('audit_log')
+              .select('id, actor_id, action, resource, ip, user_agent, meta, created_at, profile:profiles!audit_log_actor_id_fkey(full_name, email)')
+              .order('created_at', { ascending: false })
+              .limit(5000);
+            if (actionFilter.trim()) q = q.ilike('action', `%${actionFilter.trim()}%`);
+            if (actorId) q = q.eq('actor_id', actorId);
+            const { data } = await q;
+            const rows = (data ?? []).map((r) => {
+              const actor = r.profile as unknown as { full_name?: string; email?: string } | null;
+              return {
+                Vaxt: new Date(r.created_at).toISOString(),
+                Aktor: actor?.full_name ?? actor?.email ?? r.actor_id ?? 'Sistem',
+                Action: r.action,
+                Resource: r.resource ?? '',
+                IP: r.ip ?? '',
+                'User-Agent': r.user_agent ?? '',
+                Meta: r.meta ? JSON.stringify(r.meta) : '',
+              };
+            });
+            downloadCsv(
+              `audit-log-${new Date().toISOString().slice(0, 10)}`,
+              ['Vaxt', 'Aktor', 'Action', 'Resource', 'IP', 'User-Agent', 'Meta'],
+              rows,
+            );
+          }}
+        >
+          ↓ CSV
+        </button>
       </div>
 
       {audit.isLoading ? (

@@ -75,6 +75,28 @@ export function ProjectsPage() {
     },
   });
 
+  // PRD §6.x — admin clones an existing project (name + phases + client +
+  // expertise/buffer/deadline metadata). Tasks are NOT copied — start fresh.
+  const cloneProject = useMutation({
+    mutationFn: async (sourceId: string) => {
+      const src = projects.find((p) => p.id === sourceId);
+      if (!src) throw new Error('Layihə tapılmadı');
+      const { error } = await supabase.from('projects').insert({
+        name: `${src.name} (kopya)`,
+        client_id: src.client_id,
+        phases: src.phases,
+        requires_expertise: src.requires_expertise,
+        expertise_deadline: src.expertise_deadline,
+        payment_buffer_days: src.payment_buffer_days,
+        deadline: src.deadline,
+        start_date: src.start_date,
+        status: 'on_hold',
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['projects'] }),
+  });
+
   // Task stats: project_id, status, assignee_ids
   const { data: taskStats = [] } = useQuery({
     queryKey: ['project-task-stats'],
@@ -303,14 +325,37 @@ export function ProjectsPage() {
                 {cardInner}
               </button>
             ) : (
-              <Link
-                key={p.id}
-                to={`/layihelər/${p.id}`}
-                className={`card-interactive rounded-card p-5 min-h-[180px] flex flex-col justify-between ${tone}`}
-                style={cardStyle}
-              >
-                {cardInner}
-              </Link>
+              <div key={p.id} className="relative">
+                <Link
+                  to={`/layihelər/${p.id}`}
+                  className={`card-interactive rounded-card p-5 min-h-[180px] flex flex-col justify-between ${tone}`}
+                  style={cardStyle}
+                >
+                  {cardInner}
+                </Link>
+                {/* PRD §6.x — admin clone overlay (visible on hover, top-right) */}
+                {isAdmin ? (
+                  <button
+                    type="button"
+                    className="absolute top-2 right-2 chip text-tiny opacity-60 hover:opacity-100"
+                    style={{
+                      background: dark ? 'rgba(255,255,255,0.12)' : 'rgba(14,22,17,0.06)',
+                      color: dark ? 'var(--canvas)' : 'var(--ink)',
+                      fontSize: 10,
+                      padding: '2px 6px',
+                    }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      cloneProject.mutate(p.id);
+                    }}
+                    title="Layihəni klonla"
+                    disabled={cloneProject.isPending}
+                  >
+                    ⎘ Klonla
+                  </button>
+                ) : null}
+              </div>
             );
           })}
 

@@ -160,36 +160,67 @@ export function FinancePage() {
             </tr>
           </thead>
           <tbody>
-            {(receivables.data ?? []).map((r) => (
-              <tr key={r.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
-                <td className="py-3 px-3">
-                  {r.clients?.company ?? r.clients?.name ?? (r.client_id ? '—' : '—')}
-                </td>
-                <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  {formatAZN(r.amount)}
-                </td>
-                <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  {formatAZN(r.paid_amount)}
-                </td>
-                <td className="py-3 px-3">{r.status}</td>
-                <td className="py-3 px-3">{formatDate(r.due_at)}</td>
-                <td className="py-3 px-3 text-right">
-                  {r.status !== 'paid' ? (
-                    <button
-                      type="button"
-                      className="chip chip-brand"
-                      onClick={() => setMarkPaid(r)}
-                    >
-                      Ödənişi qeyd et
-                    </button>
-                  ) : (
-                    <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                      ✓
-                    </span>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {(receivables.data ?? []).map((r) => {
+              // Overdue: due_at in the past AND not yet fully paid
+              const isOverdue =
+                r.status !== 'paid' &&
+                r.due_at != null &&
+                new Date(r.due_at).getTime() < Date.now();
+              return (
+                <tr
+                  key={r.id}
+                  style={{
+                    borderBottom: '1px solid var(--line-soft)',
+                    background: isOverdue ? 'var(--error-bg, #fde0e0)' : undefined,
+                  }}
+                >
+                  <td className="py-3 px-3">
+                    {r.clients?.company ?? r.clients?.name ?? (r.client_id ? '—' : '—')}
+                  </td>
+                  <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {formatAZN(r.amount)}
+                  </td>
+                  <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {formatAZN(r.paid_amount)}
+                  </td>
+                  <td className="py-3 px-3">
+                    {isOverdue ? (
+                      <span
+                        className="chip"
+                        style={{
+                          background: 'var(--error-deep, #b3261e)',
+                          color: 'white',
+                          fontSize: 10,
+                          padding: '1px 8px',
+                        }}
+                      >
+                        Gecikmiş
+                      </span>
+                    ) : (
+                      r.status
+                    )}
+                  </td>
+                  <td className="py-3 px-3" style={{ color: isOverdue ? 'var(--error-deep, #b3261e)' : undefined, fontWeight: isOverdue ? 600 : 400 }}>
+                    {formatDate(r.due_at)}
+                  </td>
+                  <td className="py-3 px-3 text-right">
+                    {r.status !== 'paid' ? (
+                      <button
+                        type="button"
+                        className="chip chip-brand"
+                        onClick={() => setMarkPaid(r)}
+                      >
+                        Ödənişi qeyd et
+                      </button>
+                    ) : (
+                      <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                        ✓
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
             {(receivables.data ?? []).length === 0 ? (
               <tr>
                 <td

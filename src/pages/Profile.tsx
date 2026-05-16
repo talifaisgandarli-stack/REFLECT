@@ -4,7 +4,7 @@
  * US-AUTH-04 — user can edit avatar, name, and locale.
  */
 import { useRef, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
 import { Avatar } from '@/components/Avatar';
 import { supabase } from '@/lib/supabase';
@@ -313,6 +313,9 @@ export function ProfilePage() {
         {/* Password change — REQ-AUTH-03 */}
         <PasswordChangeCard email={profile.email} />
 
+        {/* Email change request — admin approval required (REQ-AUTH-03) */}
+        <EmailChangeRequestCard userId={profile.id} currentEmail={profile.email} />
+
         {/* Notification preferences shortcut */}
         <div className="card">
           <h3 className="text-h3 mb-2">Bildiriş tənzimləmələri</h3>
@@ -460,6 +463,138 @@ function PasswordChangeCard({ email }: { email: string }) {
             </button>
             <button type="submit" className="btn-primary" disabled={busy}>
               {busy ? 'Dəyişdirilir…' : 'Şifrəni yenilə'}
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+// REQ-AUTH-03 — user requests an email change; admin reviews + applies
+// (admin-approval prevents account-takeover via stolen session).
+function EmailChangeRequestCard({ userId, currentEmail }: { userId: string; currentEmail: string }) {
+  const [open, setOpen] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+
+  // Show pending status if there's already an open request
+  const pending = useQuery({
+    queryKey: ['email_change_request', userId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('email_change_requests')
+        .select('id, new_email, status, created_at, reviewed_at, review_note')
+        .eq('user_id', userId)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return data as { id: string; new_email: string; status: string; created_at: string; reviewed_at: string | null; review_note: string | null } | null;
+    },
+  });
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    if (!newEmail.includes('@')) {
+      setErr('Etibarlı email daxil edin');
+      return;
+    }
+    if (newEmail.toLowerCase() === currentEmail.toLowerCase()) {
+      setErr('Yeni email cari ilə eyni ola bilməz');
+      return;
+    }
+    setBusy(true);
+    try {
+      const { error } = await supabase.from('email_change_requests').insert({
+        user_id: userId,
+        current_email: currentEmail,
+        new_email: newEmail.trim().toLowerCase(),
+        reason: reason.trim() || null,
+      });
+      if (error) throw error;
+      setSubmitted(true);
+      setOpen(false);
+      setNewEmail('');
+      setReason('');
+      pending.refetch();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card space-y-3">
+      <h3 className="text-h3">Email</h3>
+      <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+        Cari email: <code style={{ background: 'var(--surface-mist)', padding: '1px 6px', borderRadius: 4 }}>{currentEmail}</code>
+      </p>
+
+      {pending.data ? (
+        <div
+          className="rounded-card px-3 py-2"
+          style={{
+            background: 'var(--brand-glow-sm)',
+            border: '1px solid var(--brand-glow-xl)',
+            color: 'var(--brand-text)',
+          }}
+        >
+          <div className="text-meta">
+            ⏳ Gözləyən sorğu: <strong>{pending.data.new_email}</strong>
+          </div>
+          <div className="text-meta opacity-70" style={{ fontSize: 11 }}>
+            {new Date(pending.data.created_at).toLocaleDateString('az-AZ')} tarixində göndərildi · admin təsdiqini gözləyir
+          </div>
+        </div>
+      ) : !open ? (
+        <>
+          <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+            Email dəyişikliyi admin təsdiqi tələb edir.
+          </p>
+          <button type="button" className="btn-outline" onClick={() => { setOpen(true); setSubmitted(false); }}>
+            Email dəyişikliyi tələb et
+          </button>
+          {submitted ? (
+            <p className="text-meta" style={{ color: 'var(--success-deep)' }}>
+              ✓ Sorğu göndərildi
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <form onSubmit={submit} className="space-y-3">
+          <label className="block">
+            <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Yeni email</span>
+            <input
+              type="email"
+              required
+              className="input w-full"
+              value={newEmail}
+              onChange={(e) => setNewEmail(e.target.value)}
+            />
+          </label>
+          <label className="block">
+            <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Səbəb (könüllü)</span>
+            <textarea
+              className="input w-full"
+              rows={2}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Niyə email-i dəyişmək istəyirsən?"
+            />
+          </label>
+          {err ? <p className="text-meta" style={{ color: 'var(--error-deep)' }}>{err}</p> : null}
+          <div className="flex justify-end gap-2">
+            <button type="button" className="btn-outline" onClick={() => { setOpen(false); setErr(null); }} disabled={busy}>
+              Ləğv
+            </button>
+            <button type="submit" className="btn-primary" disabled={busy}>
+              {busy ? 'Göndərilir…' : 'Sorğu göndər'}
             </button>
           </div>
         </form>
