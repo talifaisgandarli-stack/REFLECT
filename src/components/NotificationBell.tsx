@@ -9,6 +9,7 @@ import { Link } from 'react-router-dom';
 import {
   type NotificationKind,
   type NotificationRow,
+  useClearSnoozes,
   useMarkNotificationRead,
   useNotifications,
   useSnoozeNotification,
@@ -98,6 +99,7 @@ export function NotificationBell() {
   const { data = [] } = useNotifications();
   const markRead = useMarkNotificationRead();
   const snooze = useSnoozeNotification();
+  const clearSnoozes = useClearSnoozes();
   const [open, setOpen] = useState(false);
   const [snoozeOpenId, setSnoozeOpenId] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
@@ -168,15 +170,27 @@ export function NotificationBell() {
             style={{ borderBottom: '1px solid var(--line-soft)' }}
           >
             <span className="text-h4">Bildirişlər</span>
-            <button
-              type="button"
-              className="text-meta hover:underline disabled:opacity-50"
-              style={{ color: 'var(--brand-text)' }}
-              onClick={() => markRead.mutate({ all: true })}
-              disabled={unreadCount === 0 || markRead.isPending}
-            >
-              Hamısını oxunmuş işarələ
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="text-meta hover:underline disabled:opacity-50"
+                style={{ color: 'var(--text-muted)', fontSize: 11 }}
+                onClick={() => clearSnoozes.mutate()}
+                disabled={clearSnoozes.isPending}
+                title="Bütün ləngitmələri ləğv et"
+              >
+                ⏰ Ayıt
+              </button>
+              <button
+                type="button"
+                className="text-meta hover:underline disabled:opacity-50"
+                style={{ color: 'var(--brand-text)' }}
+                onClick={() => markRead.mutate({ all: true })}
+                disabled={unreadCount === 0 || markRead.isPending}
+              >
+                Hamısını oxunmuş işarələ ({unreadCount})
+              </button>
+            </div>
           </header>
           {data.length === 0 ? (
             <div className="px-4 py-8 text-center text-meta" style={{ color: 'var(--text-muted)' }}>

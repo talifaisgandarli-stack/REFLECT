@@ -328,6 +328,21 @@ export function useSnoozeNotification() {
   });
 }
 
+// PRD §6.4 — clear all active snoozes (notifications reappear immediately)
+export function useClearSnoozes() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ snoozed_until: null })
+        .not('snoozed_until', 'is', null);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+}
+
 export function useMarkNotificationRead() {
   const qc = useQueryClient();
   return useMutation({

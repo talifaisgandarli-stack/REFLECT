@@ -440,6 +440,10 @@ export function ProjectDetailPage() {
                 );
               })}
             </select>
+            {/* Bulk archive all done tasks (admin only — non-admin RLS rejects) */}
+            {isAdmin && tasks.some((t) => t.status === 'done' && !t.archived_at) ? (
+              <ArchiveDoneTasksChip projectId={id!} doneCount={tasks.filter((t) => t.status === 'done' && !t.archived_at).length} />
+            ) : null}
             <button className="btn-primary" onClick={() => setAddingTask(true)}>
               + Tapşırıq
             </button>
@@ -1379,6 +1383,50 @@ function Row({ k, v }: { k: string; v: string }) {
       <dt style={{ color: 'var(--text-muted)' }}>{k}</dt>
       <dd>{v}</dd>
     </div>
+  );
+}
+
+// PRD §REQ-TASK-08 — bulk-archive tasks with status=done for a single project
+function ArchiveDoneTasksChip({ projectId, doneCount }: { projectId: string; doneCount: number }) {
+  const qc = useQueryClient();
+  const archive = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ archived_at: new Date().toISOString() })
+        .eq('project_id', projectId)
+        .eq('status', 'done')
+        .is('archived_at', null);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  });
+  const [confirming, setConfirming] = useState(false);
+  if (confirming) {
+    return (
+      <span className="flex items-center gap-1">
+        <button
+          type="button"
+          className="chip"
+          style={{ background: 'var(--error-deep, #b3261e)', color: 'white' }}
+          disabled={archive.isPending}
+          onClick={() => archive.mutate()}
+        >
+          {archive.isPending ? '…' : 'Bəli, arxivlə'}
+        </button>
+        <button type="button" className="chip" onClick={() => setConfirming(false)}>Ləğv</button>
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="btn-outline"
+      onClick={() => setConfirming(true)}
+      title="Bu layihənin bütün 'Tamamlandı' tapşırıqlarını arxivlə"
+    >
+      Tamamlanmışları arxivlə ({doneCount})
+    </button>
   );
 }
 

@@ -9,6 +9,8 @@ import { PageHead } from '@/components/PageHead';
 import { Avatar } from '@/components/Avatar';
 import { SkeletonBox } from '@/components/Skeleton';
 import { toast } from '@/components/Toast';
+import { formatDuration } from '@/lib/useTimeTracking';
+import { downloadCsv } from '@/lib/csv';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import type { Profile } from '@/types/db';
@@ -330,6 +332,9 @@ export function ProfilePage() {
 
         {/* Email change request — admin approval required (REQ-AUTH-03) */}
         <EmailChangeRequestCard userId={profile.id} currentEmail={profile.email} />
+
+        {/* Bu günkü izlənmiş vaxt — time tracking sessions */}
+        <TimeEntriesTodayCard userId={profile.id} />
 
         {/* Login history (REQ-AUTH-03 / §9.4) — last 10 sessions */}
         <LoginHistoryCard userId={profile.id} />
@@ -667,6 +672,90 @@ function LoginHistoryCard({ userId }: { userId: string }) {
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+// Time tracking — today's sessions with per-task duration + total + CSV export
+function TimeEntriesTodayCard({ userId }: { userId: string }) {
+  const entries = useQuery({
+    queryKey: ['time-entries-day', userId],
+    queryFn: async () => {
+      // Asia/Baku midnight today
+      const now = new Date();
+      const offsetMin = 4 * 60;
+      const local = new Date(now.getTime() + offsetMin * 60_000);
+      local.setUTCHours(0, 0, 0, 0);
+      const since = new Date(local.getTime() - offsetMin * 60_000).toISOString();
+
+      const { data } = await supabase
+        .from('time_entries')
+        .select('id, task_id, started_at, ended_at, duration_seconds, tasks(title)')
+        .eq('user_id', userId)
+        .gte('started_at', since)
+        .order('started_at', { ascending: false });
+      return (data ?? []) as Array<{
+        id: string;
+        task_id: string;
+        started_at: string;
+        ended_at: string | null;
+        duration_seconds: number | null;
+        tasks?: { title: string }[] | { title: string } | null;
+      }>;
+    },
+  });
+
+  const rows = entries.data ?? [];
+  if (rows.length === 0) return null;
+
+  const total = rows.reduce((s, r) => {
+    if (r.duration_seconds != null) return s + r.duration_seconds;
+    if (!r.ended_at) return s + Math.floor((Date.now() - new Date(r.started_at).getTime()) / 1000);
+    return s;
+  }, 0);
+
+  function taskTitle(r: typeof rows[number]): string {
+    const t = r.tasks;
+    if (Array.isArray(t)) return t[0]?.title ?? r.task_id.slice(0, 8);
+    return t?.title ?? r.task_id.slice(0, 8);
+  }
+
+  return (
+    <div className="card space-y-2">
+      <div className="flex items-center justify-between">
+        <h3 className="text-h3">⏱ Bu gün ({formatDuration(total)})</h3>
+        <button
+          type="button"
+          className="chip"
+          style={{ fontSize: 11, color: 'var(--text-muted)' }}
+          onClick={() => {
+            downloadCsv(
+              `time-entries-${new Date().toISOString().slice(0, 10)}`,
+              ['Başlama', 'Bitmə', 'Müddət (san)', 'Tapşırıq'],
+              rows.map((r) => ({
+                Başlama: r.started_at,
+                Bitmə: r.ended_at ?? '',
+                'Müddət (san)': r.duration_seconds ?? '',
+                Tapşırıq: taskTitle(r),
+              })),
+            );
+          }}
+        >
+          ↓ CSV
+        </button>
+      </div>
+      <ul className="divide-y" style={{ borderColor: 'var(--line-soft)' }}>
+        {rows.map((r) => (
+          <li key={r.id} className="py-2 flex items-center justify-between gap-3 text-meta">
+            <span className="truncate" style={{ color: 'var(--text)' }}>{taskTitle(r)}</span>
+            <span style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums', fontSize: 12 }}>
+              {r.duration_seconds != null
+                ? formatDuration(r.duration_seconds)
+                : <span style={{ color: 'var(--brand-action)' }}>aktiv</span>}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

@@ -5,10 +5,11 @@
  */
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { formatDuration, useActiveTimeEntry, useStopTimer } from '@/lib/useTimeTracking';
+import { formatDuration, useActiveTimeEntry, useStopTimer, useTodayTotal } from '@/lib/useTimeTracking';
 
 export function ActiveTimerChip() {
   const { data: active } = useActiveTimeEntry();
+  const { data: todaySeconds = 0 } = useTodayTotal();
   const stop = useStopTimer();
   // Tick every second when a timer is running
   const [, force] = useState(0);
@@ -18,7 +19,26 @@ export function ActiveTimerChip() {
     return () => window.clearInterval(id);
   }, [active]);
 
-  if (!active) return null;
+  // PRD time tracking — show today total even when no timer is running,
+  // as long as the user has tracked at least some time today.
+  if (!active && todaySeconds === 0) return null;
+  if (!active) {
+    return (
+      <Link
+        to="/profil"
+        className="flex items-center gap-2 px-3 py-1.5 rounded-btn text-meta"
+        style={{
+          background: 'var(--surface-mist)',
+          color: 'var(--text-muted)',
+          fontVariantNumeric: 'tabular-nums',
+        }}
+        title="Bu gün izlənmiş vaxt"
+      >
+        <span aria-hidden>⏱</span>
+        {formatDuration(todaySeconds)}
+      </Link>
+    );
+  }
 
   const elapsed = Math.floor((Date.now() - new Date(active.started_at).getTime()) / 1000);
 
@@ -45,6 +65,11 @@ export function ActiveTimerChip() {
       <Link to={`/tapşırıqlar`} style={{ color: 'var(--ink)' }} className="font-medium">
         {formatDuration(elapsed)}
       </Link>
+      {todaySeconds > 0 ? (
+        <span style={{ opacity: 0.6, fontSize: 11 }}>
+          / {formatDuration(todaySeconds)} bu gün
+        </span>
+      ) : null}
       <button
         type="button"
         onClick={() => stop.mutate()}
