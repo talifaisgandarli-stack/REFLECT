@@ -412,14 +412,19 @@ export function ProjectDetailPage() {
               {/* PRD §6.x — project description (migration 0054) */}
               <ProjectDescriptionEditor projectId={id!} initial={(project as { description?: string | null }).description ?? null} isAdmin={isAdmin} />
               <Row k="Status" v={project.status} />
-              <Row k="Başlama" v={project.start_date ?? '—'} />
+              {isAdmin ? (
+                <ProjectDateField projectId={id!} field="start_date" label="Başlama" initial={project.start_date} />
+              ) : (
+                <Row k="Başlama" v={project.start_date ?? '—'} />
+              )}
               {/* PRD §UX — inline deadline edit (admin) */}
               {isAdmin ? (
-                <ProjectDeadlineEditor projectId={id!} initial={project.deadline} />
+                <ProjectDateField projectId={id!} field="deadline" label="Deadline" initial={project.deadline} />
               ) : (
                 <Row k="Deadline" v={project.deadline ?? '—'} />
               )}
               <ProjectTimeTotal taskIds={tasks.map((t) => t.id)} />
+              <ProjectClientLink clientId={project.client_id} />
               <Row k="Ekspertiza" v={project.requires_expertise ? 'Lazımdır' : 'Yox'} />
               {project.requires_expertise && project.expertise_deadline ? (
                 <Row k="Eksp. deadline" v={project.expertise_deadline} />
@@ -1534,6 +1539,34 @@ function ProjectTagsEditor({ projectId, initial, isAdmin }: { projectId: string;
   );
 }
 
+// Project client name with clickable link to /müştərilər?focus=<id>
+function ProjectClientLink({ clientId }: { clientId: string | null }) {
+  const client = useQuery({
+    queryKey: ['project-client', clientId],
+    enabled: !!clientId,
+    queryFn: async () => {
+      const { data } = await supabase.from('clients').select('id, name, company').eq('id', clientId!).maybeSingle();
+      return data as { id: string; name: string; company: string | null } | null;
+    },
+  });
+  if (!clientId) return null;
+  const c = client.data;
+  return (
+    <div className="flex justify-between gap-4">
+      <dt style={{ color: 'var(--text-muted)' }}>Müştəri</dt>
+      <dd>
+        {c ? (
+          <a href={`/müştərilər?focus=${c.id}`} className="hover:underline" style={{ color: 'var(--brand-text)' }}>
+            🤝 {c.name}{c.company ? ` · ${c.company}` : ''}
+          </a>
+        ) : (
+          <span style={{ color: 'var(--text-muted)' }}>Yüklənir…</span>
+        )}
+      </dd>
+    </div>
+  );
+}
+
 // Project-wide tracked time = sum across all task time entries
 function ProjectTimeTotal({ taskIds }: { taskIds: string[] }) {
   const totals = useTaskTimeTotals(taskIds);
@@ -1628,8 +1661,19 @@ function ProjectDescriptionEditor({ projectId, initial, isAdmin }: { projectId: 
   );
 }
 
-// PRD §UX — inline admin editor for project deadline (date input + save chip)
-function ProjectDeadlineEditor({ projectId, initial }: { projectId: string; initial: string | null }) {
+// PRD §UX — inline admin editor for any date column on projects.
+// Used for start_date + deadline; same pattern, configurable field/label.
+function ProjectDateField({
+  projectId,
+  field,
+  label,
+  initial,
+}: {
+  projectId: string;
+  field: 'start_date' | 'deadline' | 'expertise_deadline';
+  label: string;
+  initial: string | null;
+}) {
   const qc = useQueryClient();
   const [val, setVal] = useState(initial ?? '');
   const [saving, setSaving] = useState(false);
@@ -1637,14 +1681,14 @@ function ProjectDeadlineEditor({ projectId, initial }: { projectId: string; init
   const dirty = (initial ?? '') !== val.trim();
   async function save() {
     setSaving(true);
-    await supabase.from('projects').update({ deadline: val || null }).eq('id', projectId);
+    await supabase.from('projects').update({ [field]: val || null }).eq('id', projectId);
     setSaving(false);
     qc.invalidateQueries({ queryKey: ['project', projectId] });
     qc.invalidateQueries({ queryKey: ['projects'] });
   }
   return (
     <div className="flex justify-between items-center gap-2">
-      <dt style={{ color: 'var(--text-muted)' }}>Deadline</dt>
+      <dt style={{ color: 'var(--text-muted)' }}>{label}</dt>
       <dd className="flex items-center gap-1">
         <input
           type="date"

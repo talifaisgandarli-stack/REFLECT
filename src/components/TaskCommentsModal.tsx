@@ -407,6 +407,9 @@ export function TaskCommentsModal({
           {/* PRD §REQ-TASK-06 — estimate vs tracked summary chip + inline edit */}
           <TaskEstimateBar taskId={taskId} data={estimateVsActual.data} />
 
+          {/* PRD §REQ-TASK — assignees chip row */}
+          <TaskAssigneesChip taskId={taskId} />
+
           {/* PRD §REQ-TASK — inline task description editor */}
           <TaskDescriptionEditor taskId={taskId} />
 
@@ -630,6 +633,43 @@ function SubtaskInlineCreate({ parentTaskId }: { parentTaskId: string }) {
       </button>
       <button type="button" className="chip" onClick={() => { setOpen(false); setTitle(''); }} style={{ fontSize: 11 }}>×</button>
     </form>
+  );
+}
+
+// PRD §REQ-TASK-02 — current assignees displayed as compact chip row
+function TaskAssigneesChip({ taskId }: { taskId: string }) {
+  const assignees = useQuery({
+    queryKey: ['task_assignees_display', taskId],
+    queryFn: async () => {
+      const { data: task } = await supabase
+        .from('tasks')
+        .select('assignee_ids')
+        .eq('id', taskId)
+        .maybeSingle();
+      const ids = (task?.assignee_ids ?? []) as string[];
+      if (ids.length === 0) return [];
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', ids);
+      return (profiles ?? []) as Array<{ id: string; full_name: string | null }>;
+    },
+  });
+  const items = assignees.data ?? [];
+  if (items.length === 0) return null;
+  return (
+    <div className="text-meta mb-2 flex items-center gap-1.5 flex-wrap" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+      <span>👤</span>
+      {items.map((p) => (
+        <span
+          key={p.id}
+          className="chip"
+          style={{ background: 'var(--surface-mist)', fontSize: 11 }}
+        >
+          {p.full_name ?? p.id.slice(0, 8)}
+        </span>
+      ))}
+    </div>
   );
 }
 

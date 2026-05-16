@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 
@@ -572,14 +573,15 @@ function EventModal({
       onClose();
     },
   });
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const del = useMutation({
     mutationFn: async () => {
-      if (!confirm('Bu görüşü silmək istədiyinə əminsənmi?')) throw new Error('aborted');
       const { error } = await supabase.from('calendar_events').delete().eq('id', event.id);
       if (error) throw error;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['calendar'] });
+      setConfirmingDelete(false);
       onClose();
     },
   });
@@ -600,10 +602,15 @@ function EventModal({
         ) : (
           <h2 className="text-h2 mb-2">{event.title}</h2>
         )}
-        <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
-          {new Date(event.starts_at).toLocaleDateString('az-AZ', { timeZone: 'Asia/Baku', weekday: 'long', day: 'numeric', month: 'long' })}
-          {' '}{fmtTime(event.starts_at)} – {fmtTime(event.ends_at)}
-        </p>
+        {/* Date display + inline time edit (admin/organizer) */}
+        {canEdit ? (
+          <EventTimeInline event={event} />
+        ) : (
+          <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+            {new Date(event.starts_at).toLocaleDateString('az-AZ', { timeZone: 'Asia/Baku', weekday: 'long', day: 'numeric', month: 'long' })}
+            {' '}{fmtTime(event.starts_at)} – {fmtTime(event.ends_at)}
+          </p>
+        )}
         {/* PRD §UX — inline location edit when canEdit; non-canEdit shows static */}
         {canEdit ? (
           <EventFieldInline eventId={event.id} field="location" initial={event.location ?? ''} as="location" />
@@ -630,7 +637,7 @@ function EventModal({
               className="text-meta"
               style={{ color: 'var(--error-deep)' }}
               disabled={del.isPending}
-              onClick={() => del.mutate()}
+              onClick={() => setConfirmingDelete(true)}
             >
               {del.isPending ? 'Silinir…' : 'Sil'}
             </button>
@@ -653,6 +660,16 @@ function EventModal({
             <button className="btn-outline" onClick={onClose}>Bağla</button>
           </div>
         </div>
+        <ConfirmDialog
+          open={confirmingDelete}
+          title="Bu görüşü silmək istəyirsən?"
+          body="Bu əməliyyat geri qaytarıla bilməz. Rekurrent seriya tamamilə silinəcək."
+          confirmLabel="Sil"
+          destructive
+          busy={del.isPending}
+          onConfirm={() => del.mutate()}
+          onCancel={() => setConfirmingDelete(false)}
+        />
       </div>
     </div>
   );
@@ -999,6 +1016,68 @@ function Field({ label, required, children }: { label: string; required?: boolea
       </span>
       {children}
     </label>
+  );
+}
+
+// PRD §UX — inline edit for event start/end times (date + two times).
+// Click anywhere on the time line to edit; Esc cancels.
+function EventTimeInline({ event }: { event: CalEvent }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const initialDate = event.starts_at.slice(0, 10);
+  const initialStart = event.starts_at.slice(11, 16);
+  const initialEnd = event.ends_at.slice(11, 16);
+  const [date, setDate] = useState(initialDate);
+  const [start, setStart] = useState(initialStart);
+  const [end, setEnd] = useState(initialEnd);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (!editing) {
+      setDate(initialDate);
+      setStart(initialStart);
+      setEnd(initialEnd);
+    }
+  }, [editing, initialDate, initialStart, initialEnd]);
+
+  async function save() {
+    const startsAt = `${date}T${start}:00`;
+    const endsAt = `${date}T${end}:00`;
+    setSaving(true);
+    await supabase
+      .from('calendar_events')
+      .update({ starts_at: startsAt, ends_at: endsAt })
+      .eq('id', event.id);
+    setSaving(false);
+    qc.invalidateQueries({ queryKey: ['calendar'] });
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <div className="flex flex-wrap items-center gap-1 mb-2 text-meta">
+        <input type="date" className="input" style={{ height: 28, fontSize: 12 }} value={date} onChange={(e) => setDate(e.target.value)} />
+        <input type="time" className="input" style={{ height: 28, fontSize: 12, width: 90 }} value={start} onChange={(e) => setStart(e.target.value)} />
+        <span style={{ color: 'var(--text-muted)' }}>–</span>
+        <input type="time" className="input" style={{ height: 28, fontSize: 12, width: 90 }} value={end} onChange={(e) => setEnd(e.target.value)} />
+        <button type="button" className="chip" style={{ color: 'var(--brand-text)', fontSize: 11 }} disabled={saving} onClick={save}>
+          {saving ? '…' : '✓'}
+        </button>
+        <button type="button" className="chip" onClick={() => setEditing(false)} style={{ fontSize: 11 }}>×</button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="text-meta text-left hover:bg-surface-mist px-1 -mx-1 rounded-btn"
+      style={{ color: 'var(--text-muted)' }}
+      onClick={() => setEditing(true)}
+      title="Vaxtı dəyişdirmək üçün klik"
+    >
+      {new Date(event.starts_at).toLocaleDateString('az-AZ', { timeZone: 'Asia/Baku', weekday: 'long', day: 'numeric', month: 'long' })}
+      {' '}{fmtTime(event.starts_at)} – {fmtTime(event.ends_at)}
+    </button>
   );
 }
 
