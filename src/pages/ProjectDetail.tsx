@@ -322,6 +322,35 @@ export function ProjectDetailPage() {
                 </span>
               ) : null}
             </div>
+
+            {/* PRD §REQ-PROJ — phase progress bar (active / total) */}
+            {(() => {
+              const active = (project.phases ?? []).length;
+              const total = PROJECT_PHASES.length;
+              const pct = total > 0 ? Math.round((active / total) * 100) : 0;
+              return (
+                <div className="mb-3">
+                  <div className="flex items-center justify-between text-meta mb-1">
+                    <span style={{ color: 'var(--text-muted)' }}>İrəliləyiş</span>
+                    <span style={{ color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
+                      {active} / {total} ({pct}%)
+                    </span>
+                  </div>
+                  <div style={{ height: 4, background: 'var(--line)', borderRadius: 999 }}>
+                    <div
+                      style={{
+                        width: `${pct}%`,
+                        height: '100%',
+                        background: 'var(--brand-action)',
+                        borderRadius: 999,
+                        transition: 'width 0.3s',
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
+
             <ol className="space-y-2">
               {PROJECT_PHASES.map((p) => {
                 const active = project.phases?.includes(p);

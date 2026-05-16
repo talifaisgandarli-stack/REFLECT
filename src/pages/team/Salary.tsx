@@ -71,6 +71,26 @@ export function SalaryPage() {
     },
   });
 
+  // PRD §8.2 — admin shortcut: copy a salary row into a new period (next month)
+  const copyForward = useMutation({
+    mutationFn: async (src: SalaryRow) => {
+      // Next month from src.effective_from
+      const d = new Date(src.effective_from);
+      d.setMonth(d.getMonth() + 1);
+      const nextFrom = d.toISOString().slice(0, 10);
+      const { error } = await supabase.from('salaries').insert({
+        employee_id: src.employee_id,
+        amount: src.amount,
+        currency: src.currency,
+        effective_from: nextFrom,
+        effective_to: null,
+        components: src.components,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['salaries'] }),
+  });
+
   const rows = useQuery({
     queryKey: ['salaries', isAdmin],
     queryFn: async (): Promise<SalaryRow[]> => {
@@ -217,6 +237,16 @@ export function SalaryPage() {
                         </div>
                       ) : (
                         <div className="flex items-center gap-1 justify-end">
+                          <button
+                            type="button"
+                            className="chip"
+                            style={{ color: 'var(--text-muted)' }}
+                            onClick={() => copyForward.mutate(r)}
+                            title="Növbəti aya köçür"
+                            disabled={copyForward.isPending}
+                          >
+                            ⎘ Növbəti ay
+                          </button>
                           <button
                             type="button"
                             className="chip"

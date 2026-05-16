@@ -803,7 +803,7 @@ export function MiraiPage() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder={`${currentPersonaMeta.label}-dən soruş…`}
+            placeholder={`${currentPersonaMeta.label}-dən soruş… (Cmd/Ctrl+/ açır)`}
             className="flex-1 h-12 rounded-btn px-4 text-body"
             style={{
               background: 'rgba(255,255,255,0.04)',
@@ -855,6 +855,12 @@ export function MiraiPage() {
 
         {/* Message thread */}
         <div className="mt-8 space-y-3">
+          {/* PRD §7 — message count when thread is non-empty */}
+          {msgs.length > 0 ? (
+            <div className="text-meta opacity-60 text-center" style={{ fontSize: 11 }}>
+              {msgs.length} mesaj{conversationId ? ' · DB-də saxlanılır' : ''}
+            </div>
+          ) : null}
           {msgs.map((m, i) => (
             <article
               key={i}

@@ -4,6 +4,7 @@
  * Each avatar overlaps by 6px using negative margin.
  * Tooltip on the overflow chip lists all hidden names.
  */
+import { memo } from 'react';
 import { Avatar } from './Avatar';
 
 type Person = {
@@ -19,7 +20,7 @@ type Props = {
   max?: number;
 };
 
-export function AvatarGroup({ people, size = 28, max = 3 }: Props) {
+function AvatarGroupImpl({ people, size = 28, max = 3 }: Props) {
   if (!people || people.length === 0) return null;
 
   const visible = people.slice(0, max);
@@ -75,3 +76,7 @@ export function AvatarGroup({ people, size = 28, max = 3 }: Props) {
     </span>
   );
 }
+
+// PRD §perf — memoized to skip re-renders when parent state changes but the
+// people array stays referentially equal (common in lists).
+export const AvatarGroup = memo(AvatarGroupImpl);

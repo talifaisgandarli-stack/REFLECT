@@ -21,6 +21,7 @@ import {
 } from '@/lib/hooks';
 import { useAuth } from '@/lib/store';
 import { formatDate, relativeTime, taskHealth } from '@/lib/format';
+import { downloadCsv } from '@/lib/csv';
 import { FocusWidget } from '@/components/FocusWidget';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -380,6 +381,27 @@ export function DashboardPage() {
         <section className="lg:col-span-5 card">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-h3">Yenilənmiş</h3>
+            {/* PRD §UX — export filtered activity to CSV */}
+            <button
+              type="button"
+              className="chip"
+              style={{ color: 'var(--text-muted)', fontSize: 11 }}
+              disabled={filteredActivity.length === 0}
+              onClick={() => {
+                downloadCsv(
+                  `activity-${new Date().toISOString().slice(0, 10)}`,
+                  ['Vaxt', 'Kim', 'Action', 'Entity'],
+                  filteredActivity.map((a) => ({
+                    Vaxt: new Date(a.created_at).toISOString(),
+                    Kim: a.profiles?.full_name ?? 'Sistem',
+                    Action: a.action,
+                    Entity: a.entity_type,
+                  })),
+                );
+              }}
+            >
+              ↓ CSV
+            </button>
           </div>
           {/* Activity heatmap — last 12 weeks of personal activity, GitHub-style */}
           <ActivityHeatmap activity={activity} userId={isAdmin ? null : profile?.id ?? null} />

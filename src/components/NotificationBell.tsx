@@ -14,6 +14,7 @@ import {
   useSnoozeNotification,
 } from '@/lib/hooks';
 import { relativeTime } from '@/lib/format';
+import { useNow } from '@/lib/useNow';
 
 const KIND_LABEL: Record<NotificationKind | 'fallback', string> = {
   mention: 'Sənə müraciət',
@@ -103,6 +104,8 @@ export function NotificationBell() {
 
   const unread = data.filter((n) => !n.read_at);
   const unreadCount = unread.length;
+  // PRD §UX — auto-tick relative timestamps every 60s while panel is open
+  useNow(open ? 60_000 : 5 * 60_000);
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -312,6 +315,7 @@ export function NotificationBell() {
                 } else {
                   // Grouped: one row representing N same-kind unreads.
                   const groupFirst = item.rows[0];
+                  // PRD §6.4 — per-kind mark-all chip on grouped rows
                   out.push(
                     <li
                       key={`group:${groupFirst.id}`}

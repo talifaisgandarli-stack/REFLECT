@@ -194,10 +194,11 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Desktop: persistent rail */}
+      {/* Desktop: persistent rail — PRD §6.6 a11y landmark */}
       <aside
         className="m-5 w-60 shrink-0 hidden lg:flex flex-col rounded-capsule sticky top-5 self-start max-h-[calc(100vh-2.5rem)]"
         style={{ background: 'var(--ink)' }}
+        aria-label="Əsas naviqasiya"
       >
         <SidebarBody />
       </aside>

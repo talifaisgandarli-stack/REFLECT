@@ -51,6 +51,16 @@ function fmtTime(iso: string) {
 function fmtDay(d: Date) {
   return d.toLocaleDateString('az-AZ', { timeZone: 'Asia/Baku', weekday: 'short', day: 'numeric' });
 }
+// ISO 8601 week number (PRD §UX — calendar week numbers in agenda)
+function isoWeekNumber(d: Date): number {
+  const target = new Date(d);
+  target.setHours(0, 0, 0, 0);
+  // Thursday in current week decides the year
+  target.setDate(target.getDate() + 3 - ((target.getDay() + 6) % 7));
+  const firstThursday = new Date(target.getFullYear(), 0, 4);
+  const diff = (target.getTime() - firstThursday.getTime()) / 86_400_000;
+  return 1 + Math.round((diff - 3 + ((firstThursday.getDay() + 6) % 7)) / 7);
+}
 const MONTH_NAMES = ['Yanvar','Fevral','Mart','Aprel','May','İyun','İyul','Avqust','Sentyabr','Oktyabr','Noyabr','Dekabr'];
 const WEEKDAY_SHORT = ['B.e.','Ç.a.','Ç.','C.a.','C.','Ş.','B.'];
 
@@ -405,7 +415,7 @@ export function CalendarPage() {
                 {populated.map((g) => (
                   <li key={g.date.toISOString()}>
                     <div
-                      className="text-meta mb-2"
+                      className="text-meta mb-2 flex items-center justify-between"
                       style={{
                         color: isSameDay(g.date, today) ? 'var(--brand-text)' : 'var(--text-muted)',
                         textTransform: 'uppercase',
@@ -414,8 +424,11 @@ export function CalendarPage() {
                         fontWeight: 600,
                       }}
                     >
-                      {isSameDay(g.date, today) ? 'BU GÜN · ' : ''}
-                      {g.date.toLocaleDateString('az-AZ', { weekday: 'short', day: 'numeric', month: 'short' })}
+                      <span>
+                        {isSameDay(g.date, today) ? 'BU GÜN · ' : ''}
+                        {g.date.toLocaleDateString('az-AZ', { weekday: 'short', day: 'numeric', month: 'short' })}
+                      </span>
+                      <span style={{ opacity: 0.6, fontWeight: 400 }}>H {isoWeekNumber(g.date)}</span>
                     </div>
                     <ul className="space-y-1.5 ml-2">
                       {g.events.map((ev) => {
@@ -438,9 +451,14 @@ export function CalendarPage() {
                               {ev.all_day ? 'Bütün gün' : `${fmtTime(ev.starts_at)} – ${fmtTime(ev.ends_at)}`}
                             </span>
                             <span className="text-body flex-1 truncate">{ev.title}</span>
-                            {ev.recurrence_rule ? (
-                              <span className="text-meta shrink-0" style={{ color: 'var(--brand-text)', fontSize: 11 }}>↻</span>
-                            ) : null}
+                            {/* PRD §UX — event icons for location / meet / recurring */}
+                            <span className="shrink-0 flex items-center gap-1" style={{ fontSize: 11 }}>
+                              {ev.location ? <span title={ev.location}>📍</span> : null}
+                              {ev.meet_url ? <span title="Online görüş">📹</span> : null}
+                              {ev.recurrence_rule ? (
+                                <span style={{ color: 'var(--brand-text)' }}>↻</span>
+                              ) : null}
+                            </span>
                           </li>
                         );
                       })}
