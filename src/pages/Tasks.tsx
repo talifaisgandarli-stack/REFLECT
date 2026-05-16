@@ -16,7 +16,7 @@ import { TaskCommentsModal } from '@/components/TaskCommentsModal';
 import { TaskEditModal } from '@/components/TaskEditModal';
 import { downloadCsv } from '@/lib/csv';
 import { toast } from '@/components/Toast';
-import { useActiveTimeEntry, useStartTimer, useStopTimer } from '@/lib/useTimeTracking';
+import { formatDuration, useActiveTimeEntry, useStartTimer, useStopTimer, useTaskTimeTotals } from '@/lib/useTimeTracking';
 
 // US-TASK-06 — deadline-based groups for personal view
 const todayStr = new Date().toISOString().slice(0, 10);
@@ -224,6 +224,8 @@ export function TasksPage() {
   const { data: activeTimer } = useActiveTimeEntry();
   const startTimer = useStartTimer();
   const stopTimer = useStopTimer();
+  // Per-task aggregated time across all entries (chip on board card)
+  const taskTimeTotals = useTaskTimeTotals(tasks.map((t) => t.id));
 
   // PRD §6.x — task templates (admin defines, anyone instantiates)
   const templates = useQuery({
@@ -268,7 +270,15 @@ export function TasksPage() {
   });
 
   // PRD §6.x — label filter (chip row above the kanban)
-  const [labelFilter, setLabelFilter] = useState<string | null>(null);
+  // PRD §UX — label filter persisted in URL
+  const [labelFilter, setLabelFilter] = useState<string | null>(searchParams.get('label'));
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (labelFilter) next.set('label', labelFilter);
+    else next.delete('label');
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [labelFilter]);
   const allLabels = useMemo(() => {
     const set = new Set<string>();
     for (const t of tasks) for (const l of t.labels ?? []) set.add(l);
@@ -574,8 +584,24 @@ export function TasksPage() {
                         </div>
                       )}
                       {/* PRD §6.x — priority + label chips on board card */}
-                      {(t.priority || (t.labels ?? []).length > 0) ? (
+                      {(t.priority || (t.labels ?? []).length > 0 || (taskTimeTotals.data?.get(t.id) ?? 0) > 0) ? (
                         <div className="flex gap-1 mt-1 flex-wrap">
+                          {/* Total tracked time chip */}
+                          {(taskTimeTotals.data?.get(t.id) ?? 0) > 0 ? (
+                            <span
+                              className="chip"
+                              style={{
+                                background: 'var(--brand-glow-sm)',
+                                color: 'var(--brand-text)',
+                                fontSize: 9,
+                                padding: '0 5px',
+                                fontVariantNumeric: 'tabular-nums',
+                              }}
+                              title={`Toplu izlənmiş vaxt`}
+                            >
+                              ⏱ {formatDuration(taskTimeTotals.data?.get(t.id) ?? 0)}
+                            </span>
+                          ) : null}
                           {t.priority ? (
                             <span
                               className="chip"

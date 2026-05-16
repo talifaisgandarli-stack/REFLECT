@@ -25,6 +25,7 @@ import { formatAZN, relativeTime } from '@/lib/format';
 import { useAuth } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { isValidEmail, isValidPhone, roundAzn } from '@/lib/validation';
+import { trackRecentEntry } from '@/lib/useRecentlyViewed';
 
 type DragPayload = { id: string; from: ClientPipelineStage };
 type LostPrompt = { id: string; from: ClientPipelineStage };
@@ -579,6 +580,16 @@ function ClientPanel({ client, onClose }: { client: Client; onClose: () => void 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
+
+  // Track recent: opening the panel counts as "viewed"
+  useEffect(() => {
+    trackRecentEntry({
+      type: 'client',
+      id: client.id,
+      title: client.name,
+      href: `/müştərilər?focus=${client.id}`,
+    });
+  }, [client.id, client.name]);
 
   return (
     <div

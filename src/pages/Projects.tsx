@@ -376,12 +376,31 @@ export function ProjectsPage() {
                   ) : null}
                 </div>
 
-                {/* Middle: name + status/deadline */}
+                {/* Middle: name + status/deadline + tag chips */}
                 <div>
                   <h3 className="text-h3 font-bold">{p.name}</h3>
                   <div className="text-meta mt-1 opacity-80">
                     {PROJECT_STATUS_LABEL[p.status]} · {p.deadline ?? 'tarixsiz'}
                   </div>
+                  {((p as { tags?: string[] }).tags ?? []).length > 0 ? (
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {((p as { tags?: string[] }).tags ?? []).slice(0, 4).map((tag) => (
+                        <span
+                          key={tag}
+                          className="chip"
+                          style={{
+                            background: dark ? 'rgba(255,255,255,0.10)' : 'rgba(14,22,17,0.06)',
+                            color: dark ? 'var(--canvas)' : 'var(--ink)',
+                            fontSize: 9,
+                            padding: '1px 5px',
+                            opacity: 0.85,
+                          }}
+                        >
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
 
                 {/* Bottom: avatars + progress bar */}

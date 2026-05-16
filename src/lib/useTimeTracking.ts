@@ -123,3 +123,30 @@ export function formatDuration(seconds: number): string {
   if (h > 0) return `${h}s ${m}d`;
   return `${m}d`;
 }
+
+/**
+ * Per-task aggregated time (sum of duration_seconds across all entries for
+ * a set of task ids). Returns a Map<task_id, total_seconds>. Excludes still-
+ * running entries (those have duration_seconds = null until stopped).
+ */
+export function useTaskTimeTotals(taskIds: string[]) {
+  // Stable key so React Query caches per set
+  const sorted = [...new Set(taskIds)].sort();
+  const cacheKey = sorted.join(',');
+  return useQuery({
+    queryKey: ['task-time-totals', cacheKey],
+    enabled: sorted.length > 0,
+    queryFn: async (): Promise<Map<string, number>> => {
+      const { data } = await supabase
+        .from('time_entries')
+        .select('task_id, duration_seconds')
+        .in('task_id', sorted)
+        .not('duration_seconds', 'is', null);
+      const map = new Map<string, number>();
+      for (const r of (data ?? []) as Array<{ task_id: string; duration_seconds: number }>) {
+        map.set(r.task_id, (map.get(r.task_id) ?? 0) + r.duration_seconds);
+      }
+      return map;
+    },
+  });
+}

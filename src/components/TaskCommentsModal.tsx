@@ -10,6 +10,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { relativeTime } from '@/lib/format';
+import { trackRecentEntry } from '@/lib/useRecentlyViewed';
 import { renderCommentMarkdown } from '@/lib/sanitize';
 
 type Comment = {
@@ -77,6 +78,16 @@ export function TaskCommentsModal({
   const [mentionIndex, setMentionIndex] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Track recent: opening comments counts as task visit
+  useEffect(() => {
+    trackRecentEntry({
+      type: 'task',
+      id: taskId,
+      title: taskTitle,
+      href: `/tapşırıqlar?focus=${taskId}`,
+    });
+  }, [taskId, taskTitle]);
 
   const profiles = useQuery({
     queryKey: ['profiles', 'list'],

@@ -101,10 +101,11 @@ export function MarkPaidModal({ receivable, onClose }: Props) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['fin', 'receivables'] });
       qc.invalidateQueries({ queryKey: ['receivable_payments', receivable.id] });
+      setConfirmDeleteId(null);
     },
   });
 
-  // Per-row confirm state for the delete chip
+  // Per-row confirm state for the delete chip (in-row inline confirm prompt)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const trapRef = useFocusTrap<HTMLFormElement>(true);

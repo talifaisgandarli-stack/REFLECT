@@ -751,6 +751,13 @@ function TimeEntriesTodayCard({ userId }: { userId: string }) {
             </span>
           ) : null}
         </h3>
+        {/* Per-project breakdown — tasks aggregated by their project */}
+        <PerProjectTimeBreakdown userId={userId} since={(() => {
+          const now = new Date();
+          const local = new Date(now.getTime() + 4 * 3600_000);
+          local.setUTCHours(0, 0, 0, 0);
+          return new Date(local.getTime() - 4 * 3600_000).toISOString();
+        })()} />
         <button
           type="button"
           className="chip"
@@ -783,6 +790,62 @@ function TimeEntriesTodayCard({ userId }: { userId: string }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+// Per-project aggregation of today's time entries (chip row beside totals)
+function PerProjectTimeBreakdown({ userId, since }: { userId: string; since: string }) {
+  const breakdown = useQuery({
+    queryKey: ['time-entries-by-project', userId, since],
+    queryFn: async () => {
+      // Fetch entries + their task → project_id via separate lookup
+      const { data: entries } = await supabase
+        .from('time_entries')
+        .select('task_id, duration_seconds, started_at, ended_at')
+        .eq('user_id', userId)
+        .gte('started_at', since);
+      const rows = (entries ?? []) as Array<{ task_id: string; duration_seconds: number | null; started_at: string; ended_at: string | null }>;
+      if (rows.length === 0) return [] as Array<{ project: string; seconds: number }>;
+      const taskIds = Array.from(new Set(rows.map((r) => r.task_id)));
+      const { data: tasks } = await supabase
+        .from('tasks')
+        .select('id, project_id, projects(name)')
+        .in('id', taskIds);
+      const projectMap = new Map<string, string>();
+      for (const t of (tasks ?? []) as Array<{ id: string; projects?: { name: string }[] | { name: string } | null }>) {
+        const pname = Array.isArray(t.projects) ? t.projects[0]?.name : t.projects?.name;
+        projectMap.set(t.id, pname ?? '— (layihəsiz)');
+      }
+      const buckets = new Map<string, number>();
+      for (const r of rows) {
+        const sec = r.duration_seconds ?? (!r.ended_at ? Math.floor((Date.now() - new Date(r.started_at).getTime()) / 1000) : 0);
+        const key = projectMap.get(r.task_id) ?? '— (layihəsiz)';
+        buckets.set(key, (buckets.get(key) ?? 0) + sec);
+      }
+      return Array.from(buckets.entries())
+        .map(([project, seconds]) => ({ project, seconds }))
+        .sort((a, b) => b.seconds - a.seconds);
+    },
+  });
+  const items = breakdown.data ?? [];
+  if (items.length === 0) return null;
+  return (
+    <div className="flex gap-1 flex-wrap" style={{ maxWidth: 480 }}>
+      {items.slice(0, 4).map((b) => (
+        <span
+          key={b.project}
+          className="chip"
+          style={{
+            background: 'var(--surface-mist)',
+            color: 'var(--text-muted)',
+            fontSize: 11,
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          {b.project.length > 18 ? b.project.slice(0, 16) + '…' : b.project} · {formatDuration(b.seconds)}
+        </span>
+      ))}
     </div>
   );
 }
