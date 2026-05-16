@@ -103,6 +103,40 @@ export function TaskCommentsModal({
     },
   });
 
+  // PRD §REQ-TASK — toggle subtask status done ↔ active inline
+  const toggleSubtaskStatus = useMutation({
+    mutationFn: async (input: { id: string; nextStatus: 'done' | 'active' }) => {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ status: input.nextStatus })
+        .eq('id', input.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task_subtasks', taskId] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+    },
+  });
+
+  // PRD §REQ-TASK — if this task is itself a subtask, fetch parent for back-chip
+  const parentTask = useQuery({
+    queryKey: ['task_parent', taskId],
+    queryFn: async () => {
+      const { data: self } = await supabase
+        .from('tasks')
+        .select('parent_task_id')
+        .eq('id', taskId)
+        .maybeSingle();
+      if (!self?.parent_task_id) return null;
+      const { data: parent } = await supabase
+        .from('tasks')
+        .select('id, title')
+        .eq('id', self.parent_task_id)
+        .maybeSingle();
+      return parent as { id: string; title: string } | null;
+    },
+  });
+
   const profiles = useQuery({
     queryKey: ['profiles', 'list'],
     queryFn: async (): Promise<Profile[]> => (await supabase.from('profiles').select('id, full_name')).data ?? [],
@@ -237,6 +271,32 @@ export function TaskCommentsModal({
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {/* PRD §REQ-TASK-05 — parent task back-chip (when this is a subtask) */}
+          {parentTask.data ? (
+            <button
+              type="button"
+              className="text-meta mb-2 px-2 py-1 rounded-btn"
+              style={{
+                background: 'var(--brand-glow-sm)',
+                color: 'var(--brand-text)',
+                border: '1px solid var(--brand-glow-xl)',
+                fontSize: 11,
+                textAlign: 'left',
+                width: '100%',
+              }}
+              onClick={() => {
+                // Re-mount the modal with the parent task (simulate by closing
+                // and re-opening; modal owner can subscribe to a custom event)
+                window.dispatchEvent(new CustomEvent('reflect:open-task', {
+                  detail: { id: parentTask.data!.id, title: parentTask.data!.title },
+                }));
+              }}
+              title="Ana tapşırığı aç"
+            >
+              ↑ Ana tapşırıq: <strong>{parentTask.data.title}</strong>
+            </button>
+          ) : null}
+
           {/* PRD §REQ-TASK-05 — subtask list (when this task has children) */}
           {(subtasks.data ?? []).length > 0 ? (
             <div
@@ -249,15 +309,46 @@ export function TaskCommentsModal({
               <ul className="space-y-0.5">
                 {(subtasks.data ?? []).map((s) => (
                   <li key={s.id} className="flex items-center gap-2">
-                    <span style={{ color: s.status === 'done' ? 'var(--success-deep, #16794a)' : 'var(--text-muted)', fontSize: 11 }}>
+                    <button
+                      type="button"
+                      onClick={() => toggleSubtaskStatus.mutate({
+                        id: s.id,
+                        nextStatus: s.status === 'done' ? 'active' : 'done',
+                      })}
+                      disabled={toggleSubtaskStatus.isPending}
+                      style={{
+                        color: s.status === 'done' ? 'var(--success-deep, #16794a)' : 'var(--text-muted)',
+                        fontSize: 13,
+                        cursor: 'pointer',
+                        background: 'transparent',
+                        border: 'none',
+                        padding: 0,
+                      }}
+                      title={s.status === 'done' ? 'Bərpa et' : 'Tamamla'}
+                      aria-label={s.status === 'done' ? `Bərpa et: ${s.title}` : `Tamamla: ${s.title}`}
+                    >
                       {s.status === 'done' ? '✓' : '○'}
-                    </span>
-                    <span style={{
-                      color: s.status === 'done' ? 'var(--text-muted)' : 'var(--text)',
-                      textDecoration: s.status === 'done' ? 'line-through' : 'none',
-                    }}>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        window.dispatchEvent(new CustomEvent('reflect:open-task', {
+                          detail: { id: s.id, title: s.title },
+                        }));
+                      }}
+                      className="text-left hover:underline"
+                      style={{
+                        color: s.status === 'done' ? 'var(--text-muted)' : 'var(--text)',
+                        textDecoration: s.status === 'done' ? 'line-through' : 'none',
+                        background: 'transparent',
+                        border: 'none',
+                        padding: 0,
+                        flex: 1,
+                      }}
+                      title="Yarımtapşırığı aç"
+                    >
                       {s.title}
-                    </span>
+                    </button>
                   </li>
                 ))}
               </ul>

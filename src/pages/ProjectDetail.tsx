@@ -411,7 +411,12 @@ export function ProjectDetailPage() {
               <ProjectTagsEditor projectId={id!} initial={(project as { tags?: string[] }).tags ?? []} isAdmin={isAdmin} />
               <Row k="Status" v={project.status} />
               <Row k="Başlama" v={project.start_date ?? '—'} />
-              <Row k="Deadline" v={project.deadline ?? '—'} />
+              {/* PRD §UX — inline deadline edit (admin) */}
+              {isAdmin ? (
+                <ProjectDeadlineEditor projectId={id!} initial={project.deadline} />
+              ) : (
+                <Row k="Deadline" v={project.deadline ?? '—'} />
+              )}
               <ProjectTimeTotal taskIds={tasks.map((t) => t.id)} />
               <Row k="Ekspertiza" v={project.requires_expertise ? 'Lazımdır' : 'Yox'} />
               {project.requires_expertise && project.expertise_deadline ? (
@@ -1442,6 +1447,20 @@ function ProjectTagsEditor({ projectId, initial, isAdmin }: { projectId: string;
   const [tags, setTags] = useState(initial);
   const [draft, setDraft] = useState('');
   useEffect(() => { setTags(initial); }, [initial]);
+  // Datalist of existing tags across all projects
+  const allTags = useQuery({
+    queryKey: ['project-tags-suggest'],
+    enabled: isAdmin,
+    queryFn: async () => {
+      const { data } = await supabase.from('projects').select('tags').not('tags', 'is', null);
+      const set = new Set<string>();
+      for (const row of (data ?? []) as Array<{ tags: string[] | null }>) {
+        for (const t of row.tags ?? []) set.add(t);
+      }
+      return Array.from(set).sort();
+    },
+    staleTime: 60_000,
+  });
 
   async function persist(next: string[]) {
     setTags(next);
@@ -1501,7 +1520,13 @@ function ProjectTagsEditor({ projectId, initial, isAdmin }: { projectId: string;
             if (e.key === ',') { e.preventDefault(); add(); }
           }}
           onBlur={() => draft.trim() && add()}
+          list="project-tag-suggestions-editor"
         />
+        <datalist id="project-tag-suggestions-editor">
+          {(allTags.data ?? []).filter((t) => !tags.includes(t)).map((t) => (
+            <option key={t} value={t} />
+          ))}
+        </datalist>
       </dd>
     </div>
   );
@@ -1513,6 +1538,47 @@ function ProjectTimeTotal({ taskIds }: { taskIds: string[] }) {
   const sum = Array.from((totals.data ?? new Map()).values()).reduce((s: number, v: number) => s + v, 0);
   if (sum === 0) return null;
   return <Row k="İzlənmiş vaxt" v={formatDuration(sum)} />;
+}
+
+// PRD §UX — inline admin editor for project deadline (date input + save chip)
+function ProjectDeadlineEditor({ projectId, initial }: { projectId: string; initial: string | null }) {
+  const qc = useQueryClient();
+  const [val, setVal] = useState(initial ?? '');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setVal(initial ?? ''); }, [initial]);
+  const dirty = (initial ?? '') !== val.trim();
+  async function save() {
+    setSaving(true);
+    await supabase.from('projects').update({ deadline: val || null }).eq('id', projectId);
+    setSaving(false);
+    qc.invalidateQueries({ queryKey: ['project', projectId] });
+    qc.invalidateQueries({ queryKey: ['projects'] });
+  }
+  return (
+    <div className="flex justify-between items-center gap-2">
+      <dt style={{ color: 'var(--text-muted)' }}>Deadline</dt>
+      <dd className="flex items-center gap-1">
+        <input
+          type="date"
+          className="input"
+          style={{ height: 28, fontSize: 13 }}
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+        />
+        {dirty ? (
+          <button
+            type="button"
+            className="chip"
+            style={{ color: 'var(--brand-text)', fontSize: 11 }}
+            disabled={saving}
+            onClick={save}
+          >
+            {saving ? '…' : '✓'}
+          </button>
+        ) : null}
+      </dd>
+    </div>
+  );
 }
 
 // PRD §UX — inline admin editor for project name (click pencil → input → ✓)
