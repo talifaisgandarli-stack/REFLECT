@@ -15,6 +15,7 @@ import { CancelTaskModal } from '@/components/CancelTaskModal';
 import { TaskCommentsModal } from '@/components/TaskCommentsModal';
 import { TaskEditModal } from '@/components/TaskEditModal';
 import { downloadCsv } from '@/lib/csv';
+import { toast } from '@/components/Toast';
 
 // US-TASK-06 — deadline-based groups for personal view
 const todayStr = new Date().toISOString().slice(0, 10);
@@ -118,11 +119,14 @@ export function TasksPage() {
         .update({ archived_at: new Date().toISOString() })
         .in('id', ids);
       if (error) throw error;
+      return ids.length;
     },
-    onSuccess: () => {
+    onSuccess: (count) => {
       qc.invalidateQueries({ queryKey: ['tasks'] });
       exitBulkMode();
+      if (count) toast.success(`${count} tapşırıq arxivləndi`);
     },
+    onError: (e) => toast.error((e as Error).message),
   });
 
   const bulkReassign = useMutation({

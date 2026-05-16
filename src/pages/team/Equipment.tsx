@@ -107,6 +107,14 @@ export function EquipmentPage() {
 
   const profileMap = Object.fromEntries((profiles.data ?? []).map((p) => [p.id, p.full_name ?? p.id]));
 
+  // PRD §UX — availability filter (Hamısı / Boş / Tapşırılıb)
+  const [availability, setAvailability] = useState<'all' | 'available' | 'assigned'>('all');
+  const filteredEquipment = (equipment.data ?? []).filter((e) => {
+    if (availability === 'all') return true;
+    if (availability === 'available') return !e.assigned_to;
+    return !!e.assigned_to;
+  });
+
   return (
     <>
       <PageHead
@@ -132,6 +140,66 @@ export function EquipmentPage() {
           }
         />
       ) : (
+        <>
+          {/* PRD §8.7 — condition breakdown chips (simple distribution view) */}
+          {(() => {
+            const buckets = new Map<string, number>();
+            for (const e of equipment.data ?? []) {
+              const c = (e.condition as string) ?? 'naməlum';
+              buckets.set(c, (buckets.get(c) ?? 0) + 1);
+            }
+            const total = (equipment.data ?? []).length;
+            return (
+              <div className="card mb-4 flex items-center gap-3 flex-wrap">
+                <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Vəziyyət:</span>
+                {Array.from(buckets.entries()).map(([k, v]) => {
+                  const pct = Math.round((v / total) * 100);
+                  const color =
+                    k === 'good' ? 'var(--success-deep, #16794a)'
+                    : k === 'fair' ? '#c47d00'
+                    : k === 'broken' ? 'var(--error-deep, #b3261e)'
+                    : 'var(--text-muted)';
+                  return (
+                    <span
+                      key={k}
+                      className="chip"
+                      style={{
+                        background: 'var(--surface-mist)',
+                        color,
+                        fontSize: 12,
+                      }}
+                    >
+                      {k} · {v} ({pct}%)
+                    </span>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
+          {/* PRD §UX — availability filter chips */}
+          <div className="flex gap-2 mb-3">
+            {([
+              { k: 'all', label: 'Hamısı' },
+              { k: 'available', label: 'Boş' },
+              { k: 'assigned', label: 'Tapşırılıb' },
+            ] as const).map((f) => (
+              <button
+                key={f.k}
+                type="button"
+                className="chip"
+                style={{
+                  background: availability === f.k ? 'var(--brand-action)' : 'var(--surface-mist)',
+                  color: availability === f.k ? 'var(--ink)' : 'var(--text-muted)',
+                  fontWeight: availability === f.k ? 600 : 400,
+                }}
+                onClick={() => setAvailability(f.k)}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
         <div className="card overflow-x-auto">
           <table className="w-full text-body">
             <thead>
@@ -142,7 +210,7 @@ export function EquipmentPage() {
               </tr>
             </thead>
             <tbody>
-              {(equipment.data ?? []).map((e) => (
+              {filteredEquipment.map((e) => (
                 <tr key={e.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
                   <td className="py-3 px-3 font-medium">{e.name}</td>
                   <td className="py-3 px-3">{e.kind ?? '—'}</td>
@@ -184,6 +252,7 @@ export function EquipmentPage() {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {/* Assign / history panel */}

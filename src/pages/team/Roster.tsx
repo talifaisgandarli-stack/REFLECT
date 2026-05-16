@@ -190,7 +190,7 @@ export function TeamRosterPage() {
                   <div className="text-meta truncate" style={{ color: 'var(--text-muted)' }}>
                     {p.role?.name ?? '—'}
                   </div>
-                  {/* Workload + equipment row */}
+                  {/* Workload + equipment row + capacity micro-bar */}
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
                     <span
                       className="text-meta rounded-full px-2 py-0.5"
@@ -199,6 +199,21 @@ export function TeamRosterPage() {
                     >
                       {wlChip.label} · {taskCount} tapşırıq
                     </span>
+                    {/* Capacity indicator: 8 tasks = 100% */}
+                    <div
+                      className="h-1.5 rounded-full"
+                      style={{ width: 60, background: 'var(--line-soft)' }}
+                      title={`${Math.min(100, Math.round((taskCount / 8) * 100))}% kapasitə`}
+                    >
+                      <div
+                        style={{
+                          width: `${Math.min(100, (taskCount / 8) * 100)}%`,
+                          height: '100%',
+                          background: wlChip.color,
+                          borderRadius: 999,
+                        }}
+                      />
+                    </div>
                     {eqCount > 0 ? (
                       <span
                         className="text-meta"

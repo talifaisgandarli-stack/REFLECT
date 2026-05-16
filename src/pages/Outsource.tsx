@@ -50,6 +50,51 @@ export function OutsourcePage() {
         title="Podrat İşləri"
         actions={isAdmin ? <button className="btn-primary" onClick={() => setCreateOpen(true)}>+ Yeni</button> : null}
       />
+      {/* PRD §REQ-FIN-07 — admin spend breakdown by responsible person */}
+      {isAdmin && (q.data ?? []).length > 0 ? (
+        <div className="card mb-4">
+          <h3 className="text-h3 mb-2">Məsul şəxslər üzrə xərc</h3>
+          {(() => {
+            // Aggregate amounts per responsible_user_id
+            const buckets = new Map<string, { count: number; total: number; paid: number }>();
+            for (const row of q.data as Array<{ responsible_user_id?: string | null; amount?: number; paid_at?: string | null }>) {
+              const key = row.responsible_user_id ?? 'unassigned';
+              const cur = buckets.get(key) ?? { count: 0, total: 0, paid: 0 };
+              cur.count += 1;
+              cur.total += Number(row.amount ?? 0);
+              if (row.paid_at) cur.paid += Number(row.amount ?? 0);
+              buckets.set(key, cur);
+            }
+            const rows = Array.from(buckets.entries()).sort((a, b) => b[1].total - a[1].total);
+            const max = Math.max(1, ...rows.map(([, v]) => v.total));
+            return (
+              <ul className="space-y-1.5">
+                {rows.slice(0, 8).map(([id, v]) => (
+                  <li key={id} className="flex items-center gap-3 text-meta">
+                    <span className="w-32 shrink-0 truncate" style={{ color: 'var(--text-muted)' }}>
+                      {id === 'unassigned' ? '— təyin edilməyib —' : id.slice(0, 8)}
+                    </span>
+                    <div className="flex-1 h-4 rounded-full" style={{ background: 'var(--line-soft)' }}>
+                      <div
+                        style={{
+                          width: `${(v.total / max) * 100}%`,
+                          height: '100%',
+                          background: 'var(--brand-action)',
+                          borderRadius: 999,
+                        }}
+                      />
+                    </div>
+                    <span className="w-32 text-right" style={{ color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
+                      {v.total.toLocaleString('az-AZ')} ({v.count})
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            );
+          })()}
+        </div>
+      ) : null}
+
       {(q.data ?? []).length === 0 ? (
         <EmptyState
           title="Podrat işi yoxdur"

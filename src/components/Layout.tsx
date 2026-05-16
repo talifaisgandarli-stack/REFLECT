@@ -20,6 +20,12 @@ export function Layout() {
   useRealtimeSync(session?.userId);
   usePresenceHeartbeat(session?.userId);
 
+  // PRD §UX — smooth scroll-to-top on route change so long-scrolled pages
+  // don't leave the user mid-page after navigation.
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [location.pathname]);
+
   // PRD §6.3 — Cmd+N is "context-aware": derive defaultProjectId when on a
   // project detail route so the new task lands in the right project.
   const projectIdMatch = location.pathname.match(/^\/layihelər\/([^/]+)/);
@@ -81,8 +87,12 @@ export function Layout() {
 
   return (
     <div className="flex min-h-screen">
+      {/* PRD §6.6 a11y — keyboard skip link */}
+      <a href="#main-content" className="skip-link">
+        Əsas məzmuna keç
+      </a>
       <Sidebar />
-      <main className="flex-1 px-4 sm:px-6 lg:px-10 py-6 max-w-[1600px] mx-auto w-full">
+      <main id="main-content" className="flex-1 px-4 sm:px-6 lg:px-10 py-6 max-w-[1600px] mx-auto w-full">
         {session ? (
           <div className="flex items-center justify-between mb-2 gap-3">
             <MobileNavToggle />

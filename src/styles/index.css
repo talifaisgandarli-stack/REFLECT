@@ -224,6 +224,56 @@
     color: var(--ink);
     font-weight: 600;
   }
+
+  /* Sticky table headers — for long admin tables */
+  .table-sticky thead th {
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+    z-index: 1;
+    box-shadow: inset 0 -1px 0 var(--line);
+  }
+
+  /* Mobile horizontal-scroll affordance on the task kanban: a soft right
+     edge fade hints there's more content off-screen. */
+  @media (max-width: 768px) {
+    .kanban-scroll-hint {
+      position: relative;
+    }
+    .kanban-scroll-hint::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 24px;
+      background: linear-gradient(to left, var(--canvas), transparent);
+      pointer-events: none;
+    }
+  }
+
+  /* PRD §6.6 — visible focus rings on all interactive elements */
+  *:focus-visible {
+    outline: 2px solid var(--brand-action);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Skip-to-content link (a11y) */
+  .skip-link {
+    position: absolute;
+    left: -9999px;
+    top: 8px;
+    z-index: 100;
+    background: var(--ink);
+    color: var(--brand-action);
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+  }
+  .skip-link:focus {
+    left: 8px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

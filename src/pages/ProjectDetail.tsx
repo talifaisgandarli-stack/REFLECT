@@ -17,6 +17,7 @@ import { ProjectPnL } from '@/components/ProjectPnL';
 import { TaskCreateModal } from '@/components/TaskCreateModal';
 import { supabase } from '@/lib/supabase';
 import { relativeTime } from '@/lib/format';
+import { fileSizeError } from '@/lib/validation';
 import { TASK_STATUS_LABEL, TASK_STATUS_ORDER } from '@/lib/labels';
 import type { TaskStatus } from '@/types/db';
 
@@ -371,6 +372,9 @@ export function ProjectDetailPage() {
       {/* TASKS */}
       {tab === 'Tasks' ? (
         <div className="card">
+          {/* PRD §REQ-PROJ — burndown summary: open vs done over time */}
+          {tasks.length >= 3 ? <TaskBurndown tasks={tasks} /> : null}
+
           <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
             <select
               className="input"
@@ -683,7 +687,8 @@ function AddDocumentButton({ projectId, onAdded }: { projectId: string; onAdded:
       let storagePath: string | null = null;
       // Upload to Supabase Storage when a file is selected
       if (file) {
-        if (file.size > 25 * 1024 * 1024) throw new Error('Fayl 25 MB-dən böyük ola bilməz');
+        const sizeErr = fileSizeError(file, 25);
+        if (sizeErr) throw new Error(sizeErr);
         const ext = (file.name.split('.').pop() ?? 'bin').toLowerCase();
         const path = `${projectId}/${Date.now()}.${ext}`;
         const { error: upErr } = await supabase.storage
@@ -884,12 +889,28 @@ function DocumentRow({
   return (
     <li className="py-3">
       <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-body font-medium truncate">{doc.title}</div>
-          <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-            {doc.category ?? '—'} · {doc.source}
-            {doc.share_token ? ' · publik link' : ''}
-            {sharedCount > 0 ? ` · ${sharedCount} komanda üzvü ilə` : ''}
+        <div className="min-w-0 flex items-center gap-2">
+          {/* PRD §UX — file icon by extension */}
+          <span style={{ fontSize: 22 }} aria-hidden>
+            {(() => {
+              const ext = (doc.storage_path?.split('.').pop() ?? '').toLowerCase();
+              if (['pdf'].includes(ext)) return '📕';
+              if (['xlsx', 'xls', 'csv'].includes(ext)) return '📊';
+              if (['docx', 'doc'].includes(ext)) return '📄';
+              if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext)) return '🖼';
+              if (['zip', 'rar', '7z'].includes(ext)) return '🗜';
+              if (['dwg', 'dxf'].includes(ext)) return '📐';
+              if (doc.external_link) return '🔗';
+              return '📁';
+            })()}
+          </span>
+          <div className="min-w-0">
+            <div className="text-body font-medium truncate">{doc.title}</div>
+            <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+              {doc.category ?? '—'} · {doc.source}
+              {doc.share_token ? ' · publik link' : ''}
+              {sharedCount > 0 ? ` · ${sharedCount} komanda üzvü ilə` : ''}
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -1311,6 +1332,69 @@ function Row({ k, v }: { k: string; v: string }) {
     <div className="flex justify-between gap-4">
       <dt style={{ color: 'var(--text-muted)' }}>{k}</dt>
       <dd>{v}</dd>
+    </div>
+  );
+}
+
+// PRD §REQ-PROJ — simple burndown: count of open tasks over last 30 days based
+// on created_at + archived_at. Pure-client computation; no extra query.
+function TaskBurndown({ tasks }: { tasks: Array<{ created_at: string; archived_at: string | null; status: string }> }) {
+  const data = (() => {
+    const out: Array<{ day: string; open: number; done: number }> = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 86_400_000);
+      const dayEnd = new Date(d);
+      dayEnd.setHours(23, 59, 59, 999);
+      const cutoff = dayEnd.getTime();
+      let open = 0;
+      let done = 0;
+      for (const t of tasks) {
+        const created = new Date(t.created_at).getTime();
+        if (created > cutoff) continue; // not yet created
+        const archived = t.archived_at ? new Date(t.archived_at).getTime() : null;
+        if (archived && archived <= cutoff) {
+          done++;
+        } else {
+          open++;
+        }
+      }
+      out.push({
+        day: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baku' }).format(d).slice(5),
+        open,
+        done,
+      });
+    }
+    return out;
+  })();
+
+  // Lightweight inline SVG (avoid pulling Recharts here just for two lines)
+  const w = 600;
+  const h = 80;
+  const max = Math.max(1, ...data.map((d) => Math.max(d.open, d.done)));
+  const pt = (n: number, i: number) => `${(i / (data.length - 1)) * w},${h - (n / max) * h}`;
+  return (
+    <div className="mb-3">
+      <div className="flex items-center justify-between mb-1 text-meta" style={{ color: 'var(--text-muted)' }}>
+        <span>Son 30 gün burndown</span>
+        <span>
+          <span style={{ color: 'var(--brand-action)' }}>● Açıq</span>{' '}
+          <span style={{ color: 'var(--success-deep, #16794a)', marginLeft: 8 }}>● Tamamlandı</span>
+        </span>
+      </div>
+      <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ width: '100%', height: 60 }}>
+        <polyline
+          fill="none"
+          stroke="var(--brand-action)"
+          strokeWidth={2}
+          points={data.map((d, i) => pt(d.open, i)).join(' ')}
+        />
+        <polyline
+          fill="none"
+          stroke="var(--success-deep, #16794a)"
+          strokeWidth={2}
+          points={data.map((d, i) => pt(d.done, i)).join(' ')}
+        />
+      </svg>
     </div>
   );
 }

@@ -537,6 +537,28 @@ export function MiraiPage() {
             ↓ İxrac
           </button>
         ) : null}
+        {/* PRD §7 — clear conversation (keep persona) */}
+        {msgs.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm('Söhbəti təmizləmək istədiyinizdən əminsiniz? (söhbət DB-də qalır)')) {
+                setMsgs([]);
+                setConversationId(null);
+                setError(null);
+              }
+            }}
+            className="chip"
+            title="Söhbəti təmizlə (yeni mesajdan başla)"
+            style={{
+              background: 'rgba(255,255,255,0.06)',
+              color: 'var(--canvas)',
+              border: '1px solid rgba(255,255,255,0.08)',
+            }}
+          >
+            🧹 Təmizlə
+          </button>
+        ) : null}
       </div>
 
       {/* Conversation history dropdown */}

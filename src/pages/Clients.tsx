@@ -23,6 +23,7 @@ import type { Client, ClientPipelineStage, InteractionType } from '@/types/db';
 import { formatAZN, relativeTime } from '@/lib/format';
 import { useAuth } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
+import { isValidEmail, isValidPhone, roundAzn } from '@/lib/validation';
 
 type DragPayload = { id: string; from: ClientPipelineStage };
 type LostPrompt = { id: string; from: ClientPipelineStage };
@@ -96,6 +97,46 @@ export function ClientsPage() {
           </>
         }
       />
+
+      {/* PRD §REQ-CRM — funnel: client count per stage (drop-off visual) */}
+      {!isLoading && clients.length > 0 ? (
+        <div className="card mb-4">
+          <h3 className="text-h3 mb-2">Konversiya funel</h3>
+          <div className="space-y-1.5">
+            {(() => {
+              const counts = CLIENT_STAGE_ORDER.map((s) => ({ s, n: grouped[s].length }));
+              const max = Math.max(1, ...counts.map((c) => c.n));
+              return counts.map(({ s, n }) => {
+                const pct = max > 0 ? (n / max) * 100 : 0;
+                const color =
+                  s === 'lost' ? 'var(--error, #c83b3b)'
+                  : s === 'portfolio' ? 'var(--success-deep, #16794a)'
+                  : 'var(--brand-action)';
+                return (
+                  <div key={s} className="flex items-center gap-3 text-meta">
+                    <span className="w-24 shrink-0" style={{ color: 'var(--text-muted)' }}>
+                      {CLIENT_STAGE_LABEL[s]}
+                    </span>
+                    <div className="flex-1 h-5 rounded-full overflow-hidden" style={{ background: 'var(--line-soft)' }}>
+                      <div
+                        style={{
+                          width: `${pct}%`,
+                          height: '100%',
+                          background: color,
+                          transition: 'width 0.3s',
+                        }}
+                      />
+                    </div>
+                    <span className="w-10 text-right" style={{ color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
+                      {n}
+                    </span>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        </div>
+      ) : null}
 
       {/* PRD §REQ-CRM-02 — visual pipeline value per stage (bar chart) */}
       {!isLoading && clients.length > 0 ? (
@@ -291,6 +332,13 @@ function CreateClientModal({ onClose, onCreated }: { onClose: () => void; onCrea
   const create = useMutation({
     mutationFn: async () => {
       if (!name.trim()) throw new Error('Ad tələb olunur');
+      // PRD §9.1 — client-side format validation (server has its own checks)
+      if (email.trim() && !isValidEmail(email.trim())) {
+        throw new Error('Etibarsız email formatı');
+      }
+      if (phone.trim() && !isValidPhone(phone.trim())) {
+        throw new Error('Etibarsız telefon formatı');
+      }
       if (duplicates.length > 0 && !overrideDuplicate) {
         throw new Error('Oxşar müştəri tapıldı — davam etmək üçün təsdiqlə');
       }
@@ -299,7 +347,7 @@ function CreateClientModal({ onClose, onCreated }: { onClose: () => void; onCrea
         company: company.trim() || null,
         email: email.trim() || null,
         phone: phone.trim() || null,
-        expected_value: expectedValue ? Number(expectedValue) : null,
+        expected_value: expectedValue ? roundAzn(expectedValue) : null,
         pipeline_stage: 'lead',
         confidence_pct: 10,
       });

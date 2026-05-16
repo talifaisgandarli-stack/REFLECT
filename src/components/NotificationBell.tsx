@@ -230,8 +230,22 @@ export function NotificationBell() {
                         style={{ background: n.read_at ? 'var(--text-faint)' : 'var(--brand-action)' }}
                       />
                       <div className="min-w-0 flex-1">
-                        <div className="text-ui font-medium" style={{ color: 'var(--text)' }}>
+                        <div className="text-ui font-medium flex items-center gap-2" style={{ color: 'var(--text)' }}>
                           {labelFor(n.kind)}
+                          {/* PRD §6.4 — critical badge for finance alerts */}
+                          {n.kind === 'finance_alert' ? (
+                            <span
+                              className="chip"
+                              style={{
+                                background: 'var(--error-deep, #b3261e)',
+                                color: 'white',
+                                fontSize: 9,
+                                padding: '0 5px',
+                              }}
+                            >
+                              KRİTİK
+                            </span>
+                          ) : null}
                         </div>
                         {bodyFor(n) ? (
                           <div className="text-meta truncate" style={{ color: 'var(--text-soft)' }}>

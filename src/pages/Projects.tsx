@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
@@ -34,13 +34,57 @@ const STATUS_CHIPS: { label: string; value: StatusFilter }[] = [
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function ProjectsPage() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, profile } = useAuth();
   const qc = useQueryClient();
   const { data: projects = [], isLoading } = useProjects();
 
+  // PRD §UX — per-user project favorites
+  const favorites = useQuery({
+    queryKey: ['project-favorites', profile?.id],
+    enabled: !!profile?.id,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('project_favorites')
+        .select('project_id')
+        .eq('user_id', profile!.id);
+      return new Set((data ?? []).map((r) => r.project_id as string));
+    },
+  });
+
+  const toggleFavorite = useMutation({
+    mutationFn: async (projectId: string) => {
+      if (!profile?.id) return;
+      const isFav = favorites.data?.has(projectId);
+      if (isFav) {
+        await supabase
+          .from('project_favorites')
+          .delete()
+          .eq('user_id', profile.id)
+          .eq('project_id', projectId);
+      } else {
+        await supabase
+          .from('project_favorites')
+          .insert({ user_id: profile.id, project_id: projectId });
+      }
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['project-favorites'] }),
+  });
+
   const [showCreate, setShowCreate] = useState(false);
-  const [search, setSearch]         = useState('');
+  // PRD §UX — persist search filter in URL so refresh/share-link preserves it
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [search, setSearch] = useState(searchParams.get('q') ?? '');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (search) next.set('q', search);
+    else next.delete('q');
+    if (next.toString() !== searchParams.toString()) {
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
   // PRD §6.x — bulk archive (admin only). Selection mode is opt-in to keep
   // single-card click-to-open behaviour the default.
   const [bulkMode, setBulkMode] = useState(false);
@@ -333,28 +377,49 @@ export function ProjectsPage() {
                 >
                   {cardInner}
                 </Link>
-                {/* PRD §6.x — admin clone overlay (visible on hover, top-right) */}
-                {isAdmin ? (
+                {/* PRD §UX — favorite star (everyone) + admin clone (admin only) */}
+                <div className="absolute top-2 right-2 flex items-center gap-1">
                   <button
                     type="button"
-                    className="absolute top-2 right-2 chip text-tiny opacity-60 hover:opacity-100"
+                    className="chip text-tiny opacity-60 hover:opacity-100"
                     style={{
                       background: dark ? 'rgba(255,255,255,0.12)' : 'rgba(14,22,17,0.06)',
-                      color: dark ? 'var(--canvas)' : 'var(--ink)',
+                      color: favorites.data?.has(p.id) ? 'var(--brand-action)' : (dark ? 'var(--canvas)' : 'var(--ink)'),
                       fontSize: 10,
                       padding: '2px 6px',
                     }}
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      cloneProject.mutate(p.id);
+                      toggleFavorite.mutate(p.id);
                     }}
-                    title="Layihəni klonla"
-                    disabled={cloneProject.isPending}
+                    title={favorites.data?.has(p.id) ? 'Sevimlilərdən çıxar' : 'Sevimlilərə əlavə et'}
+                    disabled={toggleFavorite.isPending}
                   >
-                    ⎘ Klonla
+                    {favorites.data?.has(p.id) ? '★' : '☆'}
                   </button>
-                ) : null}
+                  {isAdmin ? (
+                    <button
+                      type="button"
+                      className="chip text-tiny opacity-60 hover:opacity-100"
+                      style={{
+                        background: dark ? 'rgba(255,255,255,0.12)' : 'rgba(14,22,17,0.06)',
+                        color: dark ? 'var(--canvas)' : 'var(--ink)',
+                        fontSize: 10,
+                        padding: '2px 6px',
+                      }}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        cloneProject.mutate(p.id);
+                      }}
+                      title="Layihəni klonla"
+                      disabled={cloneProject.isPending}
+                    >
+                      ⎘ Klonla
+                    </button>
+                  ) : null}
+                </div>
               </div>
             );
           })}

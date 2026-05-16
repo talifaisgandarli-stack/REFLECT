@@ -14,6 +14,19 @@ type Props = { projectId: string };
 type Row = { amount: number; occurred_at?: string | null; paid_at?: string | null };
 
 export function ProjectPnL({ projectId }: Props) {
+  // PRD §REQ-FIN-06 — budget vs actual; budget_amount column added in 0048
+  const project = useQuery({
+    queryKey: ['project-budget', projectId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('projects')
+        .select('budget_amount')
+        .eq('id', projectId)
+        .maybeSingle();
+      return data as { budget_amount: number | null } | null;
+    },
+  });
+
   const incomes = useQuery({
     queryKey: ['pnl', 'incomes', projectId],
     queryFn: async () => {
@@ -60,6 +73,9 @@ export function ProjectPnL({ projectId }: Props) {
 
   const loading = incomes.isLoading || expenses.isLoading || outsource.isLoading;
 
+  const budget = project.data?.budget_amount ?? null;
+  const budgetUsedPct = budget && budget > 0 ? Math.round((direct / budget) * 100) : null;
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -71,6 +87,37 @@ export function ProjectPnL({ projectId }: Props) {
           tone={net >= 0 ? 'positive' : 'negative'}
         />
       </div>
+
+      {/* PRD §REQ-FIN-06 — budget vs actual progress bar */}
+      {budget != null ? (
+        <div className="card">
+          <div className="flex items-center justify-between mb-2 text-meta">
+            <span style={{ color: 'var(--text-muted)' }}>Büdcə vs faktiki</span>
+            <span style={{ color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
+              {formatAZN(direct)} / {formatAZN(budget)} ({budgetUsedPct ?? 0}%)
+            </span>
+          </div>
+          <div style={{ height: 8, background: 'var(--line)', borderRadius: 999 }}>
+            <div
+              style={{
+                width: `${Math.min(100, budgetUsedPct ?? 0)}%`,
+                height: '100%',
+                background:
+                  (budgetUsedPct ?? 0) > 100 ? 'var(--error-deep, #b3261e)'
+                  : (budgetUsedPct ?? 0) > 80 ? '#c47d00'
+                  : 'var(--brand-action)',
+                borderRadius: 999,
+                transition: 'width 0.3s',
+              }}
+            />
+          </div>
+          {(budgetUsedPct ?? 0) > 100 ? (
+            <p className="text-meta mt-2" style={{ color: 'var(--error-deep)' }}>
+              ⚠ Büdcə {(budgetUsedPct ?? 0) - 100}% aşılıb.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="card">
         <h3 className="text-h3 mb-3">Detallı bölgü</h3>
