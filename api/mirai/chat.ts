@@ -366,10 +366,25 @@ async function handler(req: Request) {
       message?: string;
       persona?: PersonaKey;
       conversation_id?: string;
+      // PRD §7 — optional client-supplied recent turn context (last ~8 msgs)
+      recent_messages?: Array<{ role: 'user' | 'assistant'; content: string }>;
     };
     const message = (body.message ?? '').trim();
     if (!message) throw new HttpError(400, 'Missing message');
     if (message.length > 4_000) throw new HttpError(400, 'Message too long (>4k chars)');
+
+    // Sanitize and cap incoming history: max 16 entries, max 4k chars each.
+    const priorMessages: Array<{ role: 'user' | 'assistant'; content: string }> = Array.isArray(body.recent_messages)
+      ? body.recent_messages
+          .slice(-16)
+          .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+          .map((m) => ({ role: m.role, content: m.content.slice(0, 4_000) }))
+      : [];
+    // Drop the trailing user message if it's the same as `message` so we don't
+    // duplicate it when the array gets re-built below.
+    const trimmedPrior = priorMessages.length && priorMessages[priorMessages.length - 1].role === 'user' && priorMessages[priorMessages.length - 1].content === message
+      ? priorMessages.slice(0, -1)
+      : priorMessages;
 
     const personaKey: PersonaKey =
       body.persona && PERSONAS[body.persona as PersonaKey] ? (body.persona as PersonaKey) : 'general';
@@ -484,6 +499,7 @@ async function handler(req: Request) {
         client,
         systemPrompt,
         message,
+        priorMessages: trimmedPrior,
         sb,
         user,
         usage,
@@ -498,7 +514,10 @@ async function handler(req: Request) {
     }
 
     // --- Non-streaming branch (with tool use) ----------------------------
-    const messages: MessageParam[] = [{ role: 'user', content: message }];
+    const messages: MessageParam[] = [
+      ...trimmedPrior.map((m): MessageParam => ({ role: m.role, content: m.content })),
+      { role: 'user', content: message },
+    ];
     const toolsUsed: string[] = [];
     let finalText = '';
     let totalIn = 0;
@@ -665,6 +684,8 @@ async function runStreaming(args: {
   client: Anthropic;
   systemPrompt: string;
   message: string;
+  /** PRD §7 — last N=8 turns from the client so MIRAI sees prior context */
+  priorMessages: Array<{ role: 'user' | 'assistant'; content: string }>;
   sb: ReturnType<typeof admin>;
   user: { id: string; isAdmin: boolean; isCreator: boolean; token: string };
   usage: { tokens_in: number; tokens_out: number; cost_usd: number } | null;
@@ -695,7 +716,10 @@ async function runStreaming(args: {
           model: MODEL,
           max_tokens: MAX_OUTPUT_TOKENS,
           system: args.systemPrompt,
-          messages: [{ role: 'user', content: args.message }],
+          messages: [
+            ...args.priorMessages.map((m) => ({ role: m.role, content: m.content })),
+            { role: 'user', content: args.message },
+          ],
         });
 
         for await (const event of stream) {

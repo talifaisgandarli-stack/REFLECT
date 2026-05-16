@@ -30,6 +30,22 @@ function labelFor(kind: string): string {
   return (KIND_LABEL as Record<string, string>)[kind] ?? KIND_LABEL.fallback;
 }
 
+// PRD §6.4 — bucket a timestamp into a human-readable date section label
+// (Bu gün / Dünən / Bu həftə / Əvvəl). Used to inject headers into the list.
+function dateBucket(iso: string): string {
+  const d = new Date(iso);
+  const tz = 'Asia/Baku';
+  const todayKey = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
+  const eventKey = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(d);
+  if (eventKey === todayKey) return 'Bu gün';
+  const yesterday = new Date(Date.now() - 86_400_000);
+  const yKey = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(yesterday);
+  if (eventKey === yKey) return 'Dünən';
+  const ageDays = (Date.now() - d.getTime()) / 86_400_000;
+  if (ageDays <= 7) return 'Bu həftə';
+  return 'Əvvəl';
+}
+
 function bodyFor(n: NotificationRow): string {
   const p = n.payload ?? {};
   if (typeof p.title === 'string') return p.title;
@@ -166,11 +182,37 @@ export function NotificationBell() {
           ) : null}
           {data.length > 0 ? (
             <ul>
-              {groupNotifications(data).map((item) => {
-                if (item.kind === 'single') {
+              {(() => {
+                // PRD §6.4 — emit date-bucket headers (Bu gün / Dünən / …)
+                // interleaved with the grouped items.
+                const items = groupNotifications(data);
+                const out: React.ReactNode[] = [];
+                let lastBucket = '';
+                for (const item of items) {
+                  const first = item.kind === 'single' ? item.row : item.rows[0];
+                  const bucket = dateBucket(first.created_at);
+                  if (bucket !== lastBucket) {
+                    out.push(
+                      <li
+                        key={`hdr-${bucket}-${first.id}`}
+                        className="px-4 pt-3 pb-1 text-meta uppercase"
+                        style={{
+                          color: 'var(--text-muted)',
+                          fontSize: 10,
+                          letterSpacing: '0.08em',
+                          background: 'var(--surface-mist)',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {bucket}
+                      </li>,
+                    );
+                    lastBucket = bucket;
+                  }
+                  if (item.kind === 'single') {
                   const n = item.row;
                   const isSnoozeOpen = snoozeOpenId === n.id;
-                  return (
+                  out.push(
                     <li
                       key={n.id}
                       className="px-4 py-3 flex gap-3 cursor-pointer relative"
@@ -251,41 +293,43 @@ export function NotificationBell() {
                           ))}
                         </div>
                       ) : null}
-                    </li>
+                    </li>,
+                  );
+                } else {
+                  // Grouped: one row representing N same-kind unreads.
+                  const groupFirst = item.rows[0];
+                  out.push(
+                    <li
+                      key={`group:${groupFirst.id}`}
+                      className="px-4 py-3 flex gap-3 cursor-pointer"
+                      style={{ borderBottom: '1px solid var(--line-soft)', background: 'var(--brand-mist)' }}
+                      onClick={() => {
+                        for (const r of item.rows) markRead.mutate({ id: r.id });
+                      }}
+                    >
+                      <span
+                        aria-hidden
+                        className="mt-1 w-2 h-2 rounded-full shrink-0"
+                        style={{ background: 'var(--brand-action)' }}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-ui font-medium" style={{ color: 'var(--text)' }}>
+                          {item.count} yeni {labelFor(item.kindLabel).toLowerCase()}
+                        </div>
+                        <time
+                          dateTime={groupFirst.created_at}
+                          className="text-tiny"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          {relativeTime(groupFirst.created_at)}
+                        </time>
+                      </div>
+                    </li>,
                   );
                 }
-                // Grouped: one row representing N same-kind unreads.
-                const first = item.rows[0];
-                return (
-                  <li
-                    key={`group:${first.id}`}
-                    className="px-4 py-3 flex gap-3 cursor-pointer"
-                    style={{ borderBottom: '1px solid var(--line-soft)', background: 'var(--brand-mist)' }}
-                    onClick={() => {
-                      // Mark every notification in the cluster as read.
-                      for (const r of item.rows) markRead.mutate({ id: r.id });
-                    }}
-                  >
-                    <span
-                      aria-hidden
-                      className="mt-1 w-2 h-2 rounded-full shrink-0"
-                      style={{ background: 'var(--brand-action)' }}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-ui font-medium" style={{ color: 'var(--text)' }}>
-                        {item.count} yeni {labelFor(item.kindLabel).toLowerCase()}
-                      </div>
-                      <time
-                        dateTime={first.created_at}
-                        className="text-tiny"
-                        style={{ color: 'var(--text-muted)' }}
-                      >
-                        {relativeTime(first.created_at)}
-                      </time>
-                    </div>
-                  </li>
-                );
-              })}
+                }
+                return out;
+              })()}
             </ul>
           ) : null}
           <footer

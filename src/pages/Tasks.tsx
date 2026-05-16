@@ -215,11 +215,65 @@ export function TasksPage() {
     );
   }
 
+  // PRD §6.x — task templates (admin defines, anyone instantiates)
+  const templates = useQuery({
+    queryKey: ['task-templates'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('task_templates')
+        .select('id, name, title, description, estimated_duration, duration_unit, risk_buffer_pct, labels, is_expertise_subtask')
+        .order('name', { ascending: true });
+      return (data ?? []) as Array<{
+        id: string;
+        name: string;
+        title: string;
+        description: string | null;
+        estimated_duration: number | null;
+        duration_unit: string | null;
+        risk_buffer_pct: number;
+        labels: string[] | null;
+        is_expertise_subtask: boolean;
+      }>;
+    },
+  });
+
+  const createFromTemplate = useMutation({
+    mutationFn: async (templateId: string) => {
+      const tpl = templates.data?.find((t) => t.id === templateId);
+      if (!tpl) throw new Error('Şablon tapılmadı');
+      const { error } = await supabase.from('tasks').insert({
+        title: tpl.title,
+        description: tpl.description,
+        status: 'queued',
+        estimated_duration: tpl.estimated_duration,
+        duration_unit: tpl.duration_unit,
+        risk_buffer_pct: tpl.risk_buffer_pct,
+        labels: tpl.labels ?? [],
+        is_expertise_subtask: tpl.is_expertise_subtask,
+        assignee_ids: profile?.id ? [profile.id] : [],
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  });
+
+  // PRD §6.x — label filter (chip row above the kanban)
+  const [labelFilter, setLabelFilter] = useState<string | null>(null);
+  const allLabels = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of tasks) for (const l of t.labels ?? []) set.add(l);
+    return Array.from(set).sort();
+  }, [tasks]);
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return tasks;
-    const q = search.toLowerCase();
-    return tasks.filter((t) => t.title.toLowerCase().includes(q));
-  }, [tasks, search]);
+    let out = tasks;
+    if (labelFilter) out = out.filter((t) => (t.labels ?? []).includes(labelFilter));
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      out = out.filter((t) => t.title.toLowerCase().includes(q));
+    }
+    return out;
+  }, [tasks, search, labelFilter]);
 
   const grouped = useMemo(() => {
     const map: Record<TaskStatus, Task[]> = {
@@ -296,6 +350,25 @@ export function TasksPage() {
             >
               ↓ CSV
             </button>
+            {/* PRD §6.x — Şablondan yarat (visible only when templates exist) */}
+            {(templates.data ?? []).length > 0 ? (
+              <select
+                className="input max-w-[200px]"
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) {
+                    createFromTemplate.mutate(e.target.value);
+                    e.target.value = '';
+                  }
+                }}
+                disabled={createFromTemplate.isPending}
+              >
+                <option value="">Şablondan yarat…</option>
+                {(templates.data ?? []).map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            ) : null}
             <button className="btn-primary" onClick={() => setCreating(true)}>
               + Yeni
             </button>
@@ -303,7 +376,7 @@ export function TasksPage() {
         }
       />
 
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-2 mb-4 flex-wrap">
         {(['board', 'table'] as const).map((v) => (
           <button
             key={v}
@@ -313,6 +386,27 @@ export function TasksPage() {
             {v === 'board' ? 'Lövhə' : 'Cədvəl'}
           </button>
         ))}
+        {/* PRD §6.x — label filter chips */}
+        {allLabels.length > 0 ? (
+          <>
+            <span style={{ width: 1, background: 'var(--line)', margin: '0 4px' }} />
+            <button
+              className={`chip ${labelFilter === null ? 'chip-brand' : ''}`}
+              onClick={() => setLabelFilter(null)}
+            >
+              Bütün etiketlər
+            </button>
+            {allLabels.map((l) => (
+              <button
+                key={l}
+                className={`chip ${labelFilter === l ? 'chip-brand' : ''}`}
+                onClick={() => setLabelFilter(labelFilter === l ? null : l)}
+              >
+                # {l}
+              </button>
+            ))}
+          </>
+        ) : null}
       </div>
 
       {isLoading ? (

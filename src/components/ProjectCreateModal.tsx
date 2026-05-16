@@ -65,8 +65,15 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
         resolvedClientId = newClient.id;
       }
 
+      // PRD §REQ-PROJ — date sanity checks
       if (startDate && deadline && deadline < startDate) {
         throw new Error('Bitmə tarixi başlama tarixindən əvvəl ola bilməz.');
+      }
+      if (requiresExpertise && expertiseDeadline && deadline && expertiseDeadline > deadline) {
+        throw new Error('Ekspertiza tarixi ümumi bitmə tarixindən sonra ola bilməz.');
+      }
+      if (requiresExpertise && expertiseDeadline && startDate && expertiseDeadline < startDate) {
+        throw new Error('Ekspertiza tarixi başlama tarixindən əvvəl ola bilməz.');
       }
 
       const payload = {

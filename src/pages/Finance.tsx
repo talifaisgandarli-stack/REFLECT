@@ -3,7 +3,7 @@ import { PageHead } from '@/components/PageHead';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { formatAZN, formatDate, bakuMonthKey, bakuCurrentMonthRange } from '@/lib/format';
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, ComposedChart, Line, Area, CartesianGrid } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, ComposedChart, Line, Area, CartesianGrid, Cell } from 'recharts';
 import { IncomeExpenseModal, type FinanceKind } from '@/components/IncomeExpenseModal';
 import { MarkPaidModal } from '@/components/MarkPaidModal';
 import { InvoiceFromTemplateModal } from '@/components/InvoiceFromTemplateModal';
@@ -141,6 +141,11 @@ export function FinancePage() {
       ) : null}
 
       {tab === 'Debitor' ? (
+        <>
+          {/* PRD §REQ-FIN — receivable aging chart (0-30 / 31-60 / 61-90 / 90+) */}
+          {(receivables.data ?? []).length > 0 ? (
+            <ReceivableAgingChart receivables={receivables.data ?? []} />
+          ) : null}
         <table className="w-full text-body">
           <thead>
             <tr style={{ borderBottom: '1px solid var(--line)' }}>
@@ -234,6 +239,7 @@ export function FinancePage() {
             ) : null}
           </tbody>
         </table>
+        </>
       ) : null}
 
       {tab === 'Forecast' ? (
@@ -315,6 +321,90 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
 // PRD §REQ-FIN-08 — visualize MIRAI cash forecast as a confidence band.
 // Plots projected_balance as a line with a low/high shaded area so the
 // uncertainty range is immediately legible (vs. raw text was earlier).
+// PRD §REQ-FIN — receivable aging breakdown bar chart (0-30/31-60/61-90/90+)
+function ReceivableAgingChart({
+  receivables,
+}: {
+  receivables: Array<{
+    id: string;
+    amount: number;
+    paid_amount: number;
+    due_at: string | null;
+    status: string;
+  }>;
+}) {
+  const today = Date.now();
+  const buckets = [
+    { key: 'current', label: 'Gələcək', max: 0, color: 'var(--success-deep, #16794a)' },
+    { key: '0-30', label: '0–30 gün', max: 30, color: 'var(--brand-action, #adfb49)' },
+    { key: '31-60', label: '31–60 gün', max: 60, color: '#c47d00' },
+    { key: '61-90', label: '61–90 gün', max: 90, color: '#d97706' },
+    { key: '90+', label: '90+ gün', max: Infinity, color: 'var(--error-deep, #b3261e)' },
+  ];
+
+  const data = buckets.map((b) => ({ label: b.label, amount: 0, count: 0, color: b.color }));
+
+  for (const r of receivables) {
+    if (r.status === 'paid') continue;
+    const remaining = Number(r.amount) - Number(r.paid_amount);
+    if (remaining <= 0) continue;
+    if (!r.due_at) continue;
+    const daysOverdue = (today - new Date(r.due_at).getTime()) / 86_400_000;
+    let idx: number;
+    if (daysOverdue < 0) idx = 0; // not yet due
+    else if (daysOverdue <= 30) idx = 1;
+    else if (daysOverdue <= 60) idx = 2;
+    else if (daysOverdue <= 90) idx = 3;
+    else idx = 4;
+    data[idx].amount += remaining;
+    data[idx].count += 1;
+  }
+
+  const totalOpen = data.reduce((s, d) => s + d.amount, 0);
+  if (totalOpen === 0) return null;
+
+  return (
+    <div className="card mb-4">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-h3">Debitor yaşı</h3>
+        <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+          Cəmi açıq: {formatAZN(totalOpen)}
+        </span>
+      </div>
+      <div style={{ width: '100%', height: 180 }}>
+        <ResponsiveContainer>
+          <BarChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+            <XAxis dataKey="label" stroke="var(--text-muted)" fontSize={11} />
+            <YAxis
+              stroke="var(--text-muted)"
+              fontSize={11}
+              tickFormatter={(v) => `${(Number(v) / 1000).toFixed(0)}k`}
+            />
+            <Tooltip
+              cursor={{ fill: 'var(--brand-glow-sm)' }}
+              contentStyle={{
+                background: 'var(--ink)',
+                border: '1px solid var(--line)',
+                borderRadius: 8,
+                color: 'var(--canvas)',
+              }}
+              formatter={(value, _name, item) => {
+                const count = (item?.payload as { count?: number } | undefined)?.count ?? 0;
+                return [`${formatAZN(Number(value))} · ${count} debitor`, 'Açıq qalıq'];
+              }}
+            />
+            <Bar dataKey="amount" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+              {data.map((d, i) => (
+                <Cell key={i} fill={d.color} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
 function ForecastChart({
   forecasts,
 }: {

@@ -56,6 +56,8 @@ const KIND_TITLE: Record<string, string> = {
   salary_changed: 'Maaş cədvəliniz yeniləndi',
   // PRD §7.8 + §10.4 — MIRAI CMO feed posts awaiting admin moderation
   mirai_feed: 'MIRAI yeni məzmun əlavə etdi',
+  // PRD §8.2 — meeting reminders fired by api/cron/meeting-reminders.ts
+  meeting_reminder: 'Görüş başlamaq üzrədir',
 };
 
 function bodyFor(n: NotifRow): string {

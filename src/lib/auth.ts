@@ -54,10 +54,23 @@ export function useAuthBootstrap() {
       else setHydrated(true);
     });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       const uid = session?.user?.id ?? null;
       setSession(uid ? { userId: uid } : null);
-      if (uid) loadProfile(uid);
+      if (uid) {
+        loadProfile(uid);
+        // PRD §9.4 — record login events into audit_log for forensics.
+        // Only on SIGNED_IN to avoid double-counting token refreshes.
+        if (event === 'SIGNED_IN') {
+          void supabase.from('audit_log').insert({
+            actor_id: uid,
+            action: 'login',
+            resource: 'auth',
+            ip: null,
+            user_agent: navigator.userAgent,
+          });
+        }
+      }
       else {
         setProfile(null, null);
         setSentryUser(null);

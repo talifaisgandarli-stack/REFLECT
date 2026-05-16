@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import { NotificationPreferencesPage } from './NotificationPreferences';
@@ -1045,6 +1046,35 @@ function MiraiCostDashboard() {
     },
   });
 
+  // PRD §9.4 — 30-day daily MIRAI cost trend
+  const dailyTrend = useQuery({
+    queryKey: ['mirai-cost-daily', period],
+    enabled: isAdmin,
+    queryFn: async () => {
+      const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
+      const { data: msgs } = await supabase
+        .from('mirai_messages')
+        .select('cost_usd, created_at')
+        .gte('created_at', since)
+        .gt('cost_usd', 0);
+      // Bucket by Asia/Baku date
+      const buckets = new Map<string, number>();
+      for (const m of msgs ?? []) {
+        const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baku' })
+          .format(new Date(m.created_at as string));
+        buckets.set(day, (buckets.get(day) ?? 0) + (m.cost_usd ?? 0));
+      }
+      // Fill missing days with 0 so the line is continuous
+      const out: Array<{ day: string; cost: number }> = [];
+      for (let i = 29; i >= 0; i--) {
+        const d = new Date(Date.now() - i * 86_400_000);
+        const key = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baku' }).format(d);
+        out.push({ day: key.slice(5), cost: Number((buckets.get(key) ?? 0).toFixed(4)) });
+      }
+      return out;
+    },
+  });
+
   const personaBreakdown = useQuery({
     queryKey: ['mirai-cost-personas', period],
     enabled: isAdmin,
@@ -1110,6 +1140,38 @@ function MiraiCostDashboard() {
           </div>
         </div>
       </div>
+
+      {/* 30-day daily cost trend */}
+      {(dailyTrend.data ?? []).length > 0 ? (
+        <div className="mb-6">
+          <h3 className="text-h3 mb-2">Son 30 günlük xərc trendi</h3>
+          <div style={{ width: '100%', height: 180 }}>
+            <ResponsiveContainer>
+              <LineChart data={dailyTrend.data ?? []} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                <XAxis dataKey="day" stroke="var(--text-muted)" fontSize={10} interval={6} />
+                <YAxis stroke="var(--text-muted)" fontSize={10} tickFormatter={(v) => `$${Number(v).toFixed(2)}`} />
+                <RechartsTooltip
+                  contentStyle={{
+                    background: 'var(--ink)',
+                    border: '1px solid var(--line)',
+                    borderRadius: 8,
+                    color: 'var(--canvas)',
+                  }}
+                  formatter={(v) => [`$${Number(v).toFixed(4)}`, 'Gündəlik xərc']}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="cost"
+                  stroke="var(--brand-action)"
+                  strokeWidth={2}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      ) : null}
 
       {/* Per-user table */}
       <h3 className="text-h3 mb-2">İstifadəçi üzrə</h3>

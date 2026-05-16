@@ -12,6 +12,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { useProjects } from '@/lib/hooks';
+import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 import { useFocusTrap } from '@/lib/a11y';
 import type { Task, TaskStatus } from '@/types/db';
 
@@ -85,6 +86,10 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus }: Pr
     if (Number.isNaN(e) || e <= 0) return null;
     return Math.round(e * (1 + riskBuffer / 100) * 100) / 100;
   }, [estimated, riskBuffer]);
+
+  // PRD §UX — guard accidental tab close while the form has content
+  const isDirty = title.trim().length > 0 || description.trim().length > 0;
+  useUnsavedChanges(isDirty);
 
   const create = useMutation({
     mutationFn: async () => {
@@ -233,6 +238,28 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus }: Pr
               />
             </Field>
           </div>
+
+          {/* PRD §REQ-TASK — warn (don't block) if task deadline exceeds project deadline */}
+          {(() => {
+            if (!deadline || !projectId) return null;
+            const proj = projects.data?.find((p) => p.id === projectId);
+            if (!proj?.deadline) return null;
+            if (deadline > proj.deadline) {
+              return (
+                <p
+                  className="text-meta px-3 py-2 rounded-btn"
+                  style={{
+                    background: 'var(--warning-bg, #fff3d6)',
+                    color: 'var(--ink)',
+                    border: '1px solid var(--warning, #c47d00)',
+                  }}
+                >
+                  ⚠ Tapşırığın bitmə tarixi layihənin bitmə tarixindən ({proj.deadline}) sonradır.
+                </p>
+              );
+            }
+            return null;
+          })()}
 
           <div className="grid grid-cols-3 gap-3">
             <Field label="Müddət">

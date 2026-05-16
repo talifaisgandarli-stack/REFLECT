@@ -260,7 +260,51 @@ export function CmdK() {
             </li>
           ) : null}
         </ul>
+        {/* PRD §6.3 — keyboard hint footer */}
+        <div
+          className="px-3 py-2 text-tiny flex items-center justify-between"
+          style={{
+            borderTop: '1px solid var(--line-soft)',
+            color: 'var(--text-muted)',
+            fontSize: 11,
+            background: 'var(--surface-mist)',
+          }}
+        >
+          <span className="flex items-center gap-2">
+            <KbdHint label="↑↓" />
+            <span>naviqasiya</span>
+          </span>
+          <span className="flex items-center gap-2">
+            <KbdHint label="↵" />
+            <span>aç</span>
+          </span>
+          <span className="flex items-center gap-2">
+            <KbdHint label="Esc" />
+            <span>bağla</span>
+          </span>
+        </div>
       </div>
     </div>
+  );
+}
+
+function KbdHint({ label }: { label: string }) {
+  return (
+    <kbd
+      style={{
+        fontFamily: 'inherit',
+        fontSize: 10,
+        background: 'rgba(14,22,17,0.06)',
+        color: 'var(--text)',
+        borderRadius: 3,
+        padding: '1px 5px',
+        border: '1px solid var(--line)',
+        minWidth: 18,
+        textAlign: 'center',
+        display: 'inline-block',
+      }}
+    >
+      {label}
+    </kbd>
   );
 }

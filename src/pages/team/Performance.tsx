@@ -3,8 +3,9 @@
  * performance_reviews (id, employee_id, year, score, ratings jsonb, reviewer_id, summary)
  * User sees own reviews for all years; admin sees all + can author reviews.
  */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { PageHead } from '@/components/PageHead';
 import { Avatar } from '@/components/Avatar';
 import { supabase } from '@/lib/supabase';
@@ -102,6 +103,23 @@ export function PerformancePage() {
     enabled: !!profile,
   });
 
+  // PRD §8.3 — year-over-year trend for the current viewer (self for users,
+  // a dropdown-selected employee for admin). Pulls ALL years for one user.
+  const [trendEmployeeId, setTrendEmployeeId] = useState<string>(profile?.id ?? '');
+  const trendQuery = useQuery({
+    queryKey: ['performance_reviews', 'trend', isAdmin ? trendEmployeeId : profile?.id],
+    enabled: !!profile && (isAdmin ? !!trendEmployeeId : true),
+    queryFn: async (): Promise<Review[]> => {
+      const targetId = isAdmin ? trendEmployeeId : profile!.id;
+      const { data } = await supabase
+        .from('performance_reviews')
+        .select('id, employee_id, year, score, ratings, reviewer_id, summary, created_at')
+        .eq('employee_id', targetId)
+        .order('year', { ascending: true });
+      return (data ?? []) as Review[];
+    },
+  });
+
   // PRD §8.3 — Performance activates from 2026 onward, but past-year reviews
   // must remain accessible. Show every year from 2026 through max(currentYear,
   // currentYear+1) so users can navigate forward (next-year planning) AND
@@ -190,6 +208,15 @@ export function PerformancePage() {
           </button>
         ))}
       </div>
+
+      {/* PRD §8.3 — year-over-year trend (always visible if ≥2 reviews exist) */}
+      <PerformanceTrendChart
+        rows={trendQuery.data ?? []}
+        isAdmin={isAdmin}
+        allProfiles={allProfiles}
+        selectedEmployeeId={trendEmployeeId}
+        onSelectEmployee={setTrendEmployeeId}
+      />
 
       {isLoading ? (
         <div className="card text-meta">Yüklənir…</div>
@@ -552,6 +579,82 @@ function AddReviewModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// PRD §8.3 — year-over-year score trend per employee
+function PerformanceTrendChart({
+  rows,
+  isAdmin,
+  allProfiles,
+  selectedEmployeeId,
+  onSelectEmployee,
+}: {
+  rows: Review[];
+  isAdmin: boolean;
+  allProfiles: { id: string; full_name: string | null; avatar_url: string | null }[];
+  selectedEmployeeId: string;
+  onSelectEmployee: (id: string) => void;
+}) {
+  const data = useMemo(
+    () => rows.map((r) => ({ year: r.year, score: r.score })),
+    [rows],
+  );
+
+  if (isAdmin && allProfiles.length === 0) return null;
+  if (data.length < 2 && rows.length < 2 && !isAdmin) {
+    return null;
+  }
+
+  return (
+    <div className="card mb-4">
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+        <h3 className="text-h3">İl üzrə trend</h3>
+        {isAdmin ? (
+          <select
+            className="input max-w-[220px]"
+            value={selectedEmployeeId}
+            onChange={(e) => onSelectEmployee(e.target.value)}
+          >
+            <option value="">Seçin…</option>
+            {allProfiles.map((p) => (
+              <option key={p.id} value={p.id}>{p.full_name ?? p.id.slice(0, 8)}</option>
+            ))}
+          </select>
+        ) : null}
+      </div>
+      {data.length < 2 ? (
+        <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+          Trend üçün ən azı 2 il məlumatı lazımdır.
+        </p>
+      ) : (
+        <div style={{ width: '100%', height: 200 }}>
+          <ResponsiveContainer>
+            <LineChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+              <XAxis dataKey="year" stroke="var(--text-muted)" fontSize={11} />
+              <YAxis stroke="var(--text-muted)" fontSize={11} domain={[0, 100]} />
+              <Tooltip
+                contentStyle={{
+                  background: 'var(--ink)',
+                  border: '1px solid var(--line)',
+                  borderRadius: 8,
+                  color: 'var(--canvas)',
+                }}
+                formatter={(v) => [`${Number(v)}/100`, 'Ümumi bal']}
+              />
+              <Line
+                type="monotone"
+                dataKey="score"
+                stroke="var(--brand-action)"
+                strokeWidth={2.5}
+                dot={{ r: 5, fill: 'var(--brand-action)', strokeWidth: 0 }}
+                isAnimationActive={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
     </div>
   );
 }

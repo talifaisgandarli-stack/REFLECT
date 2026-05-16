@@ -381,6 +381,8 @@ export function DashboardPage() {
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-h3">Yenilənmiş</h3>
           </div>
+          {/* Activity heatmap — last 12 weeks of personal activity, GitHub-style */}
+          <ActivityHeatmap activity={activity} userId={isAdmin ? null : profile?.id ?? null} />
           <div className="flex flex-wrap gap-1.5 mb-3">
             {ACTIVITY_FILTERS.map((f) => (
               <button
@@ -648,6 +650,93 @@ function Kpi({ label, value, red }: { label: string; value: number; red?: boolea
       >
         {value}
       </span>
+    </div>
+  );
+}
+
+// PRD §6.1 — last-12-weeks activity heatmap (GitHub-style). Counts the
+// passed-in activity entries by day. When `userId` is null the heatmap shows
+// firm-wide activity (admin); otherwise only that user's events.
+function ActivityHeatmap({
+  activity,
+  userId,
+}: {
+  activity: Array<{ created_at: string; user_id?: string | null }>;
+  userId: string | null;
+}) {
+  // Bucket by Asia/Baku date
+  const counts = new Map<string, number>();
+  for (const a of activity) {
+    if (userId && a.user_id !== userId) continue;
+    const key = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baku' }).format(new Date(a.created_at));
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+
+  // Build 12-week × 7-day grid ending today (right column = current week)
+  const WEEKS = 12;
+  const today = new Date();
+  // Align to last Sunday so columns are weeks
+  const cells: Array<{ key: string; date: Date; count: number; dim: boolean }> = [];
+  // Start from (WEEKS-1) weeks back at Monday-of-that-week
+  const totalDays = WEEKS * 7;
+  for (let i = totalDays - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const key = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baku' }).format(d);
+    cells.push({ key, date: d, count: counts.get(key) ?? 0, dim: false });
+  }
+
+  // Determine intensity buckets relative to max count
+  const max = Math.max(1, ...cells.map((c) => c.count));
+  function intensity(n: number): string {
+    if (n === 0) return 'rgba(173, 251, 73, 0.08)';
+    const r = n / max;
+    if (r < 0.25) return 'rgba(173, 251, 73, 0.3)';
+    if (r < 0.5) return 'rgba(173, 251, 73, 0.55)';
+    if (r < 0.75) return 'rgba(173, 251, 73, 0.8)';
+    return 'rgba(173, 251, 73, 1)';
+  }
+
+  // Render as 7 rows × WEEKS columns. Day-of-week of cells[0] dictates row 0.
+  const firstDow = cells[0].date.getDay(); // 0=Sun..6=Sat
+  // Shift so Monday is row 0
+  const dowToRow = (dow: number) => (dow + 6) % 7;
+  const rows: Array<Array<{ key: string; count: number } | null>> = Array.from({ length: 7 }, () => Array(WEEKS).fill(null));
+  let col = 0;
+  let row = dowToRow(firstDow);
+  for (const c of cells) {
+    rows[row][col] = { key: c.key, count: c.count };
+    row++;
+    if (row >= 7) { row = 0; col++; }
+  }
+
+  const totalEvents = cells.reduce((s, c) => s + c.count, 0);
+
+  return (
+    <div className="mb-3">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+          Son 12 həftə · {totalEvents} aktivlik
+        </span>
+      </div>
+      <div className="flex flex-col gap-0.5">
+        {rows.map((rowCells, ri) => (
+          <div key={ri} className="flex gap-0.5">
+            {rowCells.map((c, ci) => (
+              <div
+                key={`${ri}-${ci}`}
+                title={c ? `${c.key}: ${c.count} aktivlik` : undefined}
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: 2,
+                  background: c ? intensity(c.count) : 'transparent',
+                }}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

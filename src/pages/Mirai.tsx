@@ -163,6 +163,8 @@ export function MiraiPage() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  // PRD §7 — client-side search across history (title + persona label)
+  const [historySearch, setHistorySearch] = useState('');
 
   async function switchToConversation(conv: { id: string; persona: string }) {
     skipAutoLoadRef.current = true; // suppress the persona-change auto-loader
@@ -276,6 +278,16 @@ export function MiraiPage() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [msgs, thinking]);
 
+  // PRD §7 — abort controller for the active SSE stream so users can stop generation mid-way
+  const abortRef = useRef<AbortController | null>(null);
+  const [streaming, setStreaming] = useState(false);
+  function stopGeneration() {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setStreaming(false);
+    setThinking(false);
+  }
+
   async function ask(text: string, opts: { replay?: boolean } = {}) {
     if (!text.trim() || budgetExhausted) return;
     // replay=true is used by regenerate() — caller has already pruned the
@@ -286,6 +298,9 @@ export function MiraiPage() {
       setQ('');
     }
     setThinking(true);
+    setStreaming(true);
+    // Create AbortController so the user can stop the stream
+    abortRef.current = new AbortController();
     setError(null);
 
     try {
@@ -301,7 +316,15 @@ export function MiraiPage() {
           'content-type': 'application/json',
           authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ message: text, persona, conversation_id: conversationId }),
+        body: JSON.stringify({
+          message: text,
+          persona,
+          conversation_id: conversationId,
+          // PRD §7 — last 8 turns of context so MIRAI sees the conversation
+          // (server formerly only had the new message; no follow-up coherence).
+          recent_messages: msgs.slice(-8).map((m) => ({ role: m.role, content: m.content })),
+        }),
+        signal: abortRef.current?.signal,
       });
 
       if (!res.ok || !res.body) {
@@ -370,10 +393,17 @@ export function MiraiPage() {
         }
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Xəta baş verdi.';
-      setError(msg);
+      // AbortError = user pressed Stop; not an error
+      if (e instanceof Error && (e.name === 'AbortError' || e.message.includes('aborted'))) {
+        // Suppress error UI when user aborted intentionally
+      } else {
+        const msg = e instanceof Error ? e.message : 'Xəta baş verdi.';
+        setError(msg);
+      }
     } finally {
       setThinking(false);
+      setStreaming(false);
+      abortRef.current = null;
     }
   }
 
@@ -529,13 +559,42 @@ export function MiraiPage() {
               ×
             </button>
           </div>
+          {/* PRD §7 — client-side conversation search */}
+          <input
+            type="text"
+            className="w-full mb-2 px-2 py-1.5 rounded-btn text-meta"
+            style={{
+              background: 'rgba(255,255,255,0.06)',
+              color: 'var(--canvas)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              fontSize: 12,
+            }}
+            placeholder="Söhbətdə axtar (ad, persona)…"
+            value={historySearch}
+            onChange={(e) => setHistorySearch(e.target.value)}
+          />
           {conversationHistory.isLoading ? (
             <div className="text-meta opacity-50 py-2 text-center">Yüklənir…</div>
           ) : (conversationHistory.data ?? []).length === 0 ? (
             <div className="text-meta opacity-50 py-2 text-center">Hələ söhbət yoxdur</div>
           ) : (
             <ul className="max-h-[320px] overflow-y-auto divide-y" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-              {(conversationHistory.data ?? []).map((c) => {
+              {(() => {
+                const q = historySearch.trim().toLowerCase();
+                const filtered = (conversationHistory.data ?? []).filter((c) => {
+                  if (!q) return true;
+                  const personaLabel = PERSONAS.find((p) => p.key === c.persona)?.label ?? c.persona;
+                  const hay = `${c.title ?? ''} ${personaLabel}`.toLowerCase();
+                  return hay.includes(q);
+                });
+                if (filtered.length === 0) {
+                  return (
+                    <li className="text-meta opacity-50 py-3 text-center" style={{ listStyle: 'none' }}>
+                      Heç nə tapılmadı
+                    </li>
+                  );
+                }
+                return filtered.map((c) => {
                 const personaLabel = PERSONAS.find((p) => p.key === c.persona)?.label ?? c.persona;
                 const dt = new Date(c.last_message_at);
                 const isCurrent = c.id === conversationId;
@@ -652,7 +711,8 @@ export function MiraiPage() {
                     )}
                   </li>
                 );
-              })}
+                });
+              })()}
             </ul>
           )}
         </div>
@@ -730,7 +790,18 @@ export function MiraiPage() {
             }}
             disabled={budgetExhausted}
           />
-          <button type="submit" className="btn-primary" disabled={thinking || budgetExhausted}>
+          {streaming ? (
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={stopGeneration}
+              style={{ background: 'var(--error-deep, #b3261e)', color: 'white' }}
+              title="Cavabı dayandır"
+            >
+              ⏹ Dayandır
+            </button>
+          ) : null}
+          <button type="submit" className="btn-primary" disabled={thinking || budgetExhausted || streaming}>
             {thinking ? '…' : 'Göndər'}
           </button>
         </form>

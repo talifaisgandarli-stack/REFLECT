@@ -258,15 +258,42 @@ export function ClientsPage() {
 // ── Create client modal (REQ-CRM-01) ──
 function CreateClientModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const qc = useQueryClient();
+  const { data: existing = [] } = useClients();
   const [name, setName] = useState('');
   const [company, setCompany] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [expectedValue, setExpectedValue] = useState('');
+  const [overrideDuplicate, setOverrideDuplicate] = useState(false);
+
+  // PRD §REQ-CRM — fuzzy duplicate detection: normalize + token-set overlap
+  // against existing client names/companies. Conservative — only flags very
+  // close matches so we don't annoy users with false positives.
+  const duplicates = useMemo(() => {
+    const q = name.trim().toLowerCase();
+    if (q.length < 3) return [];
+    const tokens = new Set(q.split(/\s+/).filter((t) => t.length >= 3));
+    if (tokens.size === 0) return [];
+    return existing
+      .filter((c) => c.pipeline_stage !== 'archived')
+      .map((c) => {
+        const hay = `${c.name} ${c.company ?? ''}`.toLowerCase();
+        if (hay.includes(q)) return { client: c, score: 1 }; // substring hit
+        const hayTokens = new Set(hay.split(/\s+/).filter((t) => t.length >= 3));
+        let hits = 0;
+        for (const t of tokens) if (hayTokens.has(t)) hits++;
+        return { client: c, score: hits / tokens.size };
+      })
+      .filter((r) => r.score >= 0.6)
+      .slice(0, 5);
+  }, [name, existing]);
 
   const create = useMutation({
     mutationFn: async () => {
       if (!name.trim()) throw new Error('Ad tələb olunur');
+      if (duplicates.length > 0 && !overrideDuplicate) {
+        throw new Error('Oxşar müştəri tapıldı — davam etmək üçün təsdiqlə');
+      }
       const { error } = await supabase.from('clients').insert({
         name: name.trim(),
         company: company.trim() || null,
@@ -324,12 +351,45 @@ function CreateClientModal({ onClose, onCreated }: { onClose: () => void; onCrea
             />
           </CField>
         </div>
+        {/* PRD §REQ-CRM — duplicate detection warning */}
+        {duplicates.length > 0 ? (
+          <div
+            className="rounded-card px-3 py-2 mt-3"
+            style={{
+              background: 'var(--warning-bg, #fff3d6)',
+              border: '1px solid var(--warning, #c47d00)',
+              color: 'var(--ink)',
+            }}
+          >
+            <div className="text-meta font-medium mb-1">⚠ Oxşar müştəri tapıldı:</div>
+            <ul className="text-meta mb-2" style={{ fontSize: 12 }}>
+              {duplicates.map((d) => (
+                <li key={d.client.id}>
+                  • {d.client.name}{d.client.company ? ` · ${d.client.company}` : ''}
+                </li>
+              ))}
+            </ul>
+            <label className="text-meta flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={overrideDuplicate}
+                onChange={(e) => setOverrideDuplicate(e.target.checked)}
+              />
+              Bilirəm — yeni müştəri kimi əlavə et
+            </label>
+          </div>
+        ) : null}
+
         {create.error ? (
           <p className="text-meta mt-3" style={{ color: 'var(--error-deep)' }}>{(create.error as Error).message}</p>
         ) : null}
         <div className="flex justify-end gap-2 mt-6">
           <button type="button" className="btn-outline" onClick={onClose} disabled={create.isPending}>Ləğv</button>
-          <button type="submit" className="btn-primary" disabled={create.isPending || !name.trim()}>
+          <button
+            type="submit"
+            className="btn-primary"
+            disabled={create.isPending || !name.trim() || (duplicates.length > 0 && !overrideDuplicate)}
+          >
             {create.isPending ? 'Yaradılır…' : 'Yarat'}
           </button>
         </div>

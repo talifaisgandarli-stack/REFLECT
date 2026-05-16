@@ -162,7 +162,15 @@ export function OkrPage() {
       ) : null}
 
       {(okrs.data ?? []).length === 0 ? (
-        <EmptyState title="OKR yoxdur" body="İlk məqsədi yarat — Key Results-larla izlə." />
+        <EmptyState
+          title="OKR yoxdur"
+          body="İlk məqsədi yarat — Key Results-larla izlə."
+          cta={
+            (isAdmin || scope === 'personal') ? (
+              <button className="btn-primary" onClick={() => setCreating(true)}>+ Obyektiv yarat</button>
+            ) : null
+          }
+        />
       ) : (
         <div className="space-y-3">
           {(okrs.data ?? []).map((o) => {

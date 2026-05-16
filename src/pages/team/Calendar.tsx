@@ -4,7 +4,7 @@
  * Event creation: internal attendees + external_emails + recurrence_rule.
  * meet.new integration: opens tab, user pastes URL back.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
 import { supabase } from '@/lib/supabase';
@@ -23,6 +23,8 @@ type CalEvent = {
   recurrence_rule: string | null;
   external_emails: string[] | null;
   attendees: string[] | null;
+  /** PRD §8.2 EXDATE — ISO dates (YYYY-MM-DD) of skipped occurrences */
+  exception_dates?: string[] | null;
 };
 
 // --------- date helpers ---------
@@ -506,6 +508,24 @@ function EventModal({
   const { profile, isAdmin } = useAuth();
   const canEdit = isAdmin || event.organizer_id === profile?.id;
   const canDelete = canEdit;
+  // PRD §8.2 EXDATE — push this occurrence into exception_dates so it disappears
+  // from future series expansions (currently the UI shows only the seed date,
+  // so this is forward-compatible with expanded recurring rendering).
+  const skipOccurrence = useMutation({
+    mutationFn: async () => {
+      const dateKey = event.starts_at.slice(0, 10);
+      const next = Array.from(new Set([...((event.exception_dates as string[]) ?? []), dateKey]));
+      const { error } = await supabase
+        .from('calendar_events')
+        .update({ exception_dates: next })
+        .eq('id', event.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['calendar'] });
+      onClose();
+    },
+  });
   const del = useMutation({
     mutationFn: async () => {
       if (!confirm('Bu görüşü silmək istədiyinə əminsənmi?')) throw new Error('aborted');
@@ -561,7 +581,18 @@ function EventModal({
               {del.isPending ? 'Silinir…' : 'Sil'}
             </button>
           ) : <span />}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {/* PRD §8.2 — EXDATE skip-this-occurrence (recurring events only) */}
+            {canEdit && event.recurrence_rule ? (
+              <button
+                className="btn-outline"
+                disabled={skipOccurrence.isPending}
+                onClick={() => skipOccurrence.mutate()}
+                title="Yalnız bu görüşü atla, seriyanı saxla"
+              >
+                {skipOccurrence.isPending ? 'Atılır…' : 'Bu görüşü atla'}
+              </button>
+            ) : null}
             {canEdit ? (
               <button className="btn-outline" onClick={onEdit}>Redaktə</button>
             ) : null}
@@ -628,6 +659,34 @@ function CreateEventModal({ defaultDate, userId, onClose, onCreated, existingEve
   const [externalEmails, setExternalEmails] = useState((existingEvent?.external_emails ?? []).join(', '));
   const [allDay, setAllDay] = useState(existingEvent?.all_day ?? false);
   const [recur, setRecur] = useState<RecurFreq>(parseRRule(existingEvent?.recurrence_rule ?? null));
+
+  // PRD §8.2 — proactive conflict detection: warn (but don't block) if the
+  // proposed time overlaps with the organizer's own events.
+  const [conflicts, setConflicts] = useState<Array<{ id: string; title: string; starts_at: string; ends_at: string }>>([]);
+  useEffect(() => {
+    if (!dateStr || allDay || !userId) {
+      setConflicts([]);
+      return;
+    }
+    const startsAt = `${dateStr}T${startTime}:00`;
+    const endsAt = `${dateStr}T${endTime}:00`;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('calendar_events')
+        .select('id, title, starts_at, ends_at')
+        .eq('organizer_id', userId)
+        // Overlap = start < other.end AND end > other.start
+        .lt('starts_at', endsAt)
+        .gt('ends_at', startsAt)
+        .limit(10);
+      if (cancelled) return;
+      // Exclude the event being edited (if any)
+      const filtered = (data ?? []).filter((c) => c.id !== existingEvent?.id);
+      setConflicts(filtered);
+    })();
+    return () => { cancelled = true; };
+  }, [dateStr, startTime, endTime, allDay, userId, existingEvent?.id]);
 
   const create = useMutation({
     mutationFn: async () => {
@@ -788,6 +847,25 @@ function CreateEventModal({ defaultDate, userId, onClose, onCreated, existingEve
             >
               <span style={{ fontSize: 14 }}>↻</span>
               <span>{RECUR_LABELS[recur]} · RFC 5545: <code style={{ fontSize: 11, opacity: 0.8 }}>{buildRRule(recur)}</code></span>
+            </div>
+          ) : null}
+
+          {/* PRD §8.2 — overlap warning (organizer's own events) */}
+          {conflicts.length > 0 ? (
+            <div
+              className="rounded-card px-3 py-2 text-meta"
+              style={{
+                background: 'var(--warning-bg, #fff3d6)',
+                border: '1px solid var(--warning, #c47d00)',
+                color: 'var(--ink)',
+              }}
+            >
+              <div className="font-medium mb-1">⚠ Bu vaxt başqa görüşlərlə üst-üstə düşür:</div>
+              <ul style={{ fontSize: 12 }}>
+                {conflicts.slice(0, 3).map((c) => (
+                  <li key={c.id}>• {c.title} ({fmtTime(c.starts_at)}–{fmtTime(c.ends_at)})</li>
+                ))}
+              </ul>
             </div>
           ) : null}
         </div>

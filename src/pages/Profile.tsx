@@ -316,6 +316,9 @@ export function ProfilePage() {
         {/* Email change request — admin approval required (REQ-AUTH-03) */}
         <EmailChangeRequestCard userId={profile.id} currentEmail={profile.email} />
 
+        {/* Login history (REQ-AUTH-03 / §9.4) — last 10 sessions */}
+        <LoginHistoryCard userId={profile.id} />
+
         {/* Notification preferences shortcut */}
         <div className="card">
           <h3 className="text-h3 mb-2">Bildiriş tənzimləmələri</h3>
@@ -598,6 +601,56 @@ function EmailChangeRequestCard({ userId, currentEmail }: { userId: string; curr
             </button>
           </div>
         </form>
+      )}
+    </div>
+  );
+}
+
+// PRD §REQ-AUTH-03 + §9.4 — show last 10 login events for this user from audit_log
+function LoginHistoryCard({ userId }: { userId: string }) {
+  const history = useQuery({
+    queryKey: ['login_history', userId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('audit_log')
+        .select('id, created_at, ip, user_agent')
+        .eq('actor_id', userId)
+        .eq('action', 'login')
+        .order('created_at', { ascending: false })
+        .limit(10);
+      return (data ?? []) as Array<{ id: string; created_at: string; ip: string | null; user_agent: string | null }>;
+    },
+  });
+
+  function shortUA(ua: string | null): string {
+    if (!ua) return '—';
+    // Best-effort browser/OS extraction
+    const m = ua.match(/(Chrome|Safari|Firefox|Edge|Opera)\/[\d.]+/);
+    const os = ua.match(/Windows|Mac OS X|Linux|Android|iPhone/);
+    return `${m?.[0] ?? 'Naməlum'} · ${os?.[0] ?? '—'}`;
+  }
+
+  return (
+    <div className="card space-y-2">
+      <h3 className="text-h3">Daxil olma tarixçəsi</h3>
+      <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+        Son 10 sessiya. Tanımadığın bir girişi görürsənsə, dərhal şifrəni dəyiş.
+      </p>
+      {history.isLoading ? (
+        <div className="text-meta" style={{ color: 'var(--text-muted)' }}>Yüklənir…</div>
+      ) : (history.data ?? []).length === 0 ? (
+        <p className="text-meta" style={{ color: 'var(--text-muted)' }}>Hələ qeyd yoxdur.</p>
+      ) : (
+        <ul className="divide-y" style={{ borderColor: 'var(--line-soft)' }}>
+          {(history.data ?? []).map((h) => (
+            <li key={h.id} className="py-2 flex items-center justify-between gap-3 text-meta">
+              <span style={{ color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
+                {new Date(h.created_at).toLocaleString('az-AZ', { timeZone: 'Asia/Baku' })}
+              </span>
+              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{shortUA(h.user_agent)}</span>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

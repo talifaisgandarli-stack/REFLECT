@@ -194,6 +194,8 @@ export interface Task {
   archived_at: string | null;
   created_by: string | null;
   created_at: string;
+  /** PRD §6.x — free-form labels for cross-status grouping (Design/Bug/etc.) */
+  labels?: string[];
 }
 
 export interface TaskStatusHistory {
