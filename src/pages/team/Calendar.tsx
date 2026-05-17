@@ -156,6 +156,22 @@ export function CalendarPage() {
     setCursor(d);
   }
 
+  // PRD §6.3 — keyboard nav: ← prev, → next, T today (skip while typing)
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const tag = (e.target as HTMLElement).tagName;
+      const editing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement).isContentEditable;
+      if (editing) return;
+      if (e.key === 'ArrowLeft') { e.preventDefault(); navigate(-1); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); navigate(1); }
+      else if (e.key === 't' || e.key === 'T') { e.preventDefault(); setCursor(new Date()); }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cursor, view]);
+
   function eventsForDay(day: Date): CalEvent[] {
     return events.filter((e) => isSameDay(new Date(e.starts_at), day));
   }

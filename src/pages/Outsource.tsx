@@ -28,6 +28,8 @@ export function OutsourcePage() {
   useSlashFocus(searchRef);
   // PRD §UX — sort dropdown (deadline default, status, amount for admin)
   const [sortBy, setSortBy] = useState<'deadline' | 'status' | 'amount'>('deadline');
+  // PRD §UX — status filter chips
+  const [statusFilter, setStatusFilter] = useState<Status | 'all'>('all');
 
   const q = useQuery({
     queryKey: ['outsource', view],
@@ -146,6 +148,33 @@ export function OutsourcePage() {
         </div>
       ) : null}
 
+      {/* PRD §UX — quick status filter chips */}
+      {(q.data ?? []).length > 0 ? (
+        <div className="flex gap-2 mb-3 flex-wrap">
+          {(['all', 'order', 'in_progress', 'delivered', 'paid'] as const).map((s) => {
+            const count = s === 'all'
+              ? (q.data ?? []).length
+              : (q.data as Array<{ status?: string }>).filter((r) => r.status === s).length;
+            return (
+              <button
+                key={s}
+                type="button"
+                className="chip"
+                style={{
+                  background: statusFilter === s ? 'var(--brand-action)' : 'var(--surface-mist)',
+                  color: statusFilter === s ? 'var(--ink)' : 'var(--text-muted)',
+                  fontSize: 12,
+                  fontWeight: statusFilter === s ? 600 : 400,
+                  opacity: count === 0 && s !== 'all' ? 0.4 : 1,
+                }}
+                onClick={() => setStatusFilter(s)}
+              >
+                {s === 'all' ? 'Hamısı' : STATUS_LABEL[s]} · {count}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
       {(q.data ?? []).length === 0 ? (
         <EmptyState
           title="Podrat işi yoxdur"
@@ -176,6 +205,7 @@ export function OutsourcePage() {
             </thead>
             <tbody>
               {(q.data as any[])
+                .filter((row) => statusFilter === 'all' || row.status === statusFilter)
                 .filter((row) => !search.trim() || (row.work_title ?? '').toLowerCase().includes(search.trim().toLowerCase()))
                 .sort((a, b) => {
                   if (sortBy === 'status') return String(a.status ?? '').localeCompare(String(b.status ?? ''));

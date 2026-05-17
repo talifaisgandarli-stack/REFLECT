@@ -91,20 +91,34 @@ export function MiraiPage() {
     queryFn: async () => {
       // PRD §7 — pinned conversations sort first, then by recent activity.
       // Postgrest can't multi-key sort easily, so sort client-side.
+      // Fetch conversations + a Postgrest-counted nested message total
+      // so list shows "12 mesaj" without an extra round-trip per row.
       const { data } = await supabase
         .from('mirai_conversations')
-        .select('id, persona, title, started_at, last_message_at, pinned_at')
+        .select('id, persona, title, started_at, last_message_at, pinned_at, mirai_messages(count)')
         .eq('user_id', profile!.id)
         .is('archived_at', null)
         .order('last_message_at', { ascending: false })
         .limit(30);
-      const rows = (data ?? []) as Array<{
+      const rows = ((data ?? []) as Array<{
         id: string;
         persona: string;
         title: string | null;
         started_at: string;
         last_message_at: string;
         pinned_at: string | null;
+        mirai_messages?: Array<{ count: number }> | null;
+      }>).map((r) => ({
+        ...r,
+        message_count: r.mirai_messages?.[0]?.count ?? 0,
+      })) as Array<{
+        id: string;
+        persona: string;
+        title: string | null;
+        started_at: string;
+        last_message_at: string;
+        pinned_at: string | null;
+        message_count: number;
       }>;
       // Pinned first (newer pin first), then everything else by last_message_at desc
       return rows.sort((a, b) => {
@@ -676,6 +690,12 @@ export function MiraiPage() {
                           <div className="text-meta opacity-60" style={{ fontSize: 11 }}>
                             {c.title ? `${personaLabel} · ` : ''}
                             {dt.toLocaleString('az-AZ', { timeZone: 'Asia/Baku' })}
+                            {/* PRD §7 — message count so user gauges conversation depth */}
+                            {c.message_count > 0 ? (
+                              <span style={{ marginLeft: 6, opacity: 0.7, fontVariantNumeric: 'tabular-nums' }}>
+                                · {c.message_count} mesaj
+                              </span>
+                            ) : null}
                           </div>
                         </button>
                         <div className="flex items-center gap-1 shrink-0">

@@ -5,6 +5,8 @@ type Props = {
   url?: string | null;
   size?: number;
   presence?: PresenceStatus;
+  /** Optional tooltip body (rendered as native title=); defaults to `name`. */
+  tooltip?: string;
 };
 
 const DOT_COLOR: Record<PresenceStatus, string> = {
@@ -13,7 +15,7 @@ const DOT_COLOR: Record<PresenceStatus, string> = {
   offline: '#A8B0AB',
 };
 
-export function Avatar({ name, url, size = 32, presence }: Props) {
+export function Avatar({ name, url, size = 32, presence, tooltip }: Props) {
   const initials = (name ?? '?')
     .split(/\s+/)
     .map((p) => p[0])
@@ -22,7 +24,11 @@ export function Avatar({ name, url, size = 32, presence }: Props) {
     .join('')
     .toUpperCase();
   return (
-    <span className="relative inline-block" style={{ width: size, height: size }}>
+    <span
+      className="relative inline-block"
+      style={{ width: size, height: size }}
+      title={tooltip ?? name ?? undefined}
+    >
       <span
         className="block rounded-full font-semibold"
         style={{

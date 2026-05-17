@@ -355,6 +355,14 @@ export function TasksPage() {
               placeholder="Axtar… (/)"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                // PRD §UX — Esc clears + blurs (cancel-out pattern)
+                if (e.key === 'Escape' && search) {
+                  e.preventDefault();
+                  setSearch('');
+                  (e.currentTarget as HTMLInputElement).blur();
+                }
+              }}
             />
             <button
               className={`btn-outline ${mineOnly ? 'border-brand-text' : ''}`}
