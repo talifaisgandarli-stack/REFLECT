@@ -27,6 +27,7 @@ export function SettingsPage() {
     <>
       <PageHead meta="Yalnız admin" title="Parametrlər" />
       <FirmStatsRow />
+      <BuildInfoFooter />
       <div className="grid grid-cols-1 lg:grid-cols-[200px,1fr] gap-6">
         <nav className="space-y-1">
           {NAV.map((n) => (
@@ -53,6 +54,27 @@ export function SettingsPage() {
         </div>
       </div>
     </>
+  );
+}
+
+// PRD §9.4 — show what's deployed so admins can correlate bug reports
+// with a specific build. Values injected via vite.config.ts `define`.
+function BuildInfoFooter() {
+  const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '?';
+  const commit = typeof __APP_COMMIT__ !== 'undefined' ? __APP_COMMIT__ : '';
+  const builtAt = typeof __APP_BUILD_TIME__ !== 'undefined' ? __APP_BUILD_TIME__ : '';
+  const builtFmt = builtAt
+    ? new Date(builtAt).toLocaleString('az-AZ', { timeZone: 'Asia/Baku' })
+    : '—';
+  return (
+    <div
+      className="text-meta mb-3 flex items-center gap-3 flex-wrap"
+      style={{ color: 'var(--text-muted)', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}
+    >
+      <span>v{version}</span>
+      {commit ? <span>· {commit}</span> : null}
+      <span>· qurulub {builtFmt}</span>
+    </div>
   );
 }
 

@@ -329,6 +329,23 @@ export function useSnoozeNotification() {
   });
 }
 
+// PRD §6.4 — delete all already-read notifications to keep the panel tidy.
+// Only own rows are deletable (RLS); we don't pass a user filter — the policy
+// enforces it server-side.
+export function useDeleteReadNotifications() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from('notifications')
+        .delete()
+        .not('read_at', 'is', null);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+}
+
 // PRD §6.4 — clear all active snoozes (notifications reappear immediately)
 export function useClearSnoozes() {
   const qc = useQueryClient();

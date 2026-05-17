@@ -9,6 +9,7 @@ import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import { useAuth } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
+import { downloadCsv } from '@/lib/csv';
 
 type Equipment = {
   id: string;
@@ -143,7 +144,32 @@ export function EquipmentPage() {
               onChange={(e) => setSearch(e.target.value)}
             />
             {isAdmin ? (
-              <button className="btn-primary" onClick={() => setCreating(true)}>+ Yeni</button>
+              <>
+                {/* PRD §8.7 — CSV export for inventory audit / handover */}
+                <button
+                  type="button"
+                  className="btn-outline"
+                  disabled={(equipment.data ?? []).length === 0}
+                  onClick={() => {
+                    downloadCsv(
+                      `avadanliq-${new Date().toISOString().slice(0, 10)}.csv`,
+                      ['Ad', 'Növ', 'Serial', 'QR', 'Tapşırılıb', 'Vəziyyət', 'Qeyd'],
+                      filteredEquipment.map((e) => ({
+                        'Ad': e.name,
+                        'Növ': e.kind ?? '',
+                        'Serial': e.serial ?? '',
+                        'QR': (e as { qr_code?: string | null }).qr_code ?? '',
+                        'Tapşırılıb': e.assigned_to ? (profileMap[e.assigned_to] ?? '') : '',
+                        'Vəziyyət': e.condition ?? '',
+                        'Qeyd': e.notes ?? '',
+                      })),
+                    );
+                  }}
+                >
+                  ↓ CSV
+                </button>
+                <button className="btn-primary" onClick={() => setCreating(true)}>+ Yeni</button>
+              </>
             ) : null}
           </>
         }

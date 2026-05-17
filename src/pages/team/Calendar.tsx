@@ -226,6 +226,33 @@ export function CalendarPage() {
         </button>
         <button className="btn-outline px-3 py-1" onClick={() => navigate(1)}>›</button>
         <span className="text-h3 ml-2">{headerLabel}</span>
+        {/* PRD §UX — at-a-glance count of events in the current view-range */}
+        {(() => {
+          const range = view === 'month' ? monthGrid : view === 'week' ? weekDays : [cursor];
+          if (range.length === 0) return null;
+          const first = range[0];
+          const last = range[range.length - 1];
+          const startMs = new Date(first.getFullYear(), first.getMonth(), first.getDate()).getTime();
+          const endMs = new Date(last.getFullYear(), last.getMonth(), last.getDate(), 23, 59, 59).getTime();
+          const count = events.filter((e) => {
+            const t = new Date(e.starts_at).getTime();
+            return t >= startMs && t <= endMs;
+          }).length;
+          if (count === 0) return null;
+          return (
+            <span
+              className="chip ml-2"
+              style={{
+                background: 'var(--brand-glow-sm)',
+                color: 'var(--brand-text)',
+                fontSize: 11,
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {count} görüş
+            </span>
+          );
+        })()}
         <span style={{ flex: 1 }} />
         {/* PRD §UX — search across rendered events (client-side) */}
         <input

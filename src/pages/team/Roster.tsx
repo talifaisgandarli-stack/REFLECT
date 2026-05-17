@@ -153,6 +153,39 @@ export function TeamRosterPage() {
           }
         />
       ) : (
+      <>
+        {/* PRD §UX — role distribution chip row at the top so admin sees
+            the firm's shape at a glance (X dizayner / Y BD / Z member). */}
+        {(() => {
+          const buckets = new Map<string, number>();
+          for (const p of ppl) {
+            const r = p.role?.name ?? '— rol təyin edilməyib —';
+            buckets.set(r, (buckets.get(r) ?? 0) + 1);
+          }
+          const rows = Array.from(buckets.entries()).sort((a, b) => b[1] - a[1]);
+          if (rows.length <= 1) return null;
+          return (
+            <div className="card mb-3 flex items-center gap-2 flex-wrap">
+              <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                Rol bölgüsü:
+              </span>
+              {rows.map(([name, n]) => (
+                <span
+                  key={name}
+                  className="chip"
+                  style={{
+                    background: 'var(--surface-mist)',
+                    color: 'var(--text)',
+                    fontSize: 11,
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  {name} · {n}
+                </span>
+              ))}
+            </div>
+          );
+        })()}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {ppl.map((p) => {
             const taskCount = taskMap[p.id] ?? 0;
@@ -273,6 +306,7 @@ export function TeamRosterPage() {
             );
           })}
         </div>
+      </>
       )}
     </>
   );

@@ -10,6 +10,7 @@ import {
   type NotificationKind,
   type NotificationRow,
   useClearSnoozes,
+  useDeleteReadNotifications,
   useMarkNotificationRead,
   useNotifications,
   useSnoozeNotification,
@@ -100,6 +101,7 @@ export function NotificationBell() {
   const markRead = useMarkNotificationRead();
   const snooze = useSnoozeNotification();
   const clearSnoozes = useClearSnoozes();
+  const deleteRead = useDeleteReadNotifications();
   const [open, setOpen] = useState(false);
   const [snoozeOpenId, setSnoozeOpenId] = useState<string | null>(null);
   // PRD §6.4 — let user collapse the list to unread-only so the panel
@@ -213,6 +215,19 @@ export function NotificationBell() {
               >
                 ⏰ Ayıt
               </button>
+              {/* PRD §6.4 — sweep already-read notifications to keep the panel tidy */}
+              {(data.length - unreadCount) > 0 ? (
+                <button
+                  type="button"
+                  className="text-meta hover:underline disabled:opacity-50"
+                  style={{ color: 'var(--text-muted)', fontSize: 11 }}
+                  onClick={() => deleteRead.mutate()}
+                  disabled={deleteRead.isPending}
+                  title="Oxunmuş bildirişləri sil"
+                >
+                  🗑 Oxunmuşları
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="text-meta hover:underline disabled:opacity-50"
