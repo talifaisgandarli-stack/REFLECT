@@ -556,6 +556,8 @@ export function MiraiPage() {
         >
           ⏱ Tarixçə
         </button>
+        {/* PRD §7.6 — live cost-so-far for active conversation (sums mirai_messages.cost_usd) */}
+        {conversationId ? <ConversationCostChip conversationId={conversationId} /> : null}
         {/* PRD §7 — export current conversation as Markdown */}
         {msgs.length > 0 ? (
           <button
@@ -1028,6 +1030,41 @@ export function MiraiPage() {
 }
 
 // Reusable click-to-copy button for MIRAI assistant messages
+// PRD §7.6 Cost Guardian — live $-so-far chip for the active conversation.
+// Refetches when conversationId changes; tanstack will also pick up new msgs
+// via the broader cache invalidation when mirai_messages is touched elsewhere.
+function ConversationCostChip({ conversationId }: { conversationId: string }) {
+  const cost = useQuery({
+    queryKey: ['mirai-conv-cost', conversationId],
+    enabled: !!conversationId,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('mirai_messages')
+        .select('cost_usd')
+        .eq('conversation_id', conversationId);
+      return (data ?? []).reduce((sum, r) => sum + Number((r as { cost_usd?: number }).cost_usd ?? 0), 0);
+    },
+  });
+  const total = cost.data ?? 0;
+  if (total <= 0) return null;
+  return (
+    <span
+      className="chip"
+      title="Bu söhbətin AI maliyyəti (Anthropic)"
+      style={{
+        background: 'rgba(255,255,255,0.06)',
+        color: 'var(--canvas)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        fontVariantNumeric: 'tabular-nums',
+        fontSize: 11,
+      }}
+    >
+      💸 ${total.toFixed(4)}
+    </span>
+  );
+}
+
 function CopyMessageButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   async function copy() {

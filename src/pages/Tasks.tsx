@@ -903,7 +903,13 @@ export function TasksPage() {
           </thead>
           <tbody>
             {tasks.map((t) => (
-              <tr key={t.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+              <tr
+                key={t.id}
+                onClick={() => setCommenting({ id: t.id, title: t.title })}
+                className="hover:bg-surface-mist cursor-pointer"
+                style={{ borderBottom: '1px solid var(--line-soft)' }}
+                title="Şərhləri aç"
+              >
                 <td className="py-3 px-3">{t.title}</td>
                 <td className="py-3 px-3">{TASK_STATUS_LABEL[t.status]}</td>
                 <td className="py-3 px-3">

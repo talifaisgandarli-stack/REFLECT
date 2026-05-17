@@ -107,11 +107,17 @@ export function NotificationBell() {
   // PRD §6.4 — let user collapse the list to unread-only so the panel
   // doesn't bloat with weeks of read items when they're hunting for new ones.
   const [unreadOnly, setUnreadOnly] = useState(false);
+  // PRD §6.4 — narrow by event kind ('' = all) so user can hunt mentions only, etc.
+  const [kindFilter, setKindFilter] = useState<NotificationKind | ''>('');
   const ref = useRef<HTMLDivElement>(null);
 
   const unread = data.filter((n) => !n.read_at);
   const unreadCount = unread.length;
-  const visible = unreadOnly ? unread : data;
+  let visible = unreadOnly ? unread : data;
+  if (kindFilter) visible = visible.filter((n) => n.kind === kindFilter);
+  // Only show kind chips for kinds that actually have items, so UI doesn't
+  // bloat with empty buckets for kinds the user never receives.
+  const availableKinds = Array.from(new Set(data.map((n) => n.kind))) as NotificationKind[];
   // PRD §UX — auto-tick relative timestamps every 60s while panel is open
   useNow(open ? 60_000 : 5 * 60_000);
 
@@ -239,6 +245,43 @@ export function NotificationBell() {
               </button>
             </div>
           </header>
+          {/* PRD §6.4 — kind filter row (only kinds that have items) */}
+          {availableKinds.length > 1 ? (
+            <div
+              className="flex gap-1 px-3 py-2 flex-wrap"
+              style={{ borderBottom: '1px solid var(--line-soft)' }}
+            >
+              <button
+                type="button"
+                className="chip"
+                style={{
+                  background: !kindFilter ? 'var(--brand-action)' : 'var(--surface-mist)',
+                  color: !kindFilter ? 'var(--ink)' : 'var(--text-muted)',
+                  fontSize: 10,
+                  padding: '0 6px',
+                }}
+                onClick={() => setKindFilter('')}
+              >
+                Hamısı
+              </button>
+              {availableKinds.map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  className="chip"
+                  style={{
+                    background: kindFilter === k ? 'var(--brand-action)' : 'var(--surface-mist)',
+                    color: kindFilter === k ? 'var(--ink)' : 'var(--text-muted)',
+                    fontSize: 10,
+                    padding: '0 6px',
+                  }}
+                  onClick={() => setKindFilter(k)}
+                >
+                  {labelFor(k)}
+                </button>
+              ))}
+            </div>
+          ) : null}
           {visible.length === 0 ? (
             <div className="px-4 py-8 text-center text-meta" style={{ color: 'var(--text-muted)' }}>
               {unreadOnly ? 'Oxunmamış bildiriş yoxdur.' : 'Hələ bildiriş yoxdur.'}

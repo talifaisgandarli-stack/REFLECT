@@ -113,10 +113,13 @@ export function EquipmentPage() {
   const [availability, setAvailability] = useState<'all' | 'available' | 'assigned'>('all');
   const [search, setSearch] = useState('');
   const [holderFilter, setHolderFilter] = useState<string>(''); // '' = all
+  // PRD §8.7 — also narrow by equipment kind (laptop / printer / camera / etc.)
+  const [kindFilter, setKindFilter] = useState<string>('');
   const filteredEquipment = (equipment.data ?? []).filter((e) => {
     if (availability === 'available' && e.assigned_to) return false;
     if (availability === 'assigned' && !e.assigned_to) return false;
     if (holderFilter && e.assigned_to !== holderFilter) return false;
+    if (kindFilter && (e.kind ?? '') !== kindFilter) return false;
     if (search.trim()) {
       const q = search.toLowerCase();
       const hay = `${e.name} ${e.serial ?? ''} ${(e as { qr_code?: string | null }).qr_code ?? ''} ${e.kind ?? ''}`.toLowerCase();
@@ -124,6 +127,10 @@ export function EquipmentPage() {
     }
     return true;
   });
+  // Surface only kinds we actually have so the row stays terse
+  const availableKinds = Array.from(
+    new Set((equipment.data ?? []).map((e) => e.kind ?? '').filter(Boolean)),
+  ).sort();
   // Only show holders who actually own equipment (cleaner UX than full firm roster)
   const holdersWithEquipment = Array.from(
     new Set((equipment.data ?? []).map((e) => e.assigned_to).filter(Boolean) as string[]),
@@ -246,6 +253,21 @@ export function EquipmentPage() {
                 {f.label}
               </button>
             ))}
+            {/* PRD §8.7 — kind filter dropdown (only shown when >1 distinct kind) */}
+            {availableKinds.length > 1 ? (
+              <select
+                className="input"
+                style={{ maxWidth: 160, height: 32, fontSize: 12 }}
+                value={kindFilter}
+                onChange={(e) => setKindFilter(e.target.value)}
+                aria-label="Növə görə süz"
+              >
+                <option value="">Bütün növlər</option>
+                {availableKinds.map((k) => (
+                  <option key={k} value={k}>{k}</option>
+                ))}
+              </select>
+            ) : null}
             {/* PRD §8.7 — narrow to one holder so audit trail per person is one click */}
             {holdersWithEquipment.length > 0 ? (
               <select
