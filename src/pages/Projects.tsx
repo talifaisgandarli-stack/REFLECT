@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
@@ -12,6 +12,7 @@ import { AvatarGroup } from '@/components/AvatarGroup';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { formatAZN } from '@/lib/format';
+import { useSlashFocus } from '@/lib/useSlashFocus';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -75,6 +76,8 @@ export function ProjectsPage() {
   // PRD §UX — persist search filter in URL so refresh/share-link preserves it
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get('q') ?? '');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchInputRef);
   const initStatus = searchParams.get('status') as StatusFilter | null;
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(
     initStatus && ['all', 'active', 'on_hold', 'closed'].includes(initStatus) ? initStatus : 'all',
@@ -205,8 +208,9 @@ export function ProjectsPage() {
         actions={
           <>
             <input
+              ref={searchInputRef}
               className="input max-w-[240px]"
-              placeholder="Axtar…"
+              placeholder="Axtar… (/)"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />

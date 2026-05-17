@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from 'recharts';
@@ -26,6 +26,7 @@ import { useAuth } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { isValidEmail, isValidPhone, roundAzn } from '@/lib/validation';
 import { trackRecentEntry } from '@/lib/useRecentlyViewed';
+import { useSlashFocus } from '@/lib/useSlashFocus';
 
 type DragPayload = { id: string; from: ClientPipelineStage };
 type LostPrompt = { id: string; from: ClientPipelineStage };
@@ -41,6 +42,8 @@ export function ClientsPage() {
   // PRD §UX — search persisted in URL (refresh / share-link preserves it)
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get('q') ?? '');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchInputRef);
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
     if (search) next.set('q', search);
@@ -116,8 +119,9 @@ export function ClientsPage() {
         actions={
           <>
             <input
+              ref={searchInputRef}
               className="input max-w-[240px]"
-              placeholder="Axtar (ad, şirkət, email)…"
+              placeholder="Axtar (ad, şirkət, email)… (/)"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />

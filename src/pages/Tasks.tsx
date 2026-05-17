@@ -5,6 +5,7 @@ import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import { AvatarGroup } from '@/components/AvatarGroup';
 import { isOpenChildrenError, useTasks, useUpdateTaskStatus } from '@/lib/hooks';
+import { useSlashFocus } from '@/lib/useSlashFocus';
 import { TASK_STATUS_LABEL, TASK_STATUS_ORDER, TASK_STATUS_TONE } from '@/lib/labels';
 import type { Task, TaskStatus } from '@/types/db';
 import { useAuth } from '@/lib/store';
@@ -190,19 +191,7 @@ export function TasksPage() {
   const [search, setSearch] = useState(searchParams.get('q') ?? '');
   // PRD §6.3 / §UX — Slack/GitHub-style "/" jumps to search box
   const searchInputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key !== '/') return;
-      const tag = (e.target as HTMLElement).tagName;
-      const editing = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable;
-      if (editing) return;
-      e.preventDefault();
-      searchInputRef.current?.focus();
-      searchInputRef.current?.select();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  useSlashFocus(searchInputRef);
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
     if (search) next.set('q', search);
@@ -613,7 +602,13 @@ export function TasksPage() {
                   ) : null}
                 </h3>
                 <div className="space-y-2" role="list" aria-label={TASK_STATUS_LABEL[s]}>
-                  {grouped[s].map((t) => (
+                  {grouped[s].map((t) => {
+                    // PRD §UX — surface overdue tasks visually on the board so they
+                    // can't be missed when scrolling through a column. Skip done/cancelled.
+                    const isOverdue = !!t.deadline
+                      && t.status !== 'done' && t.status !== 'cancelled'
+                      && t.deadline < new Date().toISOString().slice(0, 10);
+                    return (
                     <article
                       key={t.id}
                       draggable
@@ -626,7 +621,12 @@ export function TasksPage() {
                       className="rounded-card p-3 text-body"
                       style={{
                         background: isToday ? 'var(--card-dark-bg)' : 'var(--surface)',
-                        border: `1px solid ${isToday ? 'var(--card-dark-border)' : 'var(--line)'}`,
+                        border: `1px solid ${
+                          isOverdue
+                            ? 'var(--error)'
+                            : isToday ? 'var(--card-dark-border)' : 'var(--line)'
+                        }`,
+                        boxShadow: isOverdue ? '0 0 0 1px var(--error) inset' : undefined,
                       }}
                     >
                       <div
@@ -810,7 +810,8 @@ export function TasksPage() {
                         </div>
                       </div>
                     </article>
-                  ))}
+                    );
+                  })}
                 </div>
                 {/* Quick-add per column: opens TaskCreateModal pre-set to this status */}
                 <button

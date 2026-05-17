@@ -4,7 +4,8 @@
  * Event creation: internal attendees + external_emails + recurrence_rule.
  * meet.new integration: opens tab, user pastes URL back.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSlashFocus } from '@/lib/useSlashFocus';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
@@ -130,6 +131,8 @@ export function CalendarPage() {
   // URL-persisted so refresh / share-link preserves the query
   const [searchParams, setSearchParams] = useSearchParams();
   const [eventSearch, setEventSearch] = useState(searchParams.get('q') ?? '');
+  const eventSearchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(eventSearchRef);
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
     if (eventSearch) next.set('q', eventSearch);
@@ -226,8 +229,9 @@ export function CalendarPage() {
         <span style={{ flex: 1 }} />
         {/* PRD §UX — search across rendered events (client-side) */}
         <input
+          ref={eventSearchRef}
           className="input max-w-[220px]"
-          placeholder="Görüş axtar…"
+          placeholder="Görüş axtar… (/)"
           value={eventSearch}
           onChange={(e) => setEventSearch(e.target.value)}
         />
