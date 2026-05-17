@@ -120,7 +120,9 @@ export function DashboardPage() {
   const { data: presence = [] } = useTeamPresence();
   // REQ-DASH-02 / PRD §9.1 — admin sees firm-wide; users see only their own
   // (the activity_log RLS policy is permissive, so the gating must happen here).
-  const { data: activity = [] } = useActivityFeed(50, isAdmin ? 'firm' : profile?.id ?? 'firm');
+  // PRD §6.1 — paginated activity feed; user can "Daha çox" if the page is full
+  const [activityLimit, setActivityLimit] = useState(50);
+  const { data: activity = [] } = useActivityFeed(activityLimit, isAdmin ? 'firm' : profile?.id ?? 'firm');
   const { data: announcements = [] } = useRecentAnnouncements(3);
   const { data: meetings = [] } = useUpcomingMeetings(7);
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all');
@@ -519,6 +521,19 @@ export function DashboardPage() {
                   </li>
                 );
               })}
+              {/* PRD §6.1 — load-more if the page is full (likely more rows behind) */}
+              {activity.length >= activityLimit ? (
+                <li className="pt-2 text-center">
+                  <button
+                    type="button"
+                    className="chip"
+                    style={{ fontSize: 11, color: 'var(--text-muted)' }}
+                    onClick={() => setActivityLimit((n) => n + 50)}
+                  >
+                    Daha çox göstər
+                  </button>
+                </li>
+              ) : null}
             </ul>
           )}
         </section>

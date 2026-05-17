@@ -7,6 +7,7 @@ import { Avatar } from '@/components/Avatar';
 import { EmptyState } from '@/components/EmptyState';
 import { useAuth } from '@/lib/store';
 import { downloadCsv } from '@/lib/csv';
+import { relativeTime } from '@/lib/format';
 import type { Profile, UserPresence } from '@/types/db';
 
 type ProfileWithRole = Profile & { role?: { name: string } | null };
@@ -232,7 +233,15 @@ export function TeamRosterPage() {
                   url={p.avatar_url}
                   size={48}
                   presence={isInactive ? undefined : presenceMap[p.id]?.status}
-                  tooltip={[p.full_name ?? p.email, p.email, p.role?.name].filter(Boolean).join(' · ')}
+                  tooltip={(() => {
+                    const parts = [p.full_name ?? p.email, p.email, p.role?.name].filter(Boolean);
+                    // PRD §10.5.1 — include last_heartbeat_at in tooltip ("son: 5 dəq əvvəl")
+                    const pres = presenceMap[p.id];
+                    if (pres?.last_heartbeat_at) {
+                      parts.push(`son: ${relativeTime(pres.last_heartbeat_at)}`);
+                    }
+                    return parts.join(' · ');
+                  })()}
                 />
                 <div className="flex-1 min-w-0">
                   <div className="text-body font-medium truncate flex items-center gap-2">

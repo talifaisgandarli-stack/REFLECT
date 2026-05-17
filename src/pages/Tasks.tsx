@@ -303,23 +303,37 @@ export function TasksPage() {
     return Array.from(set).sort();
   }, [tasks]);
 
-  const filtered = useMemo(() => {
-    let out = tasks;
-    if (labelFilter) out = out.filter((t) => (t.labels ?? []).includes(labelFilter));
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      out = out.filter((t) => t.title.toLowerCase().includes(q));
-    }
-    return out;
-  }, [tasks, search, labelFilter]);
-
   // PRD §UX — sort within columns; persisted in URL so it survives reload + share
   type SortKey = 'deadline' | 'priority' | 'created';
   const [sortBy, setSortBy] = useState<SortKey>(
     (searchParams.get('sort') as SortKey) || 'deadline',
   );
-  // PRD §UX — compact mode hides done + cancelled columns (board view only)
-  const [compactBoard, setCompactBoard] = useState(false);
+  // PRD §UX — compact mode persisted in localStorage so the user's preference
+  // survives across reloads/sessions without bloating the URL.
+  const [compactBoard, setCompactBoard] = useState<boolean>(() => {
+    if (typeof localStorage === 'undefined') return false;
+    return localStorage.getItem('reflect.tasks.compactBoard') === '1';
+  });
+  useEffect(() => {
+    try { localStorage.setItem('reflect.tasks.compactBoard', compactBoard ? '1' : '0'); }
+    catch { /* localStorage disabled */ }
+  }, [compactBoard]);
+  // PRD §UX — quick "today only" toggle: deadline = today (any status)
+  const [todayOnly, setTodayOnly] = useState(false);
+
+  const filtered = useMemo(() => {
+    let out = tasks;
+    if (labelFilter) out = out.filter((t) => (t.labels ?? []).includes(labelFilter));
+    if (todayOnly) {
+      const today = new Date().toISOString().slice(0, 10);
+      out = out.filter((t) => t.deadline === today);
+    }
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      out = out.filter((t) => t.title.toLowerCase().includes(q));
+    }
+    return out;
+  }, [tasks, search, labelFilter, todayOnly]);
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
     if (sortBy === 'deadline') next.delete('sort');
@@ -473,6 +487,21 @@ export function TasksPage() {
           <option value="priority">Prioritet</option>
           <option value="created">Yenilər əvvəl</option>
         </select>
+        {/* PRD §UX — "Bu gün" quick filter (deadline = today) */}
+        <button
+          type="button"
+          className="chip"
+          style={{
+            background: todayOnly ? 'var(--brand-action)' : undefined,
+            color: todayOnly ? 'var(--ink)' : undefined,
+            fontWeight: todayOnly ? 600 : 400,
+          }}
+          onClick={() => setTodayOnly((v) => !v)}
+          aria-pressed={todayOnly}
+          title="Yalnız bu günə düşənləri göstər"
+        >
+          {todayOnly ? '✓ Bu gün' : 'Bu gün'}
+        </button>
         {/* PRD §UX — compact mode hides done/cancelled columns on board view */}
         {view === 'board' ? (
           <button
