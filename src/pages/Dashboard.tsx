@@ -113,6 +113,25 @@ export function DashboardPage() {
   // US-DASH-02 — "Bu gün" / "Bu həftə" tab toggle (user dashboard only)
   const [taskTab, setTaskTab] = useState<'today' | 'week'>('today');
 
+  // PRD §MODULE 9.2 — surface user's career level in the dashboard greeting
+  // so they always have visibility into their growth track without navigating.
+  // career_level_id lives on profiles (migration 0021) but isn't in the hand-written
+  // Profile type yet; read it via a narrow cast.
+  const careerLevelId = (profile as { career_level_id?: string | null } | null)?.career_level_id ?? null;
+  const { data: careerLevel } = useQuery({
+    queryKey: ['career-level-current', careerLevelId],
+    enabled: !!careerLevelId,
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('career_levels')
+        .select('name, level_index')
+        .eq('id', careerLevelId!)
+        .maybeSingle();
+      return data as { name: string; level_index: number } | null;
+    },
+  });
+
   // REQ-DASH-02 — personal OKR progress (non-admin only)
   const { data: personalOkrs = [] } = useQuery({
     queryKey: ['okrs', 'personal', profile?.id],
@@ -220,9 +239,26 @@ export function DashboardPage() {
         title={`Salam, ${profile?.full_name?.split(' ')[0] ?? 'arxitekt'}`}
         actions={
           /* REQ-DASH-01 — MIRAI quick-launch; nav group removed per PRD §4 */
-          <Link to="/mirai" className="btn-primary" style={{ fontSize: 13 }}>
-            ✦ MIRAI
-          </Link>
+          <div className="flex items-center gap-2">
+            {careerLevel ? (
+              <Link
+                to="/şirkət/karyera"
+                className="chip"
+                style={{
+                  background: 'var(--brand-glow-sm)',
+                  color: 'var(--brand-text)',
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+                title={`Karyera səviyyəsi: L${careerLevel.level_index}`}
+              >
+                L{careerLevel.level_index} · {careerLevel.name}
+              </Link>
+            ) : null}
+            <Link to="/mirai" className="btn-primary" style={{ fontSize: 13 }}>
+              ✦ MIRAI
+            </Link>
+          </div>
         }
       />
 

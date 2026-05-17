@@ -102,10 +102,14 @@ export function NotificationBell() {
   const clearSnoozes = useClearSnoozes();
   const [open, setOpen] = useState(false);
   const [snoozeOpenId, setSnoozeOpenId] = useState<string | null>(null);
+  // PRD §6.4 — let user collapse the list to unread-only so the panel
+  // doesn't bloat with weeks of read items when they're hunting for new ones.
+  const [unreadOnly, setUnreadOnly] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const unread = data.filter((n) => !n.read_at);
   const unreadCount = unread.length;
+  const visible = unreadOnly ? unread : data;
   // PRD §UX — auto-tick relative timestamps every 60s while panel is open
   useNow(open ? 60_000 : 5 * 60_000);
 
@@ -173,6 +177,19 @@ export function NotificationBell() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                className="text-meta hover:underline"
+                style={{
+                  color: unreadOnly ? 'var(--brand-text)' : 'var(--text-muted)',
+                  fontSize: 11,
+                  fontWeight: unreadOnly ? 600 : 400,
+                }}
+                onClick={() => setUnreadOnly((v) => !v)}
+                title="Yalnız oxunmamışları göstər"
+              >
+                {unreadOnly ? '● Yalnız yeni' : '○ Hamısı'}
+              </button>
+              <button
+                type="button"
                 className="text-meta hover:underline disabled:opacity-50"
                 style={{ color: 'var(--text-muted)', fontSize: 11 }}
                 onClick={() => clearSnoozes.mutate()}
@@ -192,17 +209,17 @@ export function NotificationBell() {
               </button>
             </div>
           </header>
-          {data.length === 0 ? (
+          {visible.length === 0 ? (
             <div className="px-4 py-8 text-center text-meta" style={{ color: 'var(--text-muted)' }}>
-              Hələ bildiriş yoxdur.
+              {unreadOnly ? 'Oxunmamış bildiriş yoxdur.' : 'Hələ bildiriş yoxdur.'}
             </div>
           ) : null}
-          {data.length > 0 ? (
+          {visible.length > 0 ? (
             <ul>
               {(() => {
                 // PRD §6.4 — emit date-bucket headers (Bu gün / Dünən / …)
                 // interleaved with the grouped items.
-                const items = groupNotifications(data);
+                const items = groupNotifications(visible);
                 const out: React.ReactNode[] = [];
                 let lastBucket = '';
                 for (const item of items) {

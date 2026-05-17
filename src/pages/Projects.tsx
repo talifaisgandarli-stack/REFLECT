@@ -11,6 +11,7 @@ import { SkeletonList } from '@/components/Skeleton';
 import { AvatarGroup } from '@/components/AvatarGroup';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
+import { formatAZN } from '@/lib/format';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -417,6 +418,20 @@ export function ProjectsPage() {
                           #{tag}
                         </span>
                       ))}
+                    </div>
+                  ) : null}
+                  {/* PRD §REQ-FIN-06 — budget glance on project card (migration 0048) */}
+                  {isAdmin && (p as { budget_amount?: number | null }).budget_amount != null ? (
+                    <div
+                      className="text-meta mt-1.5"
+                      style={{
+                        color: dark ? 'var(--canvas)' : 'var(--brand-text)',
+                        fontVariantNumeric: 'tabular-nums',
+                        fontSize: 11,
+                        opacity: 0.9,
+                      }}
+                    >
+                      💰 {formatAZN((p as { budget_amount?: number | null }).budget_amount ?? 0)}
                     </div>
                   ) : null}
                 </div>

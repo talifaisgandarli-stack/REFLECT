@@ -539,6 +539,15 @@ export function TasksPage() {
           {TASK_STATUS_ORDER.map((s) => {
             const isToday = s === 'active';
             const tone = TASK_STATUS_TONE[s];
+            // PRD §UX — sum estimated hours per column so user sees workload per stage.
+            // Falls back to 0 when estimated_duration is null; uses duration_unit for h/d/w.
+            const totalHours = grouped[s].reduce((sum, t) => {
+              const d = t.estimated_duration;
+              if (d == null) return sum;
+              const unit = (t as { duration_unit?: string }).duration_unit ?? 'hour';
+              const h = unit === 'day' ? d * 8 : unit === 'week' ? d * 40 : d;
+              return sum + h;
+            }, 0);
             return (
               <div
                 key={s}
@@ -566,6 +575,11 @@ export function TasksPage() {
                   }}
                 >
                   {isToday ? 'BU GÜN' : TASK_STATUS_LABEL[s]} · {grouped[s].length}
+                  {totalHours > 0 ? (
+                    <span style={{ marginLeft: 6, opacity: 0.6, fontVariantNumeric: 'tabular-nums' }}>
+                      · {Math.round(totalHours)}s
+                    </span>
+                  ) : null}
                 </h3>
                 <div className="space-y-2" role="list" aria-label={TASK_STATUS_LABEL[s]}>
                   {grouped[s].map((t) => (

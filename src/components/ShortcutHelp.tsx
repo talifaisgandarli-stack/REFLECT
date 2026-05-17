@@ -2,23 +2,33 @@
  * Keyboard shortcut cheat-sheet (PRD §6.3).
  * Opened by pressing `?` (when not in an input).
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
-const SHORTCUTS: Array<{ keys: string[]; label: string }> = [
-  { keys: ['⌘', 'K'], label: 'Universal axtarış' },
-  { keys: ['⌘', 'N'], label: 'Yeni tapşırıq (kontekst-aware)' },
-  { keys: ['⌘', '/'], label: 'MIRAI panelini aç/bağla' },
-  { keys: ['G', 'D'], label: 'Dashboard-a get' },
-  { keys: ['G', 'T'], label: 'Tapşırıqlara get' },
-  { keys: ['G', 'P'], label: 'Layihələrə get' },
-  { keys: ['G', 'M'], label: 'Müştərilərə get' },
-  { keys: ['G', 'F'], label: 'Maliyyəyə get' },
-  { keys: ['?'], label: 'Bu yardım pəncərəsi' },
-  { keys: ['Esc'], label: 'Modal/paneli bağla' },
-];
+// PRD §6.3 — render Ctrl on Win/Linux, ⌘ on macOS; detected from navigator
+function detectMac(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent || '');
+}
+
+function buildShortcuts(mod: string): Array<{ keys: string[]; label: string }> {
+  return [
+    { keys: [mod, 'K'], label: 'Universal axtarış' },
+    { keys: [mod, 'N'], label: 'Yeni tapşırıq (kontekst-aware)' },
+    { keys: [mod, '/'], label: 'MIRAI panelini aç/bağla' },
+    { keys: ['G', 'D'], label: 'Dashboard-a get' },
+    { keys: ['G', 'T'], label: 'Tapşırıqlara get' },
+    { keys: ['G', 'P'], label: 'Layihələrə get' },
+    { keys: ['G', 'M'], label: 'Müştərilərə get' },
+    { keys: ['G', 'F'], label: 'Maliyyəyə get' },
+    { keys: ['?'], label: 'Bu yardım pəncərəsi' },
+    { keys: ['Esc'], label: 'Modal/paneli bağla' },
+  ];
+}
 
 export function ShortcutHelp() {
   const [open, setOpen] = useState(false);
+  const isMac = useMemo(detectMac, []);
+  const SHORTCUTS = useMemo(() => buildShortcuts(isMac ? '⌘' : 'Ctrl'), [isMac]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -93,7 +103,7 @@ export function ShortcutHelp() {
           ))}
         </ul>
         <p className="text-meta mt-4" style={{ color: 'var(--text-muted)' }}>
-          Mac: ⌘ · Windows/Linux: Ctrl
+          {isMac ? 'macOS: ⌘ istifadə edin' : 'Windows/Linux: Ctrl istifadə edin'}
         </p>
       </div>
     </div>
