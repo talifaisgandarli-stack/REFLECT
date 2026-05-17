@@ -11,6 +11,7 @@ import { MiraiSphere } from '@/components/MiraiSphere';
 import { Mascot } from '@/components/Mascot';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
+import { useSlashFocus } from '@/lib/useSlashFocus';
 
 type PersonaKey =
   | 'general'
@@ -165,6 +166,8 @@ export function MiraiPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   // PRD §7 — client-side search across history (title + persona label)
   const [historySearch, setHistorySearch] = useState('');
+  const historySearchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(historySearchRef);
 
   async function switchToConversation(conv: { id: string; persona: string }) {
     skipAutoLoadRef.current = true; // suppress the persona-change auto-loader
@@ -591,7 +594,8 @@ export function MiraiPage() {
               border: '1px solid rgba(255,255,255,0.08)',
               fontSize: 12,
             }}
-            placeholder="Söhbətdə axtar (ad, persona)…"
+            ref={historySearchRef}
+            placeholder="Söhbətdə axtar (ad, persona)… (/)"
             value={historySearch}
             onChange={(e) => setHistorySearch(e.target.value)}
           />

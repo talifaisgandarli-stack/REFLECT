@@ -510,6 +510,13 @@ export function TaskCommentsModal({
               Göndər
             </button>
           </div>
+          {/* PRD §UX — surface keyboard contract so users don't lose drafts to Enter */}
+          <p
+            className="text-meta mt-1"
+            style={{ color: 'var(--text-muted)', fontSize: 10, opacity: 0.7 }}
+          >
+            Enter göndər · Shift+Enter yeni sətir · @ ilə komandadan kimisə qeyd et
+          </p>
           {addComment.error ? (
             <p className="text-meta mt-1" style={{ color: 'var(--error-deep)' }}>{(addComment.error as Error).message}</p>
           ) : null}

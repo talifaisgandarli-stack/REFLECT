@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import { useAuth } from '@/lib/store';
 import { formatAZN } from '@/lib/format';
+import { useSlashFocus } from '@/lib/useSlashFocus';
 
 const STATUS_LABEL = { order: 'Sifariş', in_progress: 'İcrada', delivered: 'Təhvil', paid: 'Ödənildi' } as const;
 type Status = keyof typeof STATUS_LABEL;
@@ -20,6 +21,10 @@ export function OutsourcePage() {
   const qc = useQueryClient();
   const view = isAdmin ? 'outsource_items' : 'outsource_user_view';
   const [createOpen, setCreateOpen] = useState(false);
+  // PRD §UX — free-text search across work_title (consistency with other list pages)
+  const [search, setSearch] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchRef);
 
   const q = useQuery({
     queryKey: ['outsource', view],
@@ -48,7 +53,18 @@ export function OutsourcePage() {
       <PageHead
         meta={isAdmin ? 'Admin görünüşü (məbləğlər var)' : 'İstifadəçi görünüşü (məbləğlər gizlidir)'}
         title="Podrat İşləri"
-        actions={isAdmin ? <button className="btn-primary" onClick={() => setCreateOpen(true)}>+ Yeni</button> : null}
+        actions={
+          <>
+            <input
+              ref={searchRef}
+              className="input max-w-[220px]"
+              placeholder="Axtar… (/)"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            {isAdmin ? <button className="btn-primary" onClick={() => setCreateOpen(true)}>+ Yeni</button> : null}
+          </>
+        }
       />
       {/* PRD §REQ-FIN-07 — admin spend breakdown by responsible person */}
       {isAdmin && (q.data ?? []).length > 0 ? (
@@ -124,7 +140,9 @@ export function OutsourcePage() {
               </tr>
             </thead>
             <tbody>
-              {(q.data as any[]).map((row) => (
+              {(q.data as any[])
+                .filter((row) => !search.trim() || (row.work_title ?? '').toLowerCase().includes(search.trim().toLowerCase()))
+                .map((row) => (
                 <tr key={row.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
                   <td className="py-3 px-3">{row.work_title}</td>
                   <td className="py-3 px-3">{row.project_id ?? '—'}</td>

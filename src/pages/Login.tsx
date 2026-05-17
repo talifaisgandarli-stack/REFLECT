@@ -20,6 +20,9 @@ export function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  // PRD §UX — warn user when Caps Lock is on while typing password; common
+  // source of "wrong password" frustration that drives lockouts.
+  const [capsLock, setCapsLock] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
@@ -161,6 +164,9 @@ export function LoginPage() {
                 className="input w-full pr-10"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => setCapsLock(e.getModifierState && e.getModifierState('CapsLock'))}
+                onKeyUp={(e) => setCapsLock(e.getModifierState && e.getModifierState('CapsLock'))}
+                onBlur={() => setCapsLock(false)}
               />
               <button
                 type="button"
@@ -173,6 +179,15 @@ export function LoginPage() {
                 {showPassword ? '🙈' : '👁'}
               </button>
             </div>
+            {capsLock ? (
+              <p
+                className="text-meta mt-1"
+                style={{ color: 'var(--warning, #c47d00)' }}
+                role="status"
+              >
+                ⚠ Caps Lock açıqdır
+              </p>
+            ) : null}
           </label>
           {/* PRD §REQ-AUTH-01 — visible lockout countdown after 429 */}
           {isLocked ? (
