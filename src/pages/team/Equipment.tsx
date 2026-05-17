@@ -107,12 +107,15 @@ export function EquipmentPage() {
 
   const profileMap = Object.fromEntries((profiles.data ?? []).map((p) => [p.id, p.full_name ?? p.id]));
 
-  // PRD §UX — availability filter (Hamısı / Boş / Tapşırılıb) + free-text search
+  // PRD §UX — availability filter (Hamısı / Boş / Tapşırılıb) + free-text search +
+  // person filter (narrow to a specific holder when audit-trailing kit)
   const [availability, setAvailability] = useState<'all' | 'available' | 'assigned'>('all');
   const [search, setSearch] = useState('');
+  const [holderFilter, setHolderFilter] = useState<string>(''); // '' = all
   const filteredEquipment = (equipment.data ?? []).filter((e) => {
     if (availability === 'available' && e.assigned_to) return false;
     if (availability === 'assigned' && !e.assigned_to) return false;
+    if (holderFilter && e.assigned_to !== holderFilter) return false;
     if (search.trim()) {
       const q = search.toLowerCase();
       const hay = `${e.name} ${e.serial ?? ''} ${(e as { qr_code?: string | null }).qr_code ?? ''} ${e.kind ?? ''}`.toLowerCase();
@@ -120,6 +123,11 @@ export function EquipmentPage() {
     }
     return true;
   });
+  // Only show holders who actually own equipment (cleaner UX than full firm roster)
+  const holdersWithEquipment = Array.from(
+    new Set((equipment.data ?? []).map((e) => e.assigned_to).filter(Boolean) as string[]),
+  ).map((id) => ({ id, name: profileMap[id] ?? id.slice(0, 8) }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'az'));
 
   return (
     <>
@@ -212,6 +220,21 @@ export function EquipmentPage() {
                 {f.label}
               </button>
             ))}
+            {/* PRD §8.7 — narrow to one holder so audit trail per person is one click */}
+            {holdersWithEquipment.length > 0 ? (
+              <select
+                className="input"
+                style={{ maxWidth: 200, height: 32, fontSize: 12 }}
+                value={holderFilter}
+                onChange={(e) => setHolderFilter(e.target.value)}
+                aria-label="İstifadəçiyə görə süz"
+              >
+                <option value="">Bütün istifadəçilər</option>
+                {holdersWithEquipment.map((h) => (
+                  <option key={h.id} value={h.id}>{h.name}</option>
+                ))}
+              </select>
+            ) : null}
           </div>
 
         <div className="card overflow-x-auto">

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
@@ -188,6 +188,21 @@ export function TasksPage() {
   // Persist search filter in URL so refresh / share-link preserves it.
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get('q') ?? '');
+  // PRD §6.3 / §UX — Slack/GitHub-style "/" jumps to search box
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== '/') return;
+      const tag = (e.target as HTMLElement).tagName;
+      const editing = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable;
+      if (editing) return;
+      e.preventDefault();
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
     if (search) next.set('q', search);
@@ -338,8 +353,9 @@ export function TasksPage() {
         actions={
           <>
             <input
+              ref={searchInputRef}
               className="input max-w-[240px]"
-              placeholder="Axtar…"
+              placeholder="Axtar… (/)"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -439,6 +455,21 @@ export function TasksPage() {
                 # {l}
               </button>
             ))}
+          </>
+        ) : null}
+        {/* PRD §UX — single clear-all when any filter is active */}
+        {(search || labelFilter) ? (
+          <>
+            <span style={{ width: 1, background: 'var(--line)', margin: '0 4px' }} />
+            <button
+              type="button"
+              className="chip"
+              style={{ fontSize: 11, color: 'var(--text-muted)' }}
+              onClick={() => { setSearch(''); setLabelFilter(null); }}
+              title="Bütün filtrləri təmizlə"
+            >
+              ✕ Təmizlə
+            </button>
           </>
         ) : null}
       </div>

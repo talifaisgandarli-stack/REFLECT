@@ -648,9 +648,25 @@ export function DashboardPage() {
             </div>
           ) : (
             <ul className="divide-y" style={{ borderColor: 'var(--line-soft)' }}>
-              {announcements.map((a) => (
+              {announcements.map((a) => {
+                // PRD §8.6 — surface unread state inline so user sees what's new
+                // without opening the announcements page
+                const isUnread = !a.read_by || !(a.read_by as Record<string, boolean>)[profile?.id ?? ''];
+                return (
                 <li key={a.id} className="py-2">
-                  <div className="text-body font-medium truncate">{a.title}</div>
+                  <div className="text-body font-medium truncate flex items-center gap-2">
+                    {isUnread ? (
+                      <span
+                        aria-label="oxunmamış"
+                        style={{
+                          display: 'inline-block',
+                          width: 6, height: 6, borderRadius: 999,
+                          background: 'var(--brand-action)', flexShrink: 0,
+                        }}
+                      />
+                    ) : null}
+                    {a.title}
+                  </div>
                   <div className="text-meta flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
                     {a.category ? <span>{a.category}</span> : null}
                     <span>·</span>
@@ -670,7 +686,8 @@ export function DashboardPage() {
                     ) : null}
                   </div>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
         </section>

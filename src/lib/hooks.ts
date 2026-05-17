@@ -222,6 +222,7 @@ export interface AnnouncementRow {
   approved: boolean;
   published_at: string | null;
   created_at: string;
+  read_by?: Record<string, boolean> | null;
 }
 
 export function useRecentAnnouncements(limit = 3) {
@@ -230,7 +231,7 @@ export function useRecentAnnouncements(limit = 3) {
     queryFn: async (): Promise<AnnouncementRow[]> => {
       const { data, error } = await supabase
         .from('announcements')
-        .select('id, title, body, category, is_featured, mirai_generated, approved, published_at, created_at')
+        .select('id, title, body, category, is_featured, mirai_generated, approved, published_at, created_at, read_by')
         .eq('approved', true)
         .order('published_at', { ascending: false, nullsFirst: false })
         .limit(limit);

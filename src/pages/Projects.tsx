@@ -282,6 +282,27 @@ export function ProjectsPage() {
         </div>
       ) : null}
 
+      {/* PRD §UX — single "clear all" affordance when multiple filters are active
+          (search + status + tag + favorites can stack and hide projects silently). */}
+      {(search || statusFilter !== 'all' || tagFilter || favoritesOnly) ? (
+        <div className="mb-4">
+          <button
+            type="button"
+            className="chip"
+            style={{ fontSize: 11, color: 'var(--text-muted)' }}
+            onClick={() => {
+              setSearch('');
+              setStatusFilter('all');
+              setTagFilter(null);
+              setFavoritesOnly(false);
+            }}
+            title="Bütün filtrləri təmizlə"
+          >
+            ✕ Filtrləri təmizlə
+          </button>
+        </div>
+      ) : null}
+
       {isLoading ? (
         <SkeletonList rows={6} />
       ) : projects.length === 0 ? (
