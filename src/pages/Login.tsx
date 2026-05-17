@@ -149,6 +149,7 @@ export function LoginPage() {
               required
               type="email"
               autoComplete="email"
+              autoFocus
               className="input mt-1"
               value={email}
               onChange={(e) => setEmail(e.target.value)}

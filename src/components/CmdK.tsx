@@ -75,7 +75,7 @@ function pushRecent(hit: Hit) {
 type EntityFilter = 'all' | Hit['type'];
 
 export function CmdK() {
-  const { cmdkOpen, setCmdK } = useUI();
+  const { cmdkOpen, setCmdK, openTaskCreate } = useUI();
   const [q, setQ] = useState('');
   const [serverHits, setServerHits] = useState<Hit[]>([]);
   const [recents, setRecents] = useState<Hit[]>([]);
@@ -325,7 +325,34 @@ export function CmdK() {
               className="px-4 py-6 text-meta text-center"
               style={{ color: 'var(--text-muted)' }}
             >
-              Heç nə tapılmadı
+              <div className="mb-2">Heç nə tapılmadı</div>
+              {/* PRD §UX — useful quick-actions so an empty search isn't a dead end */}
+              <div className="flex items-center justify-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  className="chip"
+                  style={{ background: 'var(--brand-action)', color: 'var(--ink)', fontSize: 11, fontWeight: 600 }}
+                  onClick={() => { openTaskCreate(); setCmdK(false); }}
+                >
+                  + Yeni tapşırıq
+                </button>
+                <button
+                  type="button"
+                  className="chip"
+                  style={{ background: 'var(--surface-mist)', color: 'var(--text)', fontSize: 11 }}
+                  onClick={() => { nav('/layihelər'); setCmdK(false); }}
+                >
+                  + Yeni layihə
+                </button>
+                <button
+                  type="button"
+                  className="chip"
+                  style={{ background: 'var(--surface-mist)', color: 'var(--text)', fontSize: 11 }}
+                  onClick={() => { nav('/mirai'); setCmdK(false); }}
+                >
+                  ✦ MIRAI
+                </button>
+              </div>
             </li>
           ) : null}
         </ul>

@@ -347,6 +347,20 @@ export function ClientsPage() {
                     <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
                       {c.company ?? '—'} · {formatAZN(c.expected_value)}
                     </div>
+                    {/* PRD §REQ-CRM — industry chip on kanban card (migration 0050) */}
+                    {(c as { industry?: string | null }).industry ? (
+                      <span
+                        className="chip mt-1.5 inline-block"
+                        style={{
+                          background: 'var(--surface-mist)',
+                          color: 'var(--text-muted)',
+                          fontSize: 10,
+                          padding: '0 6px',
+                        }}
+                      >
+                        {(c as { industry?: string | null }).industry}
+                      </span>
+                    ) : null}
                   </button>
                 ))}
               </div>

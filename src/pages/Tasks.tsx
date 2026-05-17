@@ -313,13 +313,41 @@ export function TasksPage() {
     return out;
   }, [tasks, search, labelFilter]);
 
+  // PRD §UX — sort within columns; persisted in URL so it survives reload + share
+  type SortKey = 'deadline' | 'priority' | 'created';
+  const [sortBy, setSortBy] = useState<SortKey>(
+    (searchParams.get('sort') as SortKey) || 'deadline',
+  );
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (sortBy === 'deadline') next.delete('sort');
+    else next.set('sort', sortBy);
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortBy]);
+  const sortTasks = (arr: Task[]): Task[] => {
+    const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2, normal: 2 };
+    return [...arr].sort((a, b) => {
+      if (sortBy === 'priority') {
+        const ap = PRIORITY_ORDER[a.priority ?? 'normal'] ?? 3;
+        const bp = PRIORITY_ORDER[b.priority ?? 'normal'] ?? 3;
+        if (ap !== bp) return ap - bp;
+      }
+      if (sortBy === 'created') return (b.created_at ?? '').localeCompare(a.created_at ?? '');
+      // deadline (default): nulls last, ascending
+      return (a.deadline ?? '￿').localeCompare(b.deadline ?? '￿');
+    });
+  };
+
   const grouped = useMemo(() => {
     const map: Record<TaskStatus, Task[]> = {
       idea: [], queued: [], active: [], review: [], expert: [], done: [], cancelled: [],
     };
     for (const t of filtered) map[t.status].push(t);
+    for (const k of Object.keys(map) as TaskStatus[]) map[k] = sortTasks(map[k]);
     return map;
-  }, [filtered]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, sortBy]);
 
   // US-TASK-06 — time-grouped personal view computed data
   const groupedByTime = useMemo(() => {
@@ -431,7 +459,18 @@ export function TasksPage() {
         }
       />
 
-      <div className="flex gap-2 mb-4 flex-wrap">
+      <div className="flex gap-2 mb-4 flex-wrap items-center">
+        <select
+          className="input"
+          style={{ maxWidth: 160, height: 32, fontSize: 12 }}
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as SortKey)}
+          aria-label="Sıralama"
+        >
+          <option value="deadline">↑ Son tarix</option>
+          <option value="priority">Prioritet</option>
+          <option value="created">Yenilər əvvəl</option>
+        </select>
         {(['board', 'table'] as const).map((v) => (
           <button
             key={v}

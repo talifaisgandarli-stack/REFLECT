@@ -110,7 +110,17 @@ function BuildInfoFooter() {
       style={{ color: 'var(--text-muted)', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}
     >
       <span>v{version}</span>
-      {commit ? <span>· {commit}</span> : null}
+      {commit ? (
+        <a
+          href={`https://github.com/talifaisgandarli-stack/REFLECT/commit/${commit}`}
+          target="_blank"
+          rel="noreferrer noopener"
+          style={{ color: 'var(--brand-text)', textDecoration: 'underline dotted' }}
+          title="GitHub-da bu commit-ə bax"
+        >
+          · {commit}
+        </a>
+      ) : null}
       <span>· qurulub {builtFmt}</span>
     </div>
   );
