@@ -256,6 +256,14 @@ export function CmdK() {
               e.preventDefault();
               activate(items[cursor]);
             }
+            // PRD §6.3 — Alt+1..9 jumps straight to the Nth visible item
+            if (e.altKey && /^[1-9]$/.test(e.key)) {
+              const idx = Number(e.key) - 1;
+              if (items[idx]) {
+                e.preventDefault();
+                activate(items[idx]);
+              }
+            }
           }}
         />
         <ul

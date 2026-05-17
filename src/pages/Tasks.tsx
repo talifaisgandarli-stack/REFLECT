@@ -318,6 +318,8 @@ export function TasksPage() {
   const [sortBy, setSortBy] = useState<SortKey>(
     (searchParams.get('sort') as SortKey) || 'deadline',
   );
+  // PRD §UX — compact mode hides done + cancelled columns (board view only)
+  const [compactBoard, setCompactBoard] = useState(false);
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
     if (sortBy === 'deadline') next.delete('sort');
@@ -471,6 +473,23 @@ export function TasksPage() {
           <option value="priority">Prioritet</option>
           <option value="created">Yenilər əvvəl</option>
         </select>
+        {/* PRD §UX — compact mode hides done/cancelled columns on board view */}
+        {view === 'board' ? (
+          <button
+            type="button"
+            className="chip"
+            style={{
+              background: compactBoard ? 'var(--brand-action)' : undefined,
+              color: compactBoard ? 'var(--ink)' : undefined,
+              fontWeight: compactBoard ? 600 : 400,
+            }}
+            onClick={() => setCompactBoard((v) => !v)}
+            aria-pressed={compactBoard}
+            title="Tamamlanmış / ləğv edilmiş sütunları gizlət"
+          >
+            {compactBoard ? '✓ Yığcam' : 'Yığcam'}
+          </button>
+        ) : null}
         {(['board', 'table'] as const).map((v) => (
           <button
             key={v}
@@ -611,7 +630,7 @@ export function TasksPage() {
         </div>
       ) : view === 'board' ? (
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
-          {TASK_STATUS_ORDER.map((s) => {
+          {TASK_STATUS_ORDER.filter((s) => !compactBoard || (s !== 'done' && s !== 'cancelled')).map((s) => {
             const isToday = s === 'active';
             const tone = TASK_STATUS_TONE[s];
             // PRD §UX — sum estimated hours per column so user sees workload per stage.

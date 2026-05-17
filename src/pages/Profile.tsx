@@ -222,6 +222,14 @@ export function ProfilePage() {
             <div className="text-meta mt-0.5" style={{ color: 'var(--text-muted)' }}>
               {role?.name ?? 'Üzv'}
               {profile.is_creator ? ' · Creator' : ''}
+              {/* PRD §UX — membership age so user sees how long they've been on Reflect */}
+              {profile.created_at ? (
+                <span
+                  title={new Date(profile.created_at).toLocaleString('az-AZ', { timeZone: 'Asia/Baku' })}
+                >
+                  {' · üzv '}{relativeTime(profile.created_at)}
+                </span>
+              ) : null}
             </div>
           </div>
         </div>

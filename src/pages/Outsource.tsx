@@ -56,7 +56,15 @@ export function OutsourcePage() {
   return (
     <>
       <PageHead
-        meta={isAdmin ? 'Admin görünüşü (məbləğlər var)' : 'İstifadəçi görünüşü (məbləğlər gizlidir)'}
+        meta={
+          isAdmin
+            ? `Admin görünüşü · cəmi ${formatAZN(
+                (q.data as Array<{ amount?: number }> ?? []).reduce(
+                  (sum, r) => sum + Number(r.amount ?? 0), 0,
+                ),
+              )}`
+            : 'İstifadəçi görünüşü (məbləğlər gizlidir)'
+        }
         title="Podrat İşləri"
         actions={
           <>

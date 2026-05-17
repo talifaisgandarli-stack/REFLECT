@@ -237,8 +237,9 @@ export function CalendarPage() {
           className="chip"
           style={{ background: 'var(--surface-mist)', color: 'var(--text-muted)' }}
           onClick={() => setCursor(new Date())}
+          title="Bu günə qayıt (T)"
         >
-          Bu gün
+          Bu gün <span style={{ opacity: 0.5, marginLeft: 4, fontSize: 10 }}>T</span>
         </button>
         <button className="btn-outline px-3 py-1" onClick={() => navigate(1)}>›</button>
         <span className="text-h3 ml-2">{headerLabel}</span>
