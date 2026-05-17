@@ -22,6 +22,7 @@ import {
 import { SkeletonList } from '@/components/Skeleton';
 import type { Client, ClientPipelineStage, InteractionType } from '@/types/db';
 import { formatAZN, relativeTime } from '@/lib/format';
+import { downloadCsv } from '@/lib/csv';
 import { useAuth } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { isValidEmail, isValidPhone, roundAzn } from '@/lib/validation';
@@ -125,6 +126,33 @@ export function ClientsPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+            {/* PRD §REQ-CRM — pipeline export for BD review/forecasting */}
+            {isAdmin && clients.length > 0 ? (
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={() => {
+                  downloadCsv(
+                    `musteriler-${new Date().toISOString().slice(0, 10)}.csv`,
+                    ['Ad', 'Şirkət', 'Email', 'Telefon', 'Mərhələ', 'Etibar %', 'Dəyər (AZN)', 'Sahə', 'ICP %', 'Son əlaqə'],
+                    clients.map((c) => ({
+                      'Ad': c.name,
+                      'Şirkət': c.company ?? '',
+                      'Email': c.email ?? '',
+                      'Telefon': c.phone ?? '',
+                      'Mərhələ': CLIENT_STAGE_LABEL[c.pipeline_stage] ?? c.pipeline_stage,
+                      'Etibar %': c.confidence_pct,
+                      'Dəyər (AZN)': c.expected_value ?? '',
+                      'Sahə': (c as { industry?: string | null }).industry ?? '',
+                      'ICP %': c.ai_icp_fit != null ? Math.round(c.ai_icp_fit) : '',
+                      'Son əlaqə': c.last_interaction_at ?? '',
+                    })),
+                  );
+                }}
+              >
+                ↓ CSV
+              </button>
+            ) : null}
             {canDrag ? <button className="btn-primary" onClick={() => setCreating(true)}>+ Yeni müştəri</button> : null}
           </>
         }

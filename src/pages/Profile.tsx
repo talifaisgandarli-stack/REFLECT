@@ -252,7 +252,11 @@ export function ProfilePage() {
             <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
               E-poçt (dəyişilmir)
             </span>
-            <input className="input opacity-60" value={profile.email} readOnly />
+            <div className="relative">
+              <input className="input opacity-60 pr-20" value={profile.email} readOnly />
+              {/* PRD §UX — one-click copy to clipboard with brief confirmation */}
+              <CopyEmailButton email={profile.email} />
+            </div>
           </label>
 
           <label className="block">
@@ -630,6 +634,30 @@ function EmailChangeRequestCard({ userId, currentEmail }: { userId: string; curr
         </form>
       )}
     </div>
+  );
+}
+
+// PRD §UX — single-purpose copy-email chip with brief "✓ Kopyalandı" confirmation.
+function CopyEmailButton({ email }: { email: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      className="absolute right-1 top-1/2 -translate-y-1/2 chip"
+      style={{ fontSize: 11, color: copied ? 'var(--brand-text)' : 'var(--text-muted)' }}
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(email);
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1500);
+        } catch {
+          /* clipboard requires secure context — silently ignore */
+        }
+      }}
+      aria-label="E-poçtu kopyala"
+    >
+      {copied ? '✓ Kopyalandı' : '📋 Kopyala'}
+    </button>
   );
 }
 

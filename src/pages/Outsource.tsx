@@ -6,6 +6,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { useAuth } from '@/lib/store';
 import { formatAZN } from '@/lib/format';
 import { useSlashFocus } from '@/lib/useSlashFocus';
+import { downloadCsv } from '@/lib/csv';
 
 const STATUS_LABEL = { order: 'Sifariş', in_progress: 'İcrada', delivered: 'Təhvil', paid: 'Ödənildi' } as const;
 type Status = keyof typeof STATUS_LABEL;
@@ -25,6 +26,8 @@ export function OutsourcePage() {
   const [search, setSearch] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
   useSlashFocus(searchRef);
+  // PRD §UX — sort dropdown (deadline default, status, amount for admin)
+  const [sortBy, setSortBy] = useState<'deadline' | 'status' | 'amount'>('deadline');
 
   const q = useQuery({
     queryKey: ['outsource', view],
@@ -62,6 +65,38 @@ export function OutsourcePage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+            <select
+              className="input"
+              style={{ maxWidth: 160, height: 32, fontSize: 12 }}
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+              aria-label="Sıralama"
+            >
+              <option value="deadline">↑ Son tarix</option>
+              <option value="status">Status</option>
+              {isAdmin ? <option value="amount">Məbləğ (böyük əvvəl)</option> : null}
+            </select>
+            {isAdmin && (q.data ?? []).length > 0 ? (
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={() => {
+                  downloadCsv(
+                    `podrat-${new Date().toISOString().slice(0, 10)}.csv`,
+                    ['İş', 'Layihə', 'Status', 'Deadline', 'Məbləğ'],
+                    (q.data as Array<{ work_title?: string; project_id?: string | null; status?: string; deadline?: string | null; amount?: number }>).map((r) => ({
+                      'İş': r.work_title ?? '',
+                      'Layihə': r.project_id ?? '',
+                      'Status': STATUS_LABEL[r.status as Status] ?? r.status ?? '',
+                      'Deadline': r.deadline ?? '',
+                      'Məbləğ': r.amount ?? '',
+                    })),
+                  );
+                }}
+              >
+                ↓ CSV
+              </button>
+            ) : null}
             {isAdmin ? <button className="btn-primary" onClick={() => setCreateOpen(true)}>+ Yeni</button> : null}
           </>
         }
@@ -142,6 +177,12 @@ export function OutsourcePage() {
             <tbody>
               {(q.data as any[])
                 .filter((row) => !search.trim() || (row.work_title ?? '').toLowerCase().includes(search.trim().toLowerCase()))
+                .sort((a, b) => {
+                  if (sortBy === 'status') return String(a.status ?? '').localeCompare(String(b.status ?? ''));
+                  if (sortBy === 'amount') return Number(b.amount ?? 0) - Number(a.amount ?? 0);
+                  // deadline: nulls last, ascending
+                  return String(a.deadline ?? '￿').localeCompare(String(b.deadline ?? '￿'));
+                })
                 .map((row) => (
                 <tr key={row.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
                   <td className="py-3 px-3">{row.work_title}</td>

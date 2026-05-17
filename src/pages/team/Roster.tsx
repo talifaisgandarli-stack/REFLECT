@@ -6,6 +6,7 @@ import { PageHead } from '@/components/PageHead';
 import { Avatar } from '@/components/Avatar';
 import { EmptyState } from '@/components/EmptyState';
 import { useAuth } from '@/lib/store';
+import { downloadCsv } from '@/lib/csv';
 import type { Profile, UserPresence } from '@/types/db';
 
 type ProfileWithRole = Profile & { role?: { name: string } | null };
@@ -125,18 +126,43 @@ export function TeamRosterPage() {
         title="İşçi Heyəti"
         actions={
           isAdmin ? (
-            <button
-              type="button"
-              className="chip"
-              style={{
-                background: showInactive ? 'var(--brand-action)' : undefined,
-                color: showInactive ? 'var(--ink)' : undefined,
-              }}
-              onClick={() => setShowInactive((v) => !v)}
-              aria-pressed={showInactive}
-            >
-              {showInactive ? '✓ Deaktivləri göstər' : 'Deaktivləri göstər'}
-            </button>
+            <>
+              {/* PRD §8.1 — roster snapshot for HR / handover */}
+              <button
+                type="button"
+                className="btn-outline"
+                disabled={ppl.length === 0}
+                onClick={() => {
+                  downloadCsv(
+                    `heyet-${new Date().toISOString().slice(0, 10)}.csv`,
+                    ['Ad', 'Email', 'Rol', 'Aktiv', 'Açıq tapşırıq', 'Avadanlıq', 'Telegram'],
+                    ppl.map((p) => ({
+                      'Ad': p.full_name ?? '',
+                      'Email': p.email,
+                      'Rol': p.role?.name ?? '',
+                      'Aktiv': p.is_active === false ? 'Yox' : 'Bəli',
+                      'Açıq tapşırıq': taskMap[p.id] ?? 0,
+                      'Avadanlıq': eqMap[p.id] ?? 0,
+                      'Telegram': p.telegram_chat_id ? 'Bəli' : 'Yox',
+                    })),
+                  );
+                }}
+              >
+                ↓ CSV
+              </button>
+              <button
+                type="button"
+                className="chip"
+                style={{
+                  background: showInactive ? 'var(--brand-action)' : undefined,
+                  color: showInactive ? 'var(--ink)' : undefined,
+                }}
+                onClick={() => setShowInactive((v) => !v)}
+                aria-pressed={showInactive}
+              >
+                {showInactive ? '✓ Deaktivləri göstər' : 'Deaktivləri göstər'}
+              </button>
+            </>
           ) : null
         }
       />
