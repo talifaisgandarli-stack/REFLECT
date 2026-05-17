@@ -659,7 +659,31 @@ function LoginHistoryCard({ userId }: { userId: string }) {
 
   return (
     <div className="card space-y-2">
-      <h3 className="text-h3">Daxil olma tarixçəsi</h3>
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-h3">Daxil olma tarixçəsi</h3>
+        {/* PRD §9.4 — let user export their own login audit trail */}
+        {(history.data ?? []).length > 0 ? (
+          <button
+            type="button"
+            className="chip"
+            style={{ fontSize: 11, color: 'var(--text-muted)' }}
+            onClick={() => {
+              downloadCsv(
+                `daxil-olma-${new Date().toISOString().slice(0, 10)}.csv`,
+                ['Tarix', 'IP', 'Brauzer/OS'],
+                (history.data ?? []).map((h) => ({
+                  'Tarix': new Date(h.created_at).toLocaleString('az-AZ', { timeZone: 'Asia/Baku' }),
+                  'IP': h.ip ?? '',
+                  'Brauzer/OS': shortUA(h.user_agent),
+                })),
+              );
+            }}
+            title="CSV faylı yüklə"
+          >
+            ↓ CSV
+          </button>
+        ) : null}
+      </div>
       <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
         Son 10 sessiya. Tanımadığın bir girişi görürsənsə, dərhal şifrəni dəyiş.
       </p>

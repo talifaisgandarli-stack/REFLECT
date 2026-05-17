@@ -29,19 +29,7 @@ export function SettingsPage() {
       <FirmStatsRow />
       <BuildInfoFooter />
       <div className="grid grid-cols-1 lg:grid-cols-[200px,1fr] gap-6">
-        <nav className="space-y-1">
-          {NAV.map((n) => (
-            <NavLink
-              key={n.to}
-              to={n.to}
-              className={({ isActive }) =>
-                `block px-3 py-2 rounded-btn text-ui ${isActive ? 'bg-surface-mist' : ''}`
-              }
-            >
-              {n.label}
-            </NavLink>
-          ))}
-        </nav>
+        <SettingsNav />
         <div className="card">
           <Routes>
             <Route index element={<Navigate to="umumi" replace />} />
@@ -54,6 +42,56 @@ export function SettingsPage() {
         </div>
       </div>
     </>
+  );
+}
+
+// PRD §UX — settings nav with pending-invite badge so admin sees
+// outstanding invitations without opening the section.
+function SettingsNav() {
+  const pendingCount = useQuery({
+    queryKey: ['settings-nav-pending-invites'],
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { count } = await supabase
+        .from('invitations')
+        .select('id', { count: 'exact', head: true })
+        .is('accepted_at', null);
+      return count ?? 0;
+    },
+  });
+  return (
+    <nav className="space-y-1">
+      {NAV.map((n) => {
+        const badge = n.to === 'dəvətlər' ? (pendingCount.data ?? 0) : 0;
+        return (
+          <NavLink
+            key={n.to}
+            to={n.to}
+            className={({ isActive }) =>
+              `flex items-center justify-between gap-2 px-3 py-2 rounded-btn text-ui ${isActive ? 'bg-surface-mist' : ''}`
+            }
+          >
+            <span>{n.label}</span>
+            {badge > 0 ? (
+              <span
+                className="text-ui font-bold rounded-full flex items-center justify-center"
+                style={{
+                  background: 'var(--brand-action)',
+                  color: 'var(--ink)',
+                  minWidth: 20,
+                  height: 20,
+                  padding: '0 6px',
+                  fontSize: 11,
+                }}
+                aria-label={`${badge} gözləyən dəvət`}
+              >
+                {badge}
+              </span>
+            ) : null}
+          </NavLink>
+        );
+      })}
+    </nav>
   );
 }
 

@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
+import { downloadCsv } from '@/lib/csv';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import type { Profile, Salary } from '@/types/db';
@@ -133,11 +134,37 @@ export function SalaryPage() {
         meta={isAdmin ? 'Bütün heyət' : 'Yalnız sizin'}
         title="Əmək Haqqı"
         actions={
-          isAdmin ? (
-            <button className="btn-primary" onClick={() => setShowForm(true)}>
-              + Maaş cədvəli
+          <>
+            {/* PRD §8.2 — CSV export (audit / handover). RLS scopes rows so
+                admin gets firm-wide, user gets own only — no extra check needed. */}
+            <button
+              type="button"
+              className="btn-outline"
+              disabled={(rows.data ?? []).length === 0}
+              onClick={() => {
+                downloadCsv(
+                  `maas-${new Date().toISOString().slice(0, 10)}.csv`,
+                  ['İşçi', 'Email', 'Başlanğıc', 'Bitiş', 'Məbləğ', 'Valyuta', 'Komponentlər'],
+                  (rows.data ?? []).map((r) => ({
+                    'İşçi': r.profile?.full_name ?? '',
+                    'Email': r.profile?.email ?? '',
+                    'Başlanğıc': r.effective_from,
+                    'Bitiş': r.effective_to ?? '',
+                    'Məbləğ': r.amount,
+                    'Valyuta': r.currency,
+                    'Komponentlər': formatComponents(r.components as SalaryComponents | null),
+                  })),
+                );
+              }}
+            >
+              ↓ CSV
             </button>
-          ) : null
+            {isAdmin ? (
+              <button className="btn-primary" onClick={() => setShowForm(true)}>
+                + Maaş cədvəli
+              </button>
+            ) : null}
+          </>
         }
       />
 

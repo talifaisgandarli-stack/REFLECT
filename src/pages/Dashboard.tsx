@@ -100,6 +100,19 @@ function workloadColor(count: number): string {
   return 'var(--error)';
 }
 
+// PRD §UX — time-of-day greeting (Asia/Baku) so the dashboard feels alive.
+// 05–11 sabahın xeyir · 11–17 salam · 17–22 axşamın xeyir · 22–05 gecən xeyir
+function greetingFor(now: Date): string {
+  const bakuHour = Number(
+    new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hour12: false, timeZone: 'Asia/Baku' })
+      .format(now),
+  );
+  if (bakuHour >= 5 && bakuHour < 11) return 'Sabahın xeyir';
+  if (bakuHour >= 11 && bakuHour < 17) return 'Salam';
+  if (bakuHour >= 17 && bakuHour < 22) return 'Axşamın xeyir';
+  return 'Gecən xeyir';
+}
+
 export function DashboardPage() {
   const { profile, isAdmin } = useAuth();
   const { data: tasks = [] } = useTasks(profile?.id ? { assigneeId: profile.id } : undefined);
@@ -236,7 +249,7 @@ export function DashboardPage() {
     <>
       <PageHead
         meta={isAdmin ? 'Admin görünüşü' : 'Sizin görünüşünüz'}
-        title={`Salam, ${profile?.full_name?.split(' ')[0] ?? 'arxitekt'}`}
+        title={`${greetingFor(new Date())}, ${profile?.full_name?.split(' ')[0] ?? 'arxitekt'}`}
         actions={
           /* REQ-DASH-01 — MIRAI quick-launch; nav group removed per PRD §4 */
           <div className="flex items-center gap-2">

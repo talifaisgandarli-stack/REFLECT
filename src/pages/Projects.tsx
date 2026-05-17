@@ -200,6 +200,32 @@ export function ProjectsPage() {
     return matchesSearch && matchesStatus && matchesTag && matchesFav;
   });
 
+  // PRD §UX — sort dropdown (persisted in URL so back/forward + share preserves view)
+  type SortKey = 'deadline' | 'name' | 'created' | 'budget';
+  const [sortBy, setSortBy] = useState<SortKey>(
+    (searchParams.get('sort') as SortKey) || 'deadline',
+  );
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (sortBy === 'deadline') next.delete('sort');
+    else next.set('sort', sortBy);
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortBy]);
+  const sortedFiltered = [...filtered].sort((a, b) => {
+    if (sortBy === 'name') return a.name.localeCompare(b.name, 'az');
+    if (sortBy === 'created') return (b.created_at ?? '').localeCompare(a.created_at ?? '');
+    if (sortBy === 'budget') {
+      const ab = (a as { budget_amount?: number | null }).budget_amount ?? -1;
+      const bb = (b as { budget_amount?: number | null }).budget_amount ?? -1;
+      return bb - ab;
+    }
+    // deadline: nulls last, ascending
+    const ad = a.deadline ?? '￿';
+    const bd = b.deadline ?? '￿';
+    return ad.localeCompare(bd);
+  });
+
   return (
     <>
       <PageHead
@@ -231,7 +257,20 @@ export function ProjectsPage() {
       />
 
       {/* Status filter chips */}
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex flex-wrap gap-2 mb-4 items-center">
+        {/* PRD §UX — sort selector (persisted in URL) */}
+        <select
+          className="input"
+          style={{ maxWidth: 180, height: 32, fontSize: 12 }}
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as SortKey)}
+          aria-label="Sıralama"
+        >
+          <option value="deadline">↑ Son tarix</option>
+          <option value="name">A → Z</option>
+          <option value="created">Yenilər əvvəl</option>
+          <option value="budget">Büdcə (böyük əvvəl)</option>
+        </select>
         {/* PRD §UX — favorites-only quick filter */}
         {favorites.data && favorites.data.size > 0 ? (
           <button
@@ -334,7 +373,7 @@ export function ProjectsPage() {
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((p, i) => {
+          {sortedFiltered.map((p, i) => {
             const tone = FOLDER_TONE[i % FOLDER_TONE.length];
             const dark = tone === 'bg-grad-folder-forest';
 
