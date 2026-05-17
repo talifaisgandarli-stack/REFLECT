@@ -293,6 +293,21 @@
   }
 }
 
+/* PRD §UX delight — mascot wiggle on click. Disabled under prefers-reduced-motion
+   thanks to the global @media (prefers-reduced-motion: reduce) block above. */
+@keyframes mascot-wiggle {
+  0%   { transform: rotate(0deg); }
+  20%  { transform: rotate(-12deg); }
+  40%  { transform: rotate(10deg); }
+  60%  { transform: rotate(-6deg); }
+  80%  { transform: rotate(4deg); }
+  100% { transform: rotate(0deg); }
+}
+.mascot-wiggle {
+  animation: mascot-wiggle 0.6s ease-in-out;
+  transform-origin: 50% 70%;
+}
+
 /* PRD §UX — print-friendly stylesheet (invoices, reports, single-page views).
    Hide chrome (sidebar, toasts, modals) and force white background. */
 @media print {

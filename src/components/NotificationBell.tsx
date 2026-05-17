@@ -131,6 +131,21 @@ export function NotificationBell() {
     };
   }, [open]);
 
+  // PRD §6.3 — "B" key toggles the bell from anywhere (skip when typing)
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'b' && e.key !== 'B') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const tag = (e.target as HTMLElement).tagName;
+      const editing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement).isContentEditable;
+      if (editing) return;
+      e.preventDefault();
+      setOpen((v) => !v);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   return (
     <div ref={ref} className="relative">
       <button

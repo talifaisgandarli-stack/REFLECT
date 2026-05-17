@@ -332,7 +332,15 @@ export function TasksPage() {
     return map;
   }, [filtered]);
 
-  const meta = `${filtered.length} cəmi · ${grouped.active.length} icrada · ${grouped.review.length} yoxlamada`;
+  // PRD §UX — bubble overdue count to the page meta so it's visible from the header
+  // even when the board is scrolled. Matches the red border treatment on cards.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const overdueCount = filtered.filter(
+    (t) => t.deadline && t.deadline < todayIso && t.status !== 'done' && t.status !== 'cancelled',
+  ).length;
+  const meta = `${filtered.length} cəmi · ${grouped.active.length} icrada · ${grouped.review.length} yoxlamada${
+    overdueCount > 0 ? ` · ⚠ ${overdueCount} gecikmiş` : ''
+  }`;
 
   return (
     <>

@@ -20,6 +20,8 @@ function buildShortcuts(mod: string): Array<{ keys: string[]; label: string }> {
     { keys: ['G', 'P'], label: 'Layihələrə get' },
     { keys: ['G', 'M'], label: 'Müştərilərə get' },
     { keys: ['G', 'F'], label: 'Maliyyəyə get' },
+    { keys: ['B'], label: 'Bildiriş zəngini aç/bağla' },
+    { keys: ['/'], label: 'Axtarış qutusuna fokuslan' },
     { keys: ['?'], label: 'Bu yardım pəncərəsi' },
     { keys: ['Esc'], label: 'Modal/paneli bağla' },
   ];

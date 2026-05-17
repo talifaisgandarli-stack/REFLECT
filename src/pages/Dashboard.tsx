@@ -597,9 +597,33 @@ export function DashboardPage() {
 
         {/* Upcoming meetings */}
         <section className={`${isAdmin ? 'lg:col-span-4' : 'lg:col-span-6'} card`}>
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-3 gap-2">
             <h3 className="text-h3">Yaxınlaşan görüşlər</h3>
-            <a href="/komanda/təqvim" className="text-meta" style={{ color: 'var(--brand-text)' }}>
+            {/* PRD §UX — surface "minutes-to-next-meeting" so user sees urgency
+                at a glance without parsing timestamps. Only shows for meetings
+                ≤120 min away; otherwise hidden to avoid clutter. */}
+            {(() => {
+              const next = meetings[0];
+              if (!next) return null;
+              const mins = Math.round((new Date(next.starts_at).getTime() - Date.now()) / 60_000);
+              if (mins < 0 || mins > 120) return null;
+              return (
+                <span
+                  className="chip"
+                  style={{
+                    background: mins <= 15 ? 'var(--error-deep, #b3261e)' : 'var(--brand-action)',
+                    color: mins <= 15 ? 'white' : 'var(--ink)',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                  title={`Növbəti: ${next.title}`}
+                >
+                  {mins <= 0 ? 'İndi' : `${mins} dəq sonra`}
+                </span>
+              );
+            })()}
+            <a href="/komanda/təqvim" className="text-meta ml-auto" style={{ color: 'var(--brand-text)' }}>
               Təqvimə bax →
             </a>
           </div>

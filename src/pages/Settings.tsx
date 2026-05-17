@@ -26,6 +26,7 @@ export function SettingsPage() {
   return (
     <>
       <PageHead meta="Yalnız admin" title="Parametrlər" />
+      <FirmStatsRow />
       <div className="grid grid-cols-1 lg:grid-cols-[200px,1fr] gap-6">
         <nav className="space-y-1">
           {NAV.map((n) => (
@@ -52,6 +53,45 @@ export function SettingsPage() {
         </div>
       </div>
     </>
+  );
+}
+
+// PRD §10.1 — at-a-glance firm size snapshot above the settings nav. Uses
+// `count: 'exact', head: true` so we don't pull any rows — just the totals.
+function FirmStatsRow() {
+  const stats = useQuery({
+    queryKey: ['settings-firm-stats'],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const [users, projects, clients, tasks] = await Promise.all([
+        supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('is_active', true),
+        supabase.from('projects').select('id', { count: 'exact', head: true }).eq('status', 'active').is('archived_at', null),
+        supabase.from('clients').select('id', { count: 'exact', head: true }),
+        supabase.from('tasks').select('id', { count: 'exact', head: true }).is('archived_at', null).not('status', 'in', '("done","cancelled")'),
+      ]);
+      return {
+        users: users.count ?? 0,
+        projects: projects.count ?? 0,
+        clients: clients.count ?? 0,
+        tasks: tasks.count ?? 0,
+      };
+    },
+  });
+  const items: Array<[string, number]> = [
+    ['Aktiv istifadəçi', stats.data?.users ?? 0],
+    ['Aktiv layihə', stats.data?.projects ?? 0],
+    ['Müştəri', stats.data?.clients ?? 0],
+    ['Açıq tapşırıq', stats.data?.tasks ?? 0],
+  ];
+  return (
+    <div className="card mb-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {items.map(([label, n]) => (
+        <div key={label}>
+          <div className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>{label}</div>
+          <div className="text-h2" style={{ fontVariantNumeric: 'tabular-nums' }}>{n}</div>
+        </div>
+      ))}
+    </div>
   );
 }
 
