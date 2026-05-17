@@ -232,6 +232,7 @@ export function TeamRosterPage() {
                   url={p.avatar_url}
                   size={48}
                   presence={isInactive ? undefined : presenceMap[p.id]?.status}
+                  tooltip={[p.full_name ?? p.email, p.email, p.role?.name].filter(Boolean).join(' · ')}
                 />
                 <div className="flex-1 min-w-0">
                   <div className="text-body font-medium truncate flex items-center gap-2">

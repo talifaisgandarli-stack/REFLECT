@@ -247,6 +247,24 @@ export function MiraiPage() {
   const budgetExhausted = !!(usage && usage.warning === null && usage.pct >= 1);
 
   // Load last conversation for this persona (PRD §7.2)
+  // PRD §6.3 — "N" key starts a fresh MIRAI conversation (skip while typing)
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'n' && e.key !== 'N') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const tag = (e.target as HTMLElement).tagName;
+      const editing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement).isContentEditable;
+      if (editing) return;
+      e.preventDefault();
+      setMsgs([]);
+      setConversationId(null);
+      setError(null);
+      setFeedbackGiven({});
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   useEffect(() => {
     // If switchToConversation just set this persona we already loaded the
     // chosen thread — don't clobber it by auto-loading the latest.

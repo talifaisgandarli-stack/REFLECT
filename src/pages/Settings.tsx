@@ -59,10 +59,23 @@ function SettingsNav() {
       return count ?? 0;
     },
   });
+  // Total KB documents — surfaces growth without entering the section
+  const kbCount = useQuery({
+    queryKey: ['settings-nav-kb-count'],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { count } = await supabase
+        .from('knowledge_base')
+        .select('id', { count: 'exact', head: true });
+      return count ?? 0;
+    },
+  });
   return (
     <nav className="space-y-1">
       {NAV.map((n) => {
-        const badge = n.to === 'dəvətlər' ? (pendingCount.data ?? 0) : 0;
+        let badge = 0;
+        if (n.to === 'dəvətlər') badge = pendingCount.data ?? 0;
+        else if (n.to === 'bilik') badge = kbCount.data ?? 0;
         return (
           <NavLink
             key={n.to}
@@ -74,16 +87,18 @@ function SettingsNav() {
             <span>{n.label}</span>
             {badge > 0 ? (
               <span
-                className="text-ui font-bold rounded-full flex items-center justify-center"
+                className="text-ui rounded-full flex items-center justify-center"
                 style={{
-                  background: 'var(--brand-action)',
-                  color: 'var(--ink)',
+                  background: n.to === 'dəvətlər' ? 'var(--brand-action)' : 'var(--surface-mist)',
+                  color: n.to === 'dəvətlər' ? 'var(--ink)' : 'var(--text-muted)',
+                  fontWeight: n.to === 'dəvətlər' ? 700 : 500,
                   minWidth: 20,
                   height: 20,
                   padding: '0 6px',
                   fontSize: 11,
+                  fontVariantNumeric: 'tabular-nums',
                 }}
-                aria-label={`${badge} gözləyən dəvət`}
+                aria-label={`${badge}`}
               >
                 {badge}
               </span>

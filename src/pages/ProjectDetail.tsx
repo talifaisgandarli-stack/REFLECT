@@ -292,12 +292,16 @@ export function ProjectDetailPage() {
         meta={(project.phases ?? []).join(' → ') || '—'}
         title={project.name}
         actions={
-          <button
-            className="btn-primary"
-            onClick={() => setTab('Documents')}
-          >
-            + Sənəd əlavə et
-          </button>
+          <>
+            {/* PRD §UX — copy current URL so admins can paste into Slack/Telegram */}
+            <CopyUrlButton />
+            <button
+              className="btn-primary"
+              onClick={() => setTab('Documents')}
+            >
+              + Sənəd əlavə et
+            </button>
+          </>
         }
       />
 
@@ -1956,6 +1960,29 @@ function ProjectDateField({
 }
 
 // PRD §UX — inline admin editor for project name (click pencil → input → ✓)
+// PRD §UX — single-purpose copy-URL chip with "✓ Kopyalandı" flash
+function CopyUrlButton() {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      className="btn-outline"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(window.location.href);
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1500);
+        } catch {
+          /* clipboard requires secure context */
+        }
+      }}
+      aria-label="Səhifə linkini kopyala"
+    >
+      {copied ? '✓ Kopyalandı' : '🔗 Kopyala'}
+    </button>
+  );
+}
+
 function ProjectNameEditor({ projectId, initial }: { projectId: string; initial: string }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);

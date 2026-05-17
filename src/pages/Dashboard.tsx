@@ -19,7 +19,7 @@ import {
   useTeamPresence,
   useUpcomingMeetings,
 } from '@/lib/hooks';
-import { useAuth } from '@/lib/store';
+import { useAuth, useUI } from '@/lib/store';
 import { formatDate, relativeTime, taskHealth } from '@/lib/format';
 import { downloadCsv } from '@/lib/csv';
 import { useRecentEntries } from '@/lib/useRecentlyViewed';
@@ -115,6 +115,7 @@ function greetingFor(now: Date): string {
 
 export function DashboardPage() {
   const { profile, isAdmin } = useAuth();
+  const { openTaskCreate } = useUI();
   const { data: tasks = [] } = useTasks(profile?.id ? { assigneeId: profile.id } : undefined);
   const { data: presence = [] } = useTeamPresence();
   // REQ-DASH-02 / PRD §9.1 — admin sees firm-wide; users see only their own
@@ -292,6 +293,17 @@ export function DashboardPage() {
           <p className="text-body mt-2 max-w-md" style={{ color: 'var(--ink)' }}>
             Fokuslan. Bir tapşırıq, 40 dəqiqə.
           </p>
+          {/* PRD §UX — empty state CTA so the card isn't a dead end */}
+          {!today[0] ? (
+            <button
+              type="button"
+              className="btn-primary mt-4"
+              style={{ background: 'var(--ink)', color: 'var(--brand-action)' }}
+              onClick={() => openTaskCreate()}
+            >
+              + Bu günə tapşırıq əlavə et
+            </button>
+          ) : null}
         </section>
 
         {/* Focus widget — REQ-FOCUS-06 */}
