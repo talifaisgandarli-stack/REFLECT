@@ -176,9 +176,15 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       <div className="p-4 flex items-center gap-3 border-t border-white/5">
         <Mascot size={40} />
         <div className="flex-1 min-w-0">
-          <div className="text-ui truncate" style={{ color: 'var(--canvas)' }}>
+          {/* PRD §UX — name links to /profile so the bottom of the nav is usable */}
+          <NavLink
+            to="/profil"
+            onClick={onNavigate}
+            className="text-ui truncate block hover:underline"
+            style={{ color: 'var(--canvas)' }}
+          >
             {profile?.full_name ?? profile?.email ?? '—'}
-          </div>
+          </NavLink>
           <button
             type="button"
             onClick={() => signOut()}

@@ -164,8 +164,29 @@ export function CareerPage() {
             </p>
           )}
           {next && (next.requirements.criteria ?? []).length > 0 ? (
-            <div className="mt-3 text-meta" style={{ color: 'var(--text-muted)' }}>
-              {ticked.size} / {(next.requirements.criteria ?? []).length} tamamlandı
+            <div className="mt-3">
+              <div className="text-meta flex justify-between" style={{ color: 'var(--text-muted)' }}>
+                <span>{ticked.size} / {(next.requirements.criteria ?? []).length} tamamlandı</span>
+                <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {Math.round((ticked.size / (next.requirements.criteria ?? []).length) * 100)}%
+                </span>
+              </div>
+              {/* PRD §9.2 — visual progress bar to next level */}
+              <div
+                className="mt-1 h-1.5 rounded-full"
+                style={{ background: 'var(--line-soft)' }}
+              >
+                <div
+                  className="h-1.5 rounded-full transition-all"
+                  style={{
+                    width: `${Math.round((ticked.size / (next.requirements.criteria ?? []).length) * 100)}%`,
+                    background:
+                      ticked.size === (next.requirements.criteria ?? []).length
+                        ? 'var(--success, #16794a)'
+                        : 'var(--brand-action)',
+                  }}
+                />
+              </div>
             </div>
           ) : null}
         </section>

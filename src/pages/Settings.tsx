@@ -883,7 +883,16 @@ function KnowledgeBaseSettings() {
       {chunks.isLoading ? <p className="text-meta">Yüklənir…</p> : null}
 
       {pdfs.length === 0 && !chunks.isLoading ? (
-        <p className="text-meta" style={{ color: 'var(--text-muted)' }}>Hələ PDF yüklənməyib.</p>
+        <div
+          className="rounded-card p-6 text-center"
+          style={{ border: '1px dashed var(--line)', background: 'var(--surface-mist)' }}
+        >
+          <div className="text-h3 mb-2">📚 Bilik bazası boşdur</div>
+          <p className="text-meta mb-3" style={{ color: 'var(--text-muted)' }}>
+            PDF yükləyin — MIRAI RAG cavablar verərkən bu sənədlərə istinad edəcək.<br />
+            Tipik istifadə: AZ normativləri, daxili siyasətlər, tender qaydaları.
+          </p>
+        </div>
       ) : null}
 
       {pdfs.length > 0 ? (

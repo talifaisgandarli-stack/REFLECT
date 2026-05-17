@@ -202,6 +202,13 @@ export function ProfilePage() {
             >
               {avatarUploading ? 'Yüklənir…' : 'Foto yüklə'}
             </span>
+            {/* PRD §UX — constraint hint so users know limits BEFORE they fail */}
+            <span
+              className="text-meta text-center"
+              style={{ color: 'var(--text-muted)', fontSize: 10, opacity: 0.7 }}
+            >
+              JPG / PNG / WEBP / GIF · maks 5 MB
+            </span>
 
             {/* Inline error */}
             {avatarError && (

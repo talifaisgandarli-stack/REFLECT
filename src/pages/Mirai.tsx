@@ -23,18 +23,19 @@ type PersonaKey =
   | 'strategist'
   | 'team_assistant';
 
-type PersonaMeta = { key: PersonaKey; label: string; adminOnly: boolean; hint: string };
+type PersonaMeta = { key: PersonaKey; label: string; adminOnly: boolean; hint: string; icon: string };
 
-// PRD §7.2 — 6 admin personas + 1 user persona
+// PRD §7.2 — 6 admin personas + 1 user persona. Icons give each persona
+// a quick visual id in the switcher row and the active chip.
 const PERSONAS: PersonaMeta[] = [
-  { key: 'general', label: 'MIRAI', adminOnly: false, hint: 'Ümumi köməkçi' },
-  { key: 'operations_director', label: 'Əməliyyat Direktoru', adminOnly: true, hint: 'Proses, resurs, kapasitə' },
-  { key: 'project_manager', label: 'Layihə Mühəndisi', adminOnly: true, hint: 'Tapşırıq, deadline, faza' },
-  { key: 'legal', label: 'Hüquqşünas', adminOnly: true, hint: 'AZ normativlər (RAG)' },
-  { key: 'cmo', label: 'CMO', adminOnly: true, hint: 'Trend, mükafat, məzmun' },
-  { key: 'finance_analyst', label: 'Maliyyə Analitiki', adminOnly: true, hint: 'Cash flow, P&L, forecast' },
-  { key: 'strategist', label: 'Strateq', adminOnly: true, hint: 'Uzunmüddətli inkişaf' },
-  { key: 'team_assistant', label: 'Komanda Köməkçisi', adminOnly: false, hint: 'Tapşırıqlar, məlumat' },
+  { key: 'general', label: 'MIRAI', adminOnly: false, hint: 'Ümumi köməkçi', icon: '✦' },
+  { key: 'operations_director', label: 'Əməliyyat Direktoru', adminOnly: true, hint: 'Proses, resurs, kapasitə', icon: '⚙️' },
+  { key: 'project_manager', label: 'Layihə Mühəndisi', adminOnly: true, hint: 'Tapşırıq, deadline, faza', icon: '📐' },
+  { key: 'legal', label: 'Hüquqşünas', adminOnly: true, hint: 'AZ normativlər (RAG)', icon: '⚖️' },
+  { key: 'cmo', label: 'CMO', adminOnly: true, hint: 'Trend, mükafat, məzmun', icon: '📢' },
+  { key: 'finance_analyst', label: 'Maliyyə Analitiki', adminOnly: true, hint: 'Cash flow, P&L, forecast', icon: '💰' },
+  { key: 'strategist', label: 'Strateq', adminOnly: true, hint: 'Uzunmüddətli inkişaf', icon: '🧭' },
+  { key: 'team_assistant', label: 'Komanda Köməkçisi', adminOnly: false, hint: 'Tapşırıqlar, məlumat', icon: '🤝' },
 ];
 
 type Source = { name: string; page?: number };
@@ -539,7 +540,7 @@ export function MiraiPage() {
               border: persona === p.key ? 'none' : '1px solid rgba(255,255,255,0.08)',
             }}
           >
-            {p.label}
+            <span aria-hidden style={{ marginRight: 4 }}>{p.icon}</span>{p.label}
           </button>
         ))}
         {/* PRD §7 — past conversation switcher */}
