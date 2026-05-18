@@ -322,9 +322,25 @@ export function EquipmentPage() {
                         <option value="">—</option>
                         {CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
                       </select>
-                    ) : (
-                      e.condition ?? '—'
-                    )}
+                    ) : e.condition ? (
+                      // PRD §8.7 — color-coded condition chip (read-only path)
+                      (() => {
+                        const c = e.condition as string;
+                        const color =
+                          c === 'good' ? 'var(--success-deep, #16794a)'
+                          : c === 'fair' ? '#c47d00'
+                          : c === 'broken' ? 'var(--error-deep, #b3261e)'
+                          : 'var(--text-muted)';
+                        return (
+                          <span
+                            className="chip"
+                            style={{ background: 'var(--surface-mist)', color, fontSize: 12 }}
+                          >
+                            {c}
+                          </span>
+                        );
+                      })()
+                    ) : '—'}
                   </td>
                   {/* PRD §8.7 — inline notes edit (admin) */}
                   <td className="py-3 px-3" style={{ maxWidth: 200 }}>

@@ -40,6 +40,19 @@ export function OutsourcePage() {
     },
   });
 
+  // PRD §UX — resolve project_id → project name so the table doesn't show UUIDs.
+  // Separate query (kept simple) instead of an embed; cached for 5 min.
+  const projects = useQuery({
+    queryKey: ['outsource-projects-map'],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data } = await supabase.from('projects').select('id, name');
+      return new Map((data ?? []).map((p) => [p.id, p.name]));
+    },
+  });
+  const projectName = (id: string | null | undefined) =>
+    (id && projects.data?.get(id)) || '—';
+
   const advanceStatus = useMutation({
     mutationFn: async ({ id, nextStatus }: { id: string; nextStatus: Status }) => {
       const { error } = await supabase
@@ -96,7 +109,7 @@ export function OutsourcePage() {
                     ['İş', 'Layihə', 'Status', 'Deadline', 'Məbləğ'],
                     (q.data as Array<{ work_title?: string; project_id?: string | null; status?: string; deadline?: string | null; amount?: number }>).map((r) => ({
                       'İş': r.work_title ?? '',
-                      'Layihə': r.project_id ?? '',
+                      'Layihə': projectName(r.project_id),
                       'Status': STATUS_LABEL[r.status as Status] ?? r.status ?? '',
                       'Deadline': r.deadline ?? '',
                       'Məbləğ': r.amount ?? '',
@@ -224,7 +237,9 @@ export function OutsourcePage() {
                 .map((row) => (
                 <tr key={row.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
                   <td className="py-3 px-3">{row.work_title}</td>
-                  <td className="py-3 px-3">{row.project_id ?? '—'}</td>
+                  <td className="py-3 px-3 truncate max-w-[180px]" title={row.project_id ?? ''}>
+                    {projectName(row.project_id)}
+                  </td>
                   <td className="py-3 px-3">{row.deadline ?? '—'}</td>
                   <td className="py-3 px-3">
                     <div className="flex items-center gap-2">

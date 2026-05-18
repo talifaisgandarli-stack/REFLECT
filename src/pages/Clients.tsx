@@ -85,14 +85,25 @@ export function ClientsPage() {
     return out;
   }, [clients, search, industryFilter]);
 
+  // PRD §UX — sort within stages (default = name asc)
+  const [sortBy, setSortBy] = useState<'name' | 'value' | 'last_interaction'>('name');
   const grouped = useMemo(() => {
     const map: Record<ClientPipelineStage, Client[]> = CLIENT_STAGE_ORDER.reduce(
       (acc, s) => ({ ...acc, [s]: [] }),
       {} as Record<ClientPipelineStage, Client[]>,
     );
     for (const c of filteredClients) map[c.pipeline_stage]?.push(c);
+    for (const k of CLIENT_STAGE_ORDER) {
+      map[k] = [...map[k]].sort((a, b) => {
+        if (sortBy === 'value') return (b.expected_value ?? 0) - (a.expected_value ?? 0);
+        if (sortBy === 'last_interaction') {
+          return (b.last_interaction_at ?? '').localeCompare(a.last_interaction_at ?? '');
+        }
+        return a.name.localeCompare(b.name, 'az');
+      });
+    }
     return map;
-  }, [filteredClients]);
+  }, [filteredClients, sortBy]);
 
   // REQ-CRM-02 — pipeline value uses each client's own confidence_pct, not the
   // stage default (which the kanban already implies).
@@ -157,6 +168,24 @@ export function ClientsPage() {
           </>
         }
       />
+
+      {/* PRD §UX — sort dropdown for cards within each stage */}
+      <div className="flex gap-2 mb-3 items-center">
+        <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+          Sıralama:
+        </span>
+        <select
+          className="input"
+          style={{ maxWidth: 200, height: 32, fontSize: 12 }}
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+          aria-label="Sıralama"
+        >
+          <option value="name">A → Z</option>
+          <option value="value">Dəyər (böyük əvvəl)</option>
+          <option value="last_interaction">Son əlaqə (yeni əvvəl)</option>
+        </select>
+      </div>
 
       {/* PRD §REQ-CRM — industry filter (migration 0050) */}
       {availableIndustries.length > 0 ? (

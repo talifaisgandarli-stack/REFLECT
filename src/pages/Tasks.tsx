@@ -538,15 +538,22 @@ export function TasksPage() {
             >
               Bütün etiketlər
             </button>
-            {allLabels.map((l) => (
-              <button
-                key={l}
-                className={`chip ${labelFilter === l ? 'chip-brand' : ''}`}
-                onClick={() => setLabelFilter(labelFilter === l ? null : l)}
-              >
-                # {l}
-              </button>
-            ))}
+            {allLabels.map((l) => {
+              // PRD §UX — show per-label task count so filter chips signal volume
+              const count = tasks.filter((t) => (t.labels ?? []).includes(l)).length;
+              return (
+                <button
+                  key={l}
+                  className={`chip ${labelFilter === l ? 'chip-brand' : ''}`}
+                  onClick={() => setLabelFilter(labelFilter === l ? null : l)}
+                >
+                  # {l}
+                  <span style={{ marginLeft: 4, opacity: 0.6, fontVariantNumeric: 'tabular-nums' }}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
           </>
         ) : null}
         {/* PRD §UX — single clear-all when any filter is active */}

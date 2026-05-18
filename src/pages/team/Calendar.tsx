@@ -156,7 +156,7 @@ export function CalendarPage() {
     setCursor(d);
   }
 
-  // PRD §6.3 — keyboard nav: ← prev, → next, T today (skip while typing)
+  // PRD §6.3 — keyboard nav: ← prev, → next, T today, M/W/D view switch
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -166,6 +166,9 @@ export function CalendarPage() {
       if (e.key === 'ArrowLeft') { e.preventDefault(); navigate(-1); }
       else if (e.key === 'ArrowRight') { e.preventDefault(); navigate(1); }
       else if (e.key === 't' || e.key === 'T') { e.preventDefault(); setCursor(new Date()); }
+      else if (e.key === 'm' || e.key === 'M') { e.preventDefault(); setView('month'); }
+      else if (e.key === 'w' || e.key === 'W') { e.preventDefault(); setView('week'); }
+      else if (e.key === 'd' || e.key === 'D') { e.preventDefault(); setView('day'); }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
