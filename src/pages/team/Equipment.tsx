@@ -25,6 +25,14 @@ type Equipment = {
 type Profile = { id: string; full_name: string | null };
 
 const CONDITIONS = ['Əla', 'Yaxşı', 'Orta', 'Zəif'] as const;
+// PRD §8.7 — single source of truth for condition→color mapping; used both by the
+// breakdown card and the row chip. Keys MUST stay in lockstep with CONDITIONS.
+const CONDITION_COLOR: Record<string, string> = {
+  'Əla': 'var(--success-deep, #16794a)',
+  'Yaxşı': 'var(--success-deep, #16794a)',
+  'Orta': '#c47d00',
+  'Zəif': 'var(--error-deep, #b3261e)',
+};
 const KINDS = ['Kompüter', 'Printer', 'Plotter', 'Skaner', 'Kamera', 'Telefon', 'Digər'] as const;
 
 export function EquipmentPage() {
@@ -209,11 +217,7 @@ export function EquipmentPage() {
                 <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Vəziyyət:</span>
                 {Array.from(buckets.entries()).map(([k, v]) => {
                   const pct = Math.round((v / total) * 100);
-                  const color =
-                    k === 'good' ? 'var(--success-deep, #16794a)'
-                    : k === 'fair' ? '#c47d00'
-                    : k === 'broken' ? 'var(--error-deep, #b3261e)'
-                    : 'var(--text-muted)';
+                  const color = CONDITION_COLOR[k] ?? 'var(--text-muted)';
                   return (
                     <span
                       key={k}
@@ -324,22 +328,16 @@ export function EquipmentPage() {
                       </select>
                     ) : e.condition ? (
                       // PRD §8.7 — color-coded condition chip (read-only path)
-                      (() => {
-                        const c = e.condition as string;
-                        const color =
-                          c === 'good' ? 'var(--success-deep, #16794a)'
-                          : c === 'fair' ? '#c47d00'
-                          : c === 'broken' ? 'var(--error-deep, #b3261e)'
-                          : 'var(--text-muted)';
-                        return (
-                          <span
-                            className="chip"
-                            style={{ background: 'var(--surface-mist)', color, fontSize: 12 }}
-                          >
-                            {c}
-                          </span>
-                        );
-                      })()
+                      <span
+                        className="chip"
+                        style={{
+                          background: 'var(--surface-mist)',
+                          color: CONDITION_COLOR[e.condition as string] ?? 'var(--text-muted)',
+                          fontSize: 12,
+                        }}
+                      >
+                        {e.condition}
+                      </span>
                     ) : '—'}
                   </td>
                   {/* PRD §8.7 — inline notes edit (admin) */}

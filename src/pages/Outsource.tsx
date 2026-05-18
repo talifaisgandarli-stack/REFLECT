@@ -271,6 +271,25 @@ export function OutsourcePage() {
                 </tr>
               ))}
             </tbody>
+            {/* PRD §REQ-FIN-07 — footer total mirrors the meta but lives next to amounts */}
+            {isAdmin ? (
+              <tfoot>
+                <tr style={{ borderTop: '2px solid var(--line)' }}>
+                  <td colSpan={3} className="py-3 px-3 text-meta" style={{ color: 'var(--text-muted)' }}>
+                    Cəmi (görünən)
+                  </td>
+                  <td className="py-3 px-3" />
+                  <td className="py-3 px-3 font-medium" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {formatAZN(
+                      (q.data as Array<{ work_title?: string; amount?: number; status?: string }>)
+                        .filter((r) => statusFilter === 'all' || r.status === statusFilter)
+                        .filter((r) => !search.trim() || (r.work_title ?? '').toLowerCase().includes(search.trim().toLowerCase()))
+                        .reduce((sum, r) => sum + Number(r.amount ?? 0), 0),
+                    )}
+                  </td>
+                </tr>
+              </tfoot>
+            ) : null}
           </table>
         </div>
       )}

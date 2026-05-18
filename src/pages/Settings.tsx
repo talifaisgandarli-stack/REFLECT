@@ -583,6 +583,7 @@ function TemplatesSettings() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<null | { id?: string; category: string; name: string; body: string; mime_type: string }>(null);
   const [preview, setPreview] = useState(false);
+  const [templateSearch, setTemplateSearch] = useState('');
 
   const templates = useQuery({
     queryKey: ['templates'],
@@ -713,18 +714,30 @@ function TemplatesSettings() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center gap-3 flex-wrap">
         <h3 className="text-h3">Şablonlar</h3>
-        <button className="btn-primary" onClick={() => setEditing({ category: 'letter', name: '', body: '', mime_type: 'text/plain' })}>
-          + Yeni şablon
-        </button>
+        <div className="flex gap-2 items-center">
+          {/* PRD §10.2 — name/category search so the list stays usable as it grows */}
+          <input
+            className="input max-w-[200px]"
+            placeholder="Axtar…"
+            value={templateSearch}
+            onChange={(e) => setTemplateSearch(e.target.value)}
+            style={{ height: 32, fontSize: 12 }}
+          />
+          <button className="btn-primary" onClick={() => setEditing({ category: 'letter', name: '', body: '', mime_type: 'text/plain' })}>
+            + Yeni şablon
+          </button>
+        </div>
       </div>
       {templates.isLoading ? <p className="text-meta">Yüklənir…</p> : null}
       {!templates.isLoading && (templates.data ?? []).length === 0 ? (
         <p className="text-meta" style={{ color: 'var(--text-muted)' }}>Hələ şablon yoxdur.</p>
       ) : null}
       <ul className="space-y-2">
-        {(templates.data ?? []).map((t: { id: string; name: string; category: string; body: string; mime_type: string }) => (
+        {((templates.data ?? []) as Array<{ id: string; name: string; category: string; body: string; mime_type: string }>)
+          .filter((t) => !templateSearch.trim() || t.name.toLowerCase().includes(templateSearch.toLowerCase()) || t.category.toLowerCase().includes(templateSearch.toLowerCase()))
+          .map((t) => (
           <li key={t.id} className="flex items-center justify-between gap-3 py-2 border-b" style={{ borderColor: 'var(--line-soft)' }}>
             <div>
               <div className="text-body font-medium">{t.name}</div>
@@ -854,9 +867,24 @@ function KnowledgeBaseSettings() {
 
   const pdfs = Object.entries(chunks.data ?? {});
 
+  // PRD §10.3 — surface aggregate counts so admin sees corpus size at a glance
+  const totalChunks = pdfs.reduce(
+    (sum, [, meta]) => sum + ((meta as { count?: number }).count ?? 0), 0,
+  );
+
   return (
     <div className="space-y-5">
-      <h3 className="text-h3">Bilik Bazası (MIRAI RAG)</h3>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h3 className="text-h3">Bilik Bazası (MIRAI RAG)</h3>
+        {pdfs.length > 0 ? (
+          <span
+            className="text-meta"
+            style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}
+          >
+            {pdfs.length} PDF · {totalChunks} hissə
+          </span>
+        ) : null}
+      </div>
       <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
         AZ inşaat normaları, AZDNT sənədlərini yükləyin. MIRAI Hüquqşünas bu mənbələrə istinad edər.
       </p>
