@@ -753,7 +753,29 @@ function TemplatesSettings() {
           .map((t) => (
           <li key={t.id} className="flex items-center justify-between gap-3 py-2 border-b" style={{ borderColor: 'var(--line-soft)' }}>
             <div>
-              <div className="text-body font-medium">{t.name}</div>
+              <div className="text-body font-medium flex items-center gap-2">
+                {t.name}
+                {/* PRD §10.2 — variable count so admin sees template complexity at a glance */}
+                {(() => {
+                  const n = extractVars(t.body).length;
+                  if (n === 0) return null;
+                  return (
+                    <span
+                      className="chip"
+                      style={{
+                        background: 'var(--brand-glow-sm)',
+                        color: 'var(--brand-text)',
+                        fontSize: 10,
+                        padding: '0 6px',
+                        fontVariantNumeric: 'tabular-nums',
+                      }}
+                      title={`${n} dəyişən: ${extractVars(t.body).join(', ')}`}
+                    >
+                      {`{{${n}}}`}
+                    </span>
+                  );
+                })()}
+              </div>
               <div className="text-meta" style={{ color: 'var(--text-muted)' }}>{t.category}</div>
             </div>
             <div className="flex gap-2 shrink-0">
@@ -788,6 +810,7 @@ function KnowledgeBaseSettings() {
   const [uploadErr, setUploadErr] = useState<string | null>(null);
   const [uploadOk, setUploadOk] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [kbDragOver, setKbDragOver] = useState(false);
 
   // PRD §10.3 — admin can prune obsolete PDF sources so RAG retrieval stays clean
   const deletePdf = useMutation({
@@ -903,7 +926,29 @@ function KnowledgeBaseSettings() {
       </p>
       {/* RAG axtarışı Postgres FTS ilə işləyir — heç bir xarici açar tələb olunmur. */}
 
-      <label className="flex items-center gap-3 cursor-pointer">
+      {/* PRD §10.3 — drag-and-drop zone for PDF uploads (also accepts click→file picker) */}
+      <label
+        className="flex items-center gap-3 cursor-pointer rounded-card p-4"
+        style={{
+          border: `1px dashed ${kbDragOver ? 'var(--brand-action)' : 'var(--line)'}`,
+          background: kbDragOver ? 'var(--brand-glow-sm)' : 'transparent',
+          transition: 'background 0.15s, border-color 0.15s',
+        }}
+        onDragOver={(e) => { e.preventDefault(); setKbDragOver(true); }}
+        onDragLeave={() => setKbDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setKbDragOver(false);
+          if (uploading) return;
+          const file = e.dataTransfer.files?.[0];
+          if (!file) return;
+          // Mimic the input change event so existing handler runs
+          const dt = new DataTransfer();
+          dt.items.add(file);
+          const ev = { target: { files: dt.files, value: '' } } as unknown as React.ChangeEvent<HTMLInputElement>;
+          void handleUpload(ev);
+        }}
+      >
         <input
           type="file"
           accept=".pdf"
@@ -912,7 +957,9 @@ function KnowledgeBaseSettings() {
           disabled={uploading}
         />
         <span className="btn-primary">{uploading ? 'Yüklənir…' : 'PDF yüklə'}</span>
-        <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Maks. 4 MB (Vercel limiti)</span>
+        <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+          və ya buraya sürükləyin · maks 4 MB (Vercel limiti)
+        </span>
       </label>
 
       {uploadOk ? <p className="text-meta" style={{ color: 'var(--brand-text)' }}>{uploadOk}</p> : null}

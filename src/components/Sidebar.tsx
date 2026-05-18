@@ -138,7 +138,16 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
                   onClick={onNavigate}
                   className={({ isActive }) => `sb-item mx-2 ${isActive ? 'active' : ''}`}
                 >
-                  <span className="flex items-center justify-between gap-2 w-full">
+                  <span
+                    className="flex items-center justify-between gap-2 w-full"
+                    title={(() => {
+                      // PRD §UX — explain what each badge means on hover
+                      if (!item.badge) return undefined;
+                      if (item.to === '/komanda/elanlar') return `${item.badge} oxunmamış elan`;
+                      if (item.to === '/tapşırıqlar') return `${item.badge} açıq tapşırığınız`;
+                      return `${item.badge}`;
+                    })()}
+                  >
                     {item.label}
                     {item.badge ? (
                       <span
@@ -152,7 +161,11 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
                           fontSize: 10,
                           lineHeight: 1,
                         }}
-                        aria-label={`${item.badge} oxunmamış elan`}
+                        aria-label={
+                          item.to === '/tapşırıqlar'
+                            ? `${item.badge} açıq tapşırığınız`
+                            : `${item.badge} oxunmamış elan`
+                        }
                       >
                         {item.badge > 99 ? '99+' : item.badge}
                       </span>

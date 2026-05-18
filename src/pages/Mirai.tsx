@@ -1039,7 +1039,7 @@ export function MiraiPage() {
           ))}
           {thinking ? (
             <div className="flex items-center gap-3">
-              <Mascot size={40} />
+              <span className="thinking-pulse"><Mascot size={40} /></span>
               <span className="text-ui opacity-80">MIRAI düşünür…</span>
             </div>
           ) : null}

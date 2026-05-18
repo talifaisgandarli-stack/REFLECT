@@ -253,7 +253,24 @@ export function OutsourcePage() {
                   <td className="py-3 px-3 truncate max-w-[180px]" title={row.project_id ?? ''}>
                     {projectName(row.project_id)}
                   </td>
-                  <td className="py-3 px-3">{row.deadline ?? '—'}</td>
+                  {/* PRD §UX — overdue podrat deadline red, ≤3d amber */}
+                  <td
+                    className="py-3 px-3"
+                    style={(() => {
+                      if (!row.deadline || row.status === 'paid') return undefined;
+                      const today = new Date().toISOString().slice(0, 10);
+                      if (row.deadline < today) {
+                        return { color: 'var(--error-deep, #b3261e)', fontWeight: 600 };
+                      }
+                      const days = Math.round(
+                        (new Date(row.deadline).getTime() - Date.now()) / 86_400_000,
+                      );
+                      if (days >= 0 && days <= 3) return { color: 'var(--warning, #c47d00)' };
+                      return undefined;
+                    })()}
+                  >
+                    {row.deadline ?? '—'}
+                  </td>
                   <td className="py-3 px-3">
                     <div className="flex items-center gap-2">
                       <span

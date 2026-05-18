@@ -308,6 +308,16 @@
   transform-origin: 50% 70%;
 }
 
+/* PRD §UX — slow pulse for thinking states (MIRAI streaming, loading panels) */
+@keyframes thinking-pulse {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50%      { opacity: 1;    transform: scale(1.04); }
+}
+.thinking-pulse {
+  animation: thinking-pulse 1.4s ease-in-out infinite;
+  transform-origin: 50% 70%;
+}
+
 /* PRD §UX — print-friendly stylesheet (invoices, reports, single-page views).
    Hide chrome (sidebar, toasts, modals) and force white background. */
 @media print {
