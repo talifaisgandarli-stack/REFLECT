@@ -764,8 +764,11 @@ function PersonalStatsCard({ userId }: { userId: string }) {
     queryKey: ['profile-stats', userId],
     staleTime: 5 * 60_000,
     queryFn: async () => {
-      const yearStart = new Date(new Date().getFullYear(), 0, 1).toISOString();
-      const [openTasks, doneTasks, projects] = await Promise.all([
+      const year = new Date().getFullYear();
+      const yearStart = new Date(year, 0, 1).toISOString();
+      const lastYearStart = new Date(year - 1, 0, 1).toISOString();
+      const lastYearEnd = yearStart;
+      const [openTasks, doneTasks, doneLastYear, projects] = await Promise.all([
         supabase
           .from('tasks')
           .select('id', { count: 'exact', head: true })
@@ -779,6 +782,13 @@ function PersonalStatsCard({ userId }: { userId: string }) {
           .eq('status', 'done')
           .gte('updated_at', yearStart),
         supabase
+          .from('tasks')
+          .select('id', { count: 'exact', head: true })
+          .contains('assignee_ids', [userId])
+          .eq('status', 'done')
+          .gte('updated_at', lastYearStart)
+          .lt('updated_at', lastYearEnd),
+        supabase
           .from('projects')
           .select('id', { count: 'exact', head: true })
           .is('archived_at', null)
@@ -787,23 +797,43 @@ function PersonalStatsCard({ userId }: { userId: string }) {
       return {
         open: openTasks.count ?? 0,
         doneYear: doneTasks.count ?? 0,
+        doneLastYear: doneLastYear.count ?? 0,
         activeProjects: projects.count ?? 0,
       };
     },
   });
-  const items: Array<[string, number]> = [
-    ['Açıq tapşırıq', stats.data?.open ?? 0],
-    ['Bu il tamamlanıb', stats.data?.doneYear ?? 0],
-    ['Aktiv layihə (firma)', stats.data?.activeProjects ?? 0],
-  ];
+  // PRD §UX — Δ vs same point last year (rough trend signal)
+  const yoyDelta = (stats.data?.doneYear ?? 0) - (stats.data?.doneLastYear ?? 0);
   return (
     <div className="card grid grid-cols-3 gap-3">
-      {items.map(([label, n]) => (
-        <div key={label}>
-          <div className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>{label}</div>
-          <div className="text-h2" style={{ fontVariantNumeric: 'tabular-nums' }}>{n}</div>
+      <div>
+        <div className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>Açıq tapşırıq</div>
+        <div className="text-h2" style={{ fontVariantNumeric: 'tabular-nums' }}>{stats.data?.open ?? 0}</div>
+      </div>
+      <div>
+        <div className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>Bu il tamamlanıb</div>
+        <div className="text-h2 flex items-baseline gap-1" style={{ fontVariantNumeric: 'tabular-nums' }}>
+          {stats.data?.doneYear ?? 0}
+          {/* PRD §UX — Δ vs last year for context */}
+          {stats.data && (stats.data.doneLastYear > 0 || stats.data.doneYear > 0) ? (
+            <span
+              className="text-meta"
+              style={{
+                color: yoyDelta > 0 ? 'var(--success-deep, #16794a)' : yoyDelta < 0 ? 'var(--error-deep, #b3261e)' : 'var(--text-muted)',
+                fontSize: 11,
+                fontWeight: 500,
+              }}
+              title={`Keçən il bu vaxta: ${stats.data.doneLastYear}`}
+            >
+              {yoyDelta > 0 ? '▲' : yoyDelta < 0 ? '▼' : '='} {Math.abs(yoyDelta)}
+            </span>
+          ) : null}
         </div>
-      ))}
+      </div>
+      <div>
+        <div className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>Aktiv layihə (firma)</div>
+        <div className="text-h2" style={{ fontVariantNumeric: 'tabular-nums' }}>{stats.data?.activeProjects ?? 0}</div>
+      </div>
     </div>
   );
 }

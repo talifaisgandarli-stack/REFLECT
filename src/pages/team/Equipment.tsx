@@ -285,10 +285,11 @@ export function EquipmentPage() {
                 onChange={(e) => setKindFilter(e.target.value)}
                 aria-label="Növə görə süz"
               >
-                <option value="">Bütün növlər</option>
-                {availableKinds.map((k) => (
-                  <option key={k} value={k}>{k}</option>
-                ))}
+                <option value="">Bütün növlər ({(equipment.data ?? []).length})</option>
+                {availableKinds.map((k) => {
+                  const count = (equipment.data ?? []).filter((e) => (e.kind ?? '') === k).length;
+                  return <option key={k} value={k}>{k} ({count})</option>;
+                })}
               </select>
             ) : null}
             {/* PRD §8.7 — narrow to one holder so audit trail per person is one click */}

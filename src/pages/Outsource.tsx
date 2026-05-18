@@ -244,23 +244,30 @@ export function OutsourcePage() {
             <thead>
               <tr style={{ borderBottom: '1px solid var(--line)' }}>
                 {headers.map((h) => {
-                  // PRD §UX — header arrow if this column drives current sort
-                  const sortArrow =
-                    (sortBy === 'deadline' && h === 'Deadline') ||
-                    (sortBy === 'amount' && h === 'Məbləğ')
-                      ? ' ↓'
-                      : sortBy === 'status' && h === 'Status / İrəlilə'
-                      ? ' ↓'
-                      : '';
+                  // PRD §UX — header click cycles sort key for sortable columns
+                  const sortableKey: typeof sortBy | null =
+                    h === 'Deadline' ? 'deadline'
+                    : h === 'Status / İrəlilə' ? 'status'
+                    : h === 'Məbləğ' ? 'amount'
+                    : null;
+                  const isActive = sortableKey === sortBy;
                   return (
                     <th
                       key={h}
                       className="text-left py-3 px-3 text-meta"
-                      style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+                      style={{
+                        color: 'var(--text-muted)',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                        cursor: sortableKey ? 'pointer' : 'default',
+                        userSelect: 'none',
+                      }}
+                      onClick={() => { if (sortableKey) setSortBy(sortableKey); }}
+                      title={sortableKey ? `${h}-ə görə sırala` : undefined}
                     >
                       {h}
-                      {sortArrow ? (
-                        <span style={{ color: 'var(--brand-text)', marginLeft: 2 }}>{sortArrow}</span>
+                      {isActive ? (
+                        <span style={{ color: 'var(--brand-text)', marginLeft: 2 }}> ↓</span>
                       ) : null}
                     </th>
                   );

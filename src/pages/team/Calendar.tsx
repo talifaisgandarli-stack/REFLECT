@@ -505,7 +505,21 @@ export function CalendarPage() {
       {/* ── Agenda view ── upcoming 14 days, grouped by date */}
       {view === 'agenda' ? (
         <div className="card">
-          <h3 className="text-h3 mb-4">Növbəti 14 gün</h3>
+          <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+            <h3 className="text-h3">Növbəti 14 gün</h3>
+            {/* PRD §UX — jump-to-date input for the agenda window */}
+            <input
+              type="date"
+              className="input"
+              style={{ maxWidth: 180, height: 32, fontSize: 12 }}
+              value={cursor.toISOString().slice(0, 10)}
+              onChange={(e) => {
+                if (e.target.value) setCursor(new Date(e.target.value));
+              }}
+              aria-label="Tarixə keç"
+              title="14 günlük pəncərənin başlanğıc tarixini seç"
+            />
+          </div>
           {(() => {
             const start = new Date(cursor);
             start.setHours(0, 0, 0, 0);

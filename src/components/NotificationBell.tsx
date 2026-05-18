@@ -97,7 +97,8 @@ function groupNotifications(rows: NotificationRow[]): GroupedItem[] {
 }
 
 export function NotificationBell() {
-  const { data = [] } = useNotifications();
+  const notif = useNotifications();
+  const data = notif.data ?? [];
   const markRead = useMarkNotificationRead();
   const snooze = useSnoozeNotification();
   const clearSnoozes = useClearSnoozes();
@@ -197,7 +198,22 @@ export function NotificationBell() {
             className="flex items-center justify-between px-4 py-3"
             style={{ borderBottom: '1px solid var(--line-soft)' }}
           >
-            <span className="text-h4">Bildirişlər</span>
+            <span className="text-h4 flex items-center gap-2">
+              Bildirişlər
+              {/* PRD §UX — manual refresh; Realtime usually keeps things fresh but
+                  power users want explicit control over when to re-fetch. */}
+              <button
+                type="button"
+                className="opacity-50 hover:opacity-100 disabled:opacity-25"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, padding: 2 }}
+                onClick={() => notif.refetch()}
+                disabled={notif.isFetching}
+                title="Yenilə"
+                aria-label="Yenilə"
+              >
+                {notif.isFetching ? '⏳' : '🔄'}
+              </button>
+            </span>
             <div className="flex items-center gap-2">
               <button
                 type="button"
