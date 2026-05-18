@@ -746,6 +746,17 @@ function EventModal({
           >
             Görüşə qoşul (Meet)
           </a>
+        ) : canEdit ? (
+          // PRD §8.2 — no link yet; let organizer generate one via meet.new
+          <a
+            href="https://meet.new"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="btn-outline mt-4 inline-block"
+            title="meet.new aç və link yarat, sonra başlığa daxil et"
+          >
+            📹 Meet linki yarat (meet.new)
+          </a>
         ) : null}
         <div className="flex justify-between items-center mt-4 gap-2">
           {canDelete ? (

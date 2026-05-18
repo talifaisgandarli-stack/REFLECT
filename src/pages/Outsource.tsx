@@ -30,6 +30,8 @@ export function OutsourcePage() {
   const [sortBy, setSortBy] = useState<'deadline' | 'status' | 'amount'>('deadline');
   // PRD §UX — status filter chips
   const [statusFilter, setStatusFilter] = useState<Status | 'all'>('all');
+  // PRD §UX — quick "due within 7 days" filter
+  const [dueWeekOnly, setDueWeekOnly] = useState(false);
 
   const q = useQuery({
     queryKey: ['outsource', view],
@@ -207,6 +209,21 @@ export function OutsourcePage() {
               </button>
             );
           })}
+          {/* PRD §UX — due-within-7-days quick filter */}
+          <button
+            type="button"
+            className="chip"
+            style={{
+              background: dueWeekOnly ? 'var(--brand-action)' : 'var(--surface-mist)',
+              color: dueWeekOnly ? 'var(--ink)' : 'var(--text-muted)',
+              fontSize: 12,
+              fontWeight: dueWeekOnly ? 600 : 400,
+            }}
+            onClick={() => setDueWeekOnly((v) => !v)}
+            title="Növbəti 7 gün ərzində bitənləri göstər"
+          >
+            {dueWeekOnly ? '✓ Bu həftə' : 'Bu həftə'}
+          </button>
         </div>
       ) : null}
       {(q.data ?? []).length === 0 ? (
@@ -240,6 +257,14 @@ export function OutsourcePage() {
             <tbody>
               {(q.data as any[])
                 .filter((row) => statusFilter === 'all' || row.status === statusFilter)
+                .filter((row) => {
+                  if (!dueWeekOnly) return true;
+                  if (!row.deadline) return false;
+                  const days = Math.round(
+                    (new Date(row.deadline).getTime() - Date.now()) / 86_400_000,
+                  );
+                  return days >= 0 && days <= 7;
+                })
                 .filter((row) => !search.trim() || (row.work_title ?? '').toLowerCase().includes(search.trim().toLowerCase()))
                 .sort((a, b) => {
                   if (sortBy === 'status') return String(a.status ?? '').localeCompare(String(b.status ?? ''));

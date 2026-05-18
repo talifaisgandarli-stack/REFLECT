@@ -324,6 +324,21 @@ export function TasksPage() {
   }, [compactBoard]);
   // PRD §UX — quick "today only" toggle: deadline = today (any status)
   const [todayOnly, setTodayOnly] = useState(false);
+  // PRD §UX — narrow board to one project
+  const [projectFilter, setProjectFilter] = useState<string>('');
+  // Project list for the dropdown
+  const projectsForFilter = useQuery({
+    queryKey: ['projects-name-map'],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('projects')
+        .select('id, name')
+        .is('archived_at', null)
+        .order('name');
+      return (data ?? []) as Array<{ id: string; name: string }>;
+    },
+  });
 
   // PRD §6.3 — single key shortcuts: C compact, A mine-only (skip while typing)
   useEffect(() => {
@@ -350,6 +365,7 @@ export function TasksPage() {
   const filtered = useMemo(() => {
     let out = tasks;
     if (labelFilter) out = out.filter((t) => (t.labels ?? []).includes(labelFilter));
+    if (projectFilter) out = out.filter((t) => t.project_id === projectFilter);
     if (todayOnly) {
       const today = new Date().toISOString().slice(0, 10);
       out = out.filter((t) => t.deadline === today);
@@ -359,7 +375,7 @@ export function TasksPage() {
       out = out.filter((t) => t.title.toLowerCase().includes(q));
     }
     return out;
-  }, [tasks, search, labelFilter, todayOnly]);
+  }, [tasks, search, labelFilter, projectFilter, todayOnly]);
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
     if (sortBy === 'deadline') next.delete('sort');
@@ -528,6 +544,21 @@ export function TasksPage() {
         >
           {todayOnly ? '✓ Bu gün' : 'Bu gün'}
         </button>
+        {/* PRD §UX — narrow to a single project */}
+        {(projectsForFilter.data ?? []).length > 0 ? (
+          <select
+            className="input"
+            style={{ maxWidth: 200, height: 32, fontSize: 12 }}
+            value={projectFilter}
+            onChange={(e) => setProjectFilter(e.target.value)}
+            aria-label="Layihəyə görə süz"
+          >
+            <option value="">Bütün layihələr</option>
+            {(projectsForFilter.data ?? []).map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        ) : null}
         {/* PRD §UX — compact mode hides done/cancelled columns on board view */}
         {view === 'board' ? (
           <button
@@ -583,14 +614,14 @@ export function TasksPage() {
           </>
         ) : null}
         {/* PRD §UX — single clear-all when any filter is active */}
-        {(search || labelFilter) ? (
+        {(search || labelFilter || projectFilter || todayOnly) ? (
           <>
             <span style={{ width: 1, background: 'var(--line)', margin: '0 4px' }} />
             <button
               type="button"
               className="chip"
               style={{ fontSize: 11, color: 'var(--text-muted)' }}
-              onClick={() => { setSearch(''); setLabelFilter(null); }}
+              onClick={() => { setSearch(''); setLabelFilter(null); setProjectFilter(''); setTodayOnly(false); }}
               title="Bütün filtrləri təmizlə"
             >
               ✕ Təmizlə
@@ -644,7 +675,7 @@ export function TasksPage() {
             <button
               type="button"
               className="btn-outline"
-              onClick={() => { setSearch(''); setLabelFilter(null); setTodayOnly(false); }}
+              onClick={() => { setSearch(''); setLabelFilter(null); setTodayOnly(false); setProjectFilter(''); }}
             >
               ✕ Filtrləri təmizlə
             </button>

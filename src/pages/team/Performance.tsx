@@ -3,7 +3,7 @@
  * performance_reviews (id, employee_id, year, score, ratings jsonb, reviewer_id, summary)
  * User sees own reviews for all years; admin sees all + can author reviews.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { PageHead } from '@/components/PageHead';
@@ -60,6 +60,19 @@ export function PerformancePage() {
   const qc = useQueryClient();
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
+  // PRD §UX — ←/→ arrows step year within the rendered range
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const tag = (e.target as HTMLElement).tagName;
+      const editing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement).isContentEditable;
+      if (editing) return;
+      if (e.key === 'ArrowLeft') { e.preventDefault(); setYear((y) => Math.max(2026, y - 1)); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); setYear((y) => Math.min(currentYear + 1, y + 1)); }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [currentYear]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingReview, setEditingReview] = useState<Review | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
