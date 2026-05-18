@@ -138,9 +138,10 @@ export function NotificationPreferencesPage() {
         }
       />
 
-      <div className="card overflow-x-auto">
+      <div className="card overflow-x-auto" style={{ maxHeight: '70vh' }}>
         <table className="w-full text-body" style={{ minWidth: 520 }}>
-          <thead>
+          {/* PRD §UX — sticky header so column labels stay visible when scrolling */}
+          <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 }}>
             <tr style={{ borderBottom: '1px solid var(--line)' }}>
               <th
                 className="text-meta text-left py-3 pr-4"

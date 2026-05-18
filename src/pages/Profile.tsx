@@ -403,6 +403,9 @@ export function ProfilePage() {
         {/* Email change request — admin approval required (REQ-AUTH-03) */}
         <EmailChangeRequestCard userId={profile.id} currentEmail={profile.email} />
 
+        {/* PRD §UX — personal stats summary (admin or self) */}
+        <PersonalStatsCard userId={profile.id} />
+
         {/* Bu günkü izlənmiş vaxt — time tracking sessions */}
         <TimeEntriesTodayCard userId={profile.id} />
 
@@ -717,6 +720,57 @@ function CopyEmailButton({ email }: { email: string }) {
     >
       {copied ? '✓ Kopyalandı' : '📋 Kopyala'}
     </button>
+  );
+}
+
+// PRD §UX — at-a-glance personal stats: open tasks, done this year, member projects.
+// Uses head:true count queries so we don't pull row data.
+function PersonalStatsCard({ userId }: { userId: string }) {
+  const stats = useQuery({
+    queryKey: ['profile-stats', userId],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const yearStart = new Date(new Date().getFullYear(), 0, 1).toISOString();
+      const [openTasks, doneTasks, projects] = await Promise.all([
+        supabase
+          .from('tasks')
+          .select('id', { count: 'exact', head: true })
+          .contains('assignee_ids', [userId])
+          .is('archived_at', null)
+          .not('status', 'in', '("done","cancelled")'),
+        supabase
+          .from('tasks')
+          .select('id', { count: 'exact', head: true })
+          .contains('assignee_ids', [userId])
+          .eq('status', 'done')
+          .gte('updated_at', yearStart),
+        supabase
+          .from('projects')
+          .select('id', { count: 'exact', head: true })
+          .is('archived_at', null)
+          .eq('status', 'active'),
+      ]);
+      return {
+        open: openTasks.count ?? 0,
+        doneYear: doneTasks.count ?? 0,
+        activeProjects: projects.count ?? 0,
+      };
+    },
+  });
+  const items: Array<[string, number]> = [
+    ['Açıq tapşırıq', stats.data?.open ?? 0],
+    ['Bu il tamamlanıb', stats.data?.doneYear ?? 0],
+    ['Aktiv layihə (firma)', stats.data?.activeProjects ?? 0],
+  ];
+  return (
+    <div className="card grid grid-cols-3 gap-3">
+      {items.map(([label, n]) => (
+        <div key={label}>
+          <div className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>{label}</div>
+          <div className="text-h2" style={{ fontVariantNumeric: 'tabular-nums' }}>{n}</div>
+        </div>
+      ))}
+    </div>
   );
 }
 

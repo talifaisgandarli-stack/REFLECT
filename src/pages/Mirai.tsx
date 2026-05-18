@@ -559,6 +559,20 @@ export function MiraiPage() {
         </button>
         {/* PRD §7.6 — live cost-so-far for active conversation (sums mirai_messages.cost_usd) */}
         {conversationId ? <ConversationCostChip conversationId={conversationId} /> : null}
+        {/* PRD §7.1 — model name chip so users see which model answers */}
+        <span
+          className="chip"
+          title="MIRAI Anthropic Claude Haiku 4.5 ilə işləyir"
+          style={{
+            background: 'rgba(255,255,255,0.04)',
+            color: 'var(--text-muted)',
+            border: '1px solid rgba(255,255,255,0.06)',
+            fontSize: 11,
+            opacity: 0.8,
+          }}
+        >
+          Haiku 4.5
+        </span>
         {/* PRD §7.6 — monthly budget chip (always visible once usage data lands) */}
         {usage && usage.cap_usd > 0 ? (
           <span
