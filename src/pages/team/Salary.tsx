@@ -173,16 +173,27 @@ export function SalaryPage() {
         <SalaryTrendChart rows={rows.data ?? []} />
       ) : null}
 
-      {/* PRD §8.2 — admin sum-by-currency this year (cumulative spend) */}
+      {/* PRD §8.2 — admin sum-by-currency this year (cumulative spend) + median */}
       {isAdmin && (rows.data ?? []).length > 0 ? (() => {
         const year = new Date().getFullYear();
         const totals = new Map<string, number>();
+        // Per-currency salary amounts for median calc
+        const byCurrency = new Map<string, number[]>();
         for (const r of rows.data ?? []) {
           const startYear = new Date(r.effective_from).getFullYear();
           if (startYear !== year) continue;
           totals.set(r.currency, (totals.get(r.currency) ?? 0) + Number(r.amount));
+          const arr = byCurrency.get(r.currency) ?? [];
+          arr.push(Number(r.amount));
+          byCurrency.set(r.currency, arr);
         }
         if (totals.size === 0) return null;
+        // Median per currency — useful for compensation reviews
+        const median = (arr: number[]): number => {
+          const sorted = [...arr].sort((a, b) => a - b);
+          const mid = Math.floor(sorted.length / 2);
+          return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+        };
         return (
           <div className="card mb-4 flex items-center gap-3 flex-wrap">
             <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
@@ -198,8 +209,12 @@ export function SalaryPage() {
                   fontSize: 12,
                   fontVariantNumeric: 'tabular-nums',
                 }}
+                title={`Median: ${median(byCurrency.get(cur) ?? []).toLocaleString('az-AZ')} ${cur} (n=${(byCurrency.get(cur) ?? []).length})`}
               >
                 {sum.toLocaleString('az-AZ')} {cur}
+                <span style={{ marginLeft: 6, opacity: 0.7, fontSize: 10 }}>
+                  · med {median(byCurrency.get(cur) ?? []).toLocaleString('az-AZ')}
+                </span>
               </span>
             ))}
           </div>

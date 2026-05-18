@@ -286,6 +286,13 @@ export function CalendarPage() {
           placeholder="Görüş axtar… (/)"
           value={eventSearch}
           onChange={(e) => setEventSearch(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' && eventSearch) {
+              e.preventDefault();
+              setEventSearch('');
+              (e.currentTarget as HTMLInputElement).blur();
+            }
+          }}
         />
       </div>
 

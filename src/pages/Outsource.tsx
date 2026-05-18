@@ -243,7 +243,15 @@ export function OutsourcePage() {
                   <td className="py-3 px-3">{row.deadline ?? '—'}</td>
                   <td className="py-3 px-3">
                     <div className="flex items-center gap-2">
-                      <span className="chip" style={{ background: 'var(--surface-mist)', color: 'var(--text)', fontSize: 12 }}>
+                      <span
+                        className="chip"
+                        style={{ background: 'var(--surface-mist)', color: 'var(--text)', fontSize: 12 }}
+                        title={(() => {
+                          // PRD §REQ-FIN-07 — explain next workflow step on hover
+                          const next = STATUS_NEXT[row.status as Status];
+                          return next ? `Növbəti: ${STATUS_LABEL[next]}` : 'Workflow tamamlanıb';
+                        })()}
+                      >
                         {STATUS_LABEL[row.status as Status] ?? row.status}
                       </span>
                       {STATUS_NEXT[row.status as Status] ? (

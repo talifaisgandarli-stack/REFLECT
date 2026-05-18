@@ -285,7 +285,20 @@ export function NotificationBell() {
           ) : null}
           {visible.length === 0 ? (
             <div className="px-4 py-8 text-center text-meta" style={{ color: 'var(--text-muted)' }}>
-              {unreadOnly ? 'Oxunmamış bildiriş yoxdur.' : 'Hələ bildiriş yoxdur.'}
+              <div className="mb-2">
+                {unreadOnly ? 'Oxunmamış bildiriş yoxdur.' : 'Hələ bildiriş yoxdur.'}
+              </div>
+              {/* PRD §UX — when empty, nudge user to confirm preferences are configured */}
+              {!unreadOnly ? (
+                <Link
+                  to="/bildirişlər"
+                  onClick={() => setOpen(false)}
+                  className="text-meta hover:underline"
+                  style={{ color: 'var(--brand-text)', fontSize: 11 }}
+                >
+                  Bildiriş tərcihlərini yoxla →
+                </Link>
+              ) : null}
             </div>
           ) : null}
           {visible.length > 0 ? (

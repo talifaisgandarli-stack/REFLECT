@@ -229,7 +229,16 @@ export function ProjectsPage() {
   return (
     <>
       <PageHead
-        meta={`${projects.length} layihə`}
+        meta={(() => {
+          // PRD §UX — show status breakdown so user sees firm's pipeline shape
+          if (projects.length === 0) return '0 layihə';
+          const counts: Record<string, number> = {};
+          for (const p of projects) counts[p.status] = (counts[p.status] ?? 0) + 1;
+          const parts = [`${projects.length} layihə`];
+          if (counts.active) parts.push(`${counts.active} aktiv`);
+          if (counts.on_hold) parts.push(`${counts.on_hold} dayandırılıb`);
+          return parts.join(' · ');
+        })()}
         title="Layihələr"
         actions={
           <>
