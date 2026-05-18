@@ -221,6 +221,20 @@ export function TeamRosterPage() {
         />
       ) : (
       <>
+        {/* PRD §UX — if admin is the only person here, nudge them to invite */}
+        {isAdmin && allPpl.length === 1 ? (
+          <div
+            className="card mb-3 flex items-center justify-between gap-3 flex-wrap"
+            style={{ background: 'var(--brand-glow-sm)' }}
+          >
+            <span className="text-meta" style={{ color: 'var(--brand-text)' }}>
+              Komanda boşdur — ilk işçini dəvət edin və Reflect-i komandayla istifadə edin.
+            </span>
+            <Link to="/parametrlər/dəvətlər" className="btn-primary" style={{ fontSize: 12 }}>
+              + İşçi dəvət et
+            </Link>
+          </div>
+        ) : null}
         {/* PRD §UX — role distribution chip row at the top so admin sees
             the firm's shape at a glance (X dizayner / Y BD / Z member). */}
         {(() => {

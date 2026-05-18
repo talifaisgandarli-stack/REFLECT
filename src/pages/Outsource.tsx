@@ -64,7 +64,20 @@ export function OutsourcePage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['outsource'] }),
   });
 
-  const headers = ['İş', 'Layihə', 'Deadline', 'Status / İrəlilə', ...(isAdmin ? ['Məbləğ'] : [])];
+  // PRD §REQ-FIN-07 — admin can delete a podrat row (RLS-scoped); inline confirm
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const deleteItem = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('outsource_items').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['outsource'] });
+      setConfirmDeleteId(null);
+    },
+  });
+
+  const headers = ['İş', 'Layihə', 'Deadline', 'Status / İrəlilə', ...(isAdmin ? ['Məbləğ', ''] : [])];
 
   return (
     <>
@@ -276,6 +289,42 @@ export function OutsourcePage() {
                       {formatAZN(row.amount)}
                     </td>
                   ) : null}
+                  {isAdmin ? (
+                    <td className="py-3 px-3 text-right">
+                      {confirmDeleteId === row.id ? (
+                        <span className="inline-flex gap-1">
+                          <button
+                            type="button"
+                            className="chip"
+                            style={{ background: 'var(--error-deep)', color: 'white', fontSize: 11 }}
+                            disabled={deleteItem.isPending}
+                            onClick={() => deleteItem.mutate(row.id)}
+                          >
+                            {deleteItem.isPending ? '…' : 'Bəli'}
+                          </button>
+                          <button
+                            type="button"
+                            className="chip"
+                            style={{ fontSize: 11 }}
+                            onClick={() => setConfirmDeleteId(null)}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="chip opacity-50 hover:opacity-100"
+                          style={{ color: 'var(--error-deep)', fontSize: 13 }}
+                          onClick={() => setConfirmDeleteId(row.id)}
+                          title="Sil"
+                          aria-label={`Sifarişi sil: ${row.work_title}`}
+                        >
+                          🗑
+                        </button>
+                      )}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
@@ -295,6 +344,7 @@ export function OutsourcePage() {
                         .reduce((sum, r) => sum + Number(r.amount ?? 0), 0),
                     )}
                   </td>
+                  <td className="py-3 px-3" />
                 </tr>
               </tfoot>
             ) : null}

@@ -240,7 +240,14 @@ export function ProfilePage() {
               </span>
             </div>
             <div className="text-meta mt-0.5" style={{ color: 'var(--text-muted)' }}>
-              {profile.email}
+              {/* PRD §UX — mailto link so user (or admin viewing) can compose with one click */}
+              <a
+                href={`mailto:${profile.email}`}
+                className="hover:underline"
+                style={{ color: 'inherit' }}
+              >
+                {profile.email}
+              </a>
             </div>
             <div className="text-meta mt-0.5" style={{ color: 'var(--text-muted)' }}>
               {role?.name ?? 'Üzv'}

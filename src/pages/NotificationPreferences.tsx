@@ -166,6 +166,22 @@ export function NotificationPreferencesPage() {
                     }}
                   >
                     {c.label}
+                    {/* PRD §8.1 — surface link status for Telegram channel so users know
+                        whether the toggles will actually do anything. */}
+                    {c.key === 'telegram' ? (
+                      <span
+                        className="block text-meta"
+                        style={{
+                          color: profile?.telegram_chat_id ? 'var(--success-deep, #16794a)' : 'var(--warning, #c47d00)',
+                          fontSize: 9,
+                          textTransform: 'none',
+                          letterSpacing: 'normal',
+                          marginTop: 2,
+                        }}
+                      >
+                        {profile?.telegram_chat_id ? '● bağlıdır' : '○ bağlı deyil'}
+                      </span>
+                    ) : null}
                     {/* PRD §UX — one-click mute/unmute the whole channel column */}
                     <button
                       type="button"

@@ -604,6 +604,21 @@ export function TasksPage() {
             </button>
           }
         />
+      ) : filtered.length === 0 ? (
+        // PRD §UX — filters silenced all rows; tell user how to undo
+        <EmptyState
+          title="Filtrə uyğun tapşırıq yoxdur"
+          body="Axtarış, etiket və ya 'Bu gün' filtrini ləğv et."
+          cta={
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={() => { setSearch(''); setLabelFilter(null); setTodayOnly(false); }}
+            >
+              ✕ Filtrləri təmizlə
+            </button>
+          }
+        />
       ) : mineOnly ? (
         // US-TASK-06 — personal view: time-grouped list with inline actions
         <div className="space-y-6">
