@@ -758,6 +758,17 @@ function EventModal({
           <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
             {new Date(event.starts_at).toLocaleDateString('az-AZ', { timeZone: 'Asia/Baku', weekday: 'long', day: 'numeric', month: 'long' })}
             {' '}{fmtTime(event.starts_at)} – {fmtTime(event.ends_at)}
+            {/* PRD §UX — total duration so user sees length without math */}
+            {(() => {
+              const min = Math.round(
+                (new Date(event.ends_at).getTime() - new Date(event.starts_at).getTime()) / 60_000,
+              );
+              if (min <= 0) return null;
+              const h = Math.floor(min / 60);
+              const m = min % 60;
+              const txt = h > 0 ? `${h}s${m > 0 ? ` ${m}dəq` : ''}` : `${m}dəq`;
+              return <span style={{ opacity: 0.7 }}> · {txt}</span>;
+            })()}
           </p>
         )}
         {/* PRD §UX — inline location edit when canEdit; non-canEdit shows static */}

@@ -86,11 +86,14 @@ export function OutsourcePage() {
       <PageHead
         meta={
           isAdmin
-            ? `Admin görünüşü · cəmi ${formatAZN(
-                (q.data as Array<{ amount?: number }> ?? []).reduce(
-                  (sum, r) => sum + Number(r.amount ?? 0), 0,
-                ),
-              )}`
+            ? (() => {
+                const rows = (q.data as Array<{ amount?: number; status?: string; paid_at?: string | null }> ?? []);
+                const total = rows.reduce((sum, r) => sum + Number(r.amount ?? 0), 0);
+                const unpaid = rows.filter((r) => r.status !== 'paid');
+                const unpaidSum = unpaid.reduce((sum, r) => sum + Number(r.amount ?? 0), 0);
+                if (unpaid.length === 0) return `Admin görünüşü · cəmi ${formatAZN(total)}`;
+                return `Admin görünüşü · ${formatAZN(unpaidSum)} ödənilməyib · cəmi ${formatAZN(total)}`;
+              })()
             : 'İstifadəçi görünüşü (məbləğlər gizlidir)'
         }
         title="Podrat İşləri"

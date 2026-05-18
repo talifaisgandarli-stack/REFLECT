@@ -1750,7 +1750,7 @@ function InvitationsSettings() {
             <option value="">Rol seçin…</option>
             {(roles.data ?? []).map((r) => (
               <option key={r.id} value={r.id}>
-                {r.name}
+                {r.name} (L{r.level})
               </option>
             ))}
           </select>

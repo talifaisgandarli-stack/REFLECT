@@ -12,6 +12,7 @@ import { Mascot } from '@/components/Mascot';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { useSlashFocus } from '@/lib/useSlashFocus';
+import { announce } from '@/lib/a11y';
 
 type PersonaKey =
   | 'general'
@@ -459,6 +460,9 @@ export function MiraiPage() {
   function switchPersona(key: PersonaKey) {
     if (key === persona) return;
     setPersona(key);
+    // PRD §6.6 — announce persona change so screen reader users know context shifted
+    const next = PERSONAS.find((p) => p.key === key);
+    if (next) announce(`MIRAI persona dəyişdi: ${next.label}`);
   }
 
   const currentPersonaMeta = PERSONAS.find((p) => p.key === persona)!;
