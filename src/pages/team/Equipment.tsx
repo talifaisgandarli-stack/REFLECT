@@ -148,7 +148,13 @@ export function EquipmentPage() {
   return (
     <>
       <PageHead
-        meta={`${equipment.data?.length ?? 0} avadanlıq`}
+        meta={(() => {
+          // PRD §8.7 — also surface "boş" count so admin sees free-pool size
+          const total = equipment.data?.length ?? 0;
+          if (total === 0) return '—';
+          const free = (equipment.data ?? []).filter((e) => !e.assigned_to).length;
+          return `${total} avadanlıq · ${free} boş`;
+        })()}
         title="Avadanlıq"
         actions={
           <>

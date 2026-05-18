@@ -521,6 +521,12 @@ export function CalendarPage() {
                       <span>
                         {isSameDay(g.date, today) ? 'BU GÜN · ' : ''}
                         {g.date.toLocaleDateString('az-AZ', { weekday: 'short', day: 'numeric', month: 'short' })}
+                        {/* PRD §UX — "X gün sonra" countdown so user gauges proximity */}
+                        {!isSameDay(g.date, today) ? (() => {
+                          const days = Math.round((g.date.getTime() - new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()) / 86_400_000);
+                          if (days <= 0) return null;
+                          return <span style={{ marginLeft: 6, opacity: 0.7 }}> · {days} gün sonra</span>;
+                        })() : null}
                       </span>
                       <span style={{ opacity: 0.6, fontWeight: 400 }}>H {isoWeekNumber(g.date)}</span>
                     </div>

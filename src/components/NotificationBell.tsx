@@ -161,6 +161,7 @@ export function NotificationBell() {
         className="btn-ghost relative"
         aria-label={`Bildirişlər${unreadCount ? ` (${unreadCount} oxunmamış)` : ''}`}
         aria-expanded={open}
+        title={`Bildirişlər (B)${unreadCount ? ` · ${unreadCount} yeni` : ''}`}
         onClick={() => setOpen((v) => !v)}
       >
         <BellIcon />

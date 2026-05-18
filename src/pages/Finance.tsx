@@ -161,15 +161,38 @@ export function FinancePage() {
       </div>
 
       <nav className="flex flex-wrap gap-2 mb-5">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            className={`chip ${tab === t ? 'chip-brand' : ''}`}
-            onClick={() => setTab(t)}
-          >
-            {t}
-          </button>
-        ))}
+        {TABS.map((t) => {
+          // PRD §REQ-FIN-03 — surface overdue/open receivable count on the Debitor tab
+          // so admin sees pressure without clicking through.
+          const openCount = t === 'Debitor'
+            ? (receivables.data ?? []).filter((r) => r.status !== 'paid').length
+            : 0;
+          return (
+            <button
+              key={t}
+              className={`chip ${tab === t ? 'chip-brand' : ''}`}
+              onClick={() => setTab(t)}
+            >
+              {t}
+              {openCount > 0 ? (
+                <span
+                  style={{
+                    marginLeft: 6,
+                    fontVariantNumeric: 'tabular-nums',
+                    background: tab === t ? 'var(--ink)' : 'var(--brand-action)',
+                    color: tab === t ? 'var(--brand-action)' : 'var(--ink)',
+                    padding: '0 5px',
+                    borderRadius: 999,
+                    fontSize: 10,
+                    fontWeight: 700,
+                  }}
+                >
+                  {openCount}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
       </nav>
 
       {tab === 'Cash Cockpit' ? (

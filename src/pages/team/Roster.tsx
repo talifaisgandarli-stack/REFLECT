@@ -118,7 +118,15 @@ export function TeamRosterPage() {
   const searchRef = useRef<HTMLInputElement>(null);
   useSlashFocus(searchRef);
   const allPpl = profiles.data ?? [];
-  const ppl = search.trim()
+  const presenceMap = useMemo(
+    () => Object.fromEntries((presence.data ?? []).map((p) => [p.user_id, p])),
+    [presence.data],
+  );
+  const eqMap = equipment.data ?? {};
+  const taskMap = openTasks.data ?? {};
+  // PRD §UX — sort by name / workload / equipment count
+  const [sortBy, setSortBy] = useState<'name' | 'workload' | 'equipment'>('name');
+  const filteredPpl = search.trim()
     ? allPpl.filter((p) => {
         const q = search.toLowerCase();
         return (p.full_name ?? '').toLowerCase().includes(q)
@@ -126,12 +134,11 @@ export function TeamRosterPage() {
           || (p.role?.name ?? '').toLowerCase().includes(q);
       })
     : allPpl;
-  const presenceMap = useMemo(
-    () => Object.fromEntries((presence.data ?? []).map((p) => [p.user_id, p])),
-    [presence.data],
-  );
-  const eqMap = equipment.data ?? {};
-  const taskMap = openTasks.data ?? {};
+  const ppl = [...filteredPpl].sort((a, b) => {
+    if (sortBy === 'workload') return (taskMap[b.id] ?? 0) - (taskMap[a.id] ?? 0);
+    if (sortBy === 'equipment') return (eqMap[b.id] ?? 0) - (eqMap[a.id] ?? 0);
+    return (a.full_name ?? a.email).localeCompare(b.full_name ?? b.email, 'az');
+  });
 
   return (
     <>
@@ -147,6 +154,17 @@ export function TeamRosterPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+            <select
+              className="input"
+              style={{ maxWidth: 180, height: 32, fontSize: 12 }}
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+              aria-label="Sıralama"
+            >
+              <option value="name">A → Z</option>
+              <option value="workload">İş yükü (çox əvvəl)</option>
+              <option value="equipment">Avadanlıq (çox əvvəl)</option>
+            </select>
             {isAdmin ? (
               <>
               {/* PRD §8.1 — roster snapshot for HR / handover */}
