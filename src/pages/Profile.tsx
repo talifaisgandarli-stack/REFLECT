@@ -222,7 +222,23 @@ export function ProfilePage() {
           </div>
 
           <div>
-            <div className="text-h3">{profile.full_name ?? '—'}</div>
+            <div className="text-h3 flex items-center gap-2">
+              {profile.full_name ?? '—'}
+              {/* PRD §UX — locale chip so user sees current language at a glance */}
+              <span
+                className="chip"
+                style={{
+                  background: 'var(--surface-mist)',
+                  color: 'var(--text-muted)',
+                  fontSize: 10,
+                  padding: '0 6px',
+                  textTransform: 'uppercase',
+                }}
+                title={`Dil: ${profile.locale}`}
+              >
+                {profile.locale}
+              </span>
+            </div>
             <div className="text-meta mt-0.5" style={{ color: 'var(--text-muted)' }}>
               {profile.email}
             </div>

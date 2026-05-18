@@ -321,16 +321,20 @@ export function TasksPage() {
   // PRD §UX — quick "today only" toggle: deadline = today (any status)
   const [todayOnly, setTodayOnly] = useState(false);
 
-  // PRD §6.3 — "C" toggles compact board view (skip while typing in inputs)
+  // PRD §6.3 — single key shortcuts: C compact, A mine-only (skip while typing)
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key !== 'c' && e.key !== 'C') return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const tag = (e.target as HTMLElement).tagName;
       const editing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement).isContentEditable;
       if (editing) return;
-      e.preventDefault();
-      setCompactBoard((v) => !v);
+      if (e.key === 'c' || e.key === 'C') {
+        e.preventDefault();
+        setCompactBoard((v) => !v);
+      } else if (e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
+        setMineOnly((v) => !v);
+      }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

@@ -873,6 +873,15 @@ export function MiraiPage() {
           </button>
         </form>
 
+        {/* PRD §7.2 — persona hint under input so user remembers active focus */}
+        <p
+          className="text-meta mt-1 px-1"
+          style={{ color: 'var(--text-muted)', fontSize: 11, opacity: 0.8 }}
+        >
+          <span aria-hidden style={{ marginRight: 4 }}>{currentPersonaMeta.icon}</span>
+          {currentPersonaMeta.label} · {currentPersonaMeta.hint}
+        </p>
+
         {/* Suggestion chips */}
         <div className="flex flex-wrap gap-2 mt-3">
           {(SUGGESTIONS[persona] ?? []).map((s) => (

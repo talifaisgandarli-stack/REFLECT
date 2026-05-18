@@ -126,15 +126,28 @@ function BuildInfoFooter() {
     >
       <span>v{version}</span>
       {commit ? (
-        <a
-          href={`https://github.com/talifaisgandarli-stack/REFLECT/commit/${commit}`}
-          target="_blank"
-          rel="noreferrer noopener"
-          style={{ color: 'var(--brand-text)', textDecoration: 'underline dotted' }}
-          title="GitHub-da bu commit-ə bax"
-        >
-          · {commit}
-        </a>
+        <span className="inline-flex items-center gap-1">
+          ·{' '}
+          <a
+            href={`https://github.com/talifaisgandarli-stack/REFLECT/commit/${commit}`}
+            target="_blank"
+            rel="noreferrer noopener"
+            style={{ color: 'var(--brand-text)', textDecoration: 'underline dotted' }}
+            title="GitHub-da bu commit-ə bax"
+          >
+            {commit}
+          </a>
+          <button
+            type="button"
+            onClick={() => { void navigator.clipboard.writeText(commit).catch(() => {}); }}
+            className="text-meta opacity-50 hover:opacity-100"
+            style={{ fontSize: 10, padding: 0, background: 'none', border: 'none', cursor: 'pointer' }}
+            title="Commit SHA-nı kopyala"
+            aria-label="Commit SHA-nı kopyala"
+          >
+            📋
+          </button>
+        </span>
       ) : null}
       <span>· qurulub {builtFmt}</span>
     </div>

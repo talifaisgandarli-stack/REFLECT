@@ -551,12 +551,31 @@ export function CalendarPage() {
                             }}
                             onClick={() => setSelected(ev)}
                           >
-                            <span
-                              className="text-meta shrink-0"
-                              style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums', minWidth: 80 }}
-                            >
-                              {ev.all_day ? 'Bütün gün' : `${fmtTime(ev.starts_at)} – ${fmtTime(ev.ends_at)}`}
-                            </span>
+                            {ev.all_day ? (
+                              <span
+                                className="chip shrink-0"
+                                style={{
+                                  background: 'var(--brand-glow-sm)',
+                                  color: 'var(--brand-text)',
+                                  fontSize: 10,
+                                  padding: '0 6px',
+                                  minWidth: 80,
+                                  textAlign: 'center',
+                                  fontWeight: 600,
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.04em',
+                                }}
+                              >
+                                Bütün gün
+                              </span>
+                            ) : (
+                              <span
+                                className="text-meta shrink-0"
+                                style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums', minWidth: 80 }}
+                              >
+                                {fmtTime(ev.starts_at)} – {fmtTime(ev.ends_at)}
+                              </span>
+                            )}
                             <span className="text-body flex-1 truncate">{ev.title}</span>
                             {/* PRD §UX — event icons for location / meet / recurring */}
                             <span className="shrink-0 flex items-center gap-1" style={{ fontSize: 11 }}>
