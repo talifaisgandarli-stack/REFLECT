@@ -431,7 +431,18 @@ export function TasksPage() {
   const overdueCount = filtered.filter(
     (t) => t.deadline && t.deadline < todayIso && t.status !== 'done' && t.status !== 'cancelled',
   ).length;
+  // PRD §UX — total estimated hours across visible open tasks (for at-a-glance load)
+  const totalEstimateH = filtered.reduce((sum, t) => {
+    if (t.status === 'done' || t.status === 'cancelled') return sum;
+    const d = t.estimated_duration;
+    if (d == null) return sum;
+    const unit = (t as { duration_unit?: string }).duration_unit ?? 'hour';
+    const h = unit === 'day' ? d * 8 : unit === 'week' ? d * 40 : d;
+    return sum + h;
+  }, 0);
   const meta = `${filtered.length} cəmi · ${grouped.active.length} icrada · ${grouped.review.length} yoxlamada${
+    totalEstimateH > 0 ? ` · ~${Math.round(totalEstimateH)}s` : ''
+  }${
     overdueCount > 0 ? ` · ⚠ ${overdueCount} gecikmiş` : ''
   }`;
 

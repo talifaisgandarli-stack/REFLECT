@@ -348,11 +348,22 @@ function GeneralSettings() {
         </label>
         <label className="block">
           <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Əsas valyuta</span>
-          <select className="input mt-1 max-w-[140px]" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-            <option value="AZN">AZN (₼)</option>
-            <option value="USD">USD ($)</option>
-            <option value="EUR">EUR (€)</option>
-          </select>
+          <div className="flex items-center gap-3 mt-1">
+            <select className="input max-w-[140px]" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+              <option value="AZN">AZN (₼)</option>
+              <option value="USD">USD ($)</option>
+              <option value="EUR">EUR (€)</option>
+            </select>
+            {/* PRD §UX — preview "12 345,67 ₼" so admin sees the exact format used */}
+            <span
+              className="text-meta"
+              style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums', fontSize: 12 }}
+              title="Format nümunəsi"
+            >
+              {(12345.67).toLocaleString('az-AZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
+              {currency === 'AZN' ? '₼' : currency === 'USD' ? '$' : '€'}
+            </span>
+          </div>
         </label>
         <label className="block">
           <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Gündəlik iş saatı</span>

@@ -205,7 +205,11 @@ export function NotificationPreferencesPage() {
           </thead>
           <tbody>
             {EVENTS.map((e) => (
-              <tr key={e.key} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+              <tr
+                key={e.key}
+                className="hover:bg-surface-mist transition-colors"
+                style={{ borderBottom: '1px solid var(--line-soft)' }}
+              >
                 <td className="py-3 pr-4">
                   <div className="font-medium" style={{ color: 'var(--text)' }}>
                     {e.label}

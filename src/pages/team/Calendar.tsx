@@ -507,18 +507,32 @@ export function CalendarPage() {
         <div className="card">
           <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
             <h3 className="text-h3">Növbəti 14 gün</h3>
-            {/* PRD §UX — jump-to-date input for the agenda window */}
-            <input
-              type="date"
-              className="input"
-              style={{ maxWidth: 180, height: 32, fontSize: 12 }}
-              value={cursor.toISOString().slice(0, 10)}
-              onChange={(e) => {
-                if (e.target.value) setCursor(new Date(e.target.value));
-              }}
-              aria-label="Tarixə keç"
-              title="14 günlük pəncərənin başlanğıc tarixini seç"
-            />
+            <div className="flex items-center gap-2">
+              {/* PRD §UX — quick "today" jump when window is far from now */}
+              {!isSameDay(cursor, today) ? (
+                <button
+                  type="button"
+                  className="chip"
+                  style={{ fontSize: 11 }}
+                  onClick={() => setCursor(new Date())}
+                  title="Bu günə qayıt"
+                >
+                  → Bu gün
+                </button>
+              ) : null}
+              {/* PRD §UX — jump-to-date input for the agenda window */}
+              <input
+                type="date"
+                className="input"
+                style={{ maxWidth: 180, height: 32, fontSize: 12 }}
+                value={cursor.toISOString().slice(0, 10)}
+                onChange={(e) => {
+                  if (e.target.value) setCursor(new Date(e.target.value));
+                }}
+                aria-label="Tarixə keç"
+                title="14 günlük pəncərənin başlanğıc tarixini seç"
+              />
+            </div>
           </div>
           {(() => {
             const start = new Date(cursor);

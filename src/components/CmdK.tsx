@@ -382,6 +382,11 @@ export function CmdK() {
             <KbdHint label="↵" />
             <span>aç</span>
           </span>
+          {/* PRD §6.3 — Alt+1..9 numeric quick-activate from batch 46 */}
+          <span className="flex items-center gap-2 hidden sm:inline-flex">
+            <KbdHint label="Alt+1-9" />
+            <span>sürətli seç</span>
+          </span>
           <span className="flex items-center gap-2">
             <KbdHint label="Esc" />
             <span>bağla</span>
