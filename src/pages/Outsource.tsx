@@ -275,6 +275,36 @@ export function OutsourcePage() {
               </tr>
             </thead>
             <tbody>
+              {(() => {
+                const visibleCount = (q.data as any[])
+                  .filter((row) => statusFilter === 'all' || row.status === statusFilter)
+                  .filter((row) => {
+                    if (!dueWeekOnly) return true;
+                    if (!row.deadline) return false;
+                    const days = Math.round(
+                      (new Date(row.deadline).getTime() - Date.now()) / 86_400_000,
+                    );
+                    return days >= 0 && days <= 7;
+                  })
+                  .filter((row) => !search.trim() || (row.work_title ?? '').toLowerCase().includes(search.trim().toLowerCase()))
+                  .length;
+                if (visibleCount > 0) return null;
+                return (
+                  <tr>
+                    <td colSpan={isAdmin ? 6 : 4} className="py-6 text-center text-meta" style={{ color: 'var(--text-muted)' }}>
+                      Filtrə uyğun sifariş yoxdur.{' '}
+                      <button
+                        type="button"
+                        className="underline"
+                        style={{ color: 'var(--brand-text)' }}
+                        onClick={() => { setStatusFilter('all'); setDueWeekOnly(false); setSearch(''); }}
+                      >
+                        Filtrləri sıfırla
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })()}
               {(q.data as any[])
                 .filter((row) => statusFilter === 'all' || row.status === statusFilter)
                 .filter((row) => {

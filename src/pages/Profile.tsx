@@ -160,7 +160,10 @@ export function ProfilePage() {
 
   return (
     <>
-      <PageHead meta="Hesabım" title="Profil" />
+      <PageHead
+        meta="Hesabım"
+        title={profile.full_name ? `Profil — ${profile.full_name.split(' ')[0]}` : 'Profil'}
+      />
 
       <div className="max-w-xl space-y-6">
         {/* Avatar — click to upload (REQ-AUTH-03) */}

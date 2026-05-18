@@ -871,7 +871,13 @@ export function TasksPage() {
                       <div
                         className="font-medium cursor-pointer"
                         onClick={(e) => { e.stopPropagation(); setCommenting({ id: t.id, title: t.title }); }}
-                        title={t.description ?? undefined}
+                        title={(() => {
+                          // PRD §UX — tooltip combines description (if any) + created age
+                          const parts: string[] = [];
+                          if (t.description) parts.push(t.description);
+                          if (t.created_at) parts.push(`Yaradılıb: ${new Date(t.created_at).toLocaleDateString('az-AZ')}`);
+                          return parts.length ? parts.join('\n\n') : undefined;
+                        })()}
                       >
                         {t.title}
                       </div>

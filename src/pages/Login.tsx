@@ -152,6 +152,20 @@ export function LoginPage() {
             Reflect
           </span>
         </div>
+        {/* PRD §AUTH-02 — invite flow: surface that this is an invitation so user
+            knows logging in here will accept the invite */}
+        {inviteToken ? (
+          <div
+            className="rounded-card px-3 py-2 mb-3 text-meta"
+            style={{
+              background: 'var(--brand-glow-sm)',
+              color: 'var(--brand-text)',
+              border: '1px solid var(--brand-glow-md)',
+            }}
+          >
+            ✉ Sənə dəvət göndərilib. Daxil olduqdan sonra dəvət avtomatik qəbul ediləcək.
+          </div>
+        ) : null}
         <form onSubmit={onSubmit} className="space-y-3">
           <label className="block">
             <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Email</span>

@@ -377,14 +377,22 @@ function GeneralSettings() {
             placeholder="8"
           />
         </label>
-        <label className="flex items-center gap-2 cursor-pointer">
+        <label className="flex items-start gap-2 cursor-pointer">
           <input
             type="checkbox"
             checked={holidaysEnabled}
             onChange={(e) => setHolidaysEnabled(e.target.checked)}
-            style={{ width: 16, height: 16 }}
+            style={{ width: 16, height: 16, marginTop: 3 }}
           />
-          <span className="text-body">AZ dövlət bayramlarını qeyri-iş günü say</span>
+          <div>
+            <div className="text-body">AZ dövlət bayramlarını qeyri-iş günü say</div>
+            {/* PRD §10.1 — show coverage so admin knows what's included */}
+            {holidaysEnabled ? (
+              <div className="text-meta mt-0.5" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                Yeni il · Qadın günü · Novruz · 9 May · Müstəqillik · Konstitusiya · Bayraq · Qurban
+              </div>
+            ) : null}
+          </div>
         </label>
         {/* PRD §10.1 / REQ-SET-07 — Firm logo upload (Supabase Storage: firm-assets) */}
         <div>
