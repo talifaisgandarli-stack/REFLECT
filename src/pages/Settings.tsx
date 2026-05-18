@@ -1660,6 +1660,10 @@ function InvitationsSettings() {
   const invite = useMutation({
     mutationFn: async () => {
       if (!email.trim() || !roleId) throw new Error('Email və rol tələb olunur');
+      // PRD §AUTH-02 — validate email format client-side before hitting API
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+        throw new Error('Email düzgün formatda olmalıdır');
+      }
       const role = (roles.data ?? []).find((r) => r.id === roleId);
       if (!role) throw new Error('Rol tapılmadı');
 

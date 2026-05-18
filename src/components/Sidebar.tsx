@@ -187,7 +187,9 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       </nav>
 
       <div className="p-4 flex items-center gap-3 border-t border-white/5">
-        <Mascot size={40} />
+        <span title="Bu Reflect-in Mindaro adlı buqalemonudur. Klik et :)">
+          <Mascot size={40} />
+        </span>
         <div className="flex-1 min-w-0">
           {/* PRD §UX — name links to /profile so the bottom of the nav is usable */}
           <NavLink

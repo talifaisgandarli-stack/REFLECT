@@ -59,6 +59,8 @@ export function TasksPage() {
   // PRD §UX — ?assignee=<uuid> deep-links from Roster to "tasks for this person"
   const initialUrlAssignee = new URLSearchParams(window.location.search).get('assignee');
   const [mineOnly, setMineOnly] = useState(false);
+  // PRD §UX — drag-over column highlight (board view DnD feedback)
+  const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
   // URL assignee takes precedence over mineOnly so Roster click always lands on that user
   const filterAssignee = initialUrlAssignee || (mineOnly && profile?.id ? profile.id : null);
   const { data: tasks = [], isLoading } = useTasks(
@@ -810,15 +812,21 @@ export function TasksPage() {
             return (
               <div
                 key={s}
-                className="rounded-card p-3"
+                className="rounded-card p-3 transition-colors"
                 style={{
-                  background: isToday ? 'var(--ink)' : 'transparent',
+                  background: dragOverColumn === s
+                    ? 'var(--brand-glow-sm)'
+                    : isToday ? 'var(--ink)' : 'transparent',
                   color: isToday ? 'var(--canvas)' : 'inherit',
-                  border: isToday ? 'none' : '1px dashed var(--line)',
+                  border: dragOverColumn === s
+                    ? '2px dashed var(--brand-action)'
+                    : isToday ? 'none' : '1px dashed var(--line)',
                   minHeight: 320,
                 }}
-                onDragOver={(e) => e.preventDefault()}
+                onDragOver={(e) => { e.preventDefault(); if (dragOverColumn !== s) setDragOverColumn(s); }}
+                onDragLeave={() => setDragOverColumn(null)}
                 onDrop={(e) => {
+                  setDragOverColumn(null);
                   const raw = e.dataTransfer.getData('text/plain');
                   if (!raw) return;
                   const { id, from } = JSON.parse(raw);

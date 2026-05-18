@@ -300,15 +300,23 @@ export function CalendarPage() {
       {view === 'month' ? (
         <div className="card p-0 overflow-hidden">
           <div className="grid grid-cols-7 border-b" style={{ borderColor: 'var(--line-soft)' }}>
-            {WEEKDAY_SHORT.map((w) => (
-              <div
-                key={w}
-                className="text-center text-meta py-2"
-                style={{ color: 'var(--text-muted)', fontSize: 11 }}
-              >
-                {w}
-              </div>
-            ))}
+            {WEEKDAY_SHORT.map((w, idx) => {
+              // PRD §UX — match cell weekend tint with weekday header label tint
+              const isWeekend = idx === 5 || idx === 6;
+              return (
+                <div
+                  key={w}
+                  className="text-center text-meta py-2"
+                  style={{
+                    color: 'var(--text-muted)',
+                    fontSize: 11,
+                    background: isWeekend ? 'var(--surface-mist)' : 'transparent',
+                  }}
+                >
+                  {w}
+                </div>
+              );
+            })}
           </div>
           <div className="grid grid-cols-7">
             {monthGrid.map((day, i) => {
