@@ -339,8 +339,15 @@ export function EquipmentPage() {
                   </td>
                 </tr>
               ) : null}
-              {filteredEquipment.map((e) => (
-                <tr key={e.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+              {filteredEquipment.map((e, idx) => (
+                <tr
+                  key={e.id}
+                  style={{
+                    borderBottom: '1px solid var(--line-soft)',
+                    // PRD §UX — zebra stripes so long rows are easier to scan
+                    background: idx % 2 === 1 ? 'var(--surface-mist)' : 'transparent',
+                  }}
+                >
                   <td className="py-3 px-3 font-medium">{e.name}</td>
                   <td className="py-3 px-3">
                     {/* PRD §8.7 — emoji icon hint by kind for at-a-glance scanning */}

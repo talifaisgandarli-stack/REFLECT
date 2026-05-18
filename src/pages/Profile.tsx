@@ -443,6 +443,9 @@ export function ProfilePage() {
         {/* PRD §UX — personal stats summary (admin or self) */}
         <PersonalStatsCard userId={profile.id} />
 
+        {/* PRD §UX — recent projects user is a member of */}
+        <MyProjectsCard userId={profile.id} />
+
         {/* Bu günkü izlənmiş vaxt — time tracking sessions */}
         <TimeEntriesTodayCard userId={profile.id} />
 
@@ -837,6 +840,62 @@ function PersonalStatsCard({ userId }: { userId: string }) {
         <div className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>Aktiv layihə (firma)</div>
         <div className="text-h2" style={{ fontVariantNumeric: 'tabular-nums' }}>{stats.data?.activeProjects ?? 0}</div>
       </div>
+    </div>
+  );
+}
+
+// PRD §UX — distinct projects the user has assigned tasks on (proxy for "my projects").
+// Uses Postgres aggregate by group via Postgrest, then fetches project names.
+function MyProjectsCard({ userId }: { userId: string }) {
+  const data = useQuery({
+    queryKey: ['my-projects', userId],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      // Pull project_ids from open + recent done tasks assigned to user
+      const { data: rows } = await supabase
+        .from('tasks')
+        .select('project_id')
+        .contains('assignee_ids', [userId])
+        .is('archived_at', null)
+        .not('project_id', 'is', null);
+      const ids = Array.from(new Set((rows ?? []).map((r) => r.project_id).filter(Boolean) as string[]));
+      if (ids.length === 0) return [];
+      const { data: projects } = await supabase
+        .from('projects')
+        .select('id, name, status')
+        .in('id', ids)
+        .is('archived_at', null)
+        .order('name')
+        .limit(20);
+      return (projects ?? []) as Array<{ id: string; name: string; status: string }>;
+    },
+  });
+  const projects = data.data ?? [];
+  if (projects.length === 0) return null;
+  return (
+    <div className="card">
+      <h3 className="text-h3 mb-2">Mənim layihələrim ({projects.length})</h3>
+      <ul className="divide-y" style={{ borderColor: 'var(--line-soft)' }}>
+        {projects.slice(0, 6).map((p) => (
+          <li key={p.id} className="py-2 flex items-center justify-between gap-3">
+            <a
+              href={`/layihelər/${p.id}`}
+              className="text-body hover:underline truncate"
+              style={{ color: 'var(--text)' }}
+            >
+              {p.name}
+            </a>
+            <span className="text-meta shrink-0" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+              {p.status}
+            </span>
+          </li>
+        ))}
+        {projects.length > 6 ? (
+          <li className="py-2 text-meta text-center" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+            +{projects.length - 6} digər
+          </li>
+        ) : null}
+      </ul>
     </div>
   );
 }

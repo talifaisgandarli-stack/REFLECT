@@ -815,6 +815,22 @@ function EventModal({
             📹 Meet linki yarat (meet.new)
           </a>
         ) : null}
+        {/* PRD §UX — copy event details (title + when + where) for paste into email/chat */}
+        <button
+          type="button"
+          className="chip mt-4 ml-2"
+          style={{ fontSize: 11, color: 'var(--text-muted)' }}
+          onClick={() => {
+            const lines: string[] = [event.title];
+            lines.push(new Date(event.starts_at).toLocaleString('az-AZ', { timeZone: 'Asia/Baku' }));
+            if (event.location) lines.push(`📍 ${event.location}`);
+            if (event.meet_url) lines.push(`📹 ${event.meet_url}`);
+            void navigator.clipboard.writeText(lines.join('\n')).catch(() => {});
+          }}
+          title="Başlıq + vaxt + yer/link kopyala"
+        >
+          📋 Görüş detallarını kopyala
+        </button>
         <div className="flex justify-between items-center mt-4 gap-2">
           {canDelete ? (
             <button

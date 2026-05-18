@@ -326,7 +326,15 @@ export function OutsourcePage() {
                 <tr key={row.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
                   <td className="py-3 px-3">{row.work_title}</td>
                   <td className="py-3 px-3 truncate max-w-[180px]" title={row.project_id ?? ''}>
-                    {projectName(row.project_id)}
+                    {row.project_id ? (
+                      <a
+                        href={`/layihelər/${row.project_id}`}
+                        className="hover:underline"
+                        style={{ color: 'var(--brand-text)' }}
+                      >
+                        {projectName(row.project_id)}
+                      </a>
+                    ) : '—'}
                   </td>
                   {/* PRD §UX — overdue podrat deadline red, ≤3d amber */}
                   <td
