@@ -315,13 +315,15 @@ export function TeamRosterPage() {
                   </div>
                   {/* Workload + equipment row + capacity micro-bar */}
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
-                    <span
-                      className="text-meta rounded-full px-2 py-0.5"
+                    {/* PRD §UX — click workload chip → Tasks filtered to this person */}
+                    <Link
+                      to={`/tapşırıqlar?assignee=${p.id}`}
+                      className="text-meta rounded-full px-2 py-0.5 hover:opacity-80"
                       style={{ fontSize: 11, color: wlChip.color, background: wlChip.bg }}
-                      title={`${taskCount} açıq tapşırıq`}
+                      title={`${taskCount} açıq tapşırıq — tapşırıqlar səhifəsində aç`}
                     >
                       {wlChip.label} · {taskCount} tapşırıq
-                    </span>
+                    </Link>
                     {/* Capacity indicator: 8 tasks = 100% */}
                     <div
                       className="h-1.5 rounded-full"

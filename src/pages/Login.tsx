@@ -204,17 +204,40 @@ export function LoginPage() {
           {isLocked ? (
             <div
               role="alert"
-              className="rounded-card px-3 py-2 text-meta flex items-center justify-between"
+              className="rounded-card px-3 py-2 text-meta"
               style={{
                 background: 'rgba(217, 119, 6, 0.12)',
                 border: '1px solid rgba(217, 119, 6, 0.4)',
                 color: 'var(--warning, #c47d00)',
               }}
             >
-              <span>{err ?? 'Çox sayda cəhd. Gözləyin.'}</span>
-              <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
-                {formatCountdown(lockedSecondsLeft)}
-              </span>
+              <div className="flex items-center justify-between">
+                <span>{err ?? 'Çox sayda cəhd. Gözləyin.'}</span>
+                <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                  {formatCountdown(lockedSecondsLeft)}
+                </span>
+              </div>
+              {/* PRD §AUTH — helper hints so user has options instead of just waiting */}
+              <div className="mt-2" style={{ fontSize: 11, opacity: 0.9 }}>
+                Şifrəni unutmusan?{' '}
+                <button
+                  type="button"
+                  className="underline"
+                  style={{ color: 'inherit' }}
+                  onClick={onReset}
+                >
+                  Bərpa et
+                </button>
+                {' · '}
+                <button
+                  type="button"
+                  className="underline"
+                  style={{ color: 'inherit' }}
+                  onClick={onMagic}
+                >
+                  Magic link al
+                </button>
+              </div>
             </div>
           ) : err ? (
             <p className="text-meta" style={{ color: 'var(--error-deep)' }}>{err}</p>

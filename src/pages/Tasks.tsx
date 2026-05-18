@@ -56,9 +56,13 @@ export function TasksPage() {
   const { profile, isAdmin } = useAuth();
   const qc = useQueryClient();
   const [view, setView] = useState<'board' | 'table'>('board');
+  // PRD §UX — ?assignee=<uuid> deep-links from Roster to "tasks for this person"
+  const initialUrlAssignee = new URLSearchParams(window.location.search).get('assignee');
   const [mineOnly, setMineOnly] = useState(false);
+  // URL assignee takes precedence over mineOnly so Roster click always lands on that user
+  const filterAssignee = initialUrlAssignee || (mineOnly && profile?.id ? profile.id : null);
   const { data: tasks = [], isLoading } = useTasks(
-    mineOnly && profile?.id ? { assigneeId: profile.id } : undefined,
+    filterAssignee ? { assigneeId: filterAssignee } : undefined,
   );
   const update = useUpdateTaskStatus();
 
@@ -592,6 +596,30 @@ export function TasksPage() {
         ) : null}
       </div>
 
+      {/* PRD §UX — assignee filter from URL banner with one-click clear */}
+      {initialUrlAssignee ? (
+        <div
+          className="card mb-3 flex items-center justify-between gap-3 flex-wrap"
+          style={{ background: 'var(--brand-glow-sm)' }}
+        >
+          <span className="text-meta" style={{ color: 'var(--brand-text)' }}>
+            Yalnız bir istifadəçinin tapşırıqları göstərilir
+          </span>
+          <button
+            type="button"
+            className="chip"
+            style={{ fontSize: 11 }}
+            onClick={() => {
+              const next = new URLSearchParams(searchParams);
+              next.delete('assignee');
+              setSearchParams(next, { replace: true });
+              window.location.reload();
+            }}
+          >
+            ✕ Bütün istifadəçilər
+          </button>
+        </div>
+      ) : null}
       {isLoading ? (
         <div className="card text-meta">Yüklənir…</div>
       ) : tasks.length === 0 ? (

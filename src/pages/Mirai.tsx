@@ -909,10 +909,21 @@ export function MiraiPage() {
 
         {/* Message thread */}
         <div className="mt-8 space-y-3">
-          {/* PRD §7 — message count when thread is non-empty */}
+          {/* PRD §7 — message count when thread is non-empty + scroll-to-top */}
           {msgs.length > 0 ? (
-            <div className="text-meta opacity-60 text-center" style={{ fontSize: 11 }}>
-              {msgs.length} mesaj{conversationId ? ' · DB-də saxlanılır' : ''}
+            <div className="text-meta opacity-60 text-center flex items-center justify-center gap-3" style={{ fontSize: 11 }}>
+              <span>{msgs.length} mesaj{conversationId ? ' · DB-də saxlanılır' : ''}</span>
+              {msgs.length >= 5 ? (
+                <button
+                  type="button"
+                  className="chip"
+                  style={{ fontSize: 10, padding: '0 8px' }}
+                  onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                  title="Yuxarıya qayıt"
+                >
+                  ↑ Yuxarı
+                </button>
+              ) : null}
             </div>
           ) : null}
           {msgs.map((m, i) => (

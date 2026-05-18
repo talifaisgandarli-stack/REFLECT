@@ -535,7 +535,9 @@ export function CalendarPage() {
                           return <span style={{ marginLeft: 6, opacity: 0.7 }}> · {days} gün sonra</span>;
                         })() : null}
                       </span>
-                      <span style={{ opacity: 0.6, fontWeight: 400 }}>H {isoWeekNumber(g.date)}</span>
+                      <span style={{ opacity: 0.6, fontWeight: 400 }}>
+                        {g.events.length} görüş · H {isoWeekNumber(g.date)}
+                      </span>
                     </div>
                     <ul className="space-y-1.5 ml-2">
                       {g.events.map((ev) => {
