@@ -22,6 +22,7 @@ function buildShortcuts(mod: string): Array<{ keys: string[]; label: string }> {
     { keys: ['G', 'F'], label: 'Maliyyəyə get' },
     { keys: ['B'], label: 'Bildiriş zəngini aç/bağla' },
     { keys: ['N'], label: 'MIRAI-də yeni söhbət (MIRAI səhifəsində)' },
+    { keys: ['C'], label: 'Tapşırıqlar: yığcam görünüş aç/bağla' },
     { keys: ['T'], label: 'Təqvimdə bu günə qayıt' },
     { keys: ['M / W / D'], label: 'Təqvim: ay / həftə / gün görünüşü' },
     { keys: ['←', '→'], label: 'Təqvimdə əvvəlki / növbəti dövr' },

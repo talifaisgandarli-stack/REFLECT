@@ -92,10 +92,20 @@ export function LoginPage() {
 
   async function onMagic() {
     setErr(null);
+    // PRD §AUTH — basic guard so users don't fire an empty/invalid send.
+    // Server still validates; this is just to surface the issue inline.
+    if (!email.trim()) {
+      setErr('Əvvəlcə email daxil et.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setErr('Email düzgün formatda olmalıdır.');
+      return;
+    }
     setBusy(true);
     const { error } = await sendMagicLink(email);
     setBusy(false);
-    setInfo('Əgər bu email Reflect-də qeydiyyatdadırsa, linki göndərdik.');
+    setInfo('Əgər bu email Reflect-də qeydiyyatdadırsa, linki göndərdik. Mailbox-u (və Spam qovluğunu) yoxla.');
     if (error && import.meta.env.DEV) {
       console.warn('[magic-link]', error.message);
     }

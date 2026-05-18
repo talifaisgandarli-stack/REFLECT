@@ -321,6 +321,21 @@ export function TasksPage() {
   // PRD §UX — quick "today only" toggle: deadline = today (any status)
   const [todayOnly, setTodayOnly] = useState(false);
 
+  // PRD §6.3 — "C" toggles compact board view (skip while typing in inputs)
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'c' && e.key !== 'C') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const tag = (e.target as HTMLElement).tagName;
+      const editing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement).isContentEditable;
+      if (editing) return;
+      e.preventDefault();
+      setCompactBoard((v) => !v);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const filtered = useMemo(() => {
     let out = tasks;
     if (labelFilter) out = out.filter((t) => (t.labels ?? []).includes(labelFilter));

@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useSlashFocus } from '@/lib/useSlashFocus';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
@@ -112,7 +113,19 @@ export function TeamRosterPage() {
     },
   });
 
-  const ppl = profiles.data ?? [];
+  // PRD §UX — name/email free-text search + '/' shortcut (matches other list pages)
+  const [search, setSearch] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchRef);
+  const allPpl = profiles.data ?? [];
+  const ppl = search.trim()
+    ? allPpl.filter((p) => {
+        const q = search.toLowerCase();
+        return (p.full_name ?? '').toLowerCase().includes(q)
+          || p.email.toLowerCase().includes(q)
+          || (p.role?.name ?? '').toLowerCase().includes(q);
+      })
+    : allPpl;
   const presenceMap = useMemo(
     () => Object.fromEntries((presence.data ?? []).map((p) => [p.user_id, p])),
     [presence.data],
@@ -126,8 +139,16 @@ export function TeamRosterPage() {
         meta={`${ppl.length} nəfər`}
         title="İşçi Heyəti"
         actions={
-          isAdmin ? (
-            <>
+          <>
+            <input
+              ref={searchRef}
+              className="input max-w-[220px]"
+              placeholder="Axtar (ad, email, rol)… (/)"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            {isAdmin ? (
+              <>
               {/* PRD §8.1 — roster snapshot for HR / handover */}
               <button
                 type="button"
@@ -163,8 +184,9 @@ export function TeamRosterPage() {
               >
                 {showInactive ? '✓ Deaktivləri göstər' : 'Deaktivləri göstər'}
               </button>
-            </>
-          ) : null
+              </>
+            ) : null}
+          </>
         }
       />
       {ppl.length === 0 ? (

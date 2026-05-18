@@ -212,19 +212,24 @@ export function CalendarPage() {
         actions={
           <>
             <div className="flex gap-1">
-              {(['month', 'week', 'day', 'agenda'] as const).map((v) => (
-                <button
-                  key={v}
-                  className="chip"
-                  style={{
-                    background: view === v ? 'var(--brand-action)' : 'var(--surface-mist)',
-                    color: view === v ? 'var(--ink)' : 'var(--text-muted)',
-                  }}
-                  onClick={() => setView(v)}
-                >
-                  {v === 'month' ? 'Ay' : v === 'week' ? 'Həftə' : v === 'day' ? 'Gün' : 'Gündəlik'}
-                </button>
-              ))}
+              {(['month', 'week', 'day', 'agenda'] as const).map((v) => {
+                const hint = v === 'month' ? 'M' : v === 'week' ? 'W' : v === 'day' ? 'D' : '';
+                return (
+                  <button
+                    key={v}
+                    className="chip"
+                    style={{
+                      background: view === v ? 'var(--brand-action)' : 'var(--surface-mist)',
+                      color: view === v ? 'var(--ink)' : 'var(--text-muted)',
+                    }}
+                    onClick={() => setView(v)}
+                    title={hint ? `Klavişlə: ${hint}` : undefined}
+                  >
+                    {v === 'month' ? 'Ay' : v === 'week' ? 'Həftə' : v === 'day' ? 'Gün' : 'Gündəlik'}
+                    {hint ? <span style={{ opacity: 0.5, marginLeft: 4, fontSize: 10 }}>{hint}</span> : null}
+                  </button>
+                );
+              })}
             </div>
             <button className="btn-primary" onClick={() => setCreating(true)}>
               + Görüş
@@ -414,8 +419,17 @@ export function CalendarPage() {
       {/* ── Day view ── */}
       {view === 'day' ? (
         <div className="card">
-          <h3 className="text-h3 mb-4">
+          <h3 className="text-h3 mb-4 flex items-center gap-2">
             {cursor.toLocaleDateString('az-AZ', { weekday: 'long', day: 'numeric', month: 'long' })}
+            {/* PRD §UX — visual marker when day view is showing today (not just nav state) */}
+            {isSameDay(cursor, today) ? (
+              <span
+                className="chip"
+                style={{ background: 'var(--brand-action)', color: 'var(--ink)', fontSize: 11, fontWeight: 600 }}
+              >
+                Bu gün
+              </span>
+            ) : null}
           </h3>
           {eventsForDay(cursor).length === 0 ? (
             <div className="text-meta text-center py-8" style={{ color: 'var(--text-muted)' }}>
