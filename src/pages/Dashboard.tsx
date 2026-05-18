@@ -123,6 +123,14 @@ export function DashboardPage() {
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  // PRD §UX — re-render every 60s so the "Növbəti görüş: 12 dəq sonra" chip stays
+  // honest without manual refresh. Bound to a ref so setter doesn't re-create handlers.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setTick((n) => n + 1), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
   const { data: tasks = [] } = useTasks(profile?.id ? { assigneeId: profile.id } : undefined);
   const { data: presence = [] } = useTeamPresence();
   // REQ-DASH-02 / PRD §9.1 — admin sees firm-wide; users see only their own

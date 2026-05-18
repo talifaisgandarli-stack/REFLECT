@@ -404,11 +404,17 @@ export function CalendarPage() {
           <div className="grid grid-cols-7">
             {weekDays.map((day) => {
               const dayEvents = eventsForDay(day);
+              const dow = day.getDay();
+              const isWeekend = dow === 0 || dow === 6;
               return (
                 <div
                   key={day.toISOString()}
                   className="min-h-[200px] p-1.5 border-r"
-                  style={{ borderColor: 'var(--line-soft)' }}
+                  style={{
+                    borderColor: 'var(--line-soft)',
+                    // PRD §UX — consistent with month view weekend tint
+                    background: isWeekend ? 'var(--surface-mist)' : 'transparent',
+                  }}
                 >
                   {dayEvents.map((ev) => {
                     const c = projectColor(ev.project_id);

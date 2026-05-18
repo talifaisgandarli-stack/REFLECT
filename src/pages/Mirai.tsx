@@ -573,29 +573,55 @@ export function MiraiPage() {
         >
           Haiku 4.5
         </span>
-        {/* PRD §7.6 — monthly budget chip (always visible once usage data lands) */}
+        {/* PRD §7.6 — monthly budget chip (always visible once usage data lands).
+            Admin sees it as a link to the cost dashboard in Settings. */}
         {usage && usage.cap_usd > 0 ? (
-          <span
-            className="chip"
-            title={`Aylıq MIRAI büdcə: $${usage.spent_usd.toFixed(2)} / $${usage.cap_usd}`}
-            style={{
-              background: usage.pct >= 0.8
-                ? 'var(--error-deep, #b3261e)'
-                : usage.pct >= 0.5
-                ? 'rgba(217,119,6,0.18)'
-                : 'rgba(255,255,255,0.06)',
-              color: usage.pct >= 0.8
-                ? 'white'
-                : usage.pct >= 0.5
-                ? 'var(--warning, #c47d00)'
-                : 'var(--canvas)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              fontVariantNumeric: 'tabular-nums',
-              fontSize: 11,
-            }}
-          >
-            🪙 {Math.round(usage.pct * 100)}%
-          </span>
+          isAdmin ? (
+            <a
+              href="/parametrlər/bildirişlər"
+              className="chip"
+              title={`Aylıq MIRAI büdcə: $${usage.spent_usd.toFixed(2)} / $${usage.cap_usd} — detallar üçün klik`}
+              style={{
+                background: usage.pct >= 0.8
+                  ? 'var(--error-deep, #b3261e)'
+                  : usage.pct >= 0.5
+                  ? 'rgba(217,119,6,0.18)'
+                  : 'rgba(255,255,255,0.06)',
+                color: usage.pct >= 0.8
+                  ? 'white'
+                  : usage.pct >= 0.5
+                  ? 'var(--warning, #c47d00)'
+                  : 'var(--canvas)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                fontVariantNumeric: 'tabular-nums',
+                fontSize: 11,
+              }}
+            >
+              🪙 {Math.round(usage.pct * 100)}%
+            </a>
+          ) : (
+            <span
+              className="chip"
+              title={`Aylıq MIRAI büdcə: $${usage.spent_usd.toFixed(2)} / $${usage.cap_usd}`}
+              style={{
+                background: usage.pct >= 0.8
+                  ? 'var(--error-deep, #b3261e)'
+                  : usage.pct >= 0.5
+                  ? 'rgba(217,119,6,0.18)'
+                  : 'rgba(255,255,255,0.06)',
+                color: usage.pct >= 0.8
+                  ? 'white'
+                  : usage.pct >= 0.5
+                  ? 'var(--warning, #c47d00)'
+                  : 'var(--canvas)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                fontVariantNumeric: 'tabular-nums',
+                fontSize: 11,
+              }}
+            >
+              🪙 {Math.round(usage.pct * 100)}%
+            </span>
+          )
         ) : null}
         {/* PRD §7 — export current conversation as Markdown */}
         {msgs.length > 0 ? (

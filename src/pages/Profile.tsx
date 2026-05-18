@@ -121,6 +121,29 @@ export function ProfilePage() {
     }
   }
 
+  // PRD §UX — clear avatar (revert to initials). Storage object is left in place
+  // intentionally (orphaned); cleanup is a separate batch job concern.
+  async function removeAvatar() {
+    if (!profile || !profile.avatar_url) return;
+    setAvatarError(null);
+    setAvatarUploading(true);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .update({ avatar_url: null })
+        .eq('id', profile.id)
+        .select('*')
+        .single();
+      if (error) throw error;
+      setProfile(data as Profile, role);
+      qc.invalidateQueries({ queryKey: ['profile'] });
+    } catch (err) {
+      setAvatarError((err as Error).message ?? 'Silinmə uğursuz oldu.');
+    } finally {
+      setAvatarUploading(false);
+    }
+  }
+
   // PRD §6.7 — skeleton while profile is hydrating (auth bootstrap)
   if (!profile) {
     return (
@@ -230,6 +253,17 @@ export function ProfilePage() {
             >
               JPG / PNG / WEBP / GIF · maks 5 MB · sürüklə-burax
             </span>
+            {/* PRD §UX — remove photo (revert to initials avatar) */}
+            {profile.avatar_url && !avatarUploading ? (
+              <button
+                type="button"
+                className="text-meta hover:underline"
+                style={{ color: 'var(--error-deep)', fontSize: 10 }}
+                onClick={removeAvatar}
+              >
+                Şəkli sil
+              </button>
+            ) : null}
 
             {/* Inline error */}
             {avatarError && (

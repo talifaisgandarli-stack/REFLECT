@@ -606,6 +606,14 @@ function EquipmentTextCell({
       </span>
     );
   }
+
+  // PRD §8.7 — alt-click copies the serial/QR/etc. to clipboard for inventory ops
+  function copyValue(e: React.MouseEvent) {
+    if (!e.altKey || !initial) return;
+    e.preventDefault();
+    e.stopPropagation();
+    void navigator.clipboard.writeText(initial).catch(() => {});
+  }
   if (editing) {
     return (
       <div className="flex items-center gap-1">
@@ -628,7 +636,7 @@ function EquipmentTextCell({
   return (
     <button
       type="button"
-      onClick={() => setEditing(true)}
+      onClick={(e) => { if (e.altKey && initial) { copyValue(e); return; } setEditing(true); }}
       className="text-meta truncate block text-left hover:bg-surface-mist px-1 -mx-1 rounded-btn w-full"
       style={{
         color: initial ? 'var(--text)' : 'var(--text-muted)',
@@ -636,7 +644,7 @@ function EquipmentTextCell({
         fontSize: 12,
         ...monoStyle,
       }}
-      title={initial ?? undefined}
+      title={initial ? `${initial} — Alt+klik kopyala` : undefined}
     >
       {initial ?? placeholderText}
     </button>
