@@ -305,6 +305,26 @@ export function EquipmentPage() {
               </tr>
             </thead>
             <tbody>
+              {filteredEquipment.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-6 text-center text-meta" style={{ color: 'var(--text-muted)' }}>
+                    Filtrə uyğun avadanlıq yoxdur.{' '}
+                    <button
+                      type="button"
+                      className="underline"
+                      style={{ color: 'var(--brand-text)' }}
+                      onClick={() => {
+                        setAvailability('all');
+                        setHolderFilter('');
+                        setKindFilter('');
+                        setSearch('');
+                      }}
+                    >
+                      Filtrləri təmizlə
+                    </button>
+                  </td>
+                </tr>
+              ) : null}
               {filteredEquipment.map((e) => (
                 <tr key={e.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
                   <td className="py-3 px-3 font-medium">{e.name}</td>

@@ -109,6 +109,50 @@ export function CareerPage() {
         }
       />
 
+      {/* PRD §9.2 — visual ladder showing all levels with current marker.
+          Helps users see "where I am" relative to the full progression. */}
+      {!isLoading && levels.length > 1 ? (
+        <div className="card mb-3 flex items-center gap-2 flex-wrap" style={{ padding: 14 }}>
+          <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+            Yol:
+          </span>
+          {levels.map((l, i) => {
+            const isCurrent = l.id === me.data?.career_level_id;
+            const isBefore = current && l.level_index < current.level_index;
+            return (
+              <span key={l.id} className="flex items-center gap-1">
+                <span
+                  className="rounded-full flex items-center justify-center"
+                  style={{
+                    width: 28,
+                    height: 28,
+                    background: isCurrent
+                      ? 'var(--brand-action)'
+                      : isBefore
+                      ? 'var(--brand-glow-sm)'
+                      : 'var(--surface-mist)',
+                    color: isCurrent
+                      ? 'var(--ink)'
+                      : isBefore
+                      ? 'var(--brand-text)'
+                      : 'var(--text-muted)',
+                    fontWeight: 700,
+                    fontSize: 11,
+                    border: isCurrent ? '2px solid var(--brand-text)' : 'none',
+                  }}
+                  title={l.name}
+                >
+                  {l.level_index}
+                </span>
+                {i < levels.length - 1 ? (
+                  <span style={{ color: 'var(--text-muted)', opacity: 0.4 }}>→</span>
+                ) : null}
+              </span>
+            );
+          })}
+        </div>
+      ) : null}
+
       {/* Personalized "current → next" panel */}
       {!isLoading && levels.length > 0 ? (
         <section className="card mb-5" style={{ padding: 20 }}>

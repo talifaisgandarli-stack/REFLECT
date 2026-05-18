@@ -277,7 +277,11 @@ export function OutsourcePage() {
                         className="chip"
                         style={{ background: 'var(--surface-mist)', color: 'var(--text)', fontSize: 12 }}
                         title={(() => {
-                          // PRD §REQ-FIN-07 — explain next workflow step on hover
+                          // PRD §REQ-FIN-07 — explain next workflow step on hover,
+                          // OR show paid_at date when row is fully paid.
+                          if (row.status === 'paid' && (row as { paid_at?: string | null }).paid_at) {
+                            return `Ödənilib: ${new Date((row as { paid_at: string }).paid_at).toLocaleDateString('az-AZ')}`;
+                          }
                           const next = STATUS_NEXT[row.status as Status];
                           return next ? `Növbəti: ${STATUS_LABEL[next]}` : 'Workflow tamamlanıb';
                         })()}

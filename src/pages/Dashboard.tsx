@@ -7,7 +7,7 @@
  * REQ-DASH-08: finance widget removed.
  * US-DASH-05: team workload (open task count per member, green/amber/red).
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
 import { Avatar } from '@/components/Avatar';
@@ -116,6 +116,13 @@ function greetingFor(now: Date): string {
 export function DashboardPage() {
   const { profile, isAdmin } = useAuth();
   const { openTaskCreate } = useUI();
+  // PRD §UX — floating ↑ button appears after the user scrolls past the hero
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setShowScrollTop(window.scrollY > 600);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
   const { data: tasks = [] } = useTasks(profile?.id ? { assigneeId: profile.id } : undefined);
   const { data: presence = [] } = useTeamPresence();
   // REQ-DASH-02 / PRD §9.1 — admin sees firm-wide; users see only their own
@@ -786,6 +793,28 @@ export function DashboardPage() {
           </section>
         ) : null}
       </div>
+      {/* PRD §UX — floating scroll-to-top when long-scrolled */}
+      {showScrollTop ? (
+        <button
+          type="button"
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          aria-label="Yuxarıya qayıt"
+          title="Yuxarıya qayıt"
+          className="fixed bottom-6 right-6 rounded-full shadow-lg"
+          style={{
+            width: 44,
+            height: 44,
+            background: 'var(--ink)',
+            color: 'var(--brand-action)',
+            fontSize: 20,
+            zIndex: 30,
+            border: 'none',
+            cursor: 'pointer',
+          }}
+        >
+          ↑
+        </button>
+      ) : null}
     </>
   );
 }
