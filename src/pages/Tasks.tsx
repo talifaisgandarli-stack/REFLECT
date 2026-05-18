@@ -324,8 +324,15 @@ export function TasksPage() {
   }, [compactBoard]);
   // PRD §UX — quick "today only" toggle: deadline = today (any status)
   const [todayOnly, setTodayOnly] = useState(false);
-  // PRD §UX — narrow board to one project
-  const [projectFilter, setProjectFilter] = useState<string>('');
+  // PRD §UX — narrow board to one project (URL-persisted so share-link works)
+  const [projectFilter, setProjectFilter] = useState<string>(searchParams.get('project') ?? '');
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (projectFilter) next.set('project', projectFilter);
+    else next.delete('project');
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectFilter]);
   // Project list for the dropdown
   const projectsForFilter = useQuery({
     queryKey: ['projects-name-map'],

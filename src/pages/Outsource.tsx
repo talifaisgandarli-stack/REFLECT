@@ -243,15 +243,28 @@ export function OutsourcePage() {
           <table className="w-full text-body">
             <thead>
               <tr style={{ borderBottom: '1px solid var(--line)' }}>
-                {headers.map((h) => (
-                  <th
-                    key={h}
-                    className="text-left py-3 px-3 text-meta"
-                    style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}
-                  >
-                    {h}
-                  </th>
-                ))}
+                {headers.map((h) => {
+                  // PRD §UX — header arrow if this column drives current sort
+                  const sortArrow =
+                    (sortBy === 'deadline' && h === 'Deadline') ||
+                    (sortBy === 'amount' && h === 'Məbləğ')
+                      ? ' ↓'
+                      : sortBy === 'status' && h === 'Status / İrəlilə'
+                      ? ' ↓'
+                      : '';
+                  return (
+                    <th
+                      key={h}
+                      className="text-left py-3 px-3 text-meta"
+                      style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+                    >
+                      {h}
+                      {sortArrow ? (
+                        <span style={{ color: 'var(--brand-text)', marginLeft: 2 }}>{sortArrow}</span>
+                      ) : null}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>

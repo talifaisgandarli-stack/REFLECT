@@ -25,6 +25,19 @@ type Equipment = {
 type Profile = { id: string; full_name: string | null };
 
 const CONDITIONS = ['Əla', 'Yaxşı', 'Orta', 'Zəif'] as const;
+
+// PRD §8.7 — simple keyword→emoji mapping for inventory scanning
+function kindIcon(kind: string): string {
+  const k = kind.toLowerCase();
+  if (k.includes('noutbuk') || k.includes('laptop')) return '💻';
+  if (k.includes('plotter') || k.includes('printer') || k.includes('çap')) return '🖨';
+  if (k.includes('kamera') || k.includes('foto')) return '📷';
+  if (k.includes('monitor') || k.includes('ekran')) return '🖥';
+  if (k.includes('telefon') || k.includes('phone')) return '📱';
+  if (k.includes('mebel') || k.includes('stol') || k.includes('stul')) return '🪑';
+  if (k.includes('avtomobil') || k.includes('car')) return '🚗';
+  return '📦';
+}
 // PRD §8.7 — single source of truth for condition→color mapping; used both by the
 // breakdown card and the row chip. Keys MUST stay in lockstep with CONDITIONS.
 const CONDITION_COLOR: Record<string, string> = {
@@ -328,7 +341,17 @@ export function EquipmentPage() {
               {filteredEquipment.map((e) => (
                 <tr key={e.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
                   <td className="py-3 px-3 font-medium">{e.name}</td>
-                  <td className="py-3 px-3">{e.kind ?? '—'}</td>
+                  <td className="py-3 px-3">
+                    {/* PRD §8.7 — emoji icon hint by kind for at-a-glance scanning */}
+                    {e.kind ? (
+                      <span>
+                        <span aria-hidden style={{ marginRight: 4, opacity: 0.7 }}>
+                          {kindIcon(e.kind)}
+                        </span>
+                        {e.kind}
+                      </span>
+                    ) : '—'}
+                  </td>
                   <td className="py-3 px-3">
                     <EquipmentTextCell id={e.id} field="serial" initial={e.serial ?? null} isAdmin={isAdmin} mono={false} />
                   </td>

@@ -713,7 +713,22 @@ function EventModal({
         {/* PRD §UX — inline location edit when canEdit; non-canEdit shows static */}
         {canEdit ? (
           <EventFieldInline eventId={event.id} field="location" initial={event.location ?? ''} as="location" />
-        ) : (event.location ? <p className="mt-2 text-body">📍 {event.location}</p> : null)}
+        ) : (event.location ? (
+          // PRD §UX — if location is a URL, render it as a link; otherwise plain text
+          /^https?:\/\//i.test(event.location) ? (
+            <a
+              href={event.location}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="mt-2 text-body block hover:underline"
+              style={{ color: 'var(--brand-text)' }}
+            >
+              📍 {event.location}
+            </a>
+          ) : (
+            <p className="mt-2 text-body">📍 {event.location}</p>
+          )
+        ) : null)}
         {/* Meet URL — inline editable for canEdit, static link for non-canEdit */}
         {canEdit ? (
           <EventFieldInline eventId={event.id} field="meet_url" initial={event.meet_url ?? ''} as="meet_url" />

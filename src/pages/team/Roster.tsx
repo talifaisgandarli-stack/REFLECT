@@ -135,6 +135,10 @@ export function TeamRosterPage() {
       })
     : allPpl;
   const ppl = [...filteredPpl].sort((a, b) => {
+    // PRD §UX — deactivated profiles always sink to the bottom of the grid
+    const aInactive = a.is_active === false ? 1 : 0;
+    const bInactive = b.is_active === false ? 1 : 0;
+    if (aInactive !== bInactive) return aInactive - bInactive;
     if (sortBy === 'workload') return (taskMap[b.id] ?? 0) - (taskMap[a.id] ?? 0);
     if (sortBy === 'equipment') return (eqMap[b.id] ?? 0) - (eqMap[a.id] ?? 0);
     return (a.full_name ?? a.email).localeCompare(b.full_name ?? b.email, 'az');
