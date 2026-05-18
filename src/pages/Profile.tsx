@@ -179,6 +179,7 @@ export function ProfilePage() {
                   name={profile.full_name ?? profile.email}
                   url={profile.avatar_url}
                   size={64}
+                  tooltip={[profile.full_name, profile.email, role?.name].filter(Boolean).join(' · ')}
                 />
               </span>
 

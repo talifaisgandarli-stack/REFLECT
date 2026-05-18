@@ -990,6 +990,7 @@ function KnowledgeBaseSettings() {
               key={pdf}
               className="flex items-center justify-between gap-3 py-2 border-b"
               style={{ borderColor: 'var(--line-soft)' }}
+              title={`${pdf}\n${meta.count} hissə\nYüklənib: ${new Date(meta.uploaded_at).toLocaleString('az-AZ', { timeZone: 'Asia/Baku' })}`}
             >
               <div className="min-w-0 flex-1">
                 <div className="text-body font-medium truncate">{pdf}</div>

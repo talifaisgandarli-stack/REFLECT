@@ -442,21 +442,36 @@ export function TasksPage() {
         title="Tapşırıqlar"
         actions={
           <>
-            <input
-              ref={searchInputRef}
-              className="input max-w-[240px]"
-              placeholder="Axtar… (/)"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => {
-                // PRD §UX — Esc clears + blurs (cancel-out pattern)
-                if (e.key === 'Escape' && search) {
-                  e.preventDefault();
-                  setSearch('');
-                  (e.currentTarget as HTMLInputElement).blur();
-                }
-              }}
-            />
+            <div className="relative">
+              <input
+                ref={searchInputRef}
+                className="input max-w-[240px] pr-7"
+                placeholder="Axtar… (/)"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  // PRD §UX — Esc clears + blurs (cancel-out pattern)
+                  if (e.key === 'Escape' && search) {
+                    e.preventDefault();
+                    setSearch('');
+                    (e.currentTarget as HTMLInputElement).blur();
+                  }
+                }}
+              />
+              {/* PRD §UX — visible × to clear without keyboard */}
+              {search ? (
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 opacity-50 hover:opacity-100"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14 }}
+                  onClick={() => setSearch('')}
+                  aria-label="Axtarışı təmizlə"
+                  tabIndex={-1}
+                >
+                  ×
+                </button>
+              ) : null}
+            </div>
             <button
               className={`btn-outline ${mineOnly ? 'border-brand-text' : ''}`}
               onClick={() => setMineOnly((v) => !v)}

@@ -731,7 +731,13 @@ export function MiraiPage() {
                           className="text-left flex-1 min-w-0"
                           onClick={() => switchToConversation(c)}
                         >
-                          <div className="text-body truncate">{displayTitle}</div>
+                          <div className="text-body truncate flex items-center gap-2">
+                            {/* PRD §7.2 — persona icon prefix so the list mirrors the switcher */}
+                            <span aria-hidden style={{ opacity: 0.7 }}>
+                              {PERSONAS.find((p) => p.key === c.persona)?.icon ?? '✦'}
+                            </span>
+                            <span className="truncate">{displayTitle}</span>
+                          </div>
                           <div className="text-meta opacity-60" style={{ fontSize: 11 }}>
                             {c.title ? `${personaLabel} · ` : ''}
                             {dt.toLocaleString('az-AZ', { timeZone: 'Asia/Baku' })}

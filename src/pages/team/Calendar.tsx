@@ -315,13 +315,21 @@ export function CalendarPage() {
               const dayEvents = eventsForDay(day);
               const isCurrentMonth = day.getMonth() === cursor.getMonth();
               const isToday = isSameDay(day, today);
+              // PRD §UX — weekend cells (Saturday + Sunday) get a soft tint
+              // so the work-week structure reads at a glance.
+              const dow = day.getDay();
+              const isWeekend = dow === 0 || dow === 6;
               return (
                 <div
                   key={i}
                   className="min-h-[90px] p-1.5 border-b border-r cursor-pointer hover:bg-surface-mist transition-colors"
                   style={{
                     borderColor: 'var(--line-soft)',
-                    background: isToday ? 'var(--brand-glow-sm)' : 'transparent',
+                    background: isToday
+                      ? 'var(--brand-glow-sm)'
+                      : isWeekend
+                      ? 'var(--surface-mist)'
+                      : 'transparent',
                     opacity: isCurrentMonth ? 1 : 0.4,
                   }}
                   onClick={() => { setCursor(day); setView('day'); }}
