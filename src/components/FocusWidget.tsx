@@ -156,6 +156,25 @@ export function FocusWidget({ className = '' }: { className?: string }) {
     },
   });
 
+  // PRD §UX — today's focus session count (Asia/Baku midnight cutoff)
+  const todayCount = useQuery({
+    queryKey: ['focus-today-count', profile?.id],
+    enabled: !!profile?.id,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const now = new Date();
+      const local = new Date(now.getTime() + 4 * 3_600_000);
+      local.setUTCHours(0, 0, 0, 0);
+      const since = new Date(local.getTime() - 4 * 3_600_000).toISOString();
+      const { count } = await supabase
+        .from('focus_sessions')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', profile!.id)
+        .gte('started_at', since);
+      return count ?? 0;
+    },
+  });
+
   // Restore localStorage session on mount
   useEffect(() => {
     const s = load();
@@ -270,8 +289,16 @@ export function FocusWidget({ className = '' }: { className?: string }) {
       className={fullscreen ? 'flex flex-col gap-4' : `card flex flex-col gap-4 ${className}`}
       style={wrapperStyle}
     >
-      {/* REQ-FOCUS-06 — expand / collapse toggle */}
-      <div className="flex items-center justify-end">
+      {/* REQ-FOCUS-06 — expand / collapse toggle + today session count */}
+      <div className="flex items-center justify-between">
+        {(todayCount.data ?? 0) > 0 ? (
+          <span
+            className="text-meta"
+            style={{ color: 'var(--text-muted)', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}
+          >
+            🔥 Bu gün {todayCount.data} seans
+          </span>
+        ) : <span />}
         <button
           type="button"
           className="chip"

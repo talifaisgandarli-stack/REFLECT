@@ -38,6 +38,7 @@ export function ProfilePage() {
   // Avatar upload state
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarDragOver, setAvatarDragOver] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
 
   const update = useMutation({
@@ -66,7 +67,11 @@ export function ProfilePage() {
     const file = e.target.files?.[0];
     // Reset so re-selecting the same file triggers onChange again
     e.target.value = '';
+    await uploadAvatarFile(file);
+  }
 
+  // PRD §UX — accept a File from input OR drag-and-drop; shared validate + upload path
+  async function uploadAvatarFile(file: File | undefined) {
     if (!file || !profile) return;
 
     setAvatarError(null);
@@ -137,7 +142,22 @@ export function ProfilePage() {
       <div className="max-w-xl space-y-6">
         {/* Avatar — click to upload (REQ-AUTH-03) */}
         <div className="card flex items-center gap-5">
-          <div className="flex flex-col items-center gap-1">
+          <div
+            className="flex flex-col items-center gap-1"
+            // PRD §UX — drag-and-drop file onto avatar to upload
+            onDragOver={(e) => { e.preventDefault(); setAvatarDragOver(true); }}
+            onDragLeave={() => setAvatarDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setAvatarDragOver(false);
+              if (avatarUploading) return;
+              const file = e.dataTransfer.files?.[0];
+              if (file) void uploadAvatarFile(file);
+            }}
+            style={avatarDragOver
+              ? { outline: '2px dashed var(--brand-action)', outlineOffset: 4, borderRadius: 8 }
+              : undefined}
+          >
             {/* Clickable avatar wrapper */}
             <button
               type="button"
@@ -207,7 +227,7 @@ export function ProfilePage() {
               className="text-meta text-center"
               style={{ color: 'var(--text-muted)', fontSize: 10, opacity: 0.7 }}
             >
-              JPG / PNG / WEBP / GIF · maks 5 MB
+              JPG / PNG / WEBP / GIF · maks 5 MB · sürüklə-burax
             </span>
 
             {/* Inline error */}

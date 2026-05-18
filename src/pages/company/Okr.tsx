@@ -5,12 +5,13 @@
  * Schema: okrs(id, scope, employee_id, period, objective, owner_id)
  *         key_results(id, okr_id, title, metric_type, current_value, target_value, unit, updated_at)
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import { useAuth } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
+import { useSlashFocus } from '@/lib/useSlashFocus';
 
 type KeyResult = {
   id: string;
@@ -53,6 +54,10 @@ export function OkrPage() {
   const [scope, setScope] = useState<'company' | 'personal'>('company');
   const [creating, setCreating] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  // PRD §UX — search across objective + key result titles (consistency with other pages)
+  const [search, setSearch] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchRef);
 
   const okrs = useQuery({
     queryKey: ['okrs', scope],
@@ -161,6 +166,20 @@ export function OkrPage() {
         </div>
       ) : null}
 
+      {/* PRD §UX — objective / KR title search */}
+      {(okrs.data ?? []).length > 0 ? (
+        <div className="mb-3">
+          <input
+            ref={searchRef}
+            className="input max-w-[300px]"
+            placeholder="Obyektiv / KR-larda axtar… (/)"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ height: 32, fontSize: 13 }}
+          />
+        </div>
+      ) : null}
+
       {(okrs.data ?? []).length === 0 ? (
         <EmptyState
           title="OKR yoxdur"
@@ -173,7 +192,12 @@ export function OkrPage() {
         />
       ) : (
         <div className="space-y-3">
-          {(okrs.data ?? []).map((o) => {
+          {(okrs.data ?? []).filter((o) => {
+            if (!search.trim()) return true;
+            const q = search.toLowerCase();
+            if (o.objective.toLowerCase().includes(q)) return true;
+            return (o.key_results ?? []).some((kr) => kr.title.toLowerCase().includes(q));
+          }).map((o) => {
             const pct = progress(o);
             const health = healthLabel(pct);
             const isOpen = expanded === o.id;

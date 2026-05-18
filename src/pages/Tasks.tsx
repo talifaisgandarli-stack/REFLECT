@@ -338,6 +338,9 @@ export function TasksPage() {
       } else if (e.key === 'a' || e.key === 'A') {
         e.preventDefault();
         setMineOnly((v) => !v);
+      } else if (e.key === 'v' || e.key === 'V') {
+        e.preventDefault();
+        setView((v) => (v === 'board' ? 'table' : 'board'));
       }
     }
     window.addEventListener('keydown', onKey);
