@@ -376,7 +376,16 @@ export function EquipmentPage() {
                     {isAdmin ? (
                       <select
                         className="input"
-                        style={{ height: 28, fontSize: 13, padding: '0 6px' }}
+                        style={{
+                          height: 28,
+                          fontSize: 13,
+                          padding: '0 6px',
+                          // PRD §8.7 — color-code admin select to match the read-only chip
+                          color: e.condition
+                            ? CONDITION_COLOR[e.condition as string] ?? 'var(--text)'
+                            : 'var(--text-muted)',
+                          fontWeight: e.condition ? 600 : 400,
+                        }}
                         value={e.condition ?? ''}
                         onChange={(ev) => updateCondition.mutate({ id: e.id, condition: ev.target.value })}
                       >

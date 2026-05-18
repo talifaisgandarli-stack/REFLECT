@@ -182,6 +182,7 @@ export function CareerPage() {
                       type="checkbox"
                       className="mt-1"
                       checked={ticked.has(c)}
+                      disabled={toggleCriterion.isPending}
                       onChange={(e) => {
                         const set = new Set(ticked);
                         if (e.target.checked) set.add(c);

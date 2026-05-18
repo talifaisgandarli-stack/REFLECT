@@ -517,8 +517,16 @@ export function DashboardPage() {
               {filteredActivity.map((a) => {
                 const actor = a.profiles;
                 const name = actor?.full_name ?? 'Sistem';
-                return (
-                  <li key={a.id} className="flex items-start gap-2">
+                // PRD §UX — wrap row in a Link when we know the destination
+                const href = (() => {
+                  if (a.entity_type === 'task') return '/tapşırıqlar';
+                  if (a.entity_type === 'project' && a.entity_id) return `/layihelər/${a.entity_id}`;
+                  if (a.entity_type === 'client') return '/müştərilər';
+                  if (a.entity_type === 'announcement') return '/komanda/elanlar';
+                  return null;
+                })();
+                const inner = (
+                  <>
                     <span className="shrink-0 mt-0.5">
                       <Avatar name={name} size={28} />
                     </span>
@@ -533,6 +541,20 @@ export function DashboardPage() {
                         {relativeTime(a.created_at)}
                       </div>
                     </div>
+                  </>
+                );
+                return (
+                  <li key={a.id}>
+                    {href ? (
+                      <Link
+                        to={href}
+                        className="flex items-start gap-2 -mx-2 px-2 py-1 rounded-btn hover:bg-surface-mist transition-colors"
+                      >
+                        {inner}
+                      </Link>
+                    ) : (
+                      <div className="flex items-start gap-2">{inner}</div>
+                    )}
                   </li>
                 );
               })}

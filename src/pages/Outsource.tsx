@@ -79,7 +79,7 @@ export function OutsourcePage() {
     },
   });
 
-  const headers = ['İş', 'Layihə', 'Deadline', 'Status / İrəlilə', ...(isAdmin ? ['Məbləğ', ''] : [])];
+  const headers = ['İş', 'Layihə', 'Deadline', 'Status / İrəlilə', ...(isAdmin ? ['Məbləğ', 'Ödəniş tarixi', ''] : [])];
 
   return (
     <>
@@ -291,7 +291,7 @@ export function OutsourcePage() {
                 if (visibleCount > 0) return null;
                 return (
                   <tr>
-                    <td colSpan={isAdmin ? 6 : 4} className="py-6 text-center text-meta" style={{ color: 'var(--text-muted)' }}>
+                    <td colSpan={isAdmin ? 7 : 4} className="py-6 text-center text-meta" style={{ color: 'var(--text-muted)' }}>
                       Filtrə uyğun sifariş yoxdur.{' '}
                       <button
                         type="button"
@@ -394,6 +394,13 @@ export function OutsourcePage() {
                     </td>
                   ) : null}
                   {isAdmin ? (
+                    <td className="py-3 px-3 text-meta" style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                      {row.paid_at
+                        ? new Date(row.paid_at as string).toLocaleDateString('az-AZ')
+                        : '—'}
+                    </td>
+                  ) : null}
+                  {isAdmin ? (
                     <td className="py-3 px-3 text-right">
                       {confirmDeleteId === row.id ? (
                         <span className="inline-flex gap-1">
@@ -448,6 +455,7 @@ export function OutsourcePage() {
                         .reduce((sum, r) => sum + Number(r.amount ?? 0), 0),
                     )}
                   </td>
+                  <td className="py-3 px-3" />
                   <td className="py-3 px-3" />
                 </tr>
               </tfoot>

@@ -367,15 +367,21 @@ function GeneralSettings() {
         </label>
         <label className="block">
           <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Gündəlik iş saatı</span>
-          <input
-            type="number"
-            min="1"
-            max="24"
-            className="input mt-1 max-w-[100px]"
-            value={workHours}
-            onChange={(e) => setWorkHours(e.target.value)}
-            placeholder="8"
-          />
+          <div className="flex items-center gap-3 mt-1">
+            <input
+              type="number"
+              min="1"
+              max="24"
+              className="input max-w-[100px]"
+              value={workHours}
+              onChange={(e) => setWorkHours(e.target.value)}
+              placeholder="8"
+            />
+            {/* PRD §UX — weekly hint so admin sees implied weekly capacity */}
+            <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+              ≈ {Math.round((Number(workHours) || 8) * 5)}s həftədə
+            </span>
+          </div>
         </label>
         <label className="flex items-start gap-2 cursor-pointer">
           <input
