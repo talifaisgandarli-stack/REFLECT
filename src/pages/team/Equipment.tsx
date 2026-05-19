@@ -133,7 +133,11 @@ export function EquipmentPage() {
   // person filter (narrow to a specific holder when audit-trailing kit)
   const [availability, setAvailability] = useState<'all' | 'available' | 'assigned'>('all');
   const [search, setSearch] = useState('');
-  const [holderFilter, setHolderFilter] = useState<string>(''); // '' = all
+  // PRD §UX — honor ?holder=<uuid> URL param for deep-links from Roster
+  const initialHolder = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('holder') ?? ''
+    : '';
+  const [holderFilter, setHolderFilter] = useState<string>(initialHolder); // '' = all
   // PRD §8.7 — also narrow by equipment kind (laptop / printer / camera / etc.)
   const [kindFilter, setKindFilter] = useState<string>('');
   const filteredEquipment = (equipment.data ?? []).filter((e) => {

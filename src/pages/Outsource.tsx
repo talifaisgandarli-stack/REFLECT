@@ -343,7 +343,7 @@ export function OutsourcePage() {
                       </a>
                     ) : '—'}
                   </td>
-                  {/* PRD §UX — overdue podrat deadline red, ≤3d amber */}
+                  {/* PRD §UX — overdue podrat deadline red, ≤3d amber + days-left tooltip */}
                   <td
                     className="py-3 px-3"
                     style={(() => {
@@ -357,6 +357,15 @@ export function OutsourcePage() {
                       );
                       if (days >= 0 && days <= 3) return { color: 'var(--warning, #c47d00)' };
                       return undefined;
+                    })()}
+                    title={(() => {
+                      if (!row.deadline) return undefined;
+                      const days = Math.round(
+                        (new Date(row.deadline).getTime() - Date.now()) / 86_400_000,
+                      );
+                      if (days < 0) return `${Math.abs(days)} gün gecikib`;
+                      if (days === 0) return 'Bu gün';
+                      return `${days} gün qaldı`;
                     })()}
                   >
                     {row.deadline ?? '—'}

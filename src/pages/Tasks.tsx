@@ -874,6 +874,14 @@ export function TasksPage() {
                             : isToday ? 'var(--card-dark-border)' : 'var(--line)'
                         }`,
                         boxShadow: isOverdue ? '0 0 0 1px var(--error) inset' : undefined,
+                        // PRD §UX — 3px priority bar on the left edge of each card
+                        borderLeft: t.priority === 'high'
+                          ? '3px solid var(--error-deep, #b3261e)'
+                          : t.priority === 'medium'
+                          ? '3px solid var(--warning, #c47d00)'
+                          : t.priority === 'low'
+                          ? '3px solid var(--success-deep, #16794a)'
+                          : undefined,
                       }}
                     >
                       <div

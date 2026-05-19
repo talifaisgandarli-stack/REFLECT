@@ -723,6 +723,23 @@ function EventModal({
     },
   });
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // PRD §UX — Delete key opens the confirm dialog (when editor allowed); Esc closes modal
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement).tagName;
+      const editing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement).isContentEditable;
+      if (editing) return;
+      if ((e.key === 'Delete' || e.key === 'Backspace') && canDelete && !confirmingDelete) {
+        e.preventDefault();
+        setConfirmingDelete(true);
+      } else if (e.key === 'Escape') {
+        if (confirmingDelete) setConfirmingDelete(false);
+        else onClose();
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [confirmingDelete, canDelete, onClose]);
   const del = useMutation({
     mutationFn: async () => {
       const { error } = await supabase.from('calendar_events').delete().eq('id', event.id);

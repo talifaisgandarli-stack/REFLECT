@@ -345,13 +345,15 @@ export function TeamRosterPage() {
                       />
                     </div>
                     {eqCount > 0 ? (
-                      <span
-                        className="text-meta"
+                      // PRD §UX — link to Equipment filtered to this holder
+                      <Link
+                        to={`/komanda/avadanlıq?holder=${p.id}`}
+                        className="text-meta hover:underline"
                         style={{ fontSize: 11, color: 'var(--text-muted)' }}
-                        title="Təhvil verilmiş avadanlıq"
+                        title="Təhvil verilmiş avadanlığa bax"
                       >
                         📦 {eqCount}
-                      </span>
+                      </Link>
                     ) : null}
                   </div>
                 </div>

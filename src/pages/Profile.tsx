@@ -379,6 +379,14 @@ export function ProfilePage() {
             </select>
           </label>
 
+          {/* PRD §UX — read-only timezone hint (firm-wide constant per PRD §FIN-09) */}
+          <label className="block">
+            <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
+              Saat qurşağı
+            </span>
+            <input className="input opacity-60" value="Asia/Baku (UTC+4)" readOnly />
+          </label>
+
           {update.error ? (
             <p className="text-meta" style={{ color: 'var(--error-deep)' }}>
               {(update.error as Error).message}
