@@ -34,11 +34,14 @@ type UIState = {
   cmdkOpen: boolean;
   /** PRD §6.3 Cmd+N — global new-task modal */
   taskCreateOpen: boolean;
+  /** PRD §6.3 — context-aware Cmd+N: when set, new task becomes subtask. */
+  taskCreateParent: { id: string; level: number } | null;
   toggleSidebar: () => void;
   toggleMirai: () => void;
   setCmdK: (open: boolean) => void;
   openTaskCreate: () => void;
   closeTaskCreate: () => void;
+  setTaskCreateParent: (p: { id: string; level: number } | null) => void;
 };
 
 export const useUI = create<UIState>((set) => ({
@@ -46,9 +49,11 @@ export const useUI = create<UIState>((set) => ({
   miraiPanelOpen: false,
   cmdkOpen: false,
   taskCreateOpen: false,
+  taskCreateParent: null,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   toggleMirai: () => set((s) => ({ miraiPanelOpen: !s.miraiPanelOpen })),
   setCmdK: (open) => set({ cmdkOpen: open }),
   openTaskCreate: () => set({ taskCreateOpen: true }),
-  closeTaskCreate: () => set({ taskCreateOpen: false }),
+  closeTaskCreate: () => set({ taskCreateOpen: false, taskCreateParent: null }),
+  setTaskCreateParent: (taskCreateParent) => set({ taskCreateParent }),
 }));

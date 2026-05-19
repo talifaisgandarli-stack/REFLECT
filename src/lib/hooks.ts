@@ -83,10 +83,23 @@ export function useUpdateTaskStatus() {
       }
       return { snapshots };
     },
-    onError: (_err, _input, ctx) => {
-      // Roll back every cache slice we touched
+    onError: (_err, input, ctx) => {
+      // Roll back every cache slice we touched. PRD §3.4 — if a realtime
+      // DELETE removed the target task between onMutate and onError, the
+      // snapshot still contains it; filter it out so we don't resurrect a
+      // ghost row in the UI.
       const snapshots = (ctx as { snapshots?: Array<[unknown, unknown]> } | undefined)?.snapshots ?? [];
-      for (const [key, value] of snapshots) qc.setQueryData(key as readonly unknown[], value);
+      for (const [key, value] of snapshots) {
+        if (!Array.isArray(value)) { qc.setQueryData(key as readonly unknown[], value); continue; }
+        const current = qc.getQueryData<unknown>(key as readonly unknown[]);
+        const stillExists = Array.isArray(current)
+          ? (current as Array<{ id: string }>).some((t) => t.id === input.id)
+          : true;
+        const restored = stillExists
+          ? value
+          : (value as Array<{ id: string }>).filter((t) => t.id !== input.id);
+        qc.setQueryData(key as readonly unknown[], restored);
+      }
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] });

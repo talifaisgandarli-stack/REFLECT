@@ -15,7 +15,7 @@ import { useRealtimeSync } from '@/lib/realtime';
 import { usePresenceHeartbeat } from '@/lib/hooks';
 
 export function Layout() {
-  const { setCmdK, toggleMirai, taskCreateOpen, openTaskCreate, closeTaskCreate } = useUI();
+  const { setCmdK, toggleMirai, taskCreateOpen, openTaskCreate, closeTaskCreate, taskCreateParent } = useUI();
   const { session } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -151,7 +151,12 @@ export function Layout() {
       <IdleSessionWarning />
       {/* PRD §6.3 Cmd+N — global new-task modal, context-aware via route */}
       {taskCreateOpen ? (
-        <TaskCreateModal onClose={closeTaskCreate} defaultProjectId={defaultProjectId} />
+        <TaskCreateModal
+          onClose={closeTaskCreate}
+          defaultProjectId={defaultProjectId}
+          parentTaskId={taskCreateParent?.id}
+          parentTaskLevel={taskCreateParent?.level}
+        />
       ) : null}
     </div>
   );

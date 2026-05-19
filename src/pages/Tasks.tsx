@@ -8,7 +8,7 @@ import { isOpenChildrenError, useTasks, useUpdateTaskStatus } from '@/lib/hooks'
 import { useSlashFocus } from '@/lib/useSlashFocus';
 import { TASK_STATUS_LABEL, TASK_STATUS_ORDER, TASK_STATUS_TONE } from '@/lib/labels';
 import type { Task, TaskStatus } from '@/types/db';
-import { useAuth } from '@/lib/store';
+import { useAuth, useUI } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { SubtaskBlockingModal } from '@/components/SubtaskBlockingModal';
 import { TaskCreateModal } from '@/components/TaskCreateModal';
@@ -53,6 +53,18 @@ const TIME_GROUP_COLOR: Record<TimeGroup, string> = {
   later: 'var(--text-muted)',
   none: 'var(--text-muted)',
 };
+// PRD §UX — Azərbaycan hərflərini soft-match: "Xərçə" yazana "xerce" gəlsin.
+// `String.normalize('NFD')` ə/ı üçün diacritic ayırmır, ona görə explicit map.
+const AZ_FOLD: Record<string, string> = {
+  'ə': 'e', 'ş': 's', 'ç': 'c', 'ö': 'o', 'ü': 'u', 'ı': 'i', 'ğ': 'g',
+  'Ə': 'e', 'Ş': 's', 'Ç': 'c', 'Ö': 'o', 'Ü': 'u', 'I': 'i', 'İ': 'i', 'Ğ': 'g',
+};
+function normalizeAz(s: string): string {
+  let out = '';
+  for (const ch of s) out += AZ_FOLD[ch] ?? ch.toLowerCase();
+  return out;
+}
+
 function taskTimeGroup(t: Task): TimeGroup {
   if (!t.deadline) return 'none';
   if (t.deadline < todayStr) return 'overdue';
@@ -128,6 +140,17 @@ export function TasksPage() {
     return () => window.removeEventListener('reflect:open-task', onOpenTask);
   }, []);
   const [editing, setEditing] = useState<Task | null>(null);
+  // PRD §6.3 — when a task is open in edit modal, Cmd+N creates a subtask of it.
+  // The Layout reads taskCreateParent from the UI store; we publish/clear here.
+  const setTaskCreateParent = useUI((s) => s.setTaskCreateParent);
+  useEffect(() => {
+    if (editing) {
+      setTaskCreateParent({ id: editing.id, level: editing.task_level ?? 0 });
+    } else {
+      setTaskCreateParent(null);
+    }
+    return () => setTaskCreateParent(null);
+  }, [editing, setTaskCreateParent]);
   // PRD §6.x — bulk action mode for the table/list view
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -206,12 +229,15 @@ export function TasksPage() {
         project_id: src.project_id,
         status: 'queued',
         assignee_ids: src.assignee_ids,
+        start_date: src.start_date,
         deadline: src.deadline,
         estimated_duration: src.estimated_duration,
         duration_unit: src.duration_unit,
         risk_buffer_pct: src.risk_buffer_pct,
         is_expertise_subtask: src.is_expertise_subtask,
         task_level: src.task_level,
+        labels: src.labels ?? null,
+        priority: src.priority ?? null,
         // parent_task_id intentionally not copied — clone is a top-level task
       });
       if (error) throw error;
@@ -408,8 +434,8 @@ export function TasksPage() {
       out = out.filter((t) => t.deadline === today);
     }
     if (search.trim()) {
-      const q = search.toLowerCase();
-      out = out.filter((t) => t.title.toLowerCase().includes(q));
+      const q = normalizeAz(search.trim());
+      out = out.filter((t) => normalizeAz(t.title).includes(q));
     }
     return out;
   }, [tasks, search, labelFilter, projectFilter, todayOnly]);

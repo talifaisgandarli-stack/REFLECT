@@ -21,6 +21,7 @@ type Comment = {
   body: string;
   mentions: string[];
   created_at: string;
+  edited_at: string | null;
   profiles?: { full_name: string | null; avatar_url: string | null } | null;
 };
 
@@ -271,6 +272,29 @@ export function TaskCommentsModal({
     }
   }
 
+  // PRD §REQ-TASK-07 — author can edit/delete own comments. RLS in 0002 +
+  // 0057 enforces user_id = auth.uid() (admins also allowed via tc_delete_admin).
+  const editComment = useMutation({
+    mutationFn: async (input: { id: string; body: string }) => {
+      const trimmed = input.body.trim();
+      if (!trimmed) throw new Error('Boş şərh saxlanıla bilməz');
+      const mentions = parseMentions(trimmed, profiles.data ?? []);
+      const { error } = await supabase
+        .from('task_comments')
+        .update({ body: trimmed, mentions })
+        .eq('id', input.id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['task_comments', taskId] }),
+  });
+  const deleteComment = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('task_comments').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['task_comments', taskId] }),
+  });
+
   const addComment = useMutation({
     mutationFn: async () => {
       const trimmed = body.trim();
@@ -424,29 +448,13 @@ export function TaskCommentsModal({
             <p className="text-meta" style={{ color: 'var(--text-muted)' }}>Hələ şərh yoxdur. İlk şərhi sən yaz!</p>
           ) : null}
           {(comments.data ?? []).map((c) => (
-            <div key={c.id} className={`flex gap-3 ${c.user_id === profile?.id ? 'flex-row-reverse' : ''}`}>
-              <div
-                className="rounded-full flex-shrink-0 flex items-center justify-center text-meta font-medium"
-                style={{ width: 32, height: 32, background: 'var(--surface)', border: '1px solid var(--line)', fontSize: 12 }}
-              >
-                {(c.profiles?.full_name ?? '?')[0]?.toUpperCase()}
-              </div>
-              <div style={{ maxWidth: '75%' }}>
-                <div
-                  className={`rounded-card px-3 py-2 text-body comment-body ${c.user_id === profile?.id ? 'comment-body-mine' : ''}`}
-                  style={{
-                    background: c.user_id === profile?.id ? 'var(--brand-action)' : 'var(--surface)',
-                    color: c.user_id === profile?.id ? 'var(--ink)' : 'var(--text)',
-                  }}
-                  // Markdown rendering (PRD §9.1 sanitized via DOMPurify):
-                  // **bold**, *italic*, `code`, [text](url), bare URLs, @mentions
-                  dangerouslySetInnerHTML={{ __html: renderCommentMarkdown(c.body) }}
-                />
-                <div className="text-meta mt-1" style={{ color: 'var(--text-muted)', fontSize: 11, textAlign: c.user_id === profile?.id ? 'right' : 'left' }}>
-                  {c.profiles?.full_name ?? '—'} · {relativeTime(c.created_at)}
-                </div>
-              </div>
-            </div>
+            <CommentRow
+              key={c.id}
+              c={c}
+              mine={c.user_id === profile?.id}
+              onEdit={(body) => editComment.mutateAsync({ id: c.id, body })}
+              onDelete={() => deleteComment.mutateAsync(c.id)}
+            />
           ))}
           <div ref={bottomRef} />
         </div>
@@ -1194,6 +1202,104 @@ function TaskDescriptionEditor({ taskId }: { taskId: string }) {
         >
           {save.isPending ? '…' : 'Saxla'}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// PRD §REQ-TASK-07 — comment bubble with author-only edit/delete actions.
+// Edit replaces the bubble with an inline textarea (Enter saves, Esc cancels).
+// Delete is hard-delete with a confirm step; "(redaktə olunub)" appears once
+// edited_at is set so other viewers can distinguish revised messages.
+function CommentRow({
+  c,
+  mine,
+  onEdit,
+  onDelete,
+}: {
+  c: Comment;
+  mine: boolean;
+  onEdit: (body: string) => Promise<unknown>;
+  onDelete: () => Promise<unknown>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(c.body);
+  const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+
+  async function save() {
+    if (!draft.trim() || draft.trim() === c.body) {
+      setEditing(false);
+      setDraft(c.body);
+      return;
+    }
+    setBusy(true);
+    try { await onEdit(draft); setEditing(false); } finally { setBusy(false); }
+  }
+  async function remove() {
+    setBusy(true);
+    try { await onDelete(); } finally { setBusy(false); setConfirming(false); }
+  }
+
+  return (
+    <div className={`flex gap-3 ${mine ? 'flex-row-reverse' : ''}`}>
+      <div
+        className="rounded-full flex-shrink-0 flex items-center justify-center text-meta font-medium"
+        style={{ width: 32, height: 32, background: 'var(--surface)', border: '1px solid var(--line)', fontSize: 12 }}
+      >
+        {(c.profiles?.full_name ?? '?')[0]?.toUpperCase()}
+      </div>
+      <div style={{ maxWidth: '75%' }}>
+        {editing ? (
+          <div className="rounded-card p-2" style={{ background: 'var(--surface)' }}>
+            <textarea
+              autoFocus
+              className="input w-full"
+              rows={2}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
+                if (e.key === 'Escape') { setDraft(c.body); setEditing(false); }
+              }}
+              style={{ fontSize: 13 }}
+            />
+            <div className="flex justify-end gap-1 mt-1">
+              <button type="button" className="chip" onClick={() => { setDraft(c.body); setEditing(false); }} style={{ fontSize: 11 }} disabled={busy}>Ləğv</button>
+              <button type="button" className="chip" onClick={save} disabled={busy || !draft.trim() || draft.trim() === c.body} style={{ fontSize: 11, color: 'var(--brand-text)' }}>{busy ? '…' : 'Saxla'}</button>
+            </div>
+          </div>
+        ) : (
+          <div
+            className={`rounded-card px-3 py-2 text-body comment-body ${mine ? 'comment-body-mine' : ''}`}
+            style={{
+              background: mine ? 'var(--brand-action)' : 'var(--surface)',
+              color: mine ? 'var(--ink)' : 'var(--text)',
+            }}
+            dangerouslySetInnerHTML={{ __html: renderCommentMarkdown(c.body) }}
+          />
+        )}
+        <div
+          className="text-meta mt-1 flex items-center gap-1.5"
+          style={{ color: 'var(--text-muted)', fontSize: 11, justifyContent: mine ? 'flex-end' : 'flex-start' }}
+        >
+          <span>{c.profiles?.full_name ?? '—'} · {relativeTime(c.created_at)}</span>
+          {c.edited_at ? <span title={new Date(c.edited_at).toLocaleString()}>(redaktə olunub)</span> : null}
+          {mine && !editing ? (
+            confirming ? (
+              <>
+                <span style={{ color: 'var(--error-deep)' }}>Sil?</span>
+                <button type="button" onClick={remove} disabled={busy} style={{ color: 'var(--error-deep)', background: 'transparent', border: 'none', padding: 0, fontSize: 11 }} aria-label="Silməni təsdiq et">✓</button>
+                <button type="button" onClick={() => setConfirming(false)} disabled={busy} style={{ color: 'var(--text-muted)', background: 'transparent', border: 'none', padding: 0, fontSize: 11 }} aria-label="Ləğv et">×</button>
+              </>
+            ) : (
+              <>
+                <button type="button" onClick={() => { setDraft(c.body); setEditing(true); }} style={{ color: 'var(--text-muted)', background: 'transparent', border: 'none', padding: 0, fontSize: 11 }} aria-label="Redaktə et" title="Redaktə et">✎</button>
+                <button type="button" onClick={() => setConfirming(true)} style={{ color: 'var(--text-muted)', background: 'transparent', border: 'none', padding: 0, fontSize: 11 }} aria-label="Sil" title="Sil">🗑</button>
+              </>
+            )
+          ) : null}
+        </div>
       </div>
     </div>
   );

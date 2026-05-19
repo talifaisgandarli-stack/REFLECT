@@ -94,11 +94,30 @@ export function useRealtimeSync(userId: string | undefined) {
     // RLS scopes the events server-side: a user only receives changes to
     // tasks they can SELECT. Channel name includes userId so Supabase routes
     // separately per session — avoids the broadcast fan-out cost.
+    //
+    // PRD §3.4 — DELETE race fix: with optimistic DnD (useUpdateTaskStatus),
+    // a mid-flight mutation can resurrect a deleted task via its onError
+    // rollback. We eagerly prune the deleted id from every ['tasks'] cache
+    // slice on DELETE so the rollback snapshot taken AFTER this point is
+    // already clean. The debounced invalidation still runs as a backstop.
     cleanups.push(
       subscribeTable({
         table: 'tasks',
         channelName: `tasks:${userId}`,
         onChange: (payload) => {
+          if (payload.eventType === 'DELETE') {
+            const oldRow = payload.old as { id?: string } | null;
+            const deletedId = oldRow?.id;
+            if (deletedId) {
+              for (const [key, value] of qc.getQueriesData<unknown>({ queryKey: ['tasks'] })) {
+                if (!Array.isArray(value)) continue;
+                qc.setQueryData(
+                  key,
+                  (value as Array<{ id: string }>).filter((t) => t.id !== deletedId),
+                );
+              }
+            }
+          }
           debouncedInvalidate(['tasks']);
           debouncedInvalidate(['done-list']);
           debouncedInvalidate(['archive', 'tasks']);
@@ -106,6 +125,8 @@ export function useRealtimeSync(userId: string | undefined) {
             announce('Tapşırıq yeniləndi');
           } else if (payload.eventType === 'INSERT') {
             announce('Yeni tapşırıq əlavə edildi');
+          } else if (payload.eventType === 'DELETE') {
+            announce('Tapşırıq silindi');
           }
         },
       }),
