@@ -119,6 +119,18 @@ export function useRealtimeSync(userId: string | undefined) {
       }),
     );
 
+    // PRD §3.4 — task_comments live sync so collaborative comment editing
+    // doesn't go stale. Invalidates any open task_comments query key; the
+    // TaskCommentsModal hook uses ['task_comments', taskId] so this is broad
+    // by design (cheap when modal isn't open).
+    cleanups.push(
+      subscribeTable({
+        table: 'task_comments',
+        channelName: `task_comments:${userId}`,
+        onChange: () => debouncedInvalidate(['task_comments']),
+      }),
+    );
+
     cleanups.push(
       subscribeTable({
         table: 'announcements',

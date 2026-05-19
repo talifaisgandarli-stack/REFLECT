@@ -67,7 +67,28 @@ export function useUpdateTaskStatus() {
         .eq('id', input.id);
       if (error) throw error;
     },
-    onSuccess: () => {
+    // PRD §UX — optimistic DnD: apply the new status to all task queries
+    // immediately so dropping a card doesn't flicker. onError rolls back.
+    onMutate: async (input) => {
+      await qc.cancelQueries({ queryKey: ['tasks'] });
+      const snapshots = qc.getQueriesData<unknown>({ queryKey: ['tasks'] });
+      for (const [key, value] of snapshots) {
+        if (!Array.isArray(value)) continue;
+        qc.setQueryData(
+          key,
+          (value as Array<{ id: string; status: TaskStatus }>).map((t) =>
+            t.id === input.id ? { ...t, status: input.status } : t,
+          ),
+        );
+      }
+      return { snapshots };
+    },
+    onError: (_err, _input, ctx) => {
+      // Roll back every cache slice we touched
+      const snapshots = (ctx as { snapshots?: Array<[unknown, unknown]> } | undefined)?.snapshots ?? [];
+      for (const [key, value] of snapshots) qc.setQueryData(key as readonly unknown[], value);
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] });
       qc.invalidateQueries({ queryKey: ['done-list'] });
       qc.invalidateQueries({ queryKey: ['archive', 'tasks'] });

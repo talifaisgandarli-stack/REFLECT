@@ -19,13 +19,23 @@ import { downloadCsv } from '@/lib/csv';
 import { toast } from '@/components/Toast';
 import { formatDuration, useActiveTimeEntry, useStartTimer, useStopTimer, useTaskTimeTotals } from '@/lib/useTimeTracking';
 
-// US-TASK-06 — deadline-based groups for personal view
-const todayStr = new Date().toISOString().slice(0, 10);
+// US-TASK-06 — deadline-based groups for personal view.
+// PRD §FIN-09 — all date math anchored to Asia/Baku, not UTC. Without this,
+// users at 23:00 Baku (still "today") saw tomorrow's tasks as overdue because
+// new Date().toISOString() rolled over to UTC midnight.
+function bakuDateString(d = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baku' }).format(d);
+}
+const todayStr = bakuDateString();
 const endOfWeekStr = (() => {
-  const d = new Date();
-  const diff = 7 - (d.getDay() === 0 ? 7 : d.getDay());
-  d.setDate(d.getDate() + diff);
-  return d.toISOString().slice(0, 10);
+  // Compute end-of-week using Baku-shifted Date so the wraparound on Saturday
+  // night doesn't get clipped one day early in UTC.
+  const now = new Date();
+  const bakuMs = now.getTime() + 4 * 3_600_000; // UTC+4
+  const d = new Date(bakuMs);
+  const dow = d.getUTCDay() === 0 ? 7 : d.getUTCDay();
+  d.setUTCDate(d.getUTCDate() + (7 - dow));
+  return bakuDateString(new Date(d.getTime() - 4 * 3_600_000));
 })();
 
 type TimeGroup = 'overdue' | 'today' | 'week' | 'later' | 'none';
@@ -157,16 +167,26 @@ export function TasksPage() {
     onError: (e) => toast.error((e as Error).message),
   });
 
+  // PRD §REQ-TASK-02 — bulk-add an assignee. Per-row read+merge so existing
+  // multi-assignees are preserved (previous version replaced the entire array,
+  // silently dropping co-assignees).
   const bulkReassign = useMutation({
     mutationFn: async (newAssigneeId: string) => {
       const ids = Array.from(selectedIds);
       if (ids.length === 0 || !newAssigneeId) return;
-      // Multi-assignee model: replace entire assignee_ids array on each row.
-      const { error } = await supabase
-        .from('tasks')
-        .update({ assignee_ids: [newAssigneeId] })
-        .in('id', ids);
-      if (error) throw error;
+      const selectedTasks = tasks.filter((t) => ids.includes(t.id));
+      // Issue one update per task to merge instead of clobber. Sequential to
+      // keep the trigger volume sane; 99% of bulk ops are <30 rows.
+      for (const t of selectedTasks) {
+        const existing = t.assignee_ids ?? [];
+        if (existing.includes(newAssigneeId)) continue;
+        const next = [...existing, newAssigneeId];
+        const { error } = await supabase
+          .from('tasks')
+          .update({ assignee_ids: next })
+          .eq('id', t.id);
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] });
@@ -257,9 +277,11 @@ export function TasksPage() {
   // Per-task aggregated time across all entries (chip on board card)
   const taskTimeTotals = useTaskTimeTotals(tasks.map((t) => t.id));
 
-  // PRD §6.x — task templates (admin defines, anyone instantiates)
+  // PRD §6.x — task templates (admin defines, anyone instantiates).
+  // staleTime keeps it cached for 10 min so list isn't re-fetched on every render.
   const templates = useQuery({
     queryKey: ['task-templates'],
+    staleTime: 10 * 60_000,
     queryFn: async () => {
       const { data } = await supabase
         .from('task_templates')
@@ -324,10 +346,10 @@ export function TasksPage() {
   // survives across reloads/sessions without bloating the URL.
   const [compactBoard, setCompactBoard] = useState<boolean>(() => {
     if (typeof localStorage === 'undefined') return false;
-    return localStorage.getItem('reflect.tasks.compactBoard') === '1';
+    return localStorage.getItem('reflect:v1:tasks:compactBoard') === '1';
   });
   useEffect(() => {
-    try { localStorage.setItem('reflect.tasks.compactBoard', compactBoard ? '1' : '0'); }
+    try { localStorage.setItem('reflect:v1:tasks:compactBoard', compactBoard ? '1' : '0'); }
     catch { /* localStorage disabled */ }
   }, [compactBoard]);
   // PRD §UX — quick "today only" toggle: deadline = today (any status)
@@ -382,7 +404,7 @@ export function TasksPage() {
     if (labelFilter) out = out.filter((t) => (t.labels ?? []).includes(labelFilter));
     if (projectFilter) out = out.filter((t) => t.project_id === projectFilter);
     if (todayOnly) {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = bakuDateString();
       out = out.filter((t) => t.deadline === today);
     }
     if (search.trim()) {
@@ -435,7 +457,7 @@ export function TasksPage() {
 
   // PRD §UX — bubble overdue count to the page meta so it's visible from the header
   // even when the board is scrolled. Matches the red border treatment on cards.
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = bakuDateString();
   const overdueCount = filtered.filter(
     (t) => t.deadline && t.deadline < todayIso && t.status !== 'done' && t.status !== 'cancelled',
   ).length;
@@ -516,7 +538,7 @@ export function TasksPage() {
               disabled={filtered.length === 0}
               onClick={() => {
                 downloadCsv(
-                  `tasks-${new Date().toISOString().slice(0, 10)}`,
+                  `tasks-${bakuDateString()}`,
                   ['Başlıq', 'Status', 'Layihə', 'Deadline', 'İcraçılar', 'Yaradıldı'],
                   filtered.map((t) => ({
                     'Başlıq': t.title,
@@ -898,7 +920,7 @@ export function TasksPage() {
                     // can't be missed when scrolling through a column. Skip done/cancelled.
                     const isOverdue = !!t.deadline
                       && t.status !== 'done' && t.status !== 'cancelled'
-                      && t.deadline < new Date().toISOString().slice(0, 10);
+                      && t.deadline < bakuDateString();
                     return (
                     <article
                       key={t.id}
@@ -1047,9 +1069,13 @@ export function TasksPage() {
                           <span />
                         )}
                         <div className="flex items-center gap-2">
-                          {/* Keyboard alternative to drag-drop: status select. */}
+                          {/* PRD §6.6 — keyboard / touch alternative to drag-drop.
+                              HTML5 draggable doesn't fire on iOS/Android; this
+                              <select> is the primary status-change mechanism for
+                              tap-only users. Sized ≥32px tap target. */}
                           <select
-                            aria-label="Status dəyiş"
+                            aria-label="Status dəyiş (toxunma cihazları üçün)"
+                            title="Statusu dəyişdir — toxunma cihazları üçün sürükləməyə alternativ"
                             value={t.status}
                             onClick={(e) => e.stopPropagation()}
                             onChange={(e) => {
@@ -1061,8 +1087,9 @@ export function TasksPage() {
                             style={{
                               background: isToday ? 'var(--card-dark-border)' : 'var(--surface-mist)',
                               color: isToday ? 'var(--canvas)' : 'var(--text-soft)',
-                              fontSize: 11,
-                              padding: '2px 4px',
+                              fontSize: 12,
+                              padding: '4px 6px',
+                              minHeight: 32,
                               border: 'none',
                             }}
                           >

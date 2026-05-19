@@ -1030,7 +1030,7 @@ function TaskEstimateBar({
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [duration, setDuration] = useState('');
-  const [unit, setUnit] = useState<'minutes' | 'hours' | 'days'>('hours');
+  const [unit, setUnit] = useState<'hours' | 'days'>('hours');
   const [saving, setSaving] = useState(false);
 
   const trackedSec = data?.trackedSec ?? 0;
@@ -1090,7 +1090,8 @@ function TaskEstimateBar({
             value={unit}
             onChange={(e) => setUnit(e.target.value as typeof unit)}
           >
-            <option value="minutes">dəq</option>
+            {/* PRD §REQ-TASK-06 — DB workload trigger only handles hours/days;
+                'minutes' would multiply by 1 instead of 60 → wrong workload. */}
             <option value="hours">saat</option>
             <option value="days">gün</option>
           </select>
@@ -1111,7 +1112,9 @@ function TaskEstimateBar({
                 .select('estimated_duration, duration_unit')
                 .eq('id', taskId)
                 .maybeSingle();
-              const u = (task?.duration_unit as 'minutes' | 'hours' | 'days') ?? 'hours';
+              // Coerce legacy 'minutes' rows to 'hours' so UI never shows the disallowed option
+              const raw = task?.duration_unit as string | null;
+              const u: 'hours' | 'days' = raw === 'days' ? 'days' : 'hours';
               setUnit(u);
               setDuration(task?.estimated_duration != null ? String(task.estimated_duration) : '');
               setEditing(true);

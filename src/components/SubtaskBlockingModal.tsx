@@ -5,7 +5,8 @@
  * The DB trigger tasks_block_done_with_open_children is the final guard;
  * this component is the UX layer that prevents the round-trip.
  */
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusTrap } from '@/lib/a11y';
 import { supabase } from '@/lib/supabase';
 import type { Task } from '@/types/db';
@@ -18,43 +19,45 @@ type Props = {
 };
 
 export function SubtaskBlockingModal({ parentTaskId, onCancel, onResolved }: Props) {
-  const [children, setChildren] = useState<Task[] | null>(null);
-  const [busy, setBusy] = useState(false);
+  const qc = useQueryClient();
   const [err, setErr] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    supabase
-      .from('tasks')
-      .select('*')
-      .eq('parent_task_id', parentTaskId)
-      .is('archived_at', null)
-      .not('status', 'in', '(done,cancelled)')
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error) setErr(error.message);
-        else setChildren((data ?? []) as Task[]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [parentTaskId]);
+  // PRD §UX — useQuery (not raw supabase call) so realtime invalidations
+  // refresh the blocker list. Previous version held stale state when another
+  // teammate marked a child done while this modal was open.
+  const childrenQ = useQuery<Task[]>({
+    queryKey: ['subtask-blockers', parentTaskId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('parent_task_id', parentTaskId)
+        .is('archived_at', null)
+        .not('status', 'in', '(done,cancelled)');
+      if (error) throw error;
+      return (data ?? []) as Task[];
+    },
+  });
+  const children = childrenQ.data ?? null;
 
-  async function completeAll() {
-    if (!children) return;
-    setBusy(true);
-    setErr(null);
-    const { error } = await supabase
-      .from('tasks')
-      .update({ status: 'done' })
-      .in('id', children.map((c) => c.id));
-    setBusy(false);
-    if (error) {
-      setErr(error.message);
-      return;
-    }
-    onResolved();
-  }
+  const completeAllM = useMutation({
+    mutationFn: async () => {
+      if (!children) return;
+      const { error } = await supabase
+        .from('tasks')
+        .update({ status: 'done' })
+        .in('id', children.map((c) => c.id));
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['subtask-blockers', parentTaskId] });
+      onResolved();
+    },
+    onError: (e) => setErr((e as Error).message),
+  });
+  const busy = completeAllM.isPending;
+  async function completeAll() { setErr(null); await completeAllM.mutateAsync(); }
 
   const trapRef = useFocusTrap<HTMLDivElement>(true);
 
