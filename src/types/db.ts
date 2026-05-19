@@ -198,6 +198,8 @@ export interface Task {
   labels?: string[];
   /** PRD §6.x — priority for sort/filter (migration 0050) */
   priority?: 'low' | 'medium' | 'high' | null;
+  /** PRD §REQ-TASK-03 — fractional index for intra-column reorder (migration 0062) */
+  sort_order?: number | null;
 }
 
 export interface TaskStatusHistory {

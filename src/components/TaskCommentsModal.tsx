@@ -13,6 +13,7 @@ import { relativeTime } from '@/lib/format';
 import { trackRecentEntry } from '@/lib/useRecentlyViewed';
 import { formatDuration } from '@/lib/useTimeTracking';
 import { renderCommentMarkdown } from '@/lib/sanitize';
+import { toast } from '@/components/Toast';
 
 type Comment = {
   id: string;
@@ -634,20 +635,26 @@ function SubtaskInlineCreate({ parentTaskId }: { parentTaskId: string }) {
   const create = useMutation({
     mutationFn: async () => {
       if (!title.trim()) throw new Error('Başlıq tələb olunur');
-      // Inherit project_id + labels from parent so subtask shares context
+      // Inherit project_id + labels + priority + start_date from parent so
+      // subtask shares context. Matches the top-level cloneTask field set
+      // (Tasks.tsx) so all "spawned-from-existing" paths stay consistent.
       const { data: parent } = await supabase
         .from('tasks')
-        .select('project_id, task_level, labels')
+        .select('project_id, task_level, labels, priority, start_date, deadline')
         .eq('id', parentTaskId)
         .maybeSingle();
+      const p = parent as { project_id: string | null; task_level: number | null; labels: string[] | null; priority: string | null; start_date: string | null; deadline: string | null } | null;
       const { error } = await supabase.from('tasks').insert({
         title: title.trim(),
         status: 'queued',
         parent_task_id: parentTaskId,
-        project_id: parent?.project_id ?? null,
-        task_level: (parent?.task_level ?? 0) + 1,
-        // PRD §REQ-TASK — inherit labels so subtask shows in same filter views
-        labels: (parent as { labels?: string[] } | null)?.labels ?? [],
+        project_id: p?.project_id ?? null,
+        task_level: (p?.task_level ?? 0) + 1,
+        labels: p?.labels ?? [],
+        priority: p?.priority ?? null,
+        start_date: p?.start_date ?? null,
+        // Inherit deadline only if it falls in the future; otherwise leave null.
+        deadline: p?.deadline ?? null,
         assignee_ids: profile?.id ? [profile.id] : [],
       });
       if (error) throw error;
@@ -799,6 +806,14 @@ function TaskStatusPriorityLabels({ taskId }: { taskId: string }) {
 
   const updateField = useMutation({
     mutationFn: async (patch: Partial<{ status: string; priority: string | null; labels: string[] }>) => {
+      // PRD §REQ-TASK-04 — cancelling needs cancel_reason. Inline status select
+      // can't capture a reason; route through the dedicated CancelTaskModal by
+      // refusing here so the caller knows to open it. This replaces the silent
+      // DB rejection ("cancel_reason_required") that left the dropdown snapping
+      // back with no explanation.
+      if (patch.status === 'cancelled') {
+        throw new Error('Ləğv etmək üçün kart üzərində Cancel düyməsindən istifadə et — səbəb tələb olunur.');
+      }
       const { error } = await supabase.from('tasks').update(patch).eq('id', taskId);
       if (error) throw error;
     },
@@ -806,6 +821,7 @@ function TaskStatusPriorityLabels({ taskId }: { taskId: string }) {
       qc.invalidateQueries({ queryKey: ['task_meta_editable', taskId] });
       qc.invalidateQueries({ queryKey: ['tasks'] });
     },
+    onError: (e) => toast.error((e as Error).message || 'Saxlanılmadı'),
   });
 
   const status = task.data?.status ?? 'queued';

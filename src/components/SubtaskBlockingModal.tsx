@@ -43,10 +43,14 @@ export function SubtaskBlockingModal({ parentTaskId, onCancel, onResolved }: Pro
   const completeAllM = useMutation({
     mutationFn: async () => {
       if (!children) return;
-      const { error } = await supabase
-        .from('tasks')
-        .update({ status: 'done' })
-        .in('id', children.map((c) => c.id));
+      // PRD §REQ-TASK-05 — recursive close via complete_task_descendants RPC
+      // (migration 0061). Walks the subtree bottom-up so grandchildren close
+      // before parents; block-trigger then passes at every layer. Previous
+      // implementation issued a flat `update ... where parent=X` which left
+      // grandchildren open and the bulk update partially failed.
+      const { error } = await supabase.rpc('complete_task_descendants', {
+        p_root: parentTaskId,
+      });
       if (error) throw error;
     },
     onSuccess: () => {

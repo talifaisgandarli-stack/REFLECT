@@ -83,6 +83,10 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
   // PRD §REQ-TASK-09 / US-TASK-08 — selectable expertise subtasks (5 checkboxes,
   // user picks which to seed as linked subtasks with parent_task_id + is_expertise_subtask=true).
   const [selectedExpertise, setSelectedExpertise] = useState<Set<string>>(new Set());
+  // PRD §REQ-TASK-01 — `is_expertise_subtask` is a top-level field; previously
+  // the modal forced it to false on create. Now a user can mark the new task
+  // itself as expertise without going through the children-seed path.
+  const [isExpertise, setIsExpertise] = useState(false);
   const [assignSelf, setAssignSelf] = useState(true);
   const [extraAssignees, setExtraAssignees] = useState<string[]>([]);
 
@@ -136,7 +140,7 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
         estimated_duration: estimated ? Number(estimated) : null,
         duration_unit: unit,
         risk_buffer_pct: Math.max(0, Math.min(100, Math.round(riskBuffer))),
-        is_expertise_subtask: false,
+        is_expertise_subtask: isExpertise,
         // PRD §REQ-TASK-01 — propagate parent context when creating a subtask
         ...(parentTaskId
           ? { parent_task_id: parentTaskId, task_level: (parentTaskLevel ?? 0) + 1 }
@@ -392,6 +396,20 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
                 ) : null}
               </div>
             </Field>
+          ) : null}
+
+          {/* PRD §REQ-TASK-01 — top-level expertise flag (a task can be an
+              expertise task in its own right, not just a child seed). */}
+          {!parentTaskId ? (
+            <label className="flex items-center gap-2 text-body cursor-pointer chip" style={{ background: isExpertise ? 'var(--brand-action)' : 'var(--surface)', color: isExpertise ? 'var(--ink)' : 'var(--text)', padding: '8px 12px', height: 'auto' }}>
+              <input
+                type="checkbox"
+                className="sr-only"
+                checked={isExpertise}
+                onChange={(e) => setIsExpertise(e.target.checked)}
+              />
+              {isExpertise ? '✓ Bu ekspertiza tapşırığıdır' : 'Bu ekspertiza tapşırığıdır'}
+            </label>
           ) : null}
 
           {/* PRD §REQ-TASK-09 / US-TASK-08 — selectable expertise subtask suggestions */}

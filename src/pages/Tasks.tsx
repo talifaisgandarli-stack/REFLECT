@@ -38,13 +38,14 @@ const endOfWeekStr = (() => {
   return bakuDateString(new Date(d.getTime() - 4 * 3_600_000));
 })();
 
-type TimeGroup = 'overdue' | 'today' | 'week' | 'later' | 'none';
+type TimeGroup = 'overdue' | 'today' | 'week' | 'later' | 'none' | 'done_today';
 const TIME_GROUP_LABEL: Record<TimeGroup, string> = {
   overdue: 'Gecikmiş',
   today: 'Bu gün',
   week: 'Bu həftə',
   later: 'Sonra',
   none: 'Deadline yoxdur',
+  done_today: 'Bu gün tamamladıqlarım',
 };
 const TIME_GROUP_COLOR: Record<TimeGroup, string> = {
   overdue: 'var(--error)',
@@ -52,6 +53,7 @@ const TIME_GROUP_COLOR: Record<TimeGroup, string> = {
   week: 'var(--success)',
   later: 'var(--text-muted)',
   none: 'var(--text-muted)',
+  done_today: 'var(--success-deep, #16794a)',
 };
 // PRD §UX — Azərbaycan hərflərini soft-match: "Xərçə" yazana "xerce" gəlsin.
 // `String.normalize('NFD')` ə/ı üçün diacritic ayırmır, ona görə explicit map.
@@ -66,13 +68,18 @@ function normalizeAz(s: string): string {
 }
 
 function taskTimeGroup(t: Task): TimeGroup {
+  // PRD US-TASK-06 — done items get their own group at the bottom so users
+  // can untick an accidental completion. archived_at is auto-stamped by the
+  // tasks_auto_archive trigger (0006); we filter to today's done in the
+  // personal grouping step so the list stays scoped to recent work.
+  if (t.status === 'done') return 'done_today';
   if (!t.deadline) return 'none';
   if (t.deadline < todayStr) return 'overdue';
   if (t.deadline === todayStr) return 'today';
   if (t.deadline <= endOfWeekStr) return 'week';
   return 'later';
 }
-const TIME_GROUP_ORDER: TimeGroup[] = ['overdue', 'today', 'week', 'later', 'none'];
+const TIME_GROUP_ORDER: TimeGroup[] = ['overdue', 'today', 'week', 'later', 'none', 'done_today'];
 
 export function TasksPage() {
   const { profile, isAdmin } = useAuth();
@@ -296,6 +303,43 @@ export function TasksPage() {
     );
   }
 
+  // PRD §REQ-TASK-03 — intra-column reorder via fractional indexing. Caller
+  // passes the dragged task id and the target neighbor's id (the card the
+  // user dropped ABOVE). We compute the new sort_order between that neighbor
+  // and its predecessor; if it's the top, use predecessor sort/2 (or -1024).
+  const reorderTask = useMutation({
+    mutationFn: async (input: { id: string; column: TaskStatus; targetId: string | null }) => {
+      const col = grouped[input.column];
+      const targetIdx = input.targetId ? col.findIndex((t) => t.id === input.targetId) : col.length;
+      if (targetIdx < 0) return;
+      const above = targetIdx > 0 ? col[targetIdx - 1] : null;
+      const below = targetIdx < col.length ? col[targetIdx] : null;
+      const aboveSort = above?.sort_order ?? null;
+      const belowSort = below?.sort_order ?? null;
+      let nextSort: number;
+      if (aboveSort != null && belowSort != null) {
+        nextSort = (aboveSort + belowSort) / 2;
+      } else if (aboveSort != null) {
+        nextSort = aboveSort + 1024;
+      } else if (belowSort != null) {
+        nextSort = belowSort / 2;
+      } else {
+        nextSort = 1024;
+      }
+      const { error } = await supabase
+        .from('tasks')
+        .update({ sort_order: nextSort })
+        .eq('id', input.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      // Switch the user to manual sort so the reorder is actually visible.
+      if (sortBy !== 'manual') setSortBy('manual');
+    },
+    onError: (e) => toast.error((e as Error).message || 'Sıralanmadı'),
+  });
+
   // Time tracking — global active timer + start/stop mutations
   const { data: activeTimer } = useActiveTimeEntry();
   const startTimer = useStartTimer();
@@ -364,7 +408,7 @@ export function TasksPage() {
   }, [tasks]);
 
   // PRD §UX — sort within columns; persisted in URL so it survives reload + share
-  type SortKey = 'deadline' | 'priority' | 'created';
+  type SortKey = 'deadline' | 'priority' | 'created' | 'manual';
   const [sortBy, setSortBy] = useState<SortKey>(
     (searchParams.get('sort') as SortKey) || 'deadline',
   );
@@ -449,6 +493,14 @@ export function TasksPage() {
   const sortTasks = (arr: Task[]): Task[] => {
     const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2, normal: 2 };
     return [...arr].sort((a, b) => {
+      // PRD §REQ-TASK-03 — when user explicitly reordered (sort_order set), respect
+      // that ordering inside the column. Falls through to the chosen sortBy when
+      // sort_order is null/equal.
+      if (sortBy === 'manual') {
+        const av = a.sort_order ?? Number.POSITIVE_INFINITY;
+        const bv = b.sort_order ?? Number.POSITIVE_INFINITY;
+        if (av !== bv) return av - bv;
+      }
       if (sortBy === 'priority') {
         const ap = PRIORITY_ORDER[a.priority ?? 'normal'] ?? 3;
         const bp = PRIORITY_ORDER[b.priority ?? 'normal'] ?? 3;
@@ -474,8 +526,15 @@ export function TasksPage() {
   const groupedByTime = useMemo(() => {
     const map = {} as Record<TimeGroup, Task[]>;
     for (const g of TIME_GROUP_ORDER) map[g] = [];
+    const todayBaku = bakuDateString();
     for (const t of filtered) {
-      if (t.status === 'done' || t.status === 'cancelled') continue;
+      if (t.status === 'cancelled') continue;
+      // PRD US-TASK-06 — keep today's done items so user can untick mistakes.
+      // archived_at is auto-stamped (0006_task_lifecycle); compare in Baku TZ.
+      if (t.status === 'done') {
+        const archivedDay = t.archived_at ? bakuDateString(new Date(t.archived_at)) : null;
+        if (archivedDay !== todayBaku) continue;
+      }
       map[taskTimeGroup(t)].push(t);
     }
     return map;
@@ -631,6 +690,7 @@ export function TasksPage() {
           <option value="deadline">↑ Son tarix</option>
           <option value="priority">Prioritet</option>
           <option value="created">Yenilər əvvəl</option>
+          <option value="manual">Manuel sıralama</option>
         </select>
         {/* PRD §UX — "Bu gün" quick filter (deadline = today) */}
         <button
@@ -826,10 +886,15 @@ export function TasksPage() {
                     >
                       <input
                         type="checkbox"
-                        checked={bulkMode ? selectedIds.has(t.id) : false}
-                        onChange={() => bulkMode ? toggleSelected(t.id) : moveTask(t.id, 'done', t.status)}
+                        checked={bulkMode ? selectedIds.has(t.id) : t.status === 'done'}
+                        onChange={() => {
+                          if (bulkMode) { toggleSelected(t.id); return; }
+                          // PRD US-TASK-06 — unticking a done task reverts it to
+                          // 'active' so accidental completion is recoverable.
+                          moveTask(t.id, t.status === 'done' ? 'active' : 'done', t.status);
+                        }}
                         style={{ accentColor: 'var(--brand-action)', width: 16, height: 16, flexShrink: 0, cursor: 'pointer' }}
-                        aria-label={bulkMode ? `${t.title} seç` : `${t.title} tamamlandı`}
+                        aria-label={bulkMode ? `${t.title} seç` : (t.status === 'done' ? `${t.title} bərpa et` : `${t.title} tamamlandı`)}
                       />
                       <span
                         className="flex-1 text-body cursor-pointer"
@@ -925,8 +990,17 @@ export function TasksPage() {
                   setDragOverColumn(null);
                   const raw = e.dataTransfer.getData('text/plain');
                   if (!raw) return;
-                  const { id, from } = JSON.parse(raw);
-                  if (from !== s) moveTask(id, s, from);
+                  const { id, from } = JSON.parse(raw) as { id: string; from: TaskStatus };
+                  if (from !== s) {
+                    // Cross-column drop: change status; reorder to bottom of new column.
+                    moveTask(id, s, from);
+                    reorderTask.mutate({ id, column: s, targetId: null });
+                  } else {
+                    // PRD §REQ-TASK-03 — same-column drop on the empty area:
+                    // place at the bottom. Card-level drops (above a specific
+                    // sibling) are handled by the article's own onDrop.
+                    reorderTask.mutate({ id, column: s, targetId: null });
+                  }
                 }}
               >
                 <h3
@@ -944,6 +1018,15 @@ export function TasksPage() {
                     </span>
                   ) : null}
                 </h3>
+                {/* PRD US-TASK-01 — inline quick-add: type title + Enter creates
+                    task in this column. Modal popup remains the "full create"
+                    path; this is the 1-keystroke shortcut. */}
+                <QuickAddInline
+                  status={s}
+                  projectId={projectFilter || undefined}
+                  myId={profile?.id ?? undefined}
+                  isToday={isToday}
+                />
                 <div className="space-y-2" role="list" aria-label={TASK_STATUS_LABEL[s]}>
                   {grouped[s].map((t) => {
                     // PRD §UX — surface overdue tasks visually on the board so they
@@ -951,18 +1034,89 @@ export function TasksPage() {
                     const isOverdue = !!t.deadline
                       && t.status !== 'done' && t.status !== 'cancelled'
                       && t.deadline < bakuDateString();
+                    // PRD US-TASK-03 — "card is grayed visually" once cancelled.
+                    const isCancelled = t.status === 'cancelled';
                     return (
                     <article
                       key={t.id}
                       draggable
+                      tabIndex={0}
+                      role="listitem"
+                      data-task-card="1"
+                      data-task-id={t.id}
+                      data-task-status={t.status}
                       onDragStart={(e) =>
                         e.dataTransfer.setData(
                           'text/plain',
                           JSON.stringify({ id: t.id, from: t.status }),
                         )
                       }
-                      className="rounded-card p-3 text-body"
+                      // PRD §REQ-TASK-03 — card-level drop = "place above this card".
+                      // stopPropagation prevents the column-level onDrop from also
+                      // firing and resetting the target to "bottom of column".
+                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setDragOverColumn(null);
+                        const raw = e.dataTransfer.getData('text/plain');
+                        if (!raw) return;
+                        const { id: dragId, from } = JSON.parse(raw) as { id: string; from: TaskStatus };
+                        if (dragId === t.id) return;
+                        if (from !== s) moveTask(dragId, s, from);
+                        reorderTask.mutate({ id: dragId, column: s, targetId: t.id });
+                      }}
+                      // PRD §6.6 / REQ-TASK-03 — keyboard navigation on the board.
+                      // ↑/↓ moves focus within column, ←/→ jumps to adjacent column
+                      // (same row index), Enter opens comments, Shift+←/→ moves the
+                      // card across status columns. Skips when modifier is meta/ctrl.
+                      onKeyDown={(e) => {
+                        if (e.metaKey || e.ctrlKey || e.altKey) return;
+                        const cols = TASK_STATUS_ORDER;
+                        const colIdx = cols.indexOf(s);
+                        const rowIdx = grouped[s].findIndex((x) => x.id === t.id);
+                        const focusCard = (status: TaskStatus, idx: number) => {
+                          const list = grouped[status];
+                          if (list.length === 0) return;
+                          const target = list[Math.max(0, Math.min(idx, list.length - 1))];
+                          requestAnimationFrame(() => {
+                            const el = document.querySelector(`[data-task-card="1"][data-task-id="${target.id}"]`) as HTMLElement | null;
+                            el?.focus();
+                          });
+                        };
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          setCommenting({ id: t.id, title: t.title });
+                        } else if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          focusCard(s, rowIdx + 1);
+                        } else if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          focusCard(s, rowIdx - 1);
+                        } else if (e.key === 'ArrowRight') {
+                          e.preventDefault();
+                          if (e.shiftKey) {
+                            const next = cols[colIdx + 1];
+                            if (next) moveTask(t.id, next, s);
+                          } else {
+                            const next = cols[colIdx + 1];
+                            if (next) focusCard(next, rowIdx);
+                          }
+                        } else if (e.key === 'ArrowLeft') {
+                          e.preventDefault();
+                          if (e.shiftKey) {
+                            const prev = cols[colIdx - 1];
+                            if (prev) moveTask(t.id, prev, s);
+                          } else {
+                            const prev = cols[colIdx - 1];
+                            if (prev) focusCard(prev, rowIdx);
+                          }
+                        }
+                      }}
+                      className="rounded-card p-3 text-body focus:outline-none focus:ring-2 focus:ring-offset-1"
                       style={{
+                        opacity: isCancelled ? 0.55 : 1,
+                        textDecoration: isCancelled ? 'line-through' : undefined,
                         background: isToday ? 'var(--card-dark-bg)' : 'var(--surface)',
                         border: `1px solid ${
                           isOverdue
@@ -1242,7 +1396,7 @@ export function TasksPage() {
             </tr>
           </thead>
           <tbody>
-            {tasks.map((t) => (
+            {sortTasks(filtered).map((t) => (
               <tr
                 key={t.id}
                 onClick={() => setCommenting({ id: t.id, title: t.title })}
@@ -1440,5 +1594,82 @@ export function TasksPage() {
         </div>
       ) : null}
     </>
+  );
+}
+
+// PRD US-TASK-01 — inline per-column quick-add: type title + Enter creates a
+// task in that status with the current project filter as default. Modal-based
+// "full create" remains for richer fields; this is the 1-keystroke path.
+function QuickAddInline({
+  status,
+  projectId,
+  myId,
+  isToday,
+}: {
+  status: TaskStatus;
+  projectId?: string;
+  myId?: string;
+  isToday: boolean;
+}) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState('');
+  const create = useMutation({
+    mutationFn: async () => {
+      const t = title.trim();
+      if (!t) return;
+      const { error } = await supabase.from('tasks').insert({
+        title: t,
+        status,
+        project_id: projectId ?? null,
+        assignee_ids: myId ? [myId] : [],
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setTitle('');
+      setOpen(false);
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+    },
+    onError: (e) => toast.error((e as Error).message || 'Yaradılmadı'),
+  });
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        className="text-meta mb-2 w-full text-left px-2 py-1.5 rounded-btn"
+        style={{
+          background: 'transparent',
+          color: isToday ? 'var(--canvas)' : 'var(--text-muted)',
+          opacity: 0.65,
+          border: '1px dashed var(--line)',
+          fontSize: 11,
+        }}
+        onClick={() => setOpen(true)}
+      >
+        + Tez əlavə et
+      </button>
+    );
+  }
+  return (
+    <form
+      className="mb-2"
+      onSubmit={(e) => { e.preventDefault(); create.mutate(); }}
+    >
+      <input
+        autoFocus
+        className="input w-full"
+        style={{ height: 30, fontSize: 12 }}
+        placeholder="Başlıq · Enter ilə yarat, Esc bağla"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        onBlur={() => { if (!title.trim()) setOpen(false); }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') { setOpen(false); setTitle(''); }
+        }}
+        disabled={create.isPending}
+      />
+    </form>
   );
 }
