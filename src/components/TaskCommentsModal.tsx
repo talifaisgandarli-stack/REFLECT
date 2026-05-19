@@ -37,11 +37,14 @@ function parseMentions(body: string, profiles: Profile[]): string[] {
   // whose full_name starts with the captured token (case-insensitive). Fall
   // back to substring match only if no prefix hit. This keeps `@ali` from
   // ambiguously matching both "Aliyev" and "Allahverdiyev" — the prefix wins.
+  //
+  // PRD §REQ-TASK-07 — require ≥2 chars after `@` so a stray `@a` doesn't
+  // accidentally mention whoever happens to be alphabetically first.
   const tokens = body.match(/@[\wЀ-ӿ]+/g) ?? [];
   const ids: string[] = [];
   for (const token of tokens) {
     const name = token.slice(1).toLowerCase();
-    if (!name) continue;
+    if (name.length < 2) continue;
     const byPrefix = profiles.find((p) => p.full_name?.toLowerCase().startsWith(name));
     const match = byPrefix ?? profiles.find((p) => p.full_name?.toLowerCase().includes(name));
     if (match && !ids.includes(match.id)) ids.push(match.id);

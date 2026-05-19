@@ -98,8 +98,12 @@ export function useRealtimeSync(userId: string | undefined) {
     );
 
     // RLS scopes the events server-side: a user only receives changes to
-    // tasks they can SELECT. Channel name includes userId so Supabase routes
-    // separately per session — avoids the broadcast fan-out cost.
+    // tasks they can SELECT. Channel name is shared (no userId suffix)
+    // because for unfiltered subscriptions Supabase delivers each row event
+    // to every matching subscriber regardless of channel name — namespacing
+    // per user only adds channel-creation overhead without narrowing fanout.
+    // (notifications channel still uses :${userId} because it pairs with a
+    // user_id=eq filter; that one is materially different.)
     //
     // PRD §3.4 — DELETE race fix: with optimistic DnD (useUpdateTaskStatus),
     // a mid-flight mutation can resurrect a deleted task via its onError
@@ -109,7 +113,7 @@ export function useRealtimeSync(userId: string | undefined) {
     cleanups.push(
       subscribeTable({
         table: 'tasks',
-        channelName: `tasks:${userId}`,
+        channelName: 'tasks',
         onChange: (payload) => {
           if (payload.eventType === 'DELETE') {
             const oldRow = payload.old as { id?: string } | null;

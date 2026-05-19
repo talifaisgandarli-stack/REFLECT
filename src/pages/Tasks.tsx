@@ -95,6 +95,12 @@ export function TasksPage() {
   const [mineOnly, setMineOnly] = useState(false);
   // PRD §UX — drag-over column highlight (board view DnD feedback)
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
+  // PRD §6.6 — HTML5 drag-and-drop doesn't fire on iOS/Android; the per-card
+  // <select> is the documented fallback. Suppress the dashed drop-zone visual
+  // on touch devices so users don't expect a drag affordance that won't work.
+  const isTouch = typeof window !== 'undefined' && (
+    'ontouchstart' in window || (navigator.maxTouchPoints ?? 0) > 0
+  );
   // URL assignee takes precedence over mineOnly so Roster click always lands on that user
   const filterAssignee = initialUrlAssignee || (mineOnly && profile?.id ? profile.id : null);
   const { data: tasks = [], isLoading } = useTasks(
@@ -225,6 +231,16 @@ export function TasksPage() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] });
+      toast.success('İcraçı təyin edildi');
+      exitBulkMode();
+    },
+    onError: (e) => {
+      // PRD §UX — the loop above mutates row-by-row, so a mid-batch RLS
+      // rejection leaves earlier rows updated and later rows untouched.
+      // Surface the error so the user knows the batch was partial, then
+      // refetch + exit bulk mode so the cache reflects reality.
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      toast.error(`Bəzi tapşırıqlar təyin edilmədi: ${(e as Error).message}`);
       exitBulkMode();
     },
   });
@@ -310,7 +326,21 @@ export function TasksPage() {
           if (from && from !== status && status === 'done') {
             toast.undo('Tapşırıq tamamlandı', {
               label: 'Geri al',
-              onClick: () => update.mutate({ id, status: from, from: status }),
+              onClick: async () => {
+                // Verify the task still exists before reverting — a 0-row
+                // UPDATE doesn't error and would silently no-op, leaving the
+                // user thinking undo worked.
+                const { data } = await supabase
+                  .from('tasks')
+                  .select('id')
+                  .eq('id', id)
+                  .maybeSingle();
+                if (!data) {
+                  toast.error('Tapşırıq artıq yoxdur — bərpa edilə bilmir');
+                  return;
+                }
+                update.mutate({ id, status: from, from: status });
+              },
             });
           }
         },
@@ -336,6 +366,32 @@ export function TasksPage() {
       const below = targetIdx < col.length ? col[targetIdx] : null;
       const aboveSort = above?.sort_order ?? null;
       const belowSort = below?.sort_order ?? null;
+
+      // PRD §REQ-TASK-03 — fractional-index precision falls off after many
+      // midsplits on the same slot. Detect collapse (gap < 1) and rebalance
+      // the column once before continuing so subsequent splits have room.
+      if (aboveSort != null && belowSort != null && Math.abs(aboveSort - belowSort) < 1) {
+        await supabase.rpc('rebalance_task_sort_order', {
+          p_project_id: above?.project_id ?? null,
+          p_status: input.column,
+        });
+        // Refetch so we pick up the rebalanced values for the math below.
+        const { data: refreshed } = await supabase
+          .from('tasks')
+          .select('id, sort_order')
+          .in('id', [above!.id, below!.id]);
+        const updatedAbove = refreshed?.find((r) => r.id === above!.id);
+        const updatedBelow = refreshed?.find((r) => r.id === below!.id);
+        const a = (updatedAbove?.sort_order as number | null) ?? aboveSort;
+        const b = (updatedBelow?.sort_order as number | null) ?? belowSort;
+        const { error: e1 } = await supabase
+          .from('tasks')
+          .update({ sort_order: (a + b) / 2 })
+          .eq('id', input.id);
+        if (e1) throw e1;
+        return;
+      }
+
       let nextSort: number;
       if (aboveSort != null && belowSort != null) {
         nextSort = (aboveSort + belowSort) / 2;
@@ -575,9 +631,13 @@ export function TasksPage() {
       if (t.status === 'cancelled') continue;
       // PRD US-TASK-06 — keep today's done items so user can untick mistakes.
       // archived_at is auto-stamped (0006_task_lifecycle); compare in Baku TZ.
+      // Treat optimistic state (status=done but archived_at not yet stamped)
+      // as "today" so a freshly-ticked task doesn't flicker out of the list
+      // during the ~150-400ms window before the realtime UPDATE delivers
+      // the trigger-stamped value.
       if (t.status === 'done') {
         const archivedDay = t.archived_at ? bakuDateString(new Date(t.archived_at)) : null;
-        if (archivedDay !== todayBaku) continue;
+        if (archivedDay !== null && archivedDay !== todayBaku) continue;
       }
       map[taskTimeGroup(t)].push(t);
     }
@@ -679,7 +739,9 @@ export function TasksPage() {
                     'Etiketlər': (t.labels ?? []).join('; '),
                     'Layihə': projectsById.get(t.project_id ?? '') ?? '',
                     'Deadline': t.deadline ?? '',
-                    'İcraçılar': (t.assignee_ids ?? []).join('; '),
+                    'İcraçılar': (t.assignee_ids ?? [])
+                      .map((id) => profileById[id]?.full_name ?? id.slice(0, 8))
+                      .join('; '),
                     'Yaradıldı': t.created_at ? new Date(t.created_at).toISOString() : '',
                   })),
                 );
@@ -1024,13 +1086,13 @@ export function TasksPage() {
                 key={s}
                 className="rounded-card p-3 transition-colors"
                 style={{
-                  background: dragOverColumn === s
+                  background: !isTouch && dragOverColumn === s
                     ? 'var(--brand-glow-sm)'
                     : isToday ? 'var(--ink)' : 'transparent',
                   color: isToday ? 'var(--canvas)' : 'inherit',
-                  border: dragOverColumn === s
+                  border: !isTouch && dragOverColumn === s
                     ? '2px dashed var(--brand-action)'
-                    : isToday ? 'none' : '1px dashed var(--line)',
+                    : isToday ? 'none' : isTouch ? '1px solid var(--line)' : '1px dashed var(--line)',
                   minHeight: 320,
                 }}
                 onDragOver={(e) => { e.preventDefault(); if (dragOverColumn !== s) setDragOverColumn(s); }}
@@ -1072,7 +1134,10 @@ export function TasksPage() {
                     path; this is the 1-keystroke shortcut. */}
                 <QuickAddInline
                   status={s}
-                  projectId={projectFilter || undefined}
+                  // '__none__' is the layihəsiz filter sentinel — don't pass
+                  // it as a project_id (would FK-fail on insert). undefined
+                  // means "no project", which is correct for the sentinel.
+                  projectId={projectFilter && projectFilter !== '__none__' ? projectFilter : undefined}
                   myId={profile?.id ?? undefined}
                   isToday={isToday}
                 />
@@ -1162,7 +1227,9 @@ export function TasksPage() {
                           }
                         }
                       }}
-                      className="rounded-card p-3 text-body focus:outline-none focus:ring-2 focus:ring-offset-1"
+                      // PRD §6.6 a11y — explicit ring color visible on both
+                      // light surface and the dark "BU GÜN" column background.
+                      className="rounded-card p-3 text-body focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--brand-action)]"
                       style={{
                         opacity: isCancelled ? 0.55 : 1,
                         textDecoration: isCancelled ? 'line-through' : undefined,
@@ -1183,8 +1250,12 @@ export function TasksPage() {
                           : undefined,
                       }}
                     >
-                      {/* PRD §REQ-TASK-01 — parent breadcrumb for subtasks (task_level > 0) */}
-                      {t.parent_task_id && parentTitleById.has(t.parent_task_id) ? (
+                      {/* PRD §REQ-TASK-01 — parent breadcrumb for subtasks
+                          (task_level > 0). When the parent is out of the
+                          current RLS scope (e.g. assigned to others), fall
+                          back to "Alt-tapşırıq" so the user still knows this
+                          card has a parent. */}
+                      {t.parent_task_id ? (
                         <div
                           className="text-meta truncate mb-1"
                           style={{
@@ -1192,9 +1263,13 @@ export function TasksPage() {
                             fontSize: 10,
                             opacity: 0.7,
                           }}
-                          title={`Ana tapşırıq: ${parentTitleById.get(t.parent_task_id) ?? ''}`}
+                          title={
+                            parentTitleById.has(t.parent_task_id)
+                              ? `Ana tapşırıq: ${parentTitleById.get(t.parent_task_id) ?? ''}`
+                              : 'Ana tapşırıq görünmür'
+                          }
                         >
-                          ↳ {parentTitleById.get(t.parent_task_id)}
+                          ↳ {parentTitleById.get(t.parent_task_id) ?? 'Alt-tapşırıq'}
                         </div>
                       ) : null}
                       <div
@@ -1553,6 +1628,11 @@ export function TasksPage() {
       {quickAddCol ? (
         <TaskCreateModal
           defaultStatus={quickAddCol}
+          // PRD §UX — pre-fill project from the active filter so the task
+          // lands where the user is looking. '__none__' is the layihəsiz
+          // sentinel; do NOT pass it as defaultProjectId (it isn't a real
+          // uuid and would FK-fail on insert).
+          defaultProjectId={projectFilter && projectFilter !== '__none__' ? projectFilter : undefined}
           onClose={() => setQuickAddCol(null)}
         />
       ) : null}
@@ -1571,6 +1651,12 @@ export function TasksPage() {
 
       {commenting ? (
         <TaskCommentsModal
+          // PRD §UX — key by taskId so switching between tasks (via the
+          // subtask back-chip / "reflect:open-task" event) fully unmounts
+          // and remounts the modal. Without this the inline-editor state
+          // (title-being-edited, draft body, etc.) bleeds from one task
+          // to the next.
+          key={commenting.id}
           taskId={commenting.id}
           taskTitle={commenting.title}
           onClose={() => setCommenting(null)}
@@ -1774,10 +1860,10 @@ function BulkArchiveConfirmModal({
 }) {
   const trapRef = useFocusTrap<HTMLDivElement>(true);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !pending) onCancel(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onCancel]);
+  }, [onCancel, pending]);
   return (
     <div
       role="dialog"
@@ -1785,7 +1871,10 @@ function BulkArchiveConfirmModal({
       aria-labelledby="bulk-archive-title"
       className="fixed inset-0 z-50 flex items-center justify-center"
       style={{ background: 'rgba(14,22,17,0.55)' }}
-      onClick={onCancel}
+      // PRD §UX — don't let click-outside dismiss while the destructive
+      // mutation is in flight; otherwise the modal closes mid-archive and
+      // the user thinks they cancelled. Esc handler honours the same guard.
+      onClick={() => { if (!pending) onCancel(); }}
     >
       <div
         ref={trapRef}
