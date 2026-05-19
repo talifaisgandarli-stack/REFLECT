@@ -239,11 +239,32 @@ export function ProjectDetailPage() {
         );
       // Create portfolio_workflows row (REQ-PROJ-04)
       await supabase.from('portfolio_workflows').insert({ project_id: id });
+      // PRD §REQ-PROJ-04 — auto-create 4 portfolio prep tasks so the team has a
+      // working checklist in the Tasks module without manual setup. Each task
+      // carries the 'portfolio' label so the Tasks page can filter to them.
+      const portfolioPrep = [
+        { title: 'Foto/render çək (portfolio üçün)' },
+        { title: 'Case study mətnini yaz (portfolio)' },
+        { title: 'Website / Behance səhifəsini yenilə (portfolio)' },
+        { title: 'Mükafat seç və müraciəti hazırla (portfolio)' },
+      ];
+      const { data: sess } = await supabase.auth.getSession();
+      const creator = sess.session?.user?.id ?? null;
+      await supabase.from('tasks').insert(
+        portfolioPrep.map((p) => ({
+          title: p.title,
+          status: 'queued',
+          project_id: id,
+          labels: ['portfolio'],
+          created_by: creator,
+        })),
+      );
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['project', id] });
       qc.invalidateQueries({ queryKey: ['projects'] });
       qc.invalidateQueries({ queryKey: ['closeout', id] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
     },
   });
 

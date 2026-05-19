@@ -84,6 +84,12 @@ export function TasksPage() {
     () => Object.fromEntries(allProfiles.map((p) => [p.id, p])),
     [allProfiles],
   );
+  // PRD §REQ-TASK-01 — parent title lookup for subtask breadcrumb on board cards
+  const parentTitleById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const t of tasks) m.set(t.id, t.title);
+    return m;
+  }, [tasks]);
   function assigneePeople(ids: string[]) {
     return ids.map((id) => ({
       id,
@@ -605,6 +611,22 @@ export function TasksPage() {
             ))}
           </select>
         ) : null}
+        {/* PRD §REQ-PROJ-04 — quick "Portfolio" chip filters to label=portfolio
+            (auto-tagged when project closeout creates prep tasks). */}
+        <button
+          type="button"
+          className="chip"
+          style={{
+            background: labelFilter === 'portfolio' ? 'var(--brand-action)' : undefined,
+            color: labelFilter === 'portfolio' ? 'var(--ink)' : undefined,
+            fontWeight: labelFilter === 'portfolio' ? 600 : 400,
+          }}
+          onClick={() => setLabelFilter(labelFilter === 'portfolio' ? null : 'portfolio')}
+          aria-pressed={labelFilter === 'portfolio'}
+          title="Portfolio prep tapşırıqları (layihə bağlanarkən avtomatik yaradılır)"
+        >
+          {labelFilter === 'portfolio' ? '✓ ' : ''}🎨 Portfolio
+        </button>
         {/* PRD §UX — compact mode hides done/cancelled columns on board view */}
         {view === 'board' ? (
           <button
@@ -906,6 +928,20 @@ export function TasksPage() {
                           : undefined,
                       }}
                     >
+                      {/* PRD §REQ-TASK-01 — parent breadcrumb for subtasks (task_level > 0) */}
+                      {t.parent_task_id && parentTitleById.has(t.parent_task_id) ? (
+                        <div
+                          className="text-meta truncate mb-1"
+                          style={{
+                            color: isToday ? 'var(--text-faint)' : 'var(--text-muted)',
+                            fontSize: 10,
+                            opacity: 0.7,
+                          }}
+                          title={`Ana tapşırıq: ${parentTitleById.get(t.parent_task_id) ?? ''}`}
+                        >
+                          ↳ {parentTitleById.get(t.parent_task_id)}
+                        </div>
+                      ) : null}
                       <div
                         className="font-medium cursor-pointer"
                         onClick={(e) => { e.stopPropagation(); setCommenting({ id: t.id, title: t.title }); }}
@@ -915,11 +951,27 @@ export function TasksPage() {
                           if (t.description) parts.push(t.description);
                           if (t.created_at) parts.push(`Yaradılıb: ${new Date(t.created_at).toLocaleDateString('az-AZ')}`);
                           if (t.priority) parts.push(`Prioritet: ${t.priority}`);
+                          if (t.parent_task_id && parentTitleById.has(t.parent_task_id)) {
+                            parts.push(`Ana: ${parentTitleById.get(t.parent_task_id)}`);
+                          }
                           return parts.length ? parts.join('\n\n') : undefined;
                         })()}
                       >
                         {/* PRD §UX — priority emoji prefix (already shown as left border in batch 72) */}
                         {t.priority === 'high' ? <span aria-hidden style={{ marginRight: 4 }}>🔴</span> : null}
+                        {/* PRD §REQ-TASK-09 — purple E badge for expertise subtasks */}
+                        {t.is_expertise_subtask ? (
+                          <span
+                            aria-hidden
+                            className="text-tiny inline-flex items-center justify-center mr-1"
+                            style={{
+                              width: 14, height: 14, borderRadius: 3,
+                              background: 'var(--brand-action)', color: 'var(--ink)',
+                              fontWeight: 700, fontSize: 9, verticalAlign: 'middle',
+                            }}
+                            title="Ekspertiza alt-tapşırığı"
+                          >E</span>
+                        ) : null}
                         {t.title}
                       </div>
                       {/* Assignee avatars — PRD §6.8 */}
