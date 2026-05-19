@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { supabase } from './supabase';
 import { useAuth } from './store';
+import { setSentryUser } from './sentry';
 import type { Profile, Role } from '@/types/db';
 
 /** Boots auth from Supabase: session + profile + role. Run once at app root. */
@@ -23,6 +24,7 @@ export function useAuthBootstrap() {
         if (!cancelled) {
           setSession(null);
           setProfile(null, null);
+          setSentryUser(null);
         }
         return;
       }
@@ -36,7 +38,12 @@ export function useAuthBootstrap() {
           .maybeSingle<Role>();
         role = data;
       }
-      if (!cancelled) setProfile(profile ?? null, role);
+      if (!cancelled) {
+        setProfile(profile ?? null, role);
+        // PRD §9.4 — attribute frontend Sentry events to the signed-in user
+        if (profile) setSentryUser({ id: profile.id, email: profile.email });
+        else setSentryUser(null);
+      }
     }
 
     supabase.auth.getSession().then(({ data }) => {
@@ -47,11 +54,27 @@ export function useAuthBootstrap() {
       else setHydrated(true);
     });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       const uid = session?.user?.id ?? null;
       setSession(uid ? { userId: uid } : null);
-      if (uid) loadProfile(uid);
-      else setProfile(null, null);
+      if (uid) {
+        loadProfile(uid);
+        // PRD §9.4 — record login events into audit_log for forensics.
+        // Only on SIGNED_IN to avoid double-counting token refreshes.
+        if (event === 'SIGNED_IN') {
+          void supabase.from('audit_log').insert({
+            actor_id: uid,
+            action: 'login',
+            resource: 'auth',
+            ip: null,
+            user_agent: navigator.userAgent,
+          });
+        }
+      }
+      else {
+        setProfile(null, null);
+        setSentryUser(null);
+      }
     });
 
     return () => {
@@ -73,7 +96,12 @@ export async function signInWithPassword(email: string, password: string) {
     if (res.status === 429) {
       const body = await res.json().catch(() => ({}));
       const msg = (body as { error?: string }).error ?? 'Çox sayda cəhd. 15 dəqiqə gözləyin.';
-      return { data: { user: null, session: null }, error: { message: msg } as never };
+      // Forward Retry-After (seconds) so the UI can render a live countdown.
+      const retryAfter = Number(res.headers.get('retry-after')) || 900;
+      return {
+        data: { user: null, session: null },
+        error: { message: msg, status: 429, retryAfterSeconds: retryAfter } as never,
+      };
     }
   } catch {
     // network error → fail-open, proceed to Supabase

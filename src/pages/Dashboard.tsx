@@ -7,7 +7,7 @@
  * REQ-DASH-08: finance widget removed.
  * US-DASH-05: team workload (open task count per member, green/amber/red).
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
 import { Avatar } from '@/components/Avatar';
@@ -19,8 +19,10 @@ import {
   useTeamPresence,
   useUpcomingMeetings,
 } from '@/lib/hooks';
-import { useAuth } from '@/lib/store';
+import { useAuth, useUI } from '@/lib/store';
 import { formatDate, relativeTime, taskHealth } from '@/lib/format';
+import { downloadCsv } from '@/lib/csv';
+import { useRecentEntries } from '@/lib/useRecentlyViewed';
 import { FocusWidget } from '@/components/FocusWidget';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -98,16 +100,68 @@ function workloadColor(count: number): string {
   return 'var(--error)';
 }
 
+// PRD §UX — time-of-day greeting (Asia/Baku) so the dashboard feels alive.
+// 05–11 sabahın xeyir · 11–17 salam · 17–22 axşamın xeyir · 22–05 gecən xeyir
+function greetingFor(now: Date): string {
+  const bakuHour = Number(
+    new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hour12: false, timeZone: 'Asia/Baku' })
+      .format(now),
+  );
+  if (bakuHour >= 5 && bakuHour < 11) return 'Sabahın xeyir';
+  if (bakuHour >= 11 && bakuHour < 17) return 'Salam';
+  if (bakuHour >= 17 && bakuHour < 22) return 'Axşamın xeyir';
+  return 'Gecən xeyir';
+}
+
 export function DashboardPage() {
   const { profile, isAdmin } = useAuth();
+  const { openTaskCreate } = useUI();
+  // PRD §UX — floating ↑ button appears after the user scrolls past the hero
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setShowScrollTop(window.scrollY > 600);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // PRD §UX — re-render every 60s so the "Növbəti görüş: 12 dəq sonra" chip stays
+  // honest without manual refresh. Bound to a ref so setter doesn't re-create handlers.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setTick((n) => n + 1), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
   const { data: tasks = [] } = useTasks(profile?.id ? { assigneeId: profile.id } : undefined);
   const { data: presence = [] } = useTeamPresence();
-  const { data: activity = [] } = useActivityFeed(50);
+  // REQ-DASH-02 / PRD §9.1 — admin sees firm-wide; users see only their own
+  // (the activity_log RLS policy is permissive, so the gating must happen here).
+  // PRD §6.1 — paginated activity feed; user can "Daha çox" if the page is full
+  const [activityLimit, setActivityLimit] = useState(50);
+  const { data: activity = [] } = useActivityFeed(activityLimit, isAdmin ? 'firm' : profile?.id ?? 'firm');
   const { data: announcements = [] } = useRecentAnnouncements(3);
   const { data: meetings = [] } = useUpcomingMeetings(7);
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all');
   // US-DASH-02 — "Bu gün" / "Bu həftə" tab toggle (user dashboard only)
   const [taskTab, setTaskTab] = useState<'today' | 'week'>('today');
+
+  // PRD §MODULE 9.2 — surface user's career level in the dashboard greeting
+  // so they always have visibility into their growth track without navigating.
+  // career_level_id lives on profiles (migration 0021) but isn't in the hand-written
+  // Profile type yet; read it via a narrow cast.
+  const careerLevelId = (profile as { career_level_id?: string | null } | null)?.career_level_id ?? null;
+  const { data: careerLevel } = useQuery({
+    queryKey: ['career-level-current', careerLevelId],
+    enabled: !!careerLevelId,
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('career_levels')
+        .select('name, level_index')
+        .eq('id', careerLevelId!)
+        .maybeSingle();
+      return data as { name: string; level_index: number } | null;
+    },
+  });
 
   // REQ-DASH-02 — personal OKR progress (non-admin only)
   const { data: personalOkrs = [] } = useQuery({
@@ -200,6 +254,9 @@ export function DashboardPage() {
     });
   const overdue = tasks.filter((t) => taskHealth(t.deadline) === 'red');
   const onlineCount = presence.filter((p) => p.status === 'online').length;
+  // REQ-PRESENCE — show breakdown (online/away/offline) so admin sees full picture
+  const awayCount = presence.filter((p) => p.status === 'away').length;
+  const offlineCount = presence.filter((p) => p.status === 'offline').length;
 
   const filteredActivity = useMemo(() => {
     if (activityFilter === 'all') return activity;
@@ -210,12 +267,29 @@ export function DashboardPage() {
     <>
       <PageHead
         meta={isAdmin ? 'Admin görünüşü' : 'Sizin görünüşünüz'}
-        title={`Salam, ${profile?.full_name?.split(' ')[0] ?? 'arxitekt'}`}
+        title={`${greetingFor(new Date())}, ${profile?.full_name?.split(' ')[0] ?? 'arxitekt'}`}
         actions={
           /* REQ-DASH-01 — MIRAI quick-launch; nav group removed per PRD §4 */
-          <Link to="/mirai" className="btn-primary" style={{ fontSize: 13 }}>
-            ✦ MIRAI
-          </Link>
+          <div className="flex items-center gap-2">
+            {careerLevel ? (
+              <Link
+                to="/şirkət/karyera"
+                className="chip"
+                style={{
+                  background: 'var(--brand-glow-sm)',
+                  color: 'var(--brand-text)',
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+                title={`Karyera səviyyəsi: L${careerLevel.level_index}`}
+              >
+                L{careerLevel.level_index} · {careerLevel.name}
+              </Link>
+            ) : null}
+            <Link to="/mirai" className="btn-primary" style={{ fontSize: 13 }}>
+              ✦ MIRAI
+            </Link>
+          </div>
         }
       />
 
@@ -236,6 +310,17 @@ export function DashboardPage() {
           <p className="text-body mt-2 max-w-md" style={{ color: 'var(--ink)' }}>
             Fokuslan. Bir tapşırıq, 40 dəqiqə.
           </p>
+          {/* PRD §UX — empty state CTA so the card isn't a dead end */}
+          {!today[0] ? (
+            <button
+              type="button"
+              className="btn-primary mt-4"
+              style={{ background: 'var(--ink)', color: 'var(--brand-action)' }}
+              onClick={() => openTaskCreate()}
+            >
+              + Bu günə tapşırıq əlavə et
+            </button>
+          ) : null}
         </section>
 
         {/* Focus widget — REQ-FOCUS-06 */}
@@ -374,11 +459,38 @@ export function DashboardPage() {
           </section>
         ) : null}
 
+        {/* PRD §UX — favorited projects + recently viewed (local) */}
+        <FavoriteProjectsWidget />
+        <RecentlyViewedWidget />
+
         {/* Activity feed — REQ-DASH-03 filter pills */}
         <section className="lg:col-span-5 card">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-h3">Yenilənmiş</h3>
+            {/* PRD §UX — export filtered activity to CSV */}
+            <button
+              type="button"
+              className="chip"
+              style={{ color: 'var(--text-muted)', fontSize: 11 }}
+              disabled={filteredActivity.length === 0}
+              onClick={() => {
+                downloadCsv(
+                  `activity-${new Date().toISOString().slice(0, 10)}`,
+                  ['Vaxt', 'Kim', 'Action', 'Entity'],
+                  filteredActivity.map((a) => ({
+                    Vaxt: new Date(a.created_at).toISOString(),
+                    Kim: a.profiles?.full_name ?? 'Sistem',
+                    Action: a.action,
+                    Entity: a.entity_type,
+                  })),
+                );
+              }}
+            >
+              ↓ CSV
+            </button>
           </div>
+          {/* Activity heatmap — last 12 weeks of personal activity, GitHub-style */}
+          <ActivityHeatmap activity={activity} userId={isAdmin ? null : profile?.id ?? null} />
           <div className="flex flex-wrap gap-1.5 mb-3">
             {ACTIVITY_FILTERS.map((f) => (
               <button
@@ -405,8 +517,16 @@ export function DashboardPage() {
               {filteredActivity.map((a) => {
                 const actor = a.profiles;
                 const name = actor?.full_name ?? 'Sistem';
-                return (
-                  <li key={a.id} className="flex items-start gap-2">
+                // PRD §UX — wrap row in a Link when we know the destination
+                const href = (() => {
+                  if (a.entity_type === 'task') return '/tapşırıqlar';
+                  if (a.entity_type === 'project' && a.entity_id) return `/layihelər/${a.entity_id}`;
+                  if (a.entity_type === 'client') return '/müştərilər';
+                  if (a.entity_type === 'announcement') return '/komanda/elanlar';
+                  return null;
+                })();
+                const inner = (
+                  <>
                     <span className="shrink-0 mt-0.5">
                       <Avatar name={name} size={28} />
                     </span>
@@ -421,9 +541,36 @@ export function DashboardPage() {
                         {relativeTime(a.created_at)}
                       </div>
                     </div>
+                  </>
+                );
+                return (
+                  <li key={a.id}>
+                    {href ? (
+                      <Link
+                        to={href}
+                        className="flex items-start gap-2 -mx-2 px-2 py-1 rounded-btn hover:bg-surface-mist transition-colors"
+                      >
+                        {inner}
+                      </Link>
+                    ) : (
+                      <div className="flex items-start gap-2">{inner}</div>
+                    )}
                   </li>
                 );
               })}
+              {/* PRD §6.1 — load-more if the page is full (likely more rows behind) */}
+              {activity.length >= activityLimit ? (
+                <li className="pt-2 text-center">
+                  <button
+                    type="button"
+                    className="chip"
+                    style={{ fontSize: 11, color: 'var(--text-muted)' }}
+                    onClick={() => setActivityLimit((n) => n + 50)}
+                  >
+                    Daha çox göstər
+                  </button>
+                </li>
+              ) : null}
             </ul>
           )}
         </section>
@@ -432,8 +579,14 @@ export function DashboardPage() {
         <section className="lg:col-span-3 card">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-h3">Komanda</h3>
-            <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
-              {onlineCount} onlayn
+            <span
+              className="text-meta inline-flex items-center gap-2"
+              style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}
+              title={`${onlineCount} onlayn · ${awayCount} uzaqda · ${offlineCount} oflayn`}
+            >
+              <span style={{ color: 'var(--presence-online)' }}>● {onlineCount}</span>
+              {awayCount > 0 ? <span style={{ color: 'var(--presence-away)' }}>● {awayCount}</span> : null}
+              <span style={{ color: 'var(--presence-offline)', opacity: 0.7 }}>● {offlineCount}</span>
             </span>
           </div>
           {presence.length === 0 ? (
@@ -521,9 +674,33 @@ export function DashboardPage() {
 
         {/* Upcoming meetings */}
         <section className={`${isAdmin ? 'lg:col-span-4' : 'lg:col-span-6'} card`}>
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-3 gap-2">
             <h3 className="text-h3">Yaxınlaşan görüşlər</h3>
-            <a href="/komanda/təqvim" className="text-meta" style={{ color: 'var(--brand-text)' }}>
+            {/* PRD §UX — surface "minutes-to-next-meeting" so user sees urgency
+                at a glance without parsing timestamps. Only shows for meetings
+                ≤120 min away; otherwise hidden to avoid clutter. */}
+            {(() => {
+              const next = meetings[0];
+              if (!next) return null;
+              const mins = Math.round((new Date(next.starts_at).getTime() - Date.now()) / 60_000);
+              if (mins < 0 || mins > 120) return null;
+              return (
+                <span
+                  className="chip"
+                  style={{
+                    background: mins <= 15 ? 'var(--error-deep, #b3261e)' : 'var(--brand-action)',
+                    color: mins <= 15 ? 'white' : 'var(--ink)',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                  title={`Növbəti: ${next.title}`}
+                >
+                  {mins <= 0 ? 'İndi' : `${mins} dəq sonra`}
+                </span>
+              );
+            })()}
+            <a href="/komanda/təqvim" className="text-meta ml-auto" style={{ color: 'var(--brand-text)' }}>
               Təqvimə bax →
             </a>
           </div>
@@ -572,9 +749,25 @@ export function DashboardPage() {
             </div>
           ) : (
             <ul className="divide-y" style={{ borderColor: 'var(--line-soft)' }}>
-              {announcements.map((a) => (
+              {announcements.map((a) => {
+                // PRD §8.6 — surface unread state inline so user sees what's new
+                // without opening the announcements page
+                const isUnread = !a.read_by || !(a.read_by as Record<string, boolean>)[profile?.id ?? ''];
+                return (
                 <li key={a.id} className="py-2">
-                  <div className="text-body font-medium truncate">{a.title}</div>
+                  <div className="text-body font-medium truncate flex items-center gap-2">
+                    {isUnread ? (
+                      <span
+                        aria-label="oxunmamış"
+                        style={{
+                          display: 'inline-block',
+                          width: 6, height: 6, borderRadius: 999,
+                          background: 'var(--brand-action)', flexShrink: 0,
+                        }}
+                      />
+                    ) : null}
+                    {a.title}
+                  </div>
                   <div className="text-meta flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
                     {a.category ? <span>{a.category}</span> : null}
                     <span>·</span>
@@ -594,7 +787,8 @@ export function DashboardPage() {
                     ) : null}
                   </div>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
         </section>
@@ -629,6 +823,28 @@ export function DashboardPage() {
           </section>
         ) : null}
       </div>
+      {/* PRD §UX — floating scroll-to-top when long-scrolled */}
+      {showScrollTop ? (
+        <button
+          type="button"
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          aria-label="Yuxarıya qayıt"
+          title="Yuxarıya qayıt"
+          className="fixed bottom-6 right-6 rounded-full shadow-lg"
+          style={{
+            width: 44,
+            height: 44,
+            background: 'var(--ink)',
+            color: 'var(--brand-action)',
+            fontSize: 20,
+            zIndex: 30,
+            border: 'none',
+            cursor: 'pointer',
+          }}
+        >
+          ↑
+        </button>
+      ) : null}
     </>
   );
 }
@@ -647,5 +863,178 @@ function Kpi({ label, value, red }: { label: string; value: number; red?: boolea
         {value}
       </span>
     </div>
+  );
+}
+
+// PRD §6.1 — last-12-weeks activity heatmap (GitHub-style). Counts the
+// passed-in activity entries by day. When `userId` is null the heatmap shows
+// firm-wide activity (admin); otherwise only that user's events.
+function ActivityHeatmap({
+  activity,
+  userId,
+}: {
+  activity: Array<{ created_at: string; user_id?: string | null }>;
+  userId: string | null;
+}) {
+  // Bucket by Asia/Baku date
+  const counts = new Map<string, number>();
+  for (const a of activity) {
+    if (userId && a.user_id !== userId) continue;
+    const key = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baku' }).format(new Date(a.created_at));
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+
+  // Build 12-week × 7-day grid ending today (right column = current week)
+  const WEEKS = 12;
+  const today = new Date();
+  // Align to last Sunday so columns are weeks
+  const cells: Array<{ key: string; date: Date; count: number; dim: boolean }> = [];
+  // Start from (WEEKS-1) weeks back at Monday-of-that-week
+  const totalDays = WEEKS * 7;
+  for (let i = totalDays - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const key = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baku' }).format(d);
+    cells.push({ key, date: d, count: counts.get(key) ?? 0, dim: false });
+  }
+
+  // Determine intensity buckets relative to max count
+  const max = Math.max(1, ...cells.map((c) => c.count));
+  function intensity(n: number): string {
+    if (n === 0) return 'rgba(173, 251, 73, 0.08)';
+    const r = n / max;
+    if (r < 0.25) return 'rgba(173, 251, 73, 0.3)';
+    if (r < 0.5) return 'rgba(173, 251, 73, 0.55)';
+    if (r < 0.75) return 'rgba(173, 251, 73, 0.8)';
+    return 'rgba(173, 251, 73, 1)';
+  }
+
+  // Render as 7 rows × WEEKS columns. Day-of-week of cells[0] dictates row 0.
+  const firstDow = cells[0].date.getDay(); // 0=Sun..6=Sat
+  // Shift so Monday is row 0
+  const dowToRow = (dow: number) => (dow + 6) % 7;
+  const rows: Array<Array<{ key: string; count: number } | null>> = Array.from({ length: 7 }, () => Array(WEEKS).fill(null));
+  let col = 0;
+  let row = dowToRow(firstDow);
+  for (const c of cells) {
+    rows[row][col] = { key: c.key, count: c.count };
+    row++;
+    if (row >= 7) { row = 0; col++; }
+  }
+
+  const totalEvents = cells.reduce((s, c) => s + c.count, 0);
+
+  return (
+    <div className="mb-3">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+          Son 12 həftə · {totalEvents} aktivlik
+        </span>
+      </div>
+      <div className="flex flex-col gap-0.5">
+        {rows.map((rowCells, ri) => (
+          <div key={ri} className="flex gap-0.5">
+            {rowCells.map((c, ci) => (
+              <div
+                key={`${ri}-${ci}`}
+                title={c ? `${c.key}: ${c.count} aktivlik` : undefined}
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: 2,
+                  background: c ? intensity(c.count) : 'transparent',
+                }}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// PRD §UX — user's starred projects (migration 0049) as a Dashboard widget
+function FavoriteProjectsWidget() {
+  const { profile } = useAuth();
+  const favs = useQuery({
+    queryKey: ['fav-projects-widget', profile?.id],
+    enabled: !!profile?.id,
+    queryFn: async () => {
+      const { data: favRows } = await supabase
+        .from('project_favorites')
+        .select('project_id')
+        .eq('user_id', profile!.id);
+      const ids = (favRows ?? []).map((r) => r.project_id as string).slice(0, 6);
+      if (ids.length === 0) return [];
+      const { data: projectRows } = await supabase
+        .from('projects')
+        .select('id, name, status, deadline')
+        .in('id', ids);
+      return (projectRows ?? []) as Array<{ id: string; name: string; status: string; deadline: string | null }>;
+    },
+  });
+  const items = favs.data ?? [];
+  if (items.length === 0) return null;
+  return (
+    <section className="lg:col-span-12 card">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-h3">★ Sevimli layihələr</h3>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+        {items.map((p) => (
+          <a
+            key={p.id}
+            href={`/layihelər/${p.id}`}
+            className="rounded-card p-3 hover:bg-surface-mist transition-colors"
+            style={{ border: '1px solid var(--line)' }}
+          >
+            <div className="text-body font-medium truncate">{p.name}</div>
+            <div className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+              {p.status}{p.deadline ? ` · ${p.deadline}` : ''}
+            </div>
+          </a>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// PRD §UX — last visited entities (local-only, no server query)
+function RecentlyViewedWidget() {
+  const recents = useRecentEntries();
+  if (recents.length === 0) return null;
+  return (
+    <section className="lg:col-span-12 card">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-h3">⏱ Yaxınlarda baxılıb</h3>
+        <button
+          type="button"
+          className="chip"
+          style={{ color: 'var(--text-muted)', fontSize: 11 }}
+          onClick={() => {
+            try { localStorage.removeItem('reflect.recently-viewed'); } catch { /* ignore */ }
+            window.dispatchEvent(new CustomEvent('reflect:recent-changed'));
+          }}
+          title="Tarixçəni təmizlə"
+        >
+          Təmizlə
+        </button>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+        {recents.slice(0, 6).map((r) => (
+          <a
+            key={`${r.type}-${r.id}`}
+            href={r.href}
+            className="rounded-card p-3 hover:bg-surface-mist transition-colors"
+            style={{ border: '1px solid var(--line)' }}
+          >
+            <div className="text-meta uppercase tracking-wider" style={{ color: 'var(--text-muted)', fontSize: 10 }}>
+              {r.type === 'project' ? 'Layihə' : r.type === 'task' ? 'Tapşırıq' : 'Müştəri'}
+            </div>
+            <div className="text-body font-medium truncate">{r.title}</div>
+          </a>
+        ))}
+      </div>
+    </section>
   );
 }

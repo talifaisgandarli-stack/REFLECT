@@ -16,7 +16,7 @@ const QUICK = [
 ];
 
 type Hit = {
-  type: 'task' | 'project' | 'client' | 'announcement' | 'profile';
+  type: 'task' | 'project' | 'client' | 'announcement' | 'profile' | 'document';
   id: string;
   title: string;
   subtitle?: string;
@@ -29,14 +29,59 @@ const TYPE_LABEL: Record<Hit['type'], string> = {
   client: 'Müştəri',
   announcement: 'Elan',
   profile: 'Heyət',
+  document: 'Sənəd',
 };
 
+// PRD §UX — entity-type icons in CmdK results
+const TYPE_ICON: Record<Hit['type'], string> = {
+  task: '☑',
+  project: '📁',
+  client: '🤝',
+  announcement: '📢',
+  profile: '👤',
+  document: '📄',
+};
+
+// PRD §6.2 — recent entity hits cached in localStorage; surfaced as a top
+// section when the search box is empty so frequently-revisited items are
+// one keystroke away.
+const RECENTS_KEY = 'reflect.cmdk.recents';
+const RECENTS_MAX = 10;
+const RECENTS_DISPLAY = 5;
+
+function loadRecents(): Hit[] {
+  try {
+    const raw = localStorage.getItem(RECENTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Hit[];
+    return Array.isArray(parsed) ? parsed.slice(0, RECENTS_MAX) : [];
+  } catch {
+    return [];
+  }
+}
+
+function pushRecent(hit: Hit) {
+  try {
+    const cur = loadRecents();
+    const key = `${hit.type}:${hit.id}`;
+    const filtered = cur.filter((h) => `${h.type}:${h.id}` !== key);
+    const next = [hit, ...filtered].slice(0, RECENTS_MAX);
+    localStorage.setItem(RECENTS_KEY, JSON.stringify(next));
+  } catch {
+    // localStorage disabled or full — ignore, feature degrades gracefully
+  }
+}
+
+type EntityFilter = 'all' | Hit['type'];
+
 export function CmdK() {
-  const { cmdkOpen, setCmdK } = useUI();
+  const { cmdkOpen, setCmdK, openTaskCreate } = useUI();
   const [q, setQ] = useState('');
   const [serverHits, setServerHits] = useState<Hit[]>([]);
+  const [recents, setRecents] = useState<Hit[]>([]);
   const [loading, setLoading] = useState(false);
   const [cursor, setCursor] = useState(0);
+  const [entityFilter, setEntityFilter] = useState<EntityFilter>('all');
   const nav = useNavigate();
 
   useEffect(() => {
@@ -44,6 +89,9 @@ export function CmdK() {
       setQ('');
       setServerHits([]);
       setCursor(0);
+    } else {
+      // Refresh recents each time the palette opens (cheap localStorage read)
+      setRecents(loadRecents());
     }
   }, [cmdkOpen]);
 
@@ -88,6 +136,15 @@ export function CmdK() {
     };
   }, [q, cmdkOpen]);
 
+  // PRD §6.2 — per-type result counts so chips signal where matches live
+  const typeCounts = useMemo(() => {
+    const counts: Record<Hit['type'], number> = {
+      task: 0, project: 0, client: 0, announcement: 0, profile: 0, document: 0,
+    };
+    for (const h of serverHits) counts[h.type] += 1;
+    return counts;
+  }, [serverHits]);
+
   const navHits = useMemo(() => {
     const ql = q.toLowerCase().trim();
     if (!ql) return QUICK;
@@ -96,20 +153,39 @@ export function CmdK() {
 
   type ListItem =
     | { kind: 'nav'; label: string; to: string }
-    | { kind: 'hit'; hit: Hit };
+    | { kind: 'hit'; hit: Hit }
+    | { kind: 'recent'; hit: Hit };
 
   const items: ListItem[] = useMemo(() => {
     const list: ListItem[] = [];
-    for (const n of navHits) list.push({ kind: 'nav', label: n.label, to: n.to });
-    for (const h of serverHits) list.push({ kind: 'hit', hit: h });
+    // Recents shown only when the search box is empty (no query)
+    if (!q.trim() && recents.length > 0) {
+      const filtRec = entityFilter === 'all'
+        ? recents
+        : recents.filter((r) => r.type === entityFilter);
+      for (const r of filtRec.slice(0, RECENTS_DISPLAY)) {
+        list.push({ kind: 'recent', hit: r });
+      }
+    }
+    // Nav items only when no entity filter (otherwise we want pure entity results)
+    if (entityFilter === 'all') {
+      for (const n of navHits) list.push({ kind: 'nav', label: n.label, to: n.to });
+    }
+    const filtered = entityFilter === 'all' ? serverHits : serverHits.filter((h) => h.type === entityFilter);
+    for (const h of filtered) list.push({ kind: 'hit', hit: h });
     return list;
-  }, [navHits, serverHits]);
+  }, [navHits, serverHits, recents, q, entityFilter]);
 
   if (!cmdkOpen) return null;
 
   function activate(item: ListItem) {
-    const to = item.kind === 'nav' ? item.to : item.hit.href;
-    nav(to);
+    if (item.kind === 'nav') {
+      nav(item.to);
+    } else {
+      // Record entity hits + recents in the recents list
+      pushRecent(item.hit);
+      nav(item.hit.href);
+    }
     setCmdK(false);
   }
 
@@ -126,6 +202,37 @@ export function CmdK() {
         onClick={(e) => e.stopPropagation()}
         style={{ borderRadius: 14 }}
       >
+        {/* PRD §6.2 — entity type filter chips */}
+        <div
+          className="flex gap-1 px-3 py-2 flex-wrap"
+          style={{ borderBottom: '1px solid var(--line-soft)' }}
+        >
+          {(['all', 'task', 'project', 'client', 'document', 'announcement', 'profile'] as const).map((f) => {
+            const count = f === 'all' ? serverHits.length : typeCounts[f];
+            const dim = q.trim().length >= 2 && f !== 'all' && count === 0;
+            return (
+              <button
+                key={f}
+                type="button"
+                className="chip"
+                style={{
+                  background: entityFilter === f ? 'var(--brand-action)' : 'var(--surface-mist)',
+                  color: entityFilter === f ? 'var(--ink)' : 'var(--text-muted)',
+                  fontSize: 11,
+                  opacity: dim ? 0.4 : 1,
+                }}
+                onClick={(e) => { e.preventDefault(); setEntityFilter(f); setCursor(0); }}
+              >
+                {f === 'all' ? 'Hamısı' : TYPE_LABEL[f]}
+                {q.trim().length >= 2 ? (
+                  <span style={{ marginLeft: 4, fontVariantNumeric: 'tabular-nums', opacity: 0.7 }}>
+                    {count}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
         <input
           autoFocus
           className="input border-0 rounded-none"
@@ -149,6 +256,14 @@ export function CmdK() {
               e.preventDefault();
               activate(items[cursor]);
             }
+            // PRD §6.3 — Alt+1..9 jumps straight to the Nth visible item
+            if (e.altKey && /^[1-9]$/.test(e.key)) {
+              const idx = Number(e.key) - 1;
+              if (items[idx]) {
+                e.preventDefault();
+                activate(items[idx]);
+              }
+            }
           }}
         />
         <ul
@@ -166,8 +281,13 @@ export function CmdK() {
           {items.map((it, idx) => {
             const active = idx === cursor;
             const label = it.kind === 'nav' ? it.label : it.hit.title;
-            const subtitle = it.kind === 'hit' ? it.hit.subtitle : undefined;
-            const tag = it.kind === 'nav' ? 'Naviqasiya' : TYPE_LABEL[it.hit.type];
+            const subtitle = it.kind === 'hit' || it.kind === 'recent' ? it.hit.subtitle : undefined;
+            const tag =
+              it.kind === 'nav'
+                ? 'Naviqasiya'
+                : it.kind === 'recent'
+                ? `Yaxınlarda · ${TYPE_LABEL[it.hit.type]}`
+                : TYPE_LABEL[it.hit.type];
             return (
               <li key={`${it.kind}-${idx}`}>
                 <button
@@ -177,6 +297,14 @@ export function CmdK() {
                   onMouseEnter={() => setCursor(idx)}
                   onClick={() => activate(it)}
                 >
+                  {/* PRD §UX — entity icon */}
+                  {it.kind === 'hit' || it.kind === 'recent' ? (
+                    <span aria-hidden style={{ fontSize: 14, opacity: 0.7 }}>
+                      {TYPE_ICON[it.hit.type]}
+                    </span>
+                  ) : (
+                    <span aria-hidden style={{ fontSize: 14, opacity: 0.5 }}>→</span>
+                  )}
                   <div className="flex-1 min-w-0">
                     <div className="text-body truncate" style={{ color: 'var(--text)' }}>
                       {label}
@@ -205,11 +333,87 @@ export function CmdK() {
               className="px-4 py-6 text-meta text-center"
               style={{ color: 'var(--text-muted)' }}
             >
-              Heç nə tapılmadı
+              <div className="mb-2">Heç nə tapılmadı</div>
+              {/* PRD §UX — useful quick-actions so an empty search isn't a dead end */}
+              <div className="flex items-center justify-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  className="chip"
+                  style={{ background: 'var(--brand-action)', color: 'var(--ink)', fontSize: 11, fontWeight: 600 }}
+                  onClick={() => { openTaskCreate(); setCmdK(false); }}
+                >
+                  + Yeni tapşırıq
+                </button>
+                <button
+                  type="button"
+                  className="chip"
+                  style={{ background: 'var(--surface-mist)', color: 'var(--text)', fontSize: 11 }}
+                  onClick={() => { nav('/layihelər'); setCmdK(false); }}
+                >
+                  + Yeni layihə
+                </button>
+                <button
+                  type="button"
+                  className="chip"
+                  style={{ background: 'var(--surface-mist)', color: 'var(--text)', fontSize: 11 }}
+                  onClick={() => { nav('/mirai'); setCmdK(false); }}
+                >
+                  ✦ MIRAI
+                </button>
+              </div>
             </li>
           ) : null}
         </ul>
+        {/* PRD §6.3 — keyboard hint footer */}
+        <div
+          className="px-3 py-2 text-tiny flex items-center justify-between"
+          style={{
+            borderTop: '1px solid var(--line-soft)',
+            color: 'var(--text-muted)',
+            fontSize: 11,
+            background: 'var(--surface-mist)',
+          }}
+        >
+          <span className="flex items-center gap-2">
+            <KbdHint label="↑↓" />
+            <span>naviqasiya</span>
+          </span>
+          <span className="flex items-center gap-2">
+            <KbdHint label="↵" />
+            <span>aç</span>
+          </span>
+          {/* PRD §6.3 — Alt+1..9 numeric quick-activate from batch 46 */}
+          <span className="flex items-center gap-2 hidden sm:inline-flex">
+            <KbdHint label="Alt+1-9" />
+            <span>sürətli seç</span>
+          </span>
+          <span className="flex items-center gap-2">
+            <KbdHint label="Esc" />
+            <span>bağla</span>
+          </span>
+        </div>
       </div>
     </div>
+  );
+}
+
+function KbdHint({ label }: { label: string }) {
+  return (
+    <kbd
+      style={{
+        fontFamily: 'inherit',
+        fontSize: 10,
+        background: 'rgba(14,22,17,0.06)',
+        color: 'var(--text)',
+        borderRadius: 3,
+        padding: '1px 5px',
+        border: '1px solid var(--line)',
+        minWidth: 18,
+        textAlign: 'center',
+        display: 'inline-block',
+      }}
+    >
+      {label}
+    </kbd>
   );
 }

@@ -80,14 +80,35 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       ).length
     : 0;
 
-  // Inject unread badge into Elanlar nav item at runtime
+  // PRD §UX — surface user's open task count in the sidebar so they see workload
+  // at a glance from any page. RLS scopes this to assignee_ids ∋ self for non-admin.
+  const { data: openTasksCount = 0 } = useQuery({
+    queryKey: ['sidebar-open-tasks', profile?.id],
+    enabled: !!profile?.id,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { count } = await supabase
+        .from('tasks')
+        .select('id', { count: 'exact', head: true })
+        .contains('assignee_ids', [profile!.id])
+        .is('archived_at', null)
+        .not('status', 'in', '("done","cancelled")');
+      return count ?? 0;
+    },
+  });
+
+  // Inject runtime badges into matching nav items
   const NAV_WITH_BADGE: NavGroup[] = NAV.map((group) => ({
     ...group,
-    items: group.items.map((item) =>
-      item.to === '/komanda/elanlar' && unreadCount > 0
-        ? { ...item, badge: unreadCount }
-        : item,
-    ),
+    items: group.items.map((item) => {
+      if (item.to === '/komanda/elanlar' && unreadCount > 0) {
+        return { ...item, badge: unreadCount };
+      }
+      if (item.to === '/tapşırıqlar' && openTasksCount > 0) {
+        return { ...item, badge: openTasksCount };
+      }
+      return item;
+    }),
   }));
 
   return (
@@ -117,7 +138,16 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
                   onClick={onNavigate}
                   className={({ isActive }) => `sb-item mx-2 ${isActive ? 'active' : ''}`}
                 >
-                  <span className="flex items-center justify-between gap-2 w-full">
+                  <span
+                    className="flex items-center justify-between gap-2 w-full"
+                    title={(() => {
+                      // PRD §UX — explain what each badge means on hover
+                      if (!item.badge) return undefined;
+                      if (item.to === '/komanda/elanlar') return `${item.badge} oxunmamış elan`;
+                      if (item.to === '/tapşırıqlar') return `${item.badge} açıq tapşırığınız`;
+                      return `${item.badge}`;
+                    })()}
+                  >
                     {item.label}
                     {item.badge ? (
                       <span
@@ -131,7 +161,11 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
                           fontSize: 10,
                           lineHeight: 1,
                         }}
-                        aria-label={`${item.badge} oxunmamış elan`}
+                        aria-label={
+                          item.to === '/tapşırıqlar'
+                            ? `${item.badge} açıq tapşırığınız`
+                            : `${item.badge} oxunmamış elan`
+                        }
                       >
                         {item.badge > 99 ? '99+' : item.badge}
                       </span>
@@ -153,11 +187,19 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       </nav>
 
       <div className="p-4 flex items-center gap-3 border-t border-white/5">
-        <Mascot size={40} />
+        <span title="Bu Reflect-in Mindaro adlı buqalemonudur. Klik et :)">
+          <Mascot size={40} />
+        </span>
         <div className="flex-1 min-w-0">
-          <div className="text-ui truncate" style={{ color: 'var(--canvas)' }}>
+          {/* PRD §UX — name links to /profile so the bottom of the nav is usable */}
+          <NavLink
+            to="/profil"
+            onClick={onNavigate}
+            className="text-ui truncate block hover:underline"
+            style={{ color: 'var(--canvas)' }}
+          >
             {profile?.full_name ?? profile?.email ?? '—'}
-          </div>
+          </NavLink>
           <button
             type="button"
             onClick={() => signOut()}
@@ -194,10 +236,11 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Desktop: persistent rail */}
+      {/* Desktop: persistent rail — PRD §6.6 a11y landmark */}
       <aside
         className="m-5 w-60 shrink-0 hidden lg:flex flex-col rounded-capsule sticky top-5 self-start max-h-[calc(100vh-2.5rem)]"
         style={{ background: 'var(--ink)' }}
+        aria-label="Əsas naviqasiya"
       >
         <SidebarBody />
       </aside>

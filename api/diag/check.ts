@@ -8,10 +8,11 @@
  * GET /api/diag/check  with Authorization: Bearer <token> → full diagnostics
  */
 import { admin, errorResponse, jsonResponse } from '../_lib/auth';
+import { withSentry } from '../_lib/sentry';
 
 export const config = { runtime: 'edge' };
 
-export default async function handler(req: Request) {
+async function handler(req: Request) {
   try {
     const auth = req.headers.get('authorization') ?? '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
@@ -91,3 +92,5 @@ export default async function handler(req: Request) {
     return errorResponse(e);
   }
 }
+
+export default withSentry(handler, 'diag/check');

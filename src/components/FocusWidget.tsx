@@ -4,7 +4,7 @@
  * PRD:796 — ambient sounds (white/pink/brown noise via Web Audio API).
  * PRD:796 — multi-device resume: detects last active session on load.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Mascot } from './Mascot';
 import { supabase } from '@/lib/supabase';
@@ -128,7 +128,16 @@ export function FocusWidget({ className = '' }: { className?: string }) {
   const sessionStartRef = useRef<string | null>(null);
   const sessionStageRef = useRef<number>(1);
   const [resumeDismissed, setResumeDismissed] = useState(false);
+  // REQ-FOCUS-06 — "Click expands to full-screen focus mode"
+  const [fullscreen, setFullscreen] = useState(false);
   const { sound, switchSound } = useAmbientSound();
+
+  useEffect(() => {
+    if (!fullscreen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setFullscreen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [fullscreen]);
 
   // PRD:796 — multi-device: detect last unsynced session from cloud
   const lastSession = useQuery({
@@ -144,6 +153,25 @@ export function FocusWidget({ className = '' }: { className?: string }) {
         .limit(1)
         .maybeSingle();
       return data;
+    },
+  });
+
+  // PRD §UX — today's focus session count (Asia/Baku midnight cutoff)
+  const todayCount = useQuery({
+    queryKey: ['focus-today-count', profile?.id],
+    enabled: !!profile?.id,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const now = new Date();
+      const local = new Date(now.getTime() + 4 * 3_600_000);
+      local.setUTCHours(0, 0, 0, 0);
+      const since = new Date(local.getTime() - 4 * 3_600_000).toISOString();
+      const { count } = await supabase
+        .from('focus_sessions')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', profile!.id)
+        .gte('started_at', since);
+      return count ?? 0;
     },
   });
 
@@ -248,8 +276,40 @@ export function FocusWidget({ className = '' }: { className?: string }) {
 
   const ls = lastSession.data;
 
+  const wrapperStyle: CSSProperties = fullscreen
+    ? {
+        position: 'fixed', inset: 0, zIndex: 60, padding: '5vh 6vw',
+        background: 'var(--surface-deep, var(--ink))', overflow: 'auto',
+        display: 'flex', flexDirection: 'column', justifyContent: 'center',
+      }
+    : {};
+
   return (
-    <section className={`card flex flex-col gap-4 ${className}`}>
+    <section
+      className={fullscreen ? 'flex flex-col gap-4' : `card flex flex-col gap-4 ${className}`}
+      style={wrapperStyle}
+    >
+      {/* REQ-FOCUS-06 — expand / collapse toggle + today session count */}
+      <div className="flex items-center justify-between">
+        {(todayCount.data ?? 0) > 0 ? (
+          <span
+            className="text-meta"
+            style={{ color: 'var(--text-muted)', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}
+          >
+            🔥 Bu gün {todayCount.data} seans
+          </span>
+        ) : <span />}
+        <button
+          type="button"
+          className="chip"
+          style={{ fontSize: 11, color: 'var(--text-muted)' }}
+          onClick={() => setFullscreen((v) => !v)}
+          title={fullscreen ? 'Kiçilt (Esc)' : 'Tam ekran fokus rejimi'}
+          aria-label={fullscreen ? 'Tam ekrandan çıx' : 'Tam ekran fokus'}
+        >
+          {fullscreen ? '⤓ Kiçilt' : '⤢ Tam ekran'}
+        </button>
+      </div>
       {/* Multi-device resume banner (PRD:796) */}
       {showResumeBanner && ls ? (
         <div

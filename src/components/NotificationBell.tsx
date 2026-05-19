@@ -9,10 +9,14 @@ import { Link } from 'react-router-dom';
 import {
   type NotificationKind,
   type NotificationRow,
+  useClearSnoozes,
+  useDeleteReadNotifications,
   useMarkNotificationRead,
   useNotifications,
+  useSnoozeNotification,
 } from '@/lib/hooks';
 import { relativeTime } from '@/lib/format';
+import { useNow } from '@/lib/useNow';
 
 const KIND_LABEL: Record<NotificationKind | 'fallback', string> = {
   mention: 'Sənə müraciət',
@@ -27,6 +31,22 @@ const KIND_LABEL: Record<NotificationKind | 'fallback', string> = {
 
 function labelFor(kind: string): string {
   return (KIND_LABEL as Record<string, string>)[kind] ?? KIND_LABEL.fallback;
+}
+
+// PRD §6.4 — bucket a timestamp into a human-readable date section label
+// (Bu gün / Dünən / Bu həftə / Əvvəl). Used to inject headers into the list.
+function dateBucket(iso: string): string {
+  const d = new Date(iso);
+  const tz = 'Asia/Baku';
+  const todayKey = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
+  const eventKey = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(d);
+  if (eventKey === todayKey) return 'Bu gün';
+  const yesterday = new Date(Date.now() - 86_400_000);
+  const yKey = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(yesterday);
+  if (eventKey === yKey) return 'Dünən';
+  const ageDays = (Date.now() - d.getTime()) / 86_400_000;
+  if (ageDays <= 7) return 'Bu həftə';
+  return 'Əvvəl';
 }
 
 function bodyFor(n: NotificationRow): string {
@@ -77,13 +97,30 @@ function groupNotifications(rows: NotificationRow[]): GroupedItem[] {
 }
 
 export function NotificationBell() {
-  const { data = [] } = useNotifications();
+  const notif = useNotifications();
+  const data = notif.data ?? [];
   const markRead = useMarkNotificationRead();
+  const snooze = useSnoozeNotification();
+  const clearSnoozes = useClearSnoozes();
+  const deleteRead = useDeleteReadNotifications();
   const [open, setOpen] = useState(false);
+  const [snoozeOpenId, setSnoozeOpenId] = useState<string | null>(null);
+  // PRD §6.4 — let user collapse the list to unread-only so the panel
+  // doesn't bloat with weeks of read items when they're hunting for new ones.
+  const [unreadOnly, setUnreadOnly] = useState(false);
+  // PRD §6.4 — narrow by event kind ('' = all) so user can hunt mentions only, etc.
+  const [kindFilter, setKindFilter] = useState<NotificationKind | ''>('');
   const ref = useRef<HTMLDivElement>(null);
 
   const unread = data.filter((n) => !n.read_at);
   const unreadCount = unread.length;
+  let visible = unreadOnly ? unread : data;
+  if (kindFilter) visible = visible.filter((n) => n.kind === kindFilter);
+  // Only show kind chips for kinds that actually have items, so UI doesn't
+  // bloat with empty buckets for kinds the user never receives.
+  const availableKinds = Array.from(new Set(data.map((n) => n.kind))) as NotificationKind[];
+  // PRD §UX — auto-tick relative timestamps every 60s while panel is open
+  useNow(open ? 60_000 : 5 * 60_000);
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -103,6 +140,21 @@ export function NotificationBell() {
     };
   }, [open]);
 
+  // PRD §6.3 — "B" key toggles the bell from anywhere (skip when typing)
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'b' && e.key !== 'B') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const tag = (e.target as HTMLElement).tagName;
+      const editing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement).isContentEditable;
+      if (editing) return;
+      e.preventDefault();
+      setOpen((v) => !v);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   return (
     <div ref={ref} className="relative">
       <button
@@ -110,6 +162,7 @@ export function NotificationBell() {
         className="btn-ghost relative"
         aria-label={`Bildirişlər${unreadCount ? ` (${unreadCount} oxunmamış)` : ''}`}
         aria-expanded={open}
+        title={`Bildirişlər (B)${unreadCount ? ` · ${unreadCount} yeni` : ''}`}
         onClick={() => setOpen((v) => !v)}
       >
         <BellIcon />
@@ -145,31 +198,176 @@ export function NotificationBell() {
             className="flex items-center justify-between px-4 py-3"
             style={{ borderBottom: '1px solid var(--line-soft)' }}
           >
-            <span className="text-h4">Bildirişlər</span>
-            <button
-              type="button"
-              className="text-meta hover:underline disabled:opacity-50"
-              style={{ color: 'var(--brand-text)' }}
-              onClick={() => markRead.mutate({ all: true })}
-              disabled={unreadCount === 0 || markRead.isPending}
-            >
-              Hamısını oxunmuş işarələ
-            </button>
+            <span className="text-h4 flex items-center gap-2">
+              Bildirişlər
+              {/* PRD §UX — manual refresh; Realtime usually keeps things fresh but
+                  power users want explicit control over when to re-fetch. */}
+              <button
+                type="button"
+                className="opacity-50 hover:opacity-100 disabled:opacity-25"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, padding: 2 }}
+                onClick={() => notif.refetch()}
+                disabled={notif.isFetching}
+                title="Yenilə"
+                aria-label="Yenilə"
+              >
+                {notif.isFetching ? '⏳' : '🔄'}
+              </button>
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="text-meta hover:underline"
+                style={{
+                  color: unreadOnly ? 'var(--brand-text)' : 'var(--text-muted)',
+                  fontSize: 11,
+                  fontWeight: unreadOnly ? 600 : 400,
+                }}
+                onClick={() => setUnreadOnly((v) => !v)}
+                title="Yalnız oxunmamışları göstər"
+              >
+                {unreadOnly ? '● Yalnız yeni' : '○ Hamısı'}
+              </button>
+              <button
+                type="button"
+                className="text-meta hover:underline disabled:opacity-50"
+                style={{ color: 'var(--text-muted)', fontSize: 11 }}
+                onClick={() => clearSnoozes.mutate()}
+                disabled={clearSnoozes.isPending}
+                title="Bütün ləngitmələri ləğv et"
+              >
+                ⏰ Ayıt
+              </button>
+              {/* PRD §6.4 — sweep already-read notifications to keep the panel tidy */}
+              {(data.length - unreadCount) > 0 ? (
+                <button
+                  type="button"
+                  className="text-meta hover:underline disabled:opacity-50"
+                  style={{ color: 'var(--text-muted)', fontSize: 11 }}
+                  onClick={() => deleteRead.mutate()}
+                  disabled={deleteRead.isPending}
+                  title="Oxunmuş bildirişləri sil"
+                >
+                  🗑 Oxunmuşları
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="text-meta hover:underline disabled:opacity-50"
+                style={{ color: 'var(--brand-text)' }}
+                onClick={() => markRead.mutate({ all: true })}
+                disabled={unreadCount === 0 || markRead.isPending}
+              >
+                Hamısını oxunmuş işarələ ({unreadCount})
+              </button>
+            </div>
           </header>
-          {data.length === 0 ? (
-            <div className="px-4 py-8 text-center text-meta" style={{ color: 'var(--text-muted)' }}>
-              Hələ bildiriş yoxdur.
+          {/* PRD §6.4 — kind filter row (only kinds that have items) */}
+          {availableKinds.length > 1 ? (
+            <div
+              className="flex gap-1 px-3 py-2 flex-wrap"
+              style={{ borderBottom: '1px solid var(--line-soft)' }}
+            >
+              <button
+                type="button"
+                className="chip"
+                style={{
+                  background: !kindFilter ? 'var(--brand-action)' : 'var(--surface-mist)',
+                  color: !kindFilter ? 'var(--ink)' : 'var(--text-muted)',
+                  fontSize: 10,
+                  padding: '0 6px',
+                }}
+                onClick={() => setKindFilter('')}
+              >
+                Hamısı
+              </button>
+              {availableKinds.map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  className="chip"
+                  style={{
+                    background: kindFilter === k ? 'var(--brand-action)' : 'var(--surface-mist)',
+                    color: kindFilter === k ? 'var(--ink)' : 'var(--text-muted)',
+                    fontSize: 10,
+                    padding: '0 6px',
+                  }}
+                  onClick={() => setKindFilter(k)}
+                >
+                  {labelFor(k)}
+                </button>
+              ))}
             </div>
           ) : null}
-          {data.length > 0 ? (
+          {visible.length === 0 ? (
+            <div className="px-4 py-8 text-center text-meta" style={{ color: 'var(--text-muted)' }}>
+              <div className="mb-2">
+                {kindFilter
+                  ? `Bu növdə bildiriş yoxdur.`
+                  : unreadOnly
+                  ? 'Oxunmamış bildiriş yoxdur.'
+                  : 'Hələ bildiriş yoxdur.'}
+              </div>
+              {/* PRD §UX — when filtered, clear-filter shortcut directly here */}
+              {(kindFilter || unreadOnly) ? (
+                <button
+                  type="button"
+                  className="text-meta hover:underline mb-2"
+                  style={{ color: 'var(--brand-text)', fontSize: 11 }}
+                  onClick={() => { setKindFilter(''); setUnreadOnly(false); }}
+                >
+                  ✕ Filtri sıfırla
+                </button>
+              ) : null}
+              {/* PRD §UX — when empty, nudge user to confirm preferences are configured */}
+              {!unreadOnly ? (
+                <Link
+                  to="/bildirişlər"
+                  onClick={() => setOpen(false)}
+                  className="text-meta hover:underline"
+                  style={{ color: 'var(--brand-text)', fontSize: 11 }}
+                >
+                  Bildiriş tərcihlərini yoxla →
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
+          {visible.length > 0 ? (
             <ul>
-              {groupNotifications(data).map((item) => {
-                if (item.kind === 'single') {
+              {(() => {
+                // PRD §6.4 — emit date-bucket headers (Bu gün / Dünən / …)
+                // interleaved with the grouped items.
+                const items = groupNotifications(visible);
+                const out: React.ReactNode[] = [];
+                let lastBucket = '';
+                for (const item of items) {
+                  const first = item.kind === 'single' ? item.row : item.rows[0];
+                  const bucket = dateBucket(first.created_at);
+                  if (bucket !== lastBucket) {
+                    out.push(
+                      <li
+                        key={`hdr-${bucket}-${first.id}`}
+                        className="px-4 pt-3 pb-1 text-meta uppercase"
+                        style={{
+                          color: 'var(--text-muted)',
+                          fontSize: 10,
+                          letterSpacing: '0.08em',
+                          background: 'var(--surface-mist)',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {bucket}
+                      </li>,
+                    );
+                    lastBucket = bucket;
+                  }
+                  if (item.kind === 'single') {
                   const n = item.row;
-                  return (
+                  const isSnoozeOpen = snoozeOpenId === n.id;
+                  out.push(
                     <li
                       key={n.id}
-                      className="px-4 py-3 flex gap-3 cursor-pointer"
+                      className="px-4 py-3 flex gap-3 cursor-pointer relative"
                       style={{
                         borderBottom: '1px solid var(--line-soft)',
                         background: n.read_at ? 'transparent' : 'var(--brand-mist)',
@@ -184,8 +382,22 @@ export function NotificationBell() {
                         style={{ background: n.read_at ? 'var(--text-faint)' : 'var(--brand-action)' }}
                       />
                       <div className="min-w-0 flex-1">
-                        <div className="text-ui font-medium" style={{ color: 'var(--text)' }}>
+                        <div className="text-ui font-medium flex items-center gap-2" style={{ color: 'var(--text)' }}>
                           {labelFor(n.kind)}
+                          {/* PRD §6.4 — critical badge for finance alerts */}
+                          {n.kind === 'finance_alert' ? (
+                            <span
+                              className="chip"
+                              style={{
+                                background: 'var(--error-deep, #b3261e)',
+                                color: 'white',
+                                fontSize: 9,
+                                padding: '0 5px',
+                              }}
+                            >
+                              KRİTİK
+                            </span>
+                          ) : null}
                         </div>
                         {bodyFor(n) ? (
                           <div className="text-meta truncate" style={{ color: 'var(--text-soft)' }}>
@@ -200,41 +412,91 @@ export function NotificationBell() {
                           {relativeTime(n.created_at)}
                         </time>
                       </div>
-                    </li>
+                      {/* PRD §6.4 — snooze chip (unread rows only) */}
+                      {!n.read_at ? (
+                        <button
+                          type="button"
+                          className="text-tiny opacity-50 hover:opacity-100 self-start mt-1"
+                          style={{ color: 'var(--text-muted)' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSnoozeOpenId(isSnoozeOpen ? null : n.id);
+                          }}
+                          title="Sonra xatırlat"
+                        >
+                          ⏰
+                        </button>
+                      ) : null}
+                      {isSnoozeOpen ? (
+                        <div
+                          className="absolute top-12 right-2 rounded-card p-2 z-10 flex flex-col gap-1"
+                          style={{
+                            background: 'var(--ink)',
+                            color: 'var(--canvas)',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            minWidth: 140,
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {[
+                            { hours: 1, label: '1 saat' },
+                            { hours: 4, label: '4 saat' },
+                            { hours: 24, label: 'Sabaha qədər' },
+                            { hours: 24 * 7, label: 'Bir həftə' },
+                          ].map((opt) => (
+                            <button
+                              key={opt.hours}
+                              type="button"
+                              className="text-meta text-left px-2 py-1 rounded hover:bg-white/5"
+                              style={{ color: 'var(--canvas)' }}
+                              onClick={() => {
+                                snooze.mutate({ id: n.id, hours: opt.hours });
+                                setSnoozeOpenId(null);
+                              }}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </li>,
+                  );
+                } else {
+                  // Grouped: one row representing N same-kind unreads.
+                  const groupFirst = item.rows[0];
+                  // PRD §6.4 — per-kind mark-all chip on grouped rows
+                  out.push(
+                    <li
+                      key={`group:${groupFirst.id}`}
+                      className="px-4 py-3 flex gap-3 cursor-pointer"
+                      style={{ borderBottom: '1px solid var(--line-soft)', background: 'var(--brand-mist)' }}
+                      onClick={() => {
+                        for (const r of item.rows) markRead.mutate({ id: r.id });
+                      }}
+                    >
+                      <span
+                        aria-hidden
+                        className="mt-1 w-2 h-2 rounded-full shrink-0"
+                        style={{ background: 'var(--brand-action)' }}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-ui font-medium" style={{ color: 'var(--text)' }}>
+                          {item.count} yeni {labelFor(item.kindLabel).toLowerCase()}
+                        </div>
+                        <time
+                          dateTime={groupFirst.created_at}
+                          className="text-tiny"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
+                          {relativeTime(groupFirst.created_at)}
+                        </time>
+                      </div>
+                    </li>,
                   );
                 }
-                // Grouped: one row representing N same-kind unreads.
-                const first = item.rows[0];
-                return (
-                  <li
-                    key={`group:${first.id}`}
-                    className="px-4 py-3 flex gap-3 cursor-pointer"
-                    style={{ borderBottom: '1px solid var(--line-soft)', background: 'var(--brand-mist)' }}
-                    onClick={() => {
-                      // Mark every notification in the cluster as read.
-                      for (const r of item.rows) markRead.mutate({ id: r.id });
-                    }}
-                  >
-                    <span
-                      aria-hidden
-                      className="mt-1 w-2 h-2 rounded-full shrink-0"
-                      style={{ background: 'var(--brand-action)' }}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-ui font-medium" style={{ color: 'var(--text)' }}>
-                        {item.count} yeni {labelFor(item.kindLabel).toLowerCase()}
-                      </div>
-                      <time
-                        dateTime={first.created_at}
-                        className="text-tiny"
-                        style={{ color: 'var(--text-muted)' }}
-                      >
-                        {relativeTime(first.created_at)}
-                      </time>
-                    </div>
-                  </li>
-                );
-              })}
+                }
+                return out;
+              })()}
             </ul>
           ) : null}
           <footer

@@ -3,8 +3,9 @@
  * performance_reviews (id, employee_id, year, score, ratings jsonb, reviewer_id, summary)
  * User sees own reviews for all years; admin sees all + can author reviews.
  */
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { PageHead } from '@/components/PageHead';
 import { Avatar } from '@/components/Avatar';
 import { supabase } from '@/lib/supabase';
@@ -59,7 +60,33 @@ export function PerformancePage() {
   const qc = useQueryClient();
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
+  // PRD §UX — ←/→ arrows step year within the rendered range
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const tag = (e.target as HTMLElement).tagName;
+      const editing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement).isContentEditable;
+      if (editing) return;
+      if (e.key === 'ArrowLeft') { e.preventDefault(); setYear((y) => Math.max(2026, y - 1)); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); setYear((y) => Math.min(currentYear + 1, y + 1)); }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [currentYear]);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingReview, setEditingReview] = useState<Review | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const deleteReview = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('performance_reviews').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['performance_reviews'] });
+      setConfirmDeleteId(null);
+    },
+  });
 
   const { data: allProfiles = [] } = useQuery({
     queryKey: ['profiles-for-perf'],
@@ -89,10 +116,79 @@ export function PerformancePage() {
     enabled: !!profile,
   });
 
-  const years = Array.from(
-    { length: Math.max(1, currentYear - 2025) },
-    (_, i) => 2026 + i,
-  );
+  // PRD §8.3 — year-over-year trend for the current viewer (self for users,
+  // a dropdown-selected employee for admin). Pulls ALL years for one user.
+  const [trendEmployeeId, setTrendEmployeeId] = useState<string>(profile?.id ?? '');
+  const trendQuery = useQuery({
+    queryKey: ['performance_reviews', 'trend', isAdmin ? trendEmployeeId : profile?.id],
+    enabled: !!profile && (isAdmin ? !!trendEmployeeId : true),
+    queryFn: async (): Promise<Review[]> => {
+      const targetId = isAdmin ? trendEmployeeId : profile!.id;
+      const { data } = await supabase
+        .from('performance_reviews')
+        .select('id, employee_id, year, score, ratings, reviewer_id, summary, created_at')
+        .eq('employee_id', targetId)
+        .order('year', { ascending: true });
+      return (data ?? []) as Review[];
+    },
+  });
+
+  // PRD §8.3 — Performance activates from 2026 onward, but past-year reviews
+  // must remain accessible. Show every year from 2026 through max(currentYear,
+  // currentYear+1) so users can navigate forward (next-year planning) AND
+  // backward across all historical reviews.
+  const years = (() => {
+    const start = 2026;
+    const end = Math.max(currentYear + 1, start);
+    const out: number[] = [];
+    for (let y = end; y >= start; y--) out.push(y);
+    return out;
+  })();
+
+  // PRD §8.3 — print-friendly single-page review (browser print → Save as PDF)
+  function printReview(rev: Review) {
+    const w = window.open('', '_blank', 'width=820,height=1100');
+    if (!w) return;
+    const ratingsRows = RATING_KEYS
+      .map((rk) => {
+        const v = (rev.ratings as Record<string, number>)?.[rk.key] ?? 0;
+        return `<tr><td>${rk.label}</td><td style="text-align:right">${v} / 5</td></tr>`;
+      })
+      .join('');
+    const employee = rev.profiles?.full_name ?? 'İşçi';
+    w.document.write(`<!doctype html>
+<html lang="az"><head><meta charset="utf-8"/>
+<title>Performans · ${employee} · ${rev.year}</title>
+<style>
+  @page { size: A4; margin: 24mm; }
+  body { font-family: Inter, system-ui, sans-serif; color: #0E1611; line-height: 1.5; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .meta { color: #6b7165; font-size: 13px; margin-bottom: 24px; }
+  .score-card { border: 1px solid #d6dad3; border-radius: 12px; padding: 18px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+  .score-card .big { font-size: 56px; font-weight: 700; color: ${rev.score >= 70 ? '#16794a' : rev.score >= 40 ? '#c47d00' : '#b3261e'}; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+  td { padding: 8px 0; border-bottom: 1px solid #eef0eb; }
+  td:first-child { color: #6b7165; }
+  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.06em; color: #6b7165; margin: 24px 0 8px; }
+  .summary { white-space: pre-wrap; padding: 12px; background: #f5f7f3; border-radius: 8px; font-size: 14px; }
+  .footer { margin-top: 40px; font-size: 11px; color: #9ca39c; }
+</style></head><body>
+  <h1>Performans qiymətləndirməsi</h1>
+  <div class="meta">${employee} · ${rev.year}-ci il · Yaradıldı: ${new Date(rev.created_at).toLocaleDateString('az-AZ')}</div>
+  <div class="score-card">
+    <div>
+      <div style="font-size:13px;color:#6b7165;text-transform:uppercase;letter-spacing:0.06em">Ümumi bal</div>
+      <div class="big">${rev.score} <span style="font-size:18px;color:#9ca39c;font-weight:400">/100</span></div>
+    </div>
+  </div>
+  <h2>Kateqoriya reytinqləri</h2>
+  <table>${ratingsRows}</table>
+  ${rev.summary ? `<h2>Xülasə</h2><div class="summary">${rev.summary.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] ?? c))}</div>` : ''}
+  <div class="footer">Reflect Architects OS · ${new Date().toLocaleString('az-AZ', { timeZone: 'Asia/Baku' })}</div>
+  <script>setTimeout(() => window.print(), 100);</script>
+</body></html>`);
+    w.document.close();
+  }
 
   return (
     <>
@@ -126,6 +222,15 @@ export function PerformancePage() {
         ))}
       </div>
 
+      {/* PRD §8.3 — year-over-year trend (always visible if ≥2 reviews exist) */}
+      <PerformanceTrendChart
+        rows={trendQuery.data ?? []}
+        isAdmin={isAdmin}
+        allProfiles={allProfiles}
+        selectedEmployeeId={trendEmployeeId}
+        onSelectEmployee={setTrendEmployeeId}
+      />
+
       {isLoading ? (
         <div className="card text-meta">Yüklənir…</div>
       ) : reviews.length === 0 ? (
@@ -141,13 +246,66 @@ export function PerformancePage() {
             <div key={rev.id} className="card flex flex-col lg:flex-row gap-6">
               <Gauge score={rev.score} />
               <div className="flex-1 min-w-0">
-                {isAdmin && rev.profiles ? (
-                  <div className="flex items-center gap-2 mb-3">
-                    <Avatar name={rev.profiles.full_name ?? 'İşçi'} size={28} />
-                    <span className="text-body font-medium">{rev.profiles.full_name ?? 'İşçi'}</span>
-                    <span className="text-meta" style={{ color: 'var(--text-muted)' }}>· {year}</span>
-                  </div>
-                ) : null}
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  {isAdmin && rev.profiles ? (
+                    <div className="flex items-center gap-2">
+                      <Avatar name={rev.profiles.full_name ?? 'İşçi'} size={28} />
+                      <span className="text-body font-medium">{rev.profiles.full_name ?? 'İşçi'}</span>
+                      <span className="text-meta" style={{ color: 'var(--text-muted)' }}>· {year}</span>
+                    </div>
+                  ) : <div />}
+                  {/* PRD §8.3 — admin edit/delete actions */}
+                  {isAdmin ? (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        className="chip"
+                        style={{ color: 'var(--brand-text)' }}
+                        onClick={() => printReview(rev)}
+                        title="Çap et / PDF olaraq saxla"
+                      >
+                        🖨 Çap
+                      </button>
+                      <button
+                        type="button"
+                        className="chip"
+                        style={{ color: 'var(--brand-text)' }}
+                        onClick={() => setEditingReview(rev)}
+                      >
+                        Redaktə
+                      </button>
+                      {confirmDeleteId === rev.id ? (
+                        <>
+                          <button
+                            type="button"
+                            className="chip"
+                            style={{ background: 'var(--error-deep)', color: 'white' }}
+                            disabled={deleteReview.isPending}
+                            onClick={() => deleteReview.mutate(rev.id)}
+                          >
+                            {deleteReview.isPending ? 'Silinir…' : 'Bəli, sil'}
+                          </button>
+                          <button
+                            type="button"
+                            className="chip"
+                            onClick={() => setConfirmDeleteId(null)}
+                          >
+                            Ləğv
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          className="chip"
+                          style={{ color: 'var(--error-deep)' }}
+                          onClick={() => setConfirmDeleteId(rev.id)}
+                        >
+                          Sil
+                        </button>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
                 <div className="grid grid-cols-2 gap-3 mb-3">
                   {RATING_KEYS.map((rk) => {
                     const val = (rev.ratings as Record<string, number>)?.[rk.key] ?? 0;
@@ -195,7 +353,126 @@ export function PerformancePage() {
           }}
         />
       ) : null}
+
+      {editingReview && isAdmin ? (
+        <EditReviewModal
+          review={editingReview}
+          onClose={() => setEditingReview(null)}
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: ['performance_reviews'] });
+            setEditingReview(null);
+          }}
+        />
+      ) : null}
     </>
+  );
+}
+
+// PRD §8.3 — admin edit modal for existing performance_reviews rows
+function EditReviewModal({
+  review,
+  onClose,
+  onSaved,
+}: {
+  review: Review;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [score, setScore] = useState(review.score);
+  const [ratings, setRatings] = useState<Record<string, number>>({
+    quality: review.ratings?.quality ?? 3,
+    speed: review.ratings?.speed ?? 3,
+    teamwork: review.ratings?.teamwork ?? 3,
+    initiative: review.ratings?.initiative ?? 3,
+  });
+  const [summary, setSummary] = useState(review.summary ?? '');
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from('performance_reviews')
+        .update({
+          score,
+          ratings,
+          summary: summary.trim() || null,
+        })
+        .eq('id', review.id);
+      if (error) throw error;
+    },
+    onSuccess: onSaved,
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: 'rgba(14,22,17,0.55)' }}
+      onClick={onClose}
+    >
+      <div
+        className="bg-surface p-6 rounded-card w-[480px] max-h-[80vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-h2 mb-1">Qiymətləndirməni redaktə et</h2>
+        <p className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
+          {review.profiles?.full_name ?? 'İşçi'} · {review.year}
+        </p>
+
+        <label className="block mb-3">
+          <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Ümumi bal (0–100)</span>
+          <input
+            type="number" className="input" min={0} max={100}
+            value={score}
+            onChange={(e) => setScore(Math.max(0, Math.min(100, Number(e.target.value))))}
+          />
+        </label>
+
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          {RATING_KEYS.map((rk) => (
+            <label key={rk.key} className="block">
+              <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
+                {rk.label} (1–5)
+              </span>
+              <input
+                type="number" className="input" min={1} max={5}
+                value={ratings[rk.key]}
+                onChange={(e) =>
+                  setRatings((r) => ({
+                    ...r,
+                    [rk.key]: Math.max(1, Math.min(5, Number(e.target.value))),
+                  }))
+                }
+              />
+            </label>
+          ))}
+        </div>
+
+        <label className="block mb-4">
+          <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Xülasə</span>
+          <textarea
+            className="input" rows={3}
+            value={summary}
+            onChange={(e) => setSummary(e.target.value)}
+          />
+        </label>
+
+        {save.error ? (
+          <p className="text-meta mb-3" style={{ color: 'var(--error-deep)' }}>
+            {(save.error as Error).message}
+          </p>
+        ) : null}
+
+        <div className="flex justify-end gap-2">
+          <button className="btn-outline" onClick={onClose}>Ləğv et</button>
+          <button
+            className="btn-primary"
+            disabled={save.isPending}
+            onClick={() => save.mutate()}
+          >
+            {save.isPending ? 'Saxlanılır…' : 'Yenilə'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -315,6 +592,82 @@ function AddReviewModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// PRD §8.3 — year-over-year score trend per employee
+function PerformanceTrendChart({
+  rows,
+  isAdmin,
+  allProfiles,
+  selectedEmployeeId,
+  onSelectEmployee,
+}: {
+  rows: Review[];
+  isAdmin: boolean;
+  allProfiles: { id: string; full_name: string | null; avatar_url: string | null }[];
+  selectedEmployeeId: string;
+  onSelectEmployee: (id: string) => void;
+}) {
+  const data = useMemo(
+    () => rows.map((r) => ({ year: r.year, score: r.score })),
+    [rows],
+  );
+
+  if (isAdmin && allProfiles.length === 0) return null;
+  if (data.length < 2 && rows.length < 2 && !isAdmin) {
+    return null;
+  }
+
+  return (
+    <div className="card mb-4">
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+        <h3 className="text-h3">İl üzrə trend</h3>
+        {isAdmin ? (
+          <select
+            className="input max-w-[220px]"
+            value={selectedEmployeeId}
+            onChange={(e) => onSelectEmployee(e.target.value)}
+          >
+            <option value="">Seçin…</option>
+            {allProfiles.map((p) => (
+              <option key={p.id} value={p.id}>{p.full_name ?? p.id.slice(0, 8)}</option>
+            ))}
+          </select>
+        ) : null}
+      </div>
+      {data.length < 2 ? (
+        <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+          Trend üçün ən azı 2 il məlumatı lazımdır.
+        </p>
+      ) : (
+        <div style={{ width: '100%', height: 200 }}>
+          <ResponsiveContainer>
+            <LineChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+              <XAxis dataKey="year" stroke="var(--text-muted)" fontSize={11} />
+              <YAxis stroke="var(--text-muted)" fontSize={11} domain={[0, 100]} />
+              <Tooltip
+                contentStyle={{
+                  background: 'var(--ink)',
+                  border: '1px solid var(--line)',
+                  borderRadius: 8,
+                  color: 'var(--canvas)',
+                }}
+                formatter={(v) => [`${Number(v)}/100`, 'Ümumi bal']}
+              />
+              <Line
+                type="monotone"
+                dataKey="score"
+                stroke="var(--brand-action)"
+                strokeWidth={2.5}
+                dot={{ r: 5, fill: 'var(--brand-action)', strokeWidth: 0 }}
+                isAnimationActive={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
     </div>
   );
 }

@@ -187,15 +187,24 @@ export function useClientStageHistory(clientId: string | undefined) {
 }
 
 // ---------------- Activity log (PRD §6.1) ----------------
-export function useActivityFeed(limit = 50) {
+/**
+ * Activity feed.
+ * @param limit max rows
+ * @param scope `'firm'` returns the firm-wide feed (admin dashboards); pass a
+ *              userId string to scope to that user's own activity (REQ-DASH-02
+ *              + PRD §9.1 — non-admins must not see other users' actions).
+ */
+export function useActivityFeed(limit = 50, scope: 'firm' | string = 'firm') {
   return useQuery({
-    queryKey: ['activity', limit],
+    queryKey: ['activity', limit, scope],
     queryFn: async (): Promise<ActivityLogEntry[]> => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('activity_log')
         .select('*, profiles!activity_log_user_id_fkey(id, full_name, avatar_url)')
         .order('created_at', { ascending: false })
         .limit(limit);
+      if (scope !== 'firm') q = q.eq('user_id', scope);
+      const { data, error } = await q;
       if (error) throw error;
       return (data ?? []) as ActivityLogEntry[];
     },
@@ -213,6 +222,7 @@ export interface AnnouncementRow {
   approved: boolean;
   published_at: string | null;
   created_at: string;
+  read_by?: Record<string, boolean> | null;
 }
 
 export function useRecentAnnouncements(limit = 3) {
@@ -221,7 +231,7 @@ export function useRecentAnnouncements(limit = 3) {
     queryFn: async (): Promise<AnnouncementRow[]> => {
       const { data, error } = await supabase
         .from('announcements')
-        .select('id, title, body, category, is_featured, mirai_generated, approved, published_at, created_at')
+        .select('id, title, body, category, is_featured, mirai_generated, approved, published_at, created_at, read_by')
         .eq('approved', true)
         .order('published_at', { ascending: false, nullsFirst: false })
         .limit(limit);
@@ -278,6 +288,7 @@ export interface NotificationRow {
   kind: NotificationKind | string;
   payload: Record<string, unknown>;
   read_at: string | null;
+  snoozed_until: string | null;
   created_at: string;
 }
 
@@ -286,14 +297,67 @@ export function useNotifications(limit = 20) {
     queryKey: ['notifications', limit],
     // realtime subscription in src/lib/realtime.ts invalidates this key
     queryFn: async (): Promise<NotificationRow[]> => {
+      const nowIso = new Date().toISOString();
+      // PRD §6.4 — exclude rows whose snooze hasn't elapsed yet (column added
+      // in migration 0041). Postgres treats NULL OR > now() correctly when
+      // using the .or() filter below.
       const { data, error } = await supabase
         .from('notifications')
         .select('*')
+        .or(`snoozed_until.is.null,snoozed_until.lte.${nowIso}`)
         .order('created_at', { ascending: false })
         .limit(limit);
       if (error) throw error;
       return (data ?? []) as NotificationRow[];
     },
+  });
+}
+
+// PRD §6.4 — snooze a notification for N hours (writes snoozed_until = now + N*3600s)
+export function useSnoozeNotification() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; hours: number }) => {
+      const until = new Date(Date.now() + input.hours * 3600 * 1000).toISOString();
+      const { error } = await supabase
+        .from('notifications')
+        .update({ snoozed_until: until })
+        .eq('id', input.id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+}
+
+// PRD §6.4 — delete all already-read notifications to keep the panel tidy.
+// Only own rows are deletable (RLS); we don't pass a user filter — the policy
+// enforces it server-side.
+export function useDeleteReadNotifications() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from('notifications')
+        .delete()
+        .not('read_at', 'is', null);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+}
+
+// PRD §6.4 — clear all active snoozes (notifications reappear immediately)
+export function useClearSnoozes() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ snoozed_until: null })
+        .not('snoozed_until', 'is', null);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
   });
 }
 

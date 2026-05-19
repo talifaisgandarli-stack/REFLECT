@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import { AvatarGroup } from '@/components/AvatarGroup';
 import { isOpenChildrenError, useTasks, useUpdateTaskStatus } from '@/lib/hooks';
+import { useSlashFocus } from '@/lib/useSlashFocus';
 import { TASK_STATUS_LABEL, TASK_STATUS_ORDER, TASK_STATUS_TONE } from '@/lib/labels';
 import type { Task, TaskStatus } from '@/types/db';
 import { useAuth } from '@/lib/store';
@@ -14,6 +15,9 @@ import { TaskCreateModal } from '@/components/TaskCreateModal';
 import { CancelTaskModal } from '@/components/CancelTaskModal';
 import { TaskCommentsModal } from '@/components/TaskCommentsModal';
 import { TaskEditModal } from '@/components/TaskEditModal';
+import { downloadCsv } from '@/lib/csv';
+import { toast } from '@/components/Toast';
+import { formatDuration, useActiveTimeEntry, useStartTimer, useStopTimer, useTaskTimeTotals } from '@/lib/useTimeTracking';
 
 // US-TASK-06 — deadline-based groups for personal view
 const todayStr = new Date().toISOString().slice(0, 10);
@@ -52,9 +56,15 @@ export function TasksPage() {
   const { profile, isAdmin } = useAuth();
   const qc = useQueryClient();
   const [view, setView] = useState<'board' | 'table'>('board');
+  // PRD §UX — ?assignee=<uuid> deep-links from Roster to "tasks for this person"
+  const initialUrlAssignee = new URLSearchParams(window.location.search).get('assignee');
   const [mineOnly, setMineOnly] = useState(false);
+  // PRD §UX — drag-over column highlight (board view DnD feedback)
+  const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
+  // URL assignee takes precedence over mineOnly so Roster click always lands on that user
+  const filterAssignee = initialUrlAssignee || (mineOnly && profile?.id ? profile.id : null);
   const { data: tasks = [], isLoading } = useTasks(
-    mineOnly && profile?.id ? { assigneeId: profile.id } : undefined,
+    filterAssignee ? { assigneeId: filterAssignee } : undefined,
   );
   const update = useUpdateTaskStatus();
 
@@ -87,10 +97,107 @@ export function TasksPage() {
   const [cancelling, setCancelling] = useState<{ id: string; title: string } | null>(null);
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [commenting, setCommenting] = useState<{ id: string; title: string } | null>(null);
+
+  // PRD §REQ-TASK — subtask navigation: TaskCommentsModal dispatches
+  // 'reflect:open-task' when user clicks a subtask or the parent back-chip.
+  // Tasks.tsx (modal owner) swaps the open task without re-rendering tree.
+  useEffect(() => {
+    function onOpenTask(e: Event) {
+      const detail = (e as CustomEvent).detail as { id?: string; title?: string };
+      if (detail?.id && detail.title) {
+        setCommenting({ id: detail.id, title: detail.title });
+      }
+    }
+    window.addEventListener('reflect:open-task', onOpenTask);
+    return () => window.removeEventListener('reflect:open-task', onOpenTask);
+  }, []);
   const [editing, setEditing] = useState<Task | null>(null);
+  // PRD §6.x — bulk action mode for the table/list view
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [reassignOpen, setReassignOpen] = useState(false);
+  const [reassignTarget, setReassignTarget] = useState('');
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function exitBulkMode() {
+    setBulkMode(false);
+    setSelectedIds(new Set());
+    setReassignOpen(false);
+  }
+
+  const bulkArchiveSelected = useMutation({
+    mutationFn: async () => {
+      const ids = Array.from(selectedIds);
+      if (ids.length === 0) return;
+      const { error } = await supabase
+        .from('tasks')
+        .update({ archived_at: new Date().toISOString() })
+        .in('id', ids);
+      if (error) throw error;
+      return ids.length;
+    },
+    onSuccess: (count) => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      exitBulkMode();
+      if (count) toast.success(`${count} tapşırıq arxivləndi`);
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const bulkReassign = useMutation({
+    mutationFn: async (newAssigneeId: string) => {
+      const ids = Array.from(selectedIds);
+      if (ids.length === 0 || !newAssigneeId) return;
+      // Multi-assignee model: replace entire assignee_ids array on each row.
+      const { error } = await supabase
+        .from('tasks')
+        .update({ assignee_ids: [newAssigneeId] })
+        .in('id', ids);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      exitBulkMode();
+    },
+  });
+
+  // PRD §6.x — clone a task (title + project + duration + assignees).
+  // New task lands in "queued" status with a "(kopya)" suffix.
+  const cloneTask = useMutation({
+    mutationFn: async (sourceId: string) => {
+      const src = tasks.find((t) => t.id === sourceId);
+      if (!src) throw new Error('Tapşırıq tapılmadı');
+      const { error } = await supabase.from('tasks').insert({
+        title: `${src.title} (kopya)`,
+        description: src.description,
+        project_id: src.project_id,
+        status: 'queued',
+        assignee_ids: src.assignee_ids,
+        deadline: src.deadline,
+        estimated_duration: src.estimated_duration,
+        duration_unit: src.duration_unit,
+        risk_buffer_pct: src.risk_buffer_pct,
+        is_expertise_subtask: src.is_expertise_subtask,
+        task_level: src.task_level,
+        // parent_task_id intentionally not copied — clone is a top-level task
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  });
   // Persist search filter in URL so refresh / share-link preserves it.
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get('q') ?? '');
+  // PRD §6.3 / §UX — Slack/GitHub-style "/" jumps to search box
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchInputRef);
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
     if (search) next.set('q', search);
@@ -137,19 +244,177 @@ export function TasksPage() {
     );
   }
 
+  // Time tracking — global active timer + start/stop mutations
+  const { data: activeTimer } = useActiveTimeEntry();
+  const startTimer = useStartTimer();
+  const stopTimer = useStopTimer();
+  // Per-task aggregated time across all entries (chip on board card)
+  const taskTimeTotals = useTaskTimeTotals(tasks.map((t) => t.id));
+
+  // PRD §6.x — task templates (admin defines, anyone instantiates)
+  const templates = useQuery({
+    queryKey: ['task-templates'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('task_templates')
+        .select('id, name, title, description, estimated_duration, duration_unit, risk_buffer_pct, labels, is_expertise_subtask')
+        .order('name', { ascending: true });
+      return (data ?? []) as Array<{
+        id: string;
+        name: string;
+        title: string;
+        description: string | null;
+        estimated_duration: number | null;
+        duration_unit: string | null;
+        risk_buffer_pct: number;
+        labels: string[] | null;
+        is_expertise_subtask: boolean;
+      }>;
+    },
+  });
+
+  const createFromTemplate = useMutation({
+    mutationFn: async (templateId: string) => {
+      const tpl = templates.data?.find((t) => t.id === templateId);
+      if (!tpl) throw new Error('Şablon tapılmadı');
+      const { error } = await supabase.from('tasks').insert({
+        title: tpl.title,
+        description: tpl.description,
+        status: 'queued',
+        estimated_duration: tpl.estimated_duration,
+        duration_unit: tpl.duration_unit,
+        risk_buffer_pct: tpl.risk_buffer_pct,
+        labels: tpl.labels ?? [],
+        is_expertise_subtask: tpl.is_expertise_subtask,
+        assignee_ids: profile?.id ? [profile.id] : [],
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  });
+
+  // PRD §6.x — label filter (chip row above the kanban)
+  // PRD §UX — label filter persisted in URL
+  const [labelFilter, setLabelFilter] = useState<string | null>(searchParams.get('label'));
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (labelFilter) next.set('label', labelFilter);
+    else next.delete('label');
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [labelFilter]);
+  const allLabels = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of tasks) for (const l of t.labels ?? []) set.add(l);
+    return Array.from(set).sort();
+  }, [tasks]);
+
+  // PRD §UX — sort within columns; persisted in URL so it survives reload + share
+  type SortKey = 'deadline' | 'priority' | 'created';
+  const [sortBy, setSortBy] = useState<SortKey>(
+    (searchParams.get('sort') as SortKey) || 'deadline',
+  );
+  // PRD §UX — compact mode persisted in localStorage so the user's preference
+  // survives across reloads/sessions without bloating the URL.
+  const [compactBoard, setCompactBoard] = useState<boolean>(() => {
+    if (typeof localStorage === 'undefined') return false;
+    return localStorage.getItem('reflect.tasks.compactBoard') === '1';
+  });
+  useEffect(() => {
+    try { localStorage.setItem('reflect.tasks.compactBoard', compactBoard ? '1' : '0'); }
+    catch { /* localStorage disabled */ }
+  }, [compactBoard]);
+  // PRD §UX — quick "today only" toggle: deadline = today (any status)
+  const [todayOnly, setTodayOnly] = useState(false);
+  // PRD §UX — narrow board to one project (URL-persisted so share-link works)
+  const [projectFilter, setProjectFilter] = useState<string>(searchParams.get('project') ?? '');
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (projectFilter) next.set('project', projectFilter);
+    else next.delete('project');
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectFilter]);
+  // Project list for the dropdown
+  const projectsForFilter = useQuery({
+    queryKey: ['projects-name-map'],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('projects')
+        .select('id, name')
+        .is('archived_at', null)
+        .order('name');
+      return (data ?? []) as Array<{ id: string; name: string }>;
+    },
+  });
+
+  // PRD §6.3 — single key shortcuts: C compact, A mine-only (skip while typing)
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const tag = (e.target as HTMLElement).tagName;
+      const editing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement).isContentEditable;
+      if (editing) return;
+      if (e.key === 'c' || e.key === 'C') {
+        e.preventDefault();
+        setCompactBoard((v) => !v);
+      } else if (e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
+        setMineOnly((v) => !v);
+      } else if (e.key === 'v' || e.key === 'V') {
+        e.preventDefault();
+        setView((v) => (v === 'board' ? 'table' : 'board'));
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return tasks;
-    const q = search.toLowerCase();
-    return tasks.filter((t) => t.title.toLowerCase().includes(q));
-  }, [tasks, search]);
+    let out = tasks;
+    if (labelFilter) out = out.filter((t) => (t.labels ?? []).includes(labelFilter));
+    if (projectFilter) out = out.filter((t) => t.project_id === projectFilter);
+    if (todayOnly) {
+      const today = new Date().toISOString().slice(0, 10);
+      out = out.filter((t) => t.deadline === today);
+    }
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      out = out.filter((t) => t.title.toLowerCase().includes(q));
+    }
+    return out;
+  }, [tasks, search, labelFilter, projectFilter, todayOnly]);
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (sortBy === 'deadline') next.delete('sort');
+    else next.set('sort', sortBy);
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortBy]);
+  const sortTasks = (arr: Task[]): Task[] => {
+    const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2, normal: 2 };
+    return [...arr].sort((a, b) => {
+      if (sortBy === 'priority') {
+        const ap = PRIORITY_ORDER[a.priority ?? 'normal'] ?? 3;
+        const bp = PRIORITY_ORDER[b.priority ?? 'normal'] ?? 3;
+        if (ap !== bp) return ap - bp;
+      }
+      if (sortBy === 'created') return (b.created_at ?? '').localeCompare(a.created_at ?? '');
+      // deadline (default): nulls last, ascending
+      return (a.deadline ?? '￿').localeCompare(b.deadline ?? '￿');
+    });
+  };
 
   const grouped = useMemo(() => {
     const map: Record<TaskStatus, Task[]> = {
       idea: [], queued: [], active: [], review: [], expert: [], done: [], cancelled: [],
     };
     for (const t of filtered) map[t.status].push(t);
+    for (const k of Object.keys(map) as TaskStatus[]) map[k] = sortTasks(map[k]);
     return map;
-  }, [filtered]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, sortBy]);
 
   // US-TASK-06 — time-grouped personal view computed data
   const groupedByTime = useMemo(() => {
@@ -162,7 +427,26 @@ export function TasksPage() {
     return map;
   }, [filtered]);
 
-  const meta = `${filtered.length} cəmi · ${grouped.active.length} icrada · ${grouped.review.length} yoxlamada`;
+  // PRD §UX — bubble overdue count to the page meta so it's visible from the header
+  // even when the board is scrolled. Matches the red border treatment on cards.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const overdueCount = filtered.filter(
+    (t) => t.deadline && t.deadline < todayIso && t.status !== 'done' && t.status !== 'cancelled',
+  ).length;
+  // PRD §UX — total estimated hours across visible open tasks (for at-a-glance load)
+  const totalEstimateH = filtered.reduce((sum, t) => {
+    if (t.status === 'done' || t.status === 'cancelled') return sum;
+    const d = t.estimated_duration;
+    if (d == null) return sum;
+    const unit = (t as { duration_unit?: string }).duration_unit ?? 'hour';
+    const h = unit === 'day' ? d * 8 : unit === 'week' ? d * 40 : d;
+    return sum + h;
+  }, 0);
+  const meta = `${filtered.length} cəmi · ${grouped.active.length} icrada · ${grouped.review.length} yoxlamada${
+    totalEstimateH > 0 ? ` · ~${Math.round(totalEstimateH)}s` : ''
+  }${
+    overdueCount > 0 ? ` · ⚠ ${overdueCount} gecikmiş` : ''
+  }`;
 
   return (
     <>
@@ -171,12 +455,36 @@ export function TasksPage() {
         title="Tapşırıqlar"
         actions={
           <>
-            <input
-              className="input max-w-[240px]"
-              placeholder="Axtar…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+            <div className="relative">
+              <input
+                ref={searchInputRef}
+                className="input max-w-[240px] pr-7"
+                placeholder="Axtar… (/)"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  // PRD §UX — Esc clears + blurs (cancel-out pattern)
+                  if (e.key === 'Escape' && search) {
+                    e.preventDefault();
+                    setSearch('');
+                    (e.currentTarget as HTMLInputElement).blur();
+                  }
+                }}
+              />
+              {/* PRD §UX — visible × to clear without keyboard */}
+              {search ? (
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 opacity-50 hover:opacity-100"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14 }}
+                  onClick={() => setSearch('')}
+                  aria-label="Axtarışı təmizlə"
+                  tabIndex={-1}
+                >
+                  ×
+                </button>
+              ) : null}
+            </div>
             <button
               className={`btn-outline ${mineOnly ? 'border-brand-text' : ''}`}
               onClick={() => setMineOnly((v) => !v)}
@@ -188,6 +496,55 @@ export function TasksPage() {
                 Arxivlə ({archivableCount})
               </button>
             ) : null}
+            {view === 'table' ? (
+              <button
+                className={`btn-outline ${bulkMode ? 'border-brand-text' : ''}`}
+                onClick={() => bulkMode ? exitBulkMode() : setBulkMode(true)}
+                style={bulkMode ? { background: 'var(--brand-action)', color: 'var(--ink)' } : undefined}
+              >
+                {bulkMode ? `✓ Seçim (${selectedIds.size})` : 'Seç'}
+              </button>
+            ) : null}
+            <button
+              className="btn-outline"
+              disabled={filtered.length === 0}
+              onClick={() => {
+                downloadCsv(
+                  `tasks-${new Date().toISOString().slice(0, 10)}`,
+                  ['Başlıq', 'Status', 'Layihə', 'Deadline', 'İcraçılar', 'Yaradıldı'],
+                  filtered.map((t) => ({
+                    'Başlıq': t.title,
+                    'Status': t.status,
+                    'Layihə': t.project_id ?? '',
+                    'Deadline': t.deadline ?? '',
+                    'İcraçılar': (t.assignee_ids ?? []).join('; '),
+                    'Yaradıldı': t.created_at ? new Date(t.created_at).toISOString() : '',
+                  })),
+                );
+              }}
+              title={`${filtered.length} sıra ixrac et`}
+            >
+              ↓ CSV
+            </button>
+            {/* PRD §6.x — Şablondan yarat (visible only when templates exist) */}
+            {(templates.data ?? []).length > 0 ? (
+              <select
+                className="input max-w-[200px]"
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) {
+                    createFromTemplate.mutate(e.target.value);
+                    e.target.value = '';
+                  }
+                }}
+                disabled={createFromTemplate.isPending}
+              >
+                <option value="">Şablondan yarat…</option>
+                {(templates.data ?? []).map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            ) : null}
             <button className="btn-primary" onClick={() => setCreating(true)}>
               + Yeni
             </button>
@@ -195,7 +552,76 @@ export function TasksPage() {
         }
       />
 
-      <div className="flex gap-2 mb-4">
+      <div
+        className="flex gap-2 mb-4 flex-wrap items-center"
+        style={{
+          // PRD §UX — keep filters within reach when scrolling long boards
+          position: 'sticky',
+          top: 0,
+          background: 'var(--canvas)',
+          zIndex: 10,
+          paddingTop: 8,
+          marginTop: -8,
+        }}
+      >
+        <select
+          className="input"
+          style={{ maxWidth: 160, height: 32, fontSize: 12 }}
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as SortKey)}
+          aria-label="Sıralama"
+        >
+          <option value="deadline">↑ Son tarix</option>
+          <option value="priority">Prioritet</option>
+          <option value="created">Yenilər əvvəl</option>
+        </select>
+        {/* PRD §UX — "Bu gün" quick filter (deadline = today) */}
+        <button
+          type="button"
+          className="chip"
+          style={{
+            background: todayOnly ? 'var(--brand-action)' : undefined,
+            color: todayOnly ? 'var(--ink)' : undefined,
+            fontWeight: todayOnly ? 600 : 400,
+          }}
+          onClick={() => setTodayOnly((v) => !v)}
+          aria-pressed={todayOnly}
+          title="Yalnız bu günə düşənləri göstər"
+        >
+          {todayOnly ? '✓ Bu gün' : 'Bu gün'}
+        </button>
+        {/* PRD §UX — narrow to a single project */}
+        {(projectsForFilter.data ?? []).length > 0 ? (
+          <select
+            className="input"
+            style={{ maxWidth: 200, height: 32, fontSize: 12 }}
+            value={projectFilter}
+            onChange={(e) => setProjectFilter(e.target.value)}
+            aria-label="Layihəyə görə süz"
+          >
+            <option value="">Bütün layihələr</option>
+            {(projectsForFilter.data ?? []).map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        ) : null}
+        {/* PRD §UX — compact mode hides done/cancelled columns on board view */}
+        {view === 'board' ? (
+          <button
+            type="button"
+            className="chip"
+            style={{
+              background: compactBoard ? 'var(--brand-action)' : undefined,
+              color: compactBoard ? 'var(--ink)' : undefined,
+              fontWeight: compactBoard ? 600 : 400,
+            }}
+            onClick={() => setCompactBoard((v) => !v)}
+            aria-pressed={compactBoard}
+            title="Tamamlanmış / ləğv edilmiş sütunları gizlət"
+          >
+            {compactBoard ? '✓ Yığcam' : 'Yığcam'}
+          </button>
+        ) : null}
         {(['board', 'table'] as const).map((v) => (
           <button
             key={v}
@@ -205,8 +631,75 @@ export function TasksPage() {
             {v === 'board' ? 'Lövhə' : 'Cədvəl'}
           </button>
         ))}
+        {/* PRD §6.x — label filter chips */}
+        {allLabels.length > 0 ? (
+          <>
+            <span style={{ width: 1, background: 'var(--line)', margin: '0 4px' }} />
+            <button
+              className={`chip ${labelFilter === null ? 'chip-brand' : ''}`}
+              onClick={() => setLabelFilter(null)}
+            >
+              Bütün etiketlər
+            </button>
+            {allLabels.map((l) => {
+              // PRD §UX — show per-label task count so filter chips signal volume
+              const count = tasks.filter((t) => (t.labels ?? []).includes(l)).length;
+              return (
+                <button
+                  key={l}
+                  className={`chip ${labelFilter === l ? 'chip-brand' : ''}`}
+                  onClick={() => setLabelFilter(labelFilter === l ? null : l)}
+                >
+                  # {l}
+                  <span style={{ marginLeft: 4, opacity: 0.6, fontVariantNumeric: 'tabular-nums' }}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </>
+        ) : null}
+        {/* PRD §UX — single clear-all when any filter is active */}
+        {(search || labelFilter || projectFilter || todayOnly) ? (
+          <>
+            <span style={{ width: 1, background: 'var(--line)', margin: '0 4px' }} />
+            <button
+              type="button"
+              className="chip"
+              style={{ fontSize: 11, color: 'var(--text-muted)' }}
+              onClick={() => { setSearch(''); setLabelFilter(null); setProjectFilter(''); setTodayOnly(false); }}
+              title="Bütün filtrləri təmizlə"
+            >
+              ✕ Təmizlə
+            </button>
+          </>
+        ) : null}
       </div>
 
+      {/* PRD §UX — assignee filter from URL banner with one-click clear */}
+      {initialUrlAssignee ? (
+        <div
+          className="card mb-3 flex items-center justify-between gap-3 flex-wrap"
+          style={{ background: 'var(--brand-glow-sm)' }}
+        >
+          <span className="text-meta" style={{ color: 'var(--brand-text)' }}>
+            Yalnız bir istifadəçinin tapşırıqları göstərilir
+          </span>
+          <button
+            type="button"
+            className="chip"
+            style={{ fontSize: 11 }}
+            onClick={() => {
+              const next = new URLSearchParams(searchParams);
+              next.delete('assignee');
+              setSearchParams(next, { replace: true });
+              window.location.reload();
+            }}
+          >
+            ✕ Bütün istifadəçilər
+          </button>
+        </div>
+      ) : null}
       {isLoading ? (
         <div className="card text-meta">Yüklənir…</div>
       ) : tasks.length === 0 ? (
@@ -216,6 +709,21 @@ export function TasksPage() {
           cta={
             <button className="btn-primary" onClick={() => setCreating(true)}>
               + Yeni tapşırıq
+            </button>
+          }
+        />
+      ) : filtered.length === 0 ? (
+        // PRD §UX — filters silenced all rows; tell user how to undo
+        <EmptyState
+          title="Filtrə uyğun tapşırıq yoxdur"
+          body="Axtarış, etiket və ya 'Bu gün' filtrini ləğv et."
+          cta={
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={() => { setSearch(''); setLabelFilter(null); setTodayOnly(false); setProjectFilter(''); }}
+            >
+              ✕ Filtrləri təmizlə
             </button>
           }
         />
@@ -238,14 +746,17 @@ export function TasksPage() {
                     <div
                       key={t.id}
                       className="flex items-center gap-3 py-2 px-3 rounded-card"
-                      style={{ background: 'var(--surface)', border: '1px solid var(--line)' }}
+                      style={{
+                        background: bulkMode && selectedIds.has(t.id) ? 'var(--brand-glow-sm)' : 'var(--surface)',
+                        border: '1px solid var(--line)',
+                      }}
                     >
                       <input
                         type="checkbox"
-                        checked={false}
-                        onChange={() => moveTask(t.id, 'done', t.status)}
+                        checked={bulkMode ? selectedIds.has(t.id) : false}
+                        onChange={() => bulkMode ? toggleSelected(t.id) : moveTask(t.id, 'done', t.status)}
                         style={{ accentColor: 'var(--brand-action)', width: 16, height: 16, flexShrink: 0, cursor: 'pointer' }}
-                        aria-label={`${t.title} tamamlandı`}
+                        aria-label={bulkMode ? `${t.title} seç` : `${t.title} tamamlandı`}
                       />
                       <span
                         className="flex-1 text-body cursor-pointer"
@@ -261,12 +772,23 @@ export function TasksPage() {
                           {t.deadline}
                         </span>
                       ) : null}
-                      <span
-                        className="text-meta px-2 py-0.5 rounded"
-                        style={{ background: 'var(--surface-raised)', color: TASK_STATUS_TONE[t.status].text, flexShrink: 0 }}
+                      {/* PRD §US-TASK-06 — inline status dropdown (non-done) for personal view */}
+                      <select
+                        aria-label="Status dəyiş"
+                        value={t.status}
+                        onChange={(e) => moveTask(t.id, e.target.value as TaskStatus, t.status)}
+                        className="text-meta px-2 py-0.5 rounded border-0"
+                        style={{
+                          background: 'var(--surface-raised)',
+                          color: TASK_STATUS_TONE[t.status].text,
+                          flexShrink: 0,
+                          fontSize: 11,
+                        }}
                       >
-                        {TASK_STATUS_LABEL[t.status]}
-                      </span>
+                        {TASK_STATUS_ORDER.map((s) => (
+                          <option key={s} value={s}>{TASK_STATUS_LABEL[s]}</option>
+                        ))}
+                      </select>
                       <button
                         type="button"
                         onClick={() => setCommenting({ id: t.id, title: t.title })}
@@ -297,21 +819,36 @@ export function TasksPage() {
         </div>
       ) : view === 'board' ? (
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
-          {TASK_STATUS_ORDER.map((s) => {
+          {TASK_STATUS_ORDER.filter((s) => !compactBoard || (s !== 'done' && s !== 'cancelled')).map((s) => {
             const isToday = s === 'active';
             const tone = TASK_STATUS_TONE[s];
+            // PRD §UX — sum estimated hours per column so user sees workload per stage.
+            // Falls back to 0 when estimated_duration is null; uses duration_unit for h/d/w.
+            const totalHours = grouped[s].reduce((sum, t) => {
+              const d = t.estimated_duration;
+              if (d == null) return sum;
+              const unit = (t as { duration_unit?: string }).duration_unit ?? 'hour';
+              const h = unit === 'day' ? d * 8 : unit === 'week' ? d * 40 : d;
+              return sum + h;
+            }, 0);
             return (
               <div
                 key={s}
-                className="rounded-card p-3"
+                className="rounded-card p-3 transition-colors"
                 style={{
-                  background: isToday ? 'var(--ink)' : 'transparent',
+                  background: dragOverColumn === s
+                    ? 'var(--brand-glow-sm)'
+                    : isToday ? 'var(--ink)' : 'transparent',
                   color: isToday ? 'var(--canvas)' : 'inherit',
-                  border: isToday ? 'none' : '1px dashed var(--line)',
+                  border: dragOverColumn === s
+                    ? '2px dashed var(--brand-action)'
+                    : isToday ? 'none' : '1px dashed var(--line)',
                   minHeight: 320,
                 }}
-                onDragOver={(e) => e.preventDefault()}
+                onDragOver={(e) => { e.preventDefault(); if (dragOverColumn !== s) setDragOverColumn(s); }}
+                onDragLeave={() => setDragOverColumn(null)}
                 onDrop={(e) => {
+                  setDragOverColumn(null);
                   const raw = e.dataTransfer.getData('text/plain');
                   if (!raw) return;
                   const { id, from } = JSON.parse(raw);
@@ -327,9 +864,20 @@ export function TasksPage() {
                   }}
                 >
                   {isToday ? 'BU GÜN' : TASK_STATUS_LABEL[s]} · {grouped[s].length}
+                  {totalHours > 0 ? (
+                    <span style={{ marginLeft: 6, opacity: 0.6, fontVariantNumeric: 'tabular-nums' }}>
+                      · {Math.round(totalHours)}s
+                    </span>
+                  ) : null}
                 </h3>
                 <div className="space-y-2" role="list" aria-label={TASK_STATUS_LABEL[s]}>
-                  {grouped[s].map((t) => (
+                  {grouped[s].map((t) => {
+                    // PRD §UX — surface overdue tasks visually on the board so they
+                    // can't be missed when scrolling through a column. Skip done/cancelled.
+                    const isOverdue = !!t.deadline
+                      && t.status !== 'done' && t.status !== 'cancelled'
+                      && t.deadline < new Date().toISOString().slice(0, 10);
+                    return (
                     <article
                       key={t.id}
                       draggable
@@ -342,13 +890,36 @@ export function TasksPage() {
                       className="rounded-card p-3 text-body"
                       style={{
                         background: isToday ? 'var(--card-dark-bg)' : 'var(--surface)',
-                        border: `1px solid ${isToday ? 'var(--card-dark-border)' : 'var(--line)'}`,
+                        border: `1px solid ${
+                          isOverdue
+                            ? 'var(--error)'
+                            : isToday ? 'var(--card-dark-border)' : 'var(--line)'
+                        }`,
+                        boxShadow: isOverdue ? '0 0 0 1px var(--error) inset' : undefined,
+                        // PRD §UX — 3px priority bar on the left edge of each card
+                        borderLeft: t.priority === 'high'
+                          ? '3px solid var(--error-deep, #b3261e)'
+                          : t.priority === 'medium'
+                          ? '3px solid var(--warning, #c47d00)'
+                          : t.priority === 'low'
+                          ? '3px solid var(--success-deep, #16794a)'
+                          : undefined,
                       }}
                     >
                       <div
                         className="font-medium cursor-pointer"
                         onClick={(e) => { e.stopPropagation(); setCommenting({ id: t.id, title: t.title }); }}
+                        title={(() => {
+                          // PRD §UX — tooltip combines description (if any) + created age
+                          const parts: string[] = [];
+                          if (t.description) parts.push(t.description);
+                          if (t.created_at) parts.push(`Yaradılıb: ${new Date(t.created_at).toLocaleDateString('az-AZ')}`);
+                          if (t.priority) parts.push(`Prioritet: ${t.priority}`);
+                          return parts.length ? parts.join('\n\n') : undefined;
+                        })()}
                       >
+                        {/* PRD §UX — priority emoji prefix (already shown as left border in batch 72) */}
+                        {t.priority === 'high' ? <span aria-hidden style={{ marginRight: 4 }}>🔴</span> : null}
                         {t.title}
                       </div>
                       {/* Assignee avatars — PRD §6.8 */}
@@ -357,6 +928,58 @@ export function TasksPage() {
                           <AvatarGroup people={assigneePeople(t.assignee_ids)} size={20} />
                         </div>
                       )}
+                      {/* PRD §6.x — priority + label chips on board card */}
+                      {(t.priority || (t.labels ?? []).length > 0 || (taskTimeTotals.data?.get(t.id) ?? 0) > 0) ? (
+                        <div className="flex gap-1 mt-1 flex-wrap">
+                          {/* Total tracked time chip */}
+                          {(taskTimeTotals.data?.get(t.id) ?? 0) > 0 ? (
+                            <span
+                              className="chip"
+                              style={{
+                                background: 'var(--brand-glow-sm)',
+                                color: 'var(--brand-text)',
+                                fontSize: 9,
+                                padding: '0 5px',
+                                fontVariantNumeric: 'tabular-nums',
+                              }}
+                              title={`Toplu izlənmiş vaxt`}
+                            >
+                              ⏱ {formatDuration(taskTimeTotals.data?.get(t.id) ?? 0)}
+                            </span>
+                          ) : null}
+                          {t.priority ? (
+                            <span
+                              className="chip"
+                              style={{
+                                background:
+                                  t.priority === 'high' ? 'var(--error-aa, #8a1e18)' :
+                                  t.priority === 'medium' ? 'var(--warning-aa, #8a5800)' :
+                                  'var(--surface-mist)',
+                                color: t.priority === 'low' ? 'var(--text-muted)' : 'white',
+                                fontSize: 9,
+                                padding: '0 5px',
+                              }}
+                              title={`Prioritet: ${t.priority}`}
+                            >
+                              {t.priority === 'high' ? '↑' : t.priority === 'medium' ? '→' : '↓'}
+                            </span>
+                          ) : null}
+                          {(t.labels ?? []).slice(0, 2).map((l) => (
+                            <span
+                              key={l}
+                              className="chip"
+                              style={{
+                                background: isToday ? 'var(--card-dark-border)' : 'var(--surface-mist)',
+                                color: isToday ? 'var(--canvas)' : 'var(--text-muted)',
+                                fontSize: 9,
+                                padding: '0 5px',
+                              }}
+                            >
+                              #{l}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
                       <div className="flex items-center justify-between mt-1">
                         {t.deadline ? (
                           <span
@@ -429,10 +1052,52 @@ export function TasksPage() {
                               Ləğv et
                             </button>
                           ) : null}
+                          {/* PRD §6.x — clone task chip (board view) */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              cloneTask.mutate(t.id);
+                            }}
+                            className="text-meta opacity-60 hover:opacity-100"
+                            style={{ color: isToday ? 'var(--text-faint)' : 'var(--text-muted)' }}
+                            aria-label={`Tapşırığı klonla: ${t.title}`}
+                            title="Tapşırığı klonla"
+                            disabled={cloneTask.isPending}
+                          >
+                            ⎘
+                          </button>
+                          {/* Time tracking — start/stop timer for this task */}
+                          {activeTimer?.task_id === t.id ? (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); stopTimer.mutate(); }}
+                              disabled={stopTimer.isPending}
+                              className="text-meta opacity-100"
+                              style={{ color: 'var(--brand-action)' }}
+                              aria-label="Timer-i dayandır"
+                              title="Timer-i dayandır"
+                            >
+                              ⏹
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); startTimer.mutate(t.id); }}
+                              disabled={startTimer.isPending}
+                              className="text-meta opacity-60 hover:opacity-100"
+                              style={{ color: isToday ? 'var(--text-faint)' : 'var(--text-muted)' }}
+                              aria-label="Timer başlat"
+                              title="Timer başlat"
+                            >
+                              ▶
+                            </button>
+                          )}
                         </div>
                       </div>
                     </article>
-                  ))}
+                    );
+                  })}
                 </div>
                 {/* Quick-add per column: opens TaskCreateModal pre-set to this status */}
                 <button
@@ -469,7 +1134,13 @@ export function TasksPage() {
           </thead>
           <tbody>
             {tasks.map((t) => (
-              <tr key={t.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+              <tr
+                key={t.id}
+                onClick={() => setCommenting({ id: t.id, title: t.title })}
+                className="hover:bg-surface-mist cursor-pointer"
+                style={{ borderBottom: '1px solid var(--line-soft)' }}
+                title="Şərhləri aç"
+              >
                 <td className="py-3 px-3">{t.title}</td>
                 <td className="py-3 px-3">{TASK_STATUS_LABEL[t.status]}</td>
                 <td className="py-3 px-3">
@@ -537,6 +1208,91 @@ export function TasksPage() {
 
       {editing ? (
         <TaskEditModal task={editing} onClose={() => setEditing(null)} />
+      ) : null}
+
+      {/* PRD §6.x — bulk action floating bar (table view only) */}
+      {bulkMode && selectedIds.size > 0 ? (
+        <div
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-capsule px-4 py-3 flex items-center gap-3 shadow-xl z-40"
+          style={{
+            background: 'var(--ink)',
+            color: 'var(--canvas)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            minWidth: 320,
+          }}
+        >
+          <span className="text-body font-medium">{selectedIds.size} seçili</span>
+          <span style={{ flex: 1 }} />
+          {isAdmin ? (
+            <div className="relative">
+              <button
+                type="button"
+                className="chip"
+                style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--canvas)' }}
+                onClick={() => setReassignOpen((v) => !v)}
+              >
+                Yenidən təyin et
+              </button>
+              {reassignOpen ? (
+                <div
+                  className="absolute bottom-full mb-2 right-0 rounded-card p-2 w-[220px]"
+                  style={{
+                    background: 'var(--ink)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                  }}
+                >
+                  <select
+                    className="input w-full mb-2"
+                    style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--canvas)' }}
+                    value={reassignTarget}
+                    onChange={(e) => setReassignTarget(e.target.value)}
+                  >
+                    <option value="">İcraçı seçin…</option>
+                    {allProfiles.map((p) => (
+                      <option key={p.id} value={p.id}>{p.full_name ?? p.id}</option>
+                    ))}
+                  </select>
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      type="button"
+                      className="chip text-meta"
+                      onClick={() => { setReassignOpen(false); setReassignTarget(''); }}
+                    >
+                      Ləğv
+                    </button>
+                    <button
+                      type="button"
+                      className="chip"
+                      style={{ background: 'var(--brand-action)', color: 'var(--ink)' }}
+                      disabled={!reassignTarget || bulkReassign.isPending}
+                      onClick={() => bulkReassign.mutate(reassignTarget)}
+                    >
+                      {bulkReassign.isPending ? '…' : 'Təyin et'}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          <button
+            type="button"
+            className="chip"
+            style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--canvas)' }}
+            disabled={bulkArchiveSelected.isPending}
+            onClick={() => bulkArchiveSelected.mutate()}
+          >
+            {bulkArchiveSelected.isPending ? 'Arxivlənir…' : 'Arxivlə'}
+          </button>
+          <button
+            type="button"
+            className="chip"
+            style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--canvas)' }}
+            onClick={exitBulkMode}
+            aria-label="Seçim rejimini bağla"
+          >
+            ×
+          </button>
+        </div>
       ) : null}
 
       {confirmArchive ? (

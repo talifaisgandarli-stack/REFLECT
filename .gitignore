@@ -10,3 +10,6 @@ dist-ssr
 coverage
 *.log
 .env*.local
+playwright-report
+playwright/.cache
+test-results

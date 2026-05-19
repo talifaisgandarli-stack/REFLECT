@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { PageHead } from '@/components/PageHead';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { toast } from '@/components/Toast';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { formatAZN, formatDate, bakuMonthKey, bakuCurrentMonthRange } from '@/lib/format';
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, ComposedChart, Line, Area, CartesianGrid, Cell } from 'recharts';
 import { IncomeExpenseModal, type FinanceKind } from '@/components/IncomeExpenseModal';
 import { MarkPaidModal } from '@/components/MarkPaidModal';
 import { InvoiceFromTemplateModal } from '@/components/InvoiceFromTemplateModal';
@@ -28,10 +30,55 @@ type Receivable = {
 };
 
 export function FinancePage() {
+  const qc = useQueryClient();
   const [tab, setTab] = useState<(typeof TABS)[number]>('Cash Cockpit');
   const [modal, setModal] = useState<FinanceKind | null>(null);
   const [markPaid, setMarkPaid] = useState<Receivable | null>(null);
   const [invoiceModal, setInvoiceModal] = useState(false);
+
+  // PRD §REQ-FIN-03 — bulk mark-paid for Debitor tab (admin)
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirmBulkMarkPaid, setConfirmBulkMarkPaid] = useState(false);
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function exitBulkMode() {
+    setBulkMode(false);
+    setSelectedIds(new Set());
+  }
+  const bulkMarkPaid = useMutation({
+    mutationFn: async (rows: Array<{ id: string; amount: number; paid_amount: number }>) => {
+      // Insert one payment row per receivable for the remaining amount.
+      // DB trigger (migration 0040) updates receivables.paid_amount + status.
+      const { data: sess } = await supabase.auth.getSession();
+      const recorderId = sess.session?.user?.id ?? null;
+      const inserts = rows
+        .map((r) => ({
+          receivable_id: r.id,
+          amount: Number(r.amount) - Number(r.paid_amount),
+          payment_method: 'bank_transfer' as const,
+          note: 'Toplu işarələmə',
+          recorded_by: recorderId,
+        }))
+        .filter((r) => r.amount > 0);
+      if (inserts.length === 0) return 0;
+      const { error } = await supabase.from('receivable_payments').insert(inserts);
+      if (error) throw error;
+      return inserts.length;
+    },
+    onSuccess: (count) => {
+      qc.invalidateQueries({ queryKey: ['fin', 'receivables'] });
+      exitBulkMode();
+      if (count) toast.success(`${count} debitor tam ödəniş kimi qeyd edildi`);
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
 
   const incomes = useQuery({
     queryKey: ['fin', 'incomes'],
@@ -114,15 +161,38 @@ export function FinancePage() {
       </div>
 
       <nav className="flex flex-wrap gap-2 mb-5">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            className={`chip ${tab === t ? 'chip-brand' : ''}`}
-            onClick={() => setTab(t)}
-          >
-            {t}
-          </button>
-        ))}
+        {TABS.map((t) => {
+          // PRD §REQ-FIN-03 — surface overdue/open receivable count on the Debitor tab
+          // so admin sees pressure without clicking through.
+          const openCount = t === 'Debitor'
+            ? (receivables.data ?? []).filter((r) => r.status !== 'paid').length
+            : 0;
+          return (
+            <button
+              key={t}
+              className={`chip ${tab === t ? 'chip-brand' : ''}`}
+              onClick={() => setTab(t)}
+            >
+              {t}
+              {openCount > 0 ? (
+                <span
+                  style={{
+                    marginLeft: 6,
+                    fontVariantNumeric: 'tabular-nums',
+                    background: tab === t ? 'var(--ink)' : 'var(--brand-action)',
+                    color: tab === t ? 'var(--brand-action)' : 'var(--ink)',
+                    padding: '0 5px',
+                    borderRadius: 999,
+                    fontSize: 10,
+                    fontWeight: 700,
+                  }}
+                >
+                  {openCount}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
       </nav>
 
       {tab === 'Cash Cockpit' ? (
@@ -141,9 +211,32 @@ export function FinancePage() {
       ) : null}
 
       {tab === 'Debitor' ? (
+        <>
+          {/* PRD §REQ-FIN — receivable aging chart (0-30 / 31-60 / 61-90 / 90+) */}
+          {(receivables.data ?? []).length > 0 ? (
+            <ReceivableAgingChart receivables={receivables.data ?? []} />
+          ) : null}
+        {/* PRD §REQ-FIN-03 — bulk mode toggle */}
+        {(receivables.data ?? []).filter((r) => r.status !== 'paid').length > 1 ? (
+          <div className="flex justify-end mb-2">
+            <button
+              type="button"
+              className={`btn-outline ${bulkMode ? 'border-brand-text' : ''}`}
+              style={bulkMode ? { background: 'var(--brand-action)', color: 'var(--ink)' } : undefined}
+              onClick={() => bulkMode ? exitBulkMode() : setBulkMode(true)}
+            >
+              {bulkMode ? `✓ Seçim (${selectedIds.size})` : 'Toplu seç'}
+            </button>
+          </div>
+        ) : null}
         <table className="w-full text-body">
           <thead>
             <tr style={{ borderBottom: '1px solid var(--line)' }}>
+              {bulkMode ? (
+                <th className="text-left py-3 pl-3 text-meta" style={{ color: 'var(--text-muted)', width: 32 }}>
+                  {' '}
+                </th>
+              ) : null}
               {['Müştəri', 'Məbləğ', 'Ödənilib', 'Status', 'Müddət', ''].map((h) => (
                 <th
                   key={h}
@@ -160,40 +253,83 @@ export function FinancePage() {
             </tr>
           </thead>
           <tbody>
-            {(receivables.data ?? []).map((r) => (
-              <tr key={r.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
-                <td className="py-3 px-3">
-                  {r.clients?.company ?? r.clients?.name ?? (r.client_id ? '—' : '—')}
-                </td>
-                <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  {formatAZN(r.amount)}
-                </td>
-                <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  {formatAZN(r.paid_amount)}
-                </td>
-                <td className="py-3 px-3">{r.status}</td>
-                <td className="py-3 px-3">{formatDate(r.due_at)}</td>
-                <td className="py-3 px-3 text-right">
-                  {r.status !== 'paid' ? (
-                    <button
-                      type="button"
-                      className="chip chip-brand"
-                      onClick={() => setMarkPaid(r)}
-                    >
-                      Ödənişi qeyd et
-                    </button>
-                  ) : (
-                    <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                      ✓
-                    </span>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {(receivables.data ?? []).map((r) => {
+              // Overdue: due_at in the past AND not yet fully paid
+              const isOverdue =
+                r.status !== 'paid' &&
+                r.due_at != null &&
+                new Date(r.due_at).getTime() < Date.now();
+              return (
+                <tr
+                  key={r.id}
+                  style={{
+                    borderBottom: '1px solid var(--line-soft)',
+                    background: selectedIds.has(r.id) ? 'var(--brand-glow-sm)' : (isOverdue ? 'var(--error-bg, #fde0e0)' : undefined),
+                  }}
+                >
+                  {bulkMode ? (
+                    <td className="py-3 pl-3" style={{ width: 32 }}>
+                      {r.status !== 'paid' ? (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(r.id)}
+                          onChange={() => toggleSelected(r.id)}
+                          aria-label={`Seç ${r.clients?.name ?? r.id.slice(0, 8)}`}
+                        />
+                      ) : null}
+                    </td>
+                  ) : null}
+                  <td className="py-3 px-3">
+                    {r.clients?.company ?? r.clients?.name ?? (r.client_id ? '—' : '—')}
+                  </td>
+                  <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {formatAZN(r.amount)}
+                  </td>
+                  <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {formatAZN(r.paid_amount)}
+                  </td>
+                  <td className="py-3 px-3">
+                    {isOverdue ? (
+                      <span
+                        className="chip"
+                        style={{
+                          background: 'var(--error-deep, #b3261e)',
+                          color: 'white',
+                          fontSize: 10,
+                          padding: '1px 8px',
+                        }}
+                      >
+                        Gecikmiş
+                      </span>
+                    ) : (
+                      r.status
+                    )}
+                  </td>
+                  <td className="py-3 px-3" style={{ color: isOverdue ? 'var(--error-deep, #b3261e)' : undefined, fontWeight: isOverdue ? 600 : 400 }}>
+                    {formatDate(r.due_at)}
+                  </td>
+                  <td className="py-3 px-3 text-right">
+                    {r.status !== 'paid' ? (
+                      <button
+                        type="button"
+                        className="chip chip-brand"
+                        onClick={() => setMarkPaid(r)}
+                      >
+                        Ödənişi qeyd et
+                      </button>
+                    ) : (
+                      <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                        ✓
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
             {(receivables.data ?? []).length === 0 ? (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={bulkMode ? 7 : 6}
                   className="py-6 text-center text-meta"
                   style={{ color: 'var(--text-muted)' }}
                 >
@@ -203,38 +339,47 @@ export function FinancePage() {
             ) : null}
           </tbody>
         </table>
+        </>
       ) : null}
 
       {tab === 'Forecast' ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="space-y-4">
           {(forecasts.data ?? []).length === 0 ? (
-            <div className="card text-meta col-span-3">
+            <div className="card text-meta">
               Forecast hələ qurulmayıb. /api/cron/forecast cron-u işə düşəndən sonra görünəcək.
             </div>
-          ) : null}
-          {(forecasts.data ?? []).map(
-            (f: {
-              id: string;
-              horizon_days: number;
-              projected_balance: number;
-              confidence_low: number;
-              confidence_high: number;
-            }) => (
-              <div key={f.id} className="card">
-                <div
-                  className="text-meta uppercase tracking-wider"
-                  style={{ color: 'var(--text-muted)' }}
-                >
-                  {f.horizon_days} gün
-                </div>
-                <div className="text-h2 mt-1" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  {formatAZN(f.projected_balance)}
-                </div>
-                <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                  {formatAZN(f.confidence_low)} – {formatAZN(f.confidence_high)}
-                </div>
+          ) : (
+            <>
+              {/* PRD §REQ-FIN-08 — visual confidence band across 30/60/90 horizons */}
+              <ForecastChart forecasts={forecasts.data ?? []} />
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {(forecasts.data ?? []).map(
+                  (f: {
+                    id: string;
+                    horizon_days: number;
+                    projected_balance: number;
+                    confidence_low: number;
+                    confidence_high: number;
+                  }) => (
+                    <div key={f.id} className="card">
+                      <div
+                        className="text-meta uppercase tracking-wider"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        {f.horizon_days} gün
+                      </div>
+                      <div className="text-h2 mt-1" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {formatAZN(f.projected_balance)}
+                      </div>
+                      <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                        {formatAZN(f.confidence_low)} – {formatAZN(f.confidence_high)}
+                      </div>
+                    </div>
+                  ),
+                )}
               </div>
-            ),
+            </>
           )}
         </div>
       ) : null}
@@ -250,6 +395,55 @@ export function FinancePage() {
         <MarkPaidModal receivable={markPaid} onClose={() => setMarkPaid(null)} />
       ) : null}
       {invoiceModal ? <InvoiceFromTemplateModal onClose={() => setInvoiceModal(false)} /> : null}
+
+      {/* Confirm before mass-marking receivables paid (PRD §UX destructive guard) */}
+      <ConfirmDialog
+        open={confirmBulkMarkPaid}
+        title={`${selectedIds.size} debitor tam ödəniş kimi qeyd edilsin?`}
+        body="Hər biri üçün qalan məbləğ qədər `receivable_payments` sırası yaradılacaq. Bu əməliyyat geri qaytarıla bilər (admin sıraları siləndə paid_amount yenidən hesablanır)."
+        confirmLabel="Hə, qeyd et"
+        busy={bulkMarkPaid.isPending}
+        onConfirm={() => {
+          const rows = (receivables.data ?? []).filter((r) => selectedIds.has(r.id));
+          bulkMarkPaid.mutate(rows);
+          setConfirmBulkMarkPaid(false);
+        }}
+        onCancel={() => setConfirmBulkMarkPaid(false)}
+      />
+
+      {/* PRD §REQ-FIN-03 — floating bulk action bar (admin) */}
+      {bulkMode && selectedIds.size > 0 ? (
+        <div
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-capsule px-4 py-3 flex items-center gap-3 shadow-xl z-40"
+          style={{
+            background: 'var(--ink)',
+            color: 'var(--canvas)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            minWidth: 340,
+          }}
+        >
+          <span className="text-body font-medium">{selectedIds.size} debitor seçili</span>
+          <span style={{ flex: 1 }} />
+          <button
+            type="button"
+            className="chip"
+            style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--canvas)' }}
+            disabled={bulkMarkPaid.isPending}
+            onClick={() => setConfirmBulkMarkPaid(true)}
+          >
+            {bulkMarkPaid.isPending ? 'Qeyd edilir…' : 'Tam ödəniş kimi qeyd et'}
+          </button>
+          <button
+            type="button"
+            className="chip"
+            style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--canvas)' }}
+            onClick={exitBulkMode}
+            aria-label="Seçim rejimini bağla"
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
     </>
   );
 }
@@ -268,6 +462,174 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
         }}
       >
         {value}
+      </div>
+    </div>
+  );
+}
+
+// PRD §REQ-FIN-08 — visualize MIRAI cash forecast as a confidence band.
+// Plots projected_balance as a line with a low/high shaded area so the
+// uncertainty range is immediately legible (vs. raw text was earlier).
+// PRD §REQ-FIN — receivable aging breakdown bar chart (0-30/31-60/61-90/90+)
+function ReceivableAgingChart({
+  receivables,
+}: {
+  receivables: Array<{
+    id: string;
+    amount: number;
+    paid_amount: number;
+    due_at: string | null;
+    status: string;
+  }>;
+}) {
+  const today = Date.now();
+  const buckets = [
+    { key: 'current', label: 'Gələcək', max: 0, color: 'var(--success-deep, #16794a)' },
+    { key: '0-30', label: '0–30 gün', max: 30, color: 'var(--brand-action, #adfb49)' },
+    { key: '31-60', label: '31–60 gün', max: 60, color: '#c47d00' },
+    { key: '61-90', label: '61–90 gün', max: 90, color: '#d97706' },
+    { key: '90+', label: '90+ gün', max: Infinity, color: 'var(--error-deep, #b3261e)' },
+  ];
+
+  const data = buckets.map((b) => ({ label: b.label, amount: 0, count: 0, color: b.color }));
+
+  for (const r of receivables) {
+    if (r.status === 'paid') continue;
+    const remaining = Number(r.amount) - Number(r.paid_amount);
+    if (remaining <= 0) continue;
+    if (!r.due_at) continue;
+    const daysOverdue = (today - new Date(r.due_at).getTime()) / 86_400_000;
+    let idx: number;
+    if (daysOverdue < 0) idx = 0; // not yet due
+    else if (daysOverdue <= 30) idx = 1;
+    else if (daysOverdue <= 60) idx = 2;
+    else if (daysOverdue <= 90) idx = 3;
+    else idx = 4;
+    data[idx].amount += remaining;
+    data[idx].count += 1;
+  }
+
+  const totalOpen = data.reduce((s, d) => s + d.amount, 0);
+  if (totalOpen === 0) return null;
+
+  return (
+    <div className="card mb-4">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-h3">Debitor yaşı</h3>
+        <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+          Cəmi açıq: {formatAZN(totalOpen)}
+        </span>
+      </div>
+      <div style={{ width: '100%', height: 180 }}>
+        <ResponsiveContainer>
+          <BarChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+            <XAxis dataKey="label" stroke="var(--text-muted)" fontSize={11} />
+            <YAxis
+              stroke="var(--text-muted)"
+              fontSize={11}
+              tickFormatter={(v) => `${(Number(v) / 1000).toFixed(0)}k`}
+            />
+            <Tooltip
+              cursor={{ fill: 'var(--brand-glow-sm)' }}
+              contentStyle={{
+                background: 'var(--ink)',
+                border: '1px solid var(--line)',
+                borderRadius: 8,
+                color: 'var(--canvas)',
+              }}
+              formatter={(value, _name, item) => {
+                const count = (item?.payload as { count?: number } | undefined)?.count ?? 0;
+                return [`${formatAZN(Number(value))} · ${count} debitor`, 'Açıq qalıq'];
+              }}
+            />
+            <Bar dataKey="amount" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+              {data.map((d, i) => (
+                <Cell key={i} fill={d.color} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+function ForecastChart({
+  forecasts,
+}: {
+  forecasts: Array<{
+    id: string;
+    horizon_days: number;
+    projected_balance: number;
+    confidence_low: number;
+    confidence_high: number;
+  }>;
+}) {
+  // Recharts wants ascending x-axis; sort by horizon, prepend a "today" zero anchor
+  const sorted = [...forecasts].sort((a, b) => a.horizon_days - b.horizon_days);
+  if (sorted.length === 0) return null;
+  const data = sorted.map((f) => ({
+    horizon: `${f.horizon_days} gün`,
+    projected: f.projected_balance,
+    low: f.confidence_low,
+    high: f.confidence_high,
+    // For the band: Recharts Area uses two values (low, high) — encode as `band`
+    band: [f.confidence_low, f.confidence_high],
+  }));
+
+  return (
+    <div className="card">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-h3">Forecast etibar diapazonu</h3>
+        <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+          MIRAI Maliyyə Analitiki · gündəlik cron
+        </span>
+      </div>
+      <div style={{ width: '100%', height: 240 }}>
+        <ResponsiveContainer>
+          <ComposedChart data={data} margin={{ top: 16, right: 16, left: 0, bottom: 0 }}>
+            <CartesianGrid stroke="var(--line-soft)" strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="horizon" stroke="var(--text-muted)" fontSize={12} />
+            <YAxis
+              stroke="var(--text-muted)"
+              fontSize={12}
+              tickFormatter={(v) => `${(Number(v) / 1000).toFixed(0)}k`}
+            />
+            <Tooltip
+              contentStyle={{
+                background: 'var(--ink)',
+                border: '1px solid var(--line)',
+                borderRadius: 8,
+                color: 'var(--canvas)',
+              }}
+              formatter={(value, name) => {
+                if (name === 'band') {
+                  const [lo, hi] = value as [number, number];
+                  return [`${formatAZN(lo)} – ${formatAZN(hi)}`, 'Etibar diapazonu'];
+                }
+                return [formatAZN(Number(value)), name === 'projected' ? 'Proqnoz' : String(name)];
+              }}
+            />
+            {/* Confidence band — shaded area between low and high */}
+            <Area
+              type="monotone"
+              dataKey="band"
+              stroke="none"
+              fill="var(--brand-action)"
+              fillOpacity={0.15}
+              isAnimationActive={false}
+            />
+            {/* Projected balance — line on top of the band */}
+            <Line
+              type="monotone"
+              dataKey="projected"
+              stroke="var(--brand-action)"
+              strokeWidth={2.5}
+              dot={{ r: 5, fill: 'var(--brand-action)', strokeWidth: 0 }}
+              isAnimationActive={false}
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
       </div>
     </div>
   );

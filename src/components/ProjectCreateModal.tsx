@@ -5,8 +5,9 @@
  */
 import { useEffect, useState } from 'react';
 import { useFocusTrap } from '@/lib/a11y';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
+import { toast } from './Toast';
 import { useAuth } from '@/lib/store';
 import { useClients } from '@/lib/hooks';
 import type { Project } from '@/types/db';
@@ -28,6 +29,20 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
   const qc = useQueryClient();
   const clients = useClients();
 
+  // PRD §UX — suggest existing tags for autocomplete (migration 0053)
+  const existingTags = useQuery({
+    queryKey: ['project-tags-suggest'],
+    queryFn: async () => {
+      const { data } = await supabase.from('projects').select('tags').not('tags', 'is', null);
+      const set = new Set<string>();
+      for (const row of (data ?? []) as Array<{ tags: string[] | null }>) {
+        for (const t of row.tags ?? []) set.add(t);
+      }
+      return Array.from(set).sort();
+    },
+    staleTime: 60_000,
+  });
+
   const [name, setName] = useState('');
   const [clientId, setClientId] = useState('');
   const [newClientName, setNewClientName] = useState('');
@@ -38,6 +53,8 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
   const [requiresExpertise, setRequiresExpertise] = useState(false);
   const [expertiseDeadline, setExpertiseDeadline] = useState('');
   const [paymentBuffer, setPaymentBuffer] = useState(10);
+  // PRD §6.x — project tags (migration 0053)
+  const [tagsInput, setTagsInput] = useState('');
 
   function togglePhase(phase: string) {
     setPhases((prev) =>
@@ -65,8 +82,15 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
         resolvedClientId = newClient.id;
       }
 
+      // PRD §REQ-PROJ — date sanity checks
       if (startDate && deadline && deadline < startDate) {
         throw new Error('Bitmə tarixi başlama tarixindən əvvəl ola bilməz.');
+      }
+      if (requiresExpertise && expertiseDeadline && deadline && expertiseDeadline > deadline) {
+        throw new Error('Ekspertiza tarixi ümumi bitmə tarixindən sonra ola bilməz.');
+      }
+      if (requiresExpertise && expertiseDeadline && startDate && expertiseDeadline < startDate) {
+        throw new Error('Ekspertiza tarixi başlama tarixindən əvvəl ola bilməz.');
       }
 
       const payload = {
@@ -79,6 +103,8 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
         expertise_deadline: requiresExpertise ? expertiseDeadline || null : null,
         payment_buffer_days: paymentBuffer,
         status: 'active',
+        // PRD §6.x — parse comma-separated tags
+        tags: tagsInput.split(',').map((t) => t.trim()).filter(Boolean),
         created_by: profile?.id ?? null,
       };
 
@@ -88,9 +114,11 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
     },
     onSuccess: (project) => {
       qc.invalidateQueries({ queryKey: ['projects'] });
+      toast.success(`"${project.name}" yaradıldı`);
       onCreated?.(project);
       onClose();
     },
+    onError: (e) => toast.error((e as Error).message),
   });
 
   const trapRef = useFocusTrap<HTMLFormElement>(true);
@@ -289,6 +317,26 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
             />
           </label>
         </div>
+
+        {/* PRD §6.x — tags (comma-separated, migration 0053) + autocomplete */}
+        <label className="block mt-3">
+          <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
+            Etiketlər (vergüllə)
+          </span>
+          <input
+            type="text"
+            className="input"
+            placeholder={existingTags.data?.length ? `məs: ${existingTags.data.slice(0, 3).join(', ')}` : 'məs: lüks, mənzil, Bakı'}
+            value={tagsInput}
+            onChange={(e) => setTagsInput(e.target.value)}
+            list="project-tag-suggestions"
+          />
+          <datalist id="project-tag-suggestions">
+            {(existingTags.data ?? []).map((t) => (
+              <option key={t} value={t} />
+            ))}
+          </datalist>
+        </label>
 
         {create.error ? (
           <p className="text-meta mt-3" style={{ color: 'var(--error-deep)' }}>

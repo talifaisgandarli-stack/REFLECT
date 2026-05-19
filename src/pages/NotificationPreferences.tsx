@@ -114,6 +114,16 @@ export function NotificationPreferencesPage() {
     save.mutate({ channel, event, enabled: next });
   }
 
+  // PRD §UX — bulk toggle every event for one channel column (e.g. mute Telegram)
+  function toggleChannel(channel: Channel, enabled: boolean) {
+    setGrid((g) => {
+      const next = { ...g };
+      for (const e of EVENTS) next[`${channel}:${e.key}`] = enabled;
+      return next;
+    });
+    for (const e of EVENTS) save.mutate({ channel, event: e.key, enabled });
+  }
+
   return (
     <>
       <PageHead
@@ -128,9 +138,10 @@ export function NotificationPreferencesPage() {
         }
       />
 
-      <div className="card overflow-x-auto">
+      <div className="card overflow-x-auto" style={{ maxHeight: '70vh' }}>
         <table className="w-full text-body" style={{ minWidth: 520 }}>
-          <thead>
+          {/* PRD §UX — sticky header so column labels stay visible when scrolling */}
+          <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 }}>
             <tr style={{ borderBottom: '1px solid var(--line)' }}>
               <th
                 className="text-meta text-left py-3 pr-4"
@@ -142,24 +153,63 @@ export function NotificationPreferencesPage() {
               >
                 Hadisə
               </th>
-              {CHANNELS.map((c) => (
-                <th
-                  key={c.key}
-                  className="text-meta text-center py-3 px-4"
-                  style={{
-                    color: 'var(--text-muted)',
-                    letterSpacing: '0.05em',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  {c.label}
-                </th>
-              ))}
+              {CHANNELS.map((c) => {
+                // Channel is "all-on" if every event for that channel is true
+                const allOn = EVENTS.every((e) => grid[`${c.key}:${e.key}`] ?? true);
+                return (
+                  <th
+                    key={c.key}
+                    className="text-meta text-center py-3 px-4"
+                    style={{
+                      color: 'var(--text-muted)',
+                      letterSpacing: '0.05em',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    {c.label}
+                    {/* PRD §8.1 — surface link status for Telegram channel so users know
+                        whether the toggles will actually do anything. */}
+                    {c.key === 'telegram' ? (
+                      <span
+                        className="block text-meta"
+                        style={{
+                          color: profile?.telegram_chat_id ? 'var(--success-deep, #16794a)' : 'var(--warning, #c47d00)',
+                          fontSize: 9,
+                          textTransform: 'none',
+                          letterSpacing: 'normal',
+                          marginTop: 2,
+                        }}
+                      >
+                        {profile?.telegram_chat_id ? '● bağlıdır' : '○ bağlı deyil'}
+                      </span>
+                    ) : null}
+                    {/* PRD §UX — one-click mute/unmute the whole channel column */}
+                    <button
+                      type="button"
+                      className="block mx-auto mt-1 hover:underline"
+                      style={{
+                        color: 'var(--brand-text)',
+                        fontSize: 10,
+                        textTransform: 'none',
+                        letterSpacing: 'normal',
+                      }}
+                      onClick={() => toggleChannel(c.key, !allOn)}
+                      title={allOn ? 'Bu kanalı tamamilə söndür' : 'Bu kanalı tamamilə aç'}
+                    >
+                      {allOn ? 'Hamısını söndür' : 'Hamısını aç'}
+                    </button>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
             {EVENTS.map((e) => (
-              <tr key={e.key} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+              <tr
+                key={e.key}
+                className="hover:bg-surface-mist transition-colors"
+                style={{ borderBottom: '1px solid var(--line-soft)' }}
+              >
                 <td className="py-3 pr-4">
                   <div className="font-medium" style={{ color: 'var(--text)' }}>
                     {e.label}

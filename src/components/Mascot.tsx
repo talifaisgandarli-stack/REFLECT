@@ -5,7 +5,12 @@
  *
  * Appears in exactly 4 places: sidebar footer (20px), empty state (64px),
  * login page (80px), MIRAI loading (40px). Never decoratively elsewhere.
+ *
+ * PRD §UX delight — clicking the mascot triggers a one-shot wiggle so
+ * curious users get a small moment of life. Respects prefers-reduced-motion.
  */
+import { useState } from 'react';
+
 type Props = {
   size?: number;
   decorative?: boolean;
@@ -14,6 +19,7 @@ type Props = {
 };
 
 export function Mascot({ size = 64, decorative = true, label, className = '' }: Props) {
+  const [wiggling, setWiggling] = useState(false);
   return (
     <svg
       viewBox="0 0 80 80"
@@ -22,7 +28,14 @@ export function Mascot({ size = 64, decorative = true, label, className = '' }: 
       role={decorative ? undefined : 'img'}
       aria-hidden={decorative || undefined}
       aria-label={!decorative ? label : undefined}
-      className={className}
+      className={`${className} ${wiggling ? 'mascot-wiggle' : ''}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (wiggling) return;
+        setWiggling(true);
+        window.setTimeout(() => setWiggling(false), 600);
+      }}
+      style={{ cursor: 'pointer' }}
       xmlns="http://www.w3.org/2000/svg"
     >
       {!decorative && label ? <title>{label}</title> : null}

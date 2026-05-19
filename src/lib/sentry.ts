@@ -19,4 +19,11 @@ export function initSentry() {
   });
 }
 
+// PRD §9.4 — attribute frontend errors to the signed-in user. Call after auth
+// hydrates; pass null on logout to detach the user context.
+export function setSentryUser(user: { id: string; email: string } | null): void {
+  if (!dsn) return;
+  Sentry.setUser(user ? { id: user.id, email: user.email } : null);
+}
+
 export { Sentry };

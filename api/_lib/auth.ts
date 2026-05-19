@@ -131,32 +131,11 @@ export function jsonResponse(body: unknown, status = 200) {
   });
 }
 
-/** Capture unexpected (non-HttpError) exceptions to Sentry DSN if configured. */
-async function captureException(e: unknown) {
-  const dsn = process.env.SENTRY_DSN;
-  if (!dsn) return;
-  try {
-    const payload = {
-      exception: { values: [{ type: (e as Error)?.name ?? 'Error', value: String(e) }] },
-      platform: 'node',
-      sdk: { name: 'reflect-api', version: '1' },
-    };
-    const key = dsn.match(/\/\/([^@]+)@/)?.[1] ?? '';
-    const host = dsn.match(/@([^/]+)/)?.[1] ?? '';
-    const project = dsn.split('/').at(-1) ?? '';
-    await fetch(`https://${host}/api/${project}/store/`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-sentry-auth': `Sentry sentry_version=7, sentry_key=${key}` },
-      body: JSON.stringify(payload),
-    }).catch(() => null);
-  } catch {
-    // Intentionally silent — Sentry failure must never mask the real error.
-  }
-}
+// Centralized Sentry capture lives in api/_lib/sentry.ts (PRD §9.4).
+import { captureException } from './sentry';
 
 export function errorResponse(e: unknown) {
   if (e instanceof HttpError) return jsonResponse({ error: e.message }, e.status);
-  // eslint-disable-next-line no-console
   console.error('[api]', e);
   void captureException(e);
   return jsonResponse({ error: 'Internal error' }, 500);

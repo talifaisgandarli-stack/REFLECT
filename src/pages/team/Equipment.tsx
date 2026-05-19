@@ -3,12 +3,13 @@
  * Schema: equipment(id, name, kind, serial, assigned_to uuid|null, condition, purchased_at, notes)
  * Transfer history via activity_log(entity_type='equipment', entity_id, action, old_value, new_value)
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import { useAuth } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
+import { downloadCsv } from '@/lib/csv';
 
 type Equipment = {
   id: string;
@@ -24,6 +25,27 @@ type Equipment = {
 type Profile = { id: string; full_name: string | null };
 
 const CONDITIONS = ['Əla', 'Yaxşı', 'Orta', 'Zəif'] as const;
+
+// PRD §8.7 — simple keyword→emoji mapping for inventory scanning
+function kindIcon(kind: string): string {
+  const k = kind.toLowerCase();
+  if (k.includes('noutbuk') || k.includes('laptop')) return '💻';
+  if (k.includes('plotter') || k.includes('printer') || k.includes('çap')) return '🖨';
+  if (k.includes('kamera') || k.includes('foto')) return '📷';
+  if (k.includes('monitor') || k.includes('ekran')) return '🖥';
+  if (k.includes('telefon') || k.includes('phone')) return '📱';
+  if (k.includes('mebel') || k.includes('stol') || k.includes('stul')) return '🪑';
+  if (k.includes('avtomobil') || k.includes('car')) return '🚗';
+  return '📦';
+}
+// PRD §8.7 — single source of truth for condition→color mapping; used both by the
+// breakdown card and the row chip. Keys MUST stay in lockstep with CONDITIONS.
+const CONDITION_COLOR: Record<string, string> = {
+  'Əla': 'var(--success-deep, #16794a)',
+  'Yaxşı': 'var(--success-deep, #16794a)',
+  'Orta': '#c47d00',
+  'Zəif': 'var(--error-deep, #b3261e)',
+};
 const KINDS = ['Kompüter', 'Printer', 'Plotter', 'Skaner', 'Kamera', 'Telefon', 'Digər'] as const;
 
 export function EquipmentPage() {
@@ -107,15 +129,105 @@ export function EquipmentPage() {
 
   const profileMap = Object.fromEntries((profiles.data ?? []).map((p) => [p.id, p.full_name ?? p.id]));
 
+  // PRD §UX — availability filter (Hamısı / Boş / Tapşırılıb) + free-text search +
+  // person filter (narrow to a specific holder when audit-trailing kit).
+  // All filter state is URL-persisted so deep-links + refresh keep view intact.
+  const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const [availability, setAvailability] = useState<'all' | 'available' | 'assigned'>(
+    (urlParams?.get('avail') as 'all' | 'available' | 'assigned') || 'all',
+  );
+  const [search, setSearch] = useState('');
+  const [holderFilter, setHolderFilter] = useState<string>(urlParams?.get('holder') ?? ''); // '' = all
+  const [kindFilter, setKindFilter] = useState<string>(urlParams?.get('kind') ?? '');
+  // Persist filters back into the URL so reload / share-link keeps the view
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const next = new URLSearchParams(window.location.search);
+    if (availability === 'all') next.delete('avail'); else next.set('avail', availability);
+    if (!holderFilter) next.delete('holder'); else next.set('holder', holderFilter);
+    if (!kindFilter) next.delete('kind'); else next.set('kind', kindFilter);
+    const newQs = next.toString();
+    const curQs = window.location.search.slice(1);
+    if (newQs !== curQs) {
+      const url = newQs ? `${window.location.pathname}?${newQs}` : window.location.pathname;
+      window.history.replaceState({}, '', url);
+    }
+  }, [availability, holderFilter, kindFilter]);
+  const filteredEquipment = (equipment.data ?? []).filter((e) => {
+    if (availability === 'available' && e.assigned_to) return false;
+    if (availability === 'assigned' && !e.assigned_to) return false;
+    if (holderFilter && e.assigned_to !== holderFilter) return false;
+    if (kindFilter && (e.kind ?? '') !== kindFilter) return false;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      const hay = `${e.name} ${e.serial ?? ''} ${(e as { qr_code?: string | null }).qr_code ?? ''} ${e.kind ?? ''}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  // Surface only kinds we actually have so the row stays terse
+  const availableKinds = Array.from(
+    new Set((equipment.data ?? []).map((e) => e.kind ?? '').filter(Boolean)),
+  ).sort();
+  // Only show holders who actually own equipment (cleaner UX than full firm roster)
+  const holdersWithEquipment = Array.from(
+    new Set((equipment.data ?? []).map((e) => e.assigned_to).filter(Boolean) as string[]),
+  ).map((id) => ({ id, name: profileMap[id] ?? id.slice(0, 8) }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'az'));
+
   return (
     <>
       <PageHead
-        meta={`${equipment.data?.length ?? 0} avadanlıq`}
+        meta={(() => {
+          // PRD §8.7 — also surface "boş" count so admin sees free-pool size,
+          // plus filtered/total when a filter is active.
+          const total = equipment.data?.length ?? 0;
+          if (total === 0) return '—';
+          const free = (equipment.data ?? []).filter((e) => !e.assigned_to).length;
+          const filterActive = availability !== 'all' || holderFilter || kindFilter || search.trim();
+          const showing = filteredEquipment.length;
+          return filterActive
+            ? `${showing} / ${total} göstərilir · ${free} boş`
+            : `${total} avadanlıq · ${free} boş`;
+        })()}
         title="Avadanlıq"
         actions={
-          isAdmin ? (
-            <button className="btn-primary" onClick={() => setCreating(true)}>+ Yeni</button>
-          ) : null
+          <>
+            <input
+              className="input max-w-[220px]"
+              placeholder="Axtar (ad, serial, QR…)"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            {isAdmin ? (
+              <>
+                {/* PRD §8.7 — CSV export for inventory audit / handover */}
+                <button
+                  type="button"
+                  className="btn-outline"
+                  disabled={(equipment.data ?? []).length === 0}
+                  onClick={() => {
+                    downloadCsv(
+                      `avadanliq-${new Date().toISOString().slice(0, 10)}.csv`,
+                      ['Ad', 'Növ', 'Serial', 'QR', 'Tapşırılıb', 'Vəziyyət', 'Qeyd'],
+                      filteredEquipment.map((e) => ({
+                        'Ad': e.name,
+                        'Növ': e.kind ?? '',
+                        'Serial': e.serial ?? '',
+                        'QR': (e as { qr_code?: string | null }).qr_code ?? '',
+                        'Tapşırılıb': e.assigned_to ? (profileMap[e.assigned_to] ?? '') : '',
+                        'Vəziyyət': e.condition ?? '',
+                        'Qeyd': e.notes ?? '',
+                      })),
+                    );
+                  }}
+                >
+                  ↓ CSV
+                </button>
+                <button className="btn-primary" onClick={() => setCreating(true)}>+ Yeni</button>
+              </>
+            ) : null}
+          </>
         }
       />
 
@@ -132,21 +244,151 @@ export function EquipmentPage() {
           }
         />
       ) : (
+        <>
+          {/* PRD §8.7 — condition breakdown chips (simple distribution view) */}
+          {(() => {
+            const buckets = new Map<string, number>();
+            for (const e of equipment.data ?? []) {
+              const c = (e.condition as string) ?? 'naməlum';
+              buckets.set(c, (buckets.get(c) ?? 0) + 1);
+            }
+            const total = (equipment.data ?? []).length;
+            return (
+              <div className="card mb-4 flex items-center gap-3 flex-wrap">
+                <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Vəziyyət:</span>
+                {Array.from(buckets.entries()).map(([k, v]) => {
+                  const pct = Math.round((v / total) * 100);
+                  const color = CONDITION_COLOR[k] ?? 'var(--text-muted)';
+                  return (
+                    <span
+                      key={k}
+                      className="chip"
+                      style={{
+                        background: 'var(--surface-mist)',
+                        color,
+                        fontSize: 12,
+                      }}
+                    >
+                      {k} · {v} ({pct}%)
+                    </span>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
+          {/* PRD §UX — availability filter chips */}
+          <div className="flex gap-2 mb-3">
+            {([
+              { k: 'all', label: 'Hamısı' },
+              { k: 'available', label: 'Boş' },
+              { k: 'assigned', label: 'Tapşırılıb' },
+            ] as const).map((f) => (
+              <button
+                key={f.k}
+                type="button"
+                className="chip"
+                style={{
+                  background: availability === f.k ? 'var(--brand-action)' : 'var(--surface-mist)',
+                  color: availability === f.k ? 'var(--ink)' : 'var(--text-muted)',
+                  fontWeight: availability === f.k ? 600 : 400,
+                }}
+                onClick={() => setAvailability(f.k)}
+              >
+                {f.label}
+              </button>
+            ))}
+            {/* PRD §8.7 — kind filter dropdown (only shown when >1 distinct kind) */}
+            {availableKinds.length > 1 ? (
+              <select
+                className="input"
+                style={{ maxWidth: 160, height: 32, fontSize: 12 }}
+                value={kindFilter}
+                onChange={(e) => setKindFilter(e.target.value)}
+                aria-label="Növə görə süz"
+              >
+                <option value="">Bütün növlər ({(equipment.data ?? []).length})</option>
+                {availableKinds.map((k) => {
+                  const count = (equipment.data ?? []).filter((e) => (e.kind ?? '') === k).length;
+                  return <option key={k} value={k}>{k} ({count})</option>;
+                })}
+              </select>
+            ) : null}
+            {/* PRD §8.7 — narrow to one holder so audit trail per person is one click */}
+            {holdersWithEquipment.length > 0 ? (
+              <select
+                className="input"
+                style={{ maxWidth: 200, height: 32, fontSize: 12 }}
+                value={holderFilter}
+                onChange={(e) => setHolderFilter(e.target.value)}
+                aria-label="İstifadəçiyə görə süz"
+              >
+                <option value="">Bütün istifadəçilər</option>
+                {holdersWithEquipment.map((h) => (
+                  <option key={h.id} value={h.id}>{h.name}</option>
+                ))}
+              </select>
+            ) : null}
+          </div>
+
         <div className="card overflow-x-auto">
           <table className="w-full text-body">
             <thead>
               <tr style={{ borderBottom: '1px solid var(--line)' }}>
-                {['Ad', 'Növ', 'Serial', 'Tapşırılıb', 'Vəziyyət', ''].map((h) => (
+                {['Ad', 'Növ', 'Serial', 'QR', 'Tapşırılıb', 'Vəziyyət', 'Qeyd', ''].map((h) => (
                   <th key={h} className="text-left py-3 px-3 text-meta" style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {(equipment.data ?? []).map((e) => (
-                <tr key={e.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+              {filteredEquipment.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-6 text-center text-meta" style={{ color: 'var(--text-muted)' }}>
+                    Filtrə uyğun avadanlıq yoxdur.{' '}
+                    <button
+                      type="button"
+                      className="underline"
+                      style={{ color: 'var(--brand-text)' }}
+                      onClick={() => {
+                        setAvailability('all');
+                        setHolderFilter('');
+                        setKindFilter('');
+                        setSearch('');
+                      }}
+                    >
+                      Filtrləri təmizlə
+                    </button>
+                  </td>
+                </tr>
+              ) : null}
+              {filteredEquipment.map((e, idx) => (
+                <tr
+                  key={e.id}
+                  style={{
+                    borderBottom: '1px solid var(--line-soft)',
+                    // PRD §UX — zebra stripes so long rows are easier to scan
+                    background: idx % 2 === 1 ? 'var(--surface-mist)' : 'transparent',
+                  }}
+                >
                   <td className="py-3 px-3 font-medium">{e.name}</td>
-                  <td className="py-3 px-3">{e.kind ?? '—'}</td>
-                  <td className="py-3 px-3 text-meta" style={{ color: 'var(--text-muted)' }}>{e.serial ?? '—'}</td>
+                  <td className="py-3 px-3">
+                    {/* PRD §8.7 — emoji icon hint by kind for at-a-glance scanning */}
+                    {e.kind ? (
+                      <span>
+                        <span aria-hidden style={{ marginRight: 4, opacity: 0.7 }}>
+                          {kindIcon(e.kind)}
+                        </span>
+                        {e.kind}
+                      </span>
+                    ) : '—'}
+                  </td>
+                  <td className="py-3 px-3">
+                    <EquipmentTextCell id={e.id} field="serial" initial={e.serial ?? null} isAdmin={isAdmin} mono={false} />
+                  </td>
+                  {/* PRD §8.7 — QR/asset tag (migration 0051) */}
+                  <td className="py-3 px-3">
+                    <EquipmentTextCell id={e.id} field="qr_code" initial={(e as { qr_code?: string | null }).qr_code ?? null} isAdmin={isAdmin} mono={true} />
+                  </td>
                   <td className="py-3 px-3">
                     {e.assigned_to ? profileMap[e.assigned_to] ?? e.assigned_to : (
                       <span className="text-meta" style={{ color: 'var(--text-muted)' }}>—</span>
@@ -156,16 +398,39 @@ export function EquipmentPage() {
                     {isAdmin ? (
                       <select
                         className="input"
-                        style={{ height: 28, fontSize: 13, padding: '0 6px' }}
+                        style={{
+                          height: 28,
+                          fontSize: 13,
+                          padding: '0 6px',
+                          // PRD §8.7 — color-code admin select to match the read-only chip
+                          color: e.condition
+                            ? CONDITION_COLOR[e.condition as string] ?? 'var(--text)'
+                            : 'var(--text-muted)',
+                          fontWeight: e.condition ? 600 : 400,
+                        }}
                         value={e.condition ?? ''}
                         onChange={(ev) => updateCondition.mutate({ id: e.id, condition: ev.target.value })}
                       >
                         <option value="">—</option>
                         {CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
                       </select>
-                    ) : (
-                      e.condition ?? '—'
-                    )}
+                    ) : e.condition ? (
+                      // PRD §8.7 — color-coded condition chip (read-only path)
+                      <span
+                        className="chip"
+                        style={{
+                          background: 'var(--surface-mist)',
+                          color: CONDITION_COLOR[e.condition as string] ?? 'var(--text-muted)',
+                          fontSize: 12,
+                        }}
+                      >
+                        {e.condition}
+                      </span>
+                    ) : '—'}
+                  </td>
+                  {/* PRD §8.7 — inline notes edit (admin) */}
+                  <td className="py-3 px-3" style={{ maxWidth: 200 }}>
+                    <EquipmentNotesCell id={e.id} initial={(e as { notes?: string | null }).notes ?? null} isAdmin={isAdmin} />
                   </td>
                   <td className="py-3 px-3">
                     {isAdmin ? (
@@ -184,6 +449,7 @@ export function EquipmentPage() {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {/* Assign / history panel */}
@@ -257,6 +523,7 @@ function CreateEquipmentModal({ onClose, onSaved }: { onClose: () => void; onSav
   const [name, setName] = useState('');
   const [kind, setKind] = useState<string>(KINDS[0]);
   const [serial, setSerial] = useState('');
+  const [qrCode, setQrCode] = useState('');
   const [condition, setCondition] = useState<string>(CONDITIONS[0]);
   const [purchasedAt, setPurchasedAt] = useState('');
   const [notes, setNotes] = useState('');
@@ -268,6 +535,7 @@ function CreateEquipmentModal({ onClose, onSaved }: { onClose: () => void; onSav
         name: name.trim(),
         kind,
         serial: serial.trim() || null,
+        qr_code: qrCode.trim() || null,
         condition,
         purchased_at: purchasedAt || null,
         notes: notes.trim() || null,
@@ -296,6 +564,17 @@ function CreateEquipmentModal({ onClose, onSaved }: { onClose: () => void; onSav
           <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Serial nömrəsi</span>
           <input className="input" value={serial} onChange={(e) => setSerial(e.target.value)} />
         </label>
+        {/* PRD §8.7 — QR / asset tag (migration 0051) */}
+        <label className="block mb-3">
+          <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>QR / Asset tag</span>
+          <input
+            className="input"
+            value={qrCode}
+            onChange={(e) => setQrCode(e.target.value)}
+            placeholder="məs: ASSET-0042"
+            style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}
+          />
+        </label>
         <label className="block mb-3">
           <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Vəziyyət</span>
           <select className="input" value={condition} onChange={(e) => setCondition(e.target.value)}>
@@ -321,4 +600,97 @@ function CreateEquipmentModal({ onClose, onSaved }: { onClose: () => void; onSav
       </div>
     </div>
   );
+}
+
+// PRD §8.7 — generic inline text editor for an equipment field (admin-only writes).
+// Used by serial / qr_code / notes. Mono styling for ID-like fields (qr_code).
+function EquipmentTextCell({
+  id,
+  field,
+  initial,
+  isAdmin,
+  mono = false,
+  placeholder,
+}: {
+  id: string;
+  field: 'serial' | 'qr_code' | 'notes';
+  initial: string | null;
+  isAdmin: boolean;
+  mono?: boolean;
+  placeholder?: string;
+}) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(initial ?? '');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { if (!editing) setVal(initial ?? ''); }, [initial, editing]);
+
+  async function save() {
+    const trimmed = val.trim();
+    if (trimmed === (initial ?? '')) { setEditing(false); return; }
+    setSaving(true);
+    await supabase.from('equipment').update({ [field]: trimmed || null }).eq('id', id);
+    setSaving(false);
+    qc.invalidateQueries({ queryKey: ['equipment'] });
+    setEditing(false);
+  }
+
+  const monoStyle: React.CSSProperties = mono ? { fontFamily: 'ui-monospace, Menlo, monospace' } : {};
+  const placeholderText = placeholder ?? (field === 'notes' ? '+ qeyd' : `+ ${field}`);
+
+  if (!isAdmin) {
+    return (
+      <span className="text-meta truncate block" style={{ color: 'var(--text-muted)', fontSize: 12, ...monoStyle }} title={initial ?? undefined}>
+        {initial ?? '—'}
+      </span>
+    );
+  }
+
+  // PRD §8.7 — alt-click copies the serial/QR/etc. to clipboard for inventory ops
+  function copyValue(e: React.MouseEvent) {
+    if (!e.altKey || !initial) return;
+    e.preventDefault();
+    e.stopPropagation();
+    void navigator.clipboard.writeText(initial).catch(() => {});
+  }
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1">
+        <input
+          autoFocus
+          className="input"
+          style={{ height: 24, fontSize: 12, ...monoStyle }}
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') save();
+            if (e.key === 'Escape') { setVal(initial ?? ''); setEditing(false); }
+          }}
+        />
+        <button type="button" className="chip" disabled={saving} onClick={save} style={{ fontSize: 11, color: 'var(--brand-text)' }}>{saving ? '…' : '✓'}</button>
+        <button type="button" className="chip" onClick={() => { setVal(initial ?? ''); setEditing(false); }} style={{ fontSize: 11 }}>×</button>
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={(e) => { if (e.altKey && initial) { copyValue(e); return; } setEditing(true); }}
+      className="text-meta truncate block text-left hover:bg-surface-mist px-1 -mx-1 rounded-btn w-full"
+      style={{
+        color: initial ? 'var(--text)' : 'var(--text-muted)',
+        fontStyle: initial ? 'normal' : 'italic',
+        fontSize: 12,
+        ...monoStyle,
+      }}
+      title={initial ? `${initial} — Alt+klik kopyala` : undefined}
+    >
+      {initial ?? placeholderText}
+    </button>
+  );
+}
+
+// Backwards-compat: keep the old name pointing to the generic component for notes
+function EquipmentNotesCell({ id, initial, isAdmin }: { id: string; initial: string | null; isAdmin: boolean }) {
+  return <EquipmentTextCell id={id} field="notes" initial={initial} isAdmin={isAdmin} />;
 }

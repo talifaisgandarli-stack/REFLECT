@@ -8,6 +8,7 @@
  * to email + Telegram.
  */
 import { admin, errorResponse, HttpError, jsonResponse } from '../_lib/auth';
+import { withSentry } from '../_lib/sentry';
 
 export const config = { runtime: 'edge' };
 
@@ -46,7 +47,7 @@ const BUCKETS: Array<{ key: 'd3' | 'd1' | 'd0'; offset: number; label: string }>
   { key: 'd0', offset: 0, label: 'bu gün' },
 ];
 
-export default async function handler(req: Request) {
+async function handler(req: Request) {
   try {
     const url = new URL(req.url);
     const cronAuth =
@@ -122,3 +123,5 @@ export default async function handler(req: Request) {
     return errorResponse(e);
   }
 }
+
+export default withSentry(handler, 'cron/deadline-reminders');

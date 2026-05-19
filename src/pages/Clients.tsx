@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from 'recharts';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import {
@@ -20,8 +22,12 @@ import {
 import { SkeletonList } from '@/components/Skeleton';
 import type { Client, ClientPipelineStage, InteractionType } from '@/types/db';
 import { formatAZN, relativeTime } from '@/lib/format';
+import { downloadCsv } from '@/lib/csv';
 import { useAuth } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
+import { isValidEmail, isValidPhone, roundAzn } from '@/lib/validation';
+import { trackRecentEntry } from '@/lib/useRecentlyViewed';
+import { useSlashFocus } from '@/lib/useSlashFocus';
 
 type DragPayload = { id: string; from: ClientPipelineStage };
 type LostPrompt = { id: string; from: ClientPipelineStage };
@@ -34,31 +40,70 @@ export function ClientsPage() {
   const [active, setActive] = useState<Client | null>(null);
   const [creating, setCreating] = useState(false);
   const [lostPrompt, setLostPrompt] = useState<LostPrompt | null>(null);
-  const [search, setSearch] = useState('');
+  // PRD §UX — search persisted in URL (refresh / share-link preserves it)
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [search, setSearch] = useState(searchParams.get('q') ?? '');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchInputRef);
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (search) next.set('q', search);
+    else next.delete('q');
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
   // BD Lead may also drag (PRD §8 RLS allows insert/update). Admin retains
   // full control; non-admin/non-BD-Lead is read-only.
   const canDrag = isAdmin || role?.key === 'bd_lead';
 
-  const filteredClients = useMemo(() => {
-    if (!search.trim()) return clients;
-    const q = search.trim().toLowerCase();
-    return clients.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        (c.company ?? '').toLowerCase().includes(q) ||
-        (c.email ?? '').toLowerCase().includes(q),
-    );
-  }, [clients, search]);
+  // PRD §REQ-CRM — industry filter chip (column from migration 0050)
+  const [industryFilter, setIndustryFilter] = useState<string>('');
+  const availableIndustries = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of clients) {
+      const ind = (c as { industry?: string | null }).industry;
+      if (ind) set.add(ind);
+    }
+    return Array.from(set).sort();
+  }, [clients]);
 
+  const filteredClients = useMemo(() => {
+    let out = clients;
+    if (industryFilter) {
+      out = out.filter((c) => (c as { industry?: string | null }).industry === industryFilter);
+    }
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      out = out.filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          (c.company ?? '').toLowerCase().includes(q) ||
+          (c.email ?? '').toLowerCase().includes(q),
+      );
+    }
+    return out;
+  }, [clients, search, industryFilter]);
+
+  // PRD §UX — sort within stages (default = name asc)
+  const [sortBy, setSortBy] = useState<'name' | 'value' | 'last_interaction'>('name');
   const grouped = useMemo(() => {
     const map: Record<ClientPipelineStage, Client[]> = CLIENT_STAGE_ORDER.reduce(
       (acc, s) => ({ ...acc, [s]: [] }),
       {} as Record<ClientPipelineStage, Client[]>,
     );
     for (const c of filteredClients) map[c.pipeline_stage]?.push(c);
+    for (const k of CLIENT_STAGE_ORDER) {
+      map[k] = [...map[k]].sort((a, b) => {
+        if (sortBy === 'value') return (b.expected_value ?? 0) - (a.expected_value ?? 0);
+        if (sortBy === 'last_interaction') {
+          return (b.last_interaction_at ?? '').localeCompare(a.last_interaction_at ?? '');
+        }
+        return a.name.localeCompare(b.name, 'az');
+      });
+    }
     return map;
-  }, [filteredClients]);
+  }, [filteredClients, sortBy]);
 
   // REQ-CRM-02 — pipeline value uses each client's own confidence_pct, not the
   // stage default (which the kanban already implies).
@@ -86,15 +131,193 @@ export function ClientsPage() {
         actions={
           <>
             <input
+              ref={searchInputRef}
               className="input max-w-[240px]"
-              placeholder="Axtar (ad, şirkət, email)…"
+              placeholder="Axtar (ad, şirkət, email)… (/)"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+            {/* PRD §REQ-CRM — pipeline export for BD review/forecasting */}
+            {isAdmin && clients.length > 0 ? (
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={() => {
+                  downloadCsv(
+                    `musteriler-${new Date().toISOString().slice(0, 10)}.csv`,
+                    ['Ad', 'Şirkət', 'Email', 'Telefon', 'Mərhələ', 'Etibar %', 'Dəyər (AZN)', 'Sahə', 'ICP %', 'Son əlaqə'],
+                    clients.map((c) => ({
+                      'Ad': c.name,
+                      'Şirkət': c.company ?? '',
+                      'Email': c.email ?? '',
+                      'Telefon': c.phone ?? '',
+                      'Mərhələ': CLIENT_STAGE_LABEL[c.pipeline_stage] ?? c.pipeline_stage,
+                      'Etibar %': c.confidence_pct,
+                      'Dəyər (AZN)': c.expected_value ?? '',
+                      'Sahə': (c as { industry?: string | null }).industry ?? '',
+                      'ICP %': c.ai_icp_fit != null ? Math.round(c.ai_icp_fit) : '',
+                      'Son əlaqə': c.last_interaction_at ?? '',
+                    })),
+                  );
+                }}
+              >
+                ↓ CSV
+              </button>
+            ) : null}
             {canDrag ? <button className="btn-primary" onClick={() => setCreating(true)}>+ Yeni müştəri</button> : null}
           </>
         }
       />
+
+      {/* PRD §UX — sort dropdown for cards within each stage */}
+      <div className="flex gap-2 mb-3 items-center">
+        <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+          Sıralama:
+        </span>
+        <select
+          className="input"
+          style={{ maxWidth: 200, height: 32, fontSize: 12 }}
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+          aria-label="Sıralama"
+        >
+          <option value="name">A → Z</option>
+          <option value="value">Dəyər (böyük əvvəl)</option>
+          <option value="last_interaction">Son əlaqə (yeni əvvəl)</option>
+        </select>
+      </div>
+
+      {/* PRD §REQ-CRM — industry filter (migration 0050) */}
+      {availableIndustries.length > 0 ? (
+        <div className="flex flex-wrap gap-2 mb-3">
+          <button
+            type="button"
+            className="chip"
+            style={{
+              background: industryFilter === '' ? 'var(--brand-action)' : 'var(--surface-mist)',
+              color: industryFilter === '' ? 'var(--ink)' : 'var(--text-muted)',
+            }}
+            onClick={() => setIndustryFilter('')}
+          >
+            Bütün sahələr
+          </button>
+          {availableIndustries.map((ind) => (
+            <button
+              key={ind}
+              type="button"
+              className="chip"
+              style={{
+                background: industryFilter === ind ? 'var(--brand-action)' : 'var(--surface-mist)',
+                color: industryFilter === ind ? 'var(--ink)' : 'var(--text-muted)',
+              }}
+              onClick={() => setIndustryFilter(industryFilter === ind ? '' : ind)}
+            >
+              {ind}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {/* PRD §REQ-CRM — funnel: client count per stage (drop-off visual) */}
+      {!isLoading && clients.length > 0 ? (
+        <div className="card mb-4">
+          <h3 className="text-h3 mb-2">Konversiya funel</h3>
+          <div className="space-y-1.5">
+            {(() => {
+              const counts = CLIENT_STAGE_ORDER.map((s) => ({ s, n: grouped[s].length }));
+              const max = Math.max(1, ...counts.map((c) => c.n));
+              return counts.map(({ s, n }) => {
+                const pct = max > 0 ? (n / max) * 100 : 0;
+                const color =
+                  s === 'lost' ? 'var(--error, #c83b3b)'
+                  : s === 'portfolio' ? 'var(--success-deep, #16794a)'
+                  : 'var(--brand-action)';
+                return (
+                  <div key={s} className="flex items-center gap-3 text-meta">
+                    <span className="w-24 shrink-0" style={{ color: 'var(--text-muted)' }}>
+                      {CLIENT_STAGE_LABEL[s]}
+                    </span>
+                    <div className="flex-1 h-5 rounded-full overflow-hidden" style={{ background: 'var(--line-soft)' }}>
+                      <div
+                        style={{
+                          width: `${pct}%`,
+                          height: '100%',
+                          background: color,
+                          transition: 'width 0.3s',
+                        }}
+                      />
+                    </div>
+                    <span className="w-10 text-right" style={{ color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
+                      {n}
+                    </span>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        </div>
+      ) : null}
+
+      {/* PRD §REQ-CRM-02 — visual pipeline value per stage (bar chart) */}
+      {!isLoading && clients.length > 0 ? (
+        <div className="card mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-h3">Pipeline dəyəri (mərhələ üzrə)</h3>
+            <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+              Σ (gözlənilən × confidence%)
+            </span>
+          </div>
+          <div style={{ width: '100%', height: 200 }}>
+            <ResponsiveContainer>
+              <BarChart
+                data={CLIENT_STAGE_ORDER.map((s) => ({
+                  stage: CLIENT_STAGE_LABEL[s],
+                  value: stageValue(s),
+                  count: grouped[s].length,
+                  key: s,
+                }))}
+                margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+              >
+                <XAxis
+                  dataKey="stage"
+                  stroke="var(--text-muted)"
+                  fontSize={11}
+                  interval={0}
+                  angle={-15}
+                  textAnchor="end"
+                  height={50}
+                />
+                <YAxis
+                  stroke="var(--text-muted)"
+                  fontSize={11}
+                  tickFormatter={(v) => `${(Number(v) / 1000).toFixed(0)}k`}
+                />
+                <Tooltip
+                  cursor={{ fill: 'var(--brand-glow-sm)' }}
+                  contentStyle={{
+                    background: 'var(--ink)',
+                    border: '1px solid var(--line)',
+                    borderRadius: 8,
+                    color: 'var(--canvas)',
+                  }}
+                  formatter={(value, _name, item) => {
+                    const count = (item?.payload as { count?: number } | undefined)?.count ?? 0;
+                    return [`${formatAZN(Number(value))} · ${count} müştəri`, 'Dəyər'];
+                  }}
+                />
+                <Bar dataKey="value" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+                  {CLIENT_STAGE_ORDER.map((s) => (
+                    <Cell
+                      key={s}
+                      fill={s === 'lost' ? 'var(--error)' : s === 'portfolio' ? 'var(--success)' : 'var(--brand-action)'}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      ) : null}
 
       {isLoading ? (
         <SkeletonList rows={6} />
@@ -153,6 +376,20 @@ export function ClientsPage() {
                     <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
                       {c.company ?? '—'} · {formatAZN(c.expected_value)}
                     </div>
+                    {/* PRD §REQ-CRM — industry chip on kanban card (migration 0050) */}
+                    {(c as { industry?: string | null }).industry ? (
+                      <span
+                        className="chip mt-1.5 inline-block"
+                        style={{
+                          background: 'var(--surface-mist)',
+                          color: 'var(--text-muted)',
+                          fontSize: 10,
+                          padding: '0 6px',
+                        }}
+                      >
+                        {(c as { industry?: string | null }).industry}
+                      </span>
+                    ) : null}
                   </button>
                 ))}
               </div>
@@ -194,23 +431,91 @@ export function ClientsPage() {
 }
 
 // ── Create client modal (REQ-CRM-01) ──
+const INDUSTRY_OPTIONS = ['Tikinti', 'Mağaza', 'Restoran', 'Ofis', 'Mənzil', 'Mehmanxana', 'İctimai obyekt', 'Sənaye', 'Digər'] as const;
+
 function CreateClientModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const qc = useQueryClient();
+  const { data: existing = [] } = useClients();
   const [name, setName] = useState('');
   const [company, setCompany] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [expectedValue, setExpectedValue] = useState('');
+  const [industry, setIndustry] = useState('');
+  const [overrideDuplicate, setOverrideDuplicate] = useState(false);
+
+  // PRD §UX — auto-save draft to localStorage (1h expiry)
+  const CLIENT_DRAFT_KEY = 'reflect.client-draft';
+  useEffect(() => {
+    if (!name.trim() && !company.trim()) return;
+    try {
+      localStorage.setItem(
+        CLIENT_DRAFT_KEY,
+        JSON.stringify({ name, company, email, phone, expectedValue, industry, ts: Date.now() }),
+      );
+    } catch { /* ignore */ }
+  }, [name, company, email, phone, expectedValue, industry]);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CLIENT_DRAFT_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw) as Record<string, string | number | undefined>;
+      if (d.ts && Date.now() - Number(d.ts) > 3600_000) {
+        localStorage.removeItem(CLIENT_DRAFT_KEY);
+        return;
+      }
+      if (typeof d.name === 'string' && !name) setName(d.name);
+      if (typeof d.company === 'string' && !company) setCompany(d.company);
+      if (typeof d.email === 'string' && !email) setEmail(d.email);
+      if (typeof d.phone === 'string' && !phone) setPhone(d.phone);
+      if (typeof d.expectedValue === 'string' && !expectedValue) setExpectedValue(d.expectedValue);
+      if (typeof d.industry === 'string' && !industry) setIndustry(d.industry);
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // PRD §REQ-CRM — fuzzy duplicate detection: normalize + token-set overlap
+  // against existing client names/companies. Conservative — only flags very
+  // close matches so we don't annoy users with false positives.
+  const duplicates = useMemo(() => {
+    const q = name.trim().toLowerCase();
+    if (q.length < 3) return [];
+    const tokens = new Set(q.split(/\s+/).filter((t) => t.length >= 3));
+    if (tokens.size === 0) return [];
+    return existing
+      .filter((c) => c.pipeline_stage !== 'archived')
+      .map((c) => {
+        const hay = `${c.name} ${c.company ?? ''}`.toLowerCase();
+        if (hay.includes(q)) return { client: c, score: 1 }; // substring hit
+        const hayTokens = new Set(hay.split(/\s+/).filter((t) => t.length >= 3));
+        let hits = 0;
+        for (const t of tokens) if (hayTokens.has(t)) hits++;
+        return { client: c, score: hits / tokens.size };
+      })
+      .filter((r) => r.score >= 0.6)
+      .slice(0, 5);
+  }, [name, existing]);
 
   const create = useMutation({
     mutationFn: async () => {
       if (!name.trim()) throw new Error('Ad tələb olunur');
+      // PRD §9.1 — client-side format validation (server has its own checks)
+      if (email.trim() && !isValidEmail(email.trim())) {
+        throw new Error('Etibarsız email formatı');
+      }
+      if (phone.trim() && !isValidPhone(phone.trim())) {
+        throw new Error('Etibarsız telefon formatı');
+      }
+      if (duplicates.length > 0 && !overrideDuplicate) {
+        throw new Error('Oxşar müştəri tapıldı — davam etmək üçün təsdiqlə');
+      }
       const { error } = await supabase.from('clients').insert({
         name: name.trim(),
         company: company.trim() || null,
         email: email.trim() || null,
         phone: phone.trim() || null,
-        expected_value: expectedValue ? Number(expectedValue) : null,
+        industry: industry || null,
+        expected_value: expectedValue ? roundAzn(expectedValue) : null,
         pipeline_stage: 'lead',
         confidence_pct: 10,
       });
@@ -218,6 +523,7 @@ function CreateClientModal({ onClose, onCreated }: { onClose: () => void; onCrea
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['clients'] });
+      try { localStorage.removeItem(CLIENT_DRAFT_KEY); } catch { /* ignore */ }
       onCreated();
     },
   });
@@ -250,6 +556,15 @@ function CreateClientModal({ onClose, onCreated }: { onClose: () => void; onCrea
               <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} />
             </CField>
           </div>
+          {/* PRD §REQ-CRM — industry tag (migration 0050) */}
+          <CField label="Sahə (sənaye)">
+            <select className="input" value={industry} onChange={(e) => setIndustry(e.target.value)}>
+              <option value="">Seçin…</option>
+              {INDUSTRY_OPTIONS.map((o) => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+            </select>
+          </CField>
           <CField label="Gözlənilən dəyər (AZN)">
             <input
               type="number"
@@ -262,12 +577,45 @@ function CreateClientModal({ onClose, onCreated }: { onClose: () => void; onCrea
             />
           </CField>
         </div>
+        {/* PRD §REQ-CRM — duplicate detection warning */}
+        {duplicates.length > 0 ? (
+          <div
+            className="rounded-card px-3 py-2 mt-3"
+            style={{
+              background: 'var(--warning-bg, #fff3d6)',
+              border: '1px solid var(--warning, #c47d00)',
+              color: 'var(--ink)',
+            }}
+          >
+            <div className="text-meta font-medium mb-1">⚠ Oxşar müştəri tapıldı:</div>
+            <ul className="text-meta mb-2" style={{ fontSize: 12 }}>
+              {duplicates.map((d) => (
+                <li key={d.client.id}>
+                  • {d.client.name}{d.client.company ? ` · ${d.client.company}` : ''}
+                </li>
+              ))}
+            </ul>
+            <label className="text-meta flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={overrideDuplicate}
+                onChange={(e) => setOverrideDuplicate(e.target.checked)}
+              />
+              Bilirəm — yeni müştəri kimi əlavə et
+            </label>
+          </div>
+        ) : null}
+
         {create.error ? (
           <p className="text-meta mt-3" style={{ color: 'var(--error-deep)' }}>{(create.error as Error).message}</p>
         ) : null}
         <div className="flex justify-end gap-2 mt-6">
           <button type="button" className="btn-outline" onClick={onClose} disabled={create.isPending}>Ləğv</button>
-          <button type="submit" className="btn-primary" disabled={create.isPending || !name.trim()}>
+          <button
+            type="submit"
+            className="btn-primary"
+            disabled={create.isPending || !name.trim() || (duplicates.length > 0 && !overrideDuplicate)}
+          >
             {create.isPending ? 'Yaradılır…' : 'Yarat'}
           </button>
         </div>
@@ -297,13 +645,26 @@ const PANEL_TABS: { key: ClientPanelTab; label: string }[] = [
 ];
 
 function ClientPanel({ client, onClose }: { client: Client; onClose: () => void }) {
+  const { isAdmin } = useAuth();
+  const qc = useQueryClient();
   const [tab, setTab] = useState<ClientPanelTab>('overview');
+  const [mergeOpen, setMergeOpen] = useState(false);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
+
+  // Track recent: opening the panel counts as "viewed"
+  useEffect(() => {
+    trackRecentEntry({
+      type: 'client',
+      id: client.id,
+      title: client.name,
+      href: `/müştərilər?focus=${client.id}`,
+    });
+  }, [client.id, client.name]);
 
   return (
     <div
@@ -315,8 +676,25 @@ function ClientPanel({ client, onClose }: { client: Client; onClose: () => void 
         className="w-[520px] h-full bg-surface p-6 overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between mb-1">
-          <h2 className="text-h2">{client.name}</h2>
+        <div className="flex items-start justify-between mb-1 gap-2">
+          {/* PRD §REQ-CRM — admin inline edit client name */}
+          {isAdmin ? (
+            <ClientNameEditor clientId={client.id} initial={client.name} />
+          ) : (
+            <h2 className="text-h2 flex-1 min-w-0 truncate">{client.name}</h2>
+          )}
+          {/* PRD §REQ-CRM — admin client merge */}
+          {isAdmin ? (
+            <button
+              type="button"
+              onClick={() => setMergeOpen(true)}
+              className="chip shrink-0"
+              style={{ color: 'var(--brand-text)' }}
+              title="Bu müştərini başqası ilə birləşdir"
+            >
+              ⇆ Birləşdir
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onClose}
@@ -327,6 +705,17 @@ function ClientPanel({ client, onClose }: { client: Client; onClose: () => void 
             ✕
           </button>
         </div>
+        {mergeOpen ? (
+          <ClientMergeModal
+            source={client}
+            onClose={() => setMergeOpen(false)}
+            onMerged={() => {
+              setMergeOpen(false);
+              qc.invalidateQueries({ queryKey: ['clients'] });
+              onClose();
+            }}
+          />
+        ) : null}
         <div className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
           {client.company ?? '—'}
         </div>
@@ -710,18 +1099,35 @@ function OverviewTab({ client }: { client: Client }) {
     }
   }
 
+  const { isAdmin } = useAuth();
   return (
     <div>
       <dl className="text-body space-y-2">
         <Row label="Mərhələ" value={CLIENT_STAGE_LABEL[client.pipeline_stage]} />
         <Row label="Etibar %" value={`${client.confidence_pct}%`} />
-        <Row label="Dəyər" value={formatAZN(client.expected_value)} />
-        <Row label="Email" value={client.email ?? '—'} />
+        {/* PRD §REQ-CRM — inline editable fields (admin) */}
+        {isAdmin ? (
+          <ClientFieldEditor clientId={client.id} field="company" label="Şirkət" initial={client.company} type="text" />
+        ) : <Row label="Şirkət" value={client.company ?? '—'} />}
+        {isAdmin ? (
+          <ClientFieldEditor clientId={client.id} field="email" label="Email" initial={client.email} type="email" />
+        ) : <Row label="Email" value={client.email ?? '—'} />}
         <Row label="Telefon" value={client.phone ?? '—'} />
+        {isAdmin ? (
+          <ClientFieldEditor clientId={client.id} field="expected_value" label="Dəyər" initial={client.expected_value != null ? String(client.expected_value) : null} type="number" displayFormat="azn" />
+        ) : <Row label="Dəyər" value={formatAZN(client.expected_value)} />}
+        {isAdmin ? (
+          <ClientIndustryEditor clientId={client.id} initial={(client as { industry?: string | null }).industry ?? null} />
+        ) : ((client as { industry?: string | null }).industry ? <Row label="Sahə" value={(client as { industry?: string | null }).industry ?? ''} /> : null)}
         <Row label="Son əlaqə" value={relativeTime(client.last_interaction_at)} />
+        {/* REQ-CRM-04 — surface staleness so users see when ICP was last calculated */}
         <Row
           label="ICP uyğunluğu"
-          value={client.ai_icp_fit != null ? `${Math.round(client.ai_icp_fit)}%` : '—'}
+          value={
+            client.ai_icp_fit != null
+              ? `${Math.round(client.ai_icp_fit)}%${lastRun ? ` · ${relativeTime(client.ai_icp_calculated_at)}` : ''}`
+              : '—'
+          }
         />
       </dl>
       <div className="mt-4">
@@ -903,6 +1309,285 @@ function LostReasonModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// PRD §REQ-CRM — admin merges duplicate clients. Server RPC handles all FK
+// rewrites + soft-archives the source row (migration 0043).
+function ClientMergeModal({
+  source,
+  onClose,
+  onMerged,
+}: {
+  source: Client;
+  onClose: () => void;
+  onMerged: () => void;
+}) {
+  const { data: clients = [] } = useClients();
+  const [targetId, setTargetId] = useState<string>('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Exclude the source itself + already-archived rows from target options
+  const candidates = clients.filter((c) => c.id !== source.id && c.pipeline_stage !== 'archived');
+
+  async function confirm() {
+    if (!targetId) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const { error } = await supabase.rpc('clients_merge', {
+        p_source: source.id,
+        p_target: targetId,
+      });
+      if (error) throw error;
+      onMerged();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const target = candidates.find((c) => c.id === targetId);
+
+  return (
+    <div
+      role="dialog"
+      aria-label="Müştəriləri birləşdir"
+      className="fixed inset-0 z-[55] flex items-center justify-center px-4"
+      style={{ background: 'rgba(14,22,17,0.55)' }}
+      onClick={onClose}
+    >
+      <div className="card w-full max-w-md" style={{ padding: 20 }} onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-h2 mb-2">Müştəriləri birləşdir</h2>
+        <p className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
+          Bütün layihələr, debitorlar, qarşılıqlı əlaqələr və sənədlər hədəf müştəriyə köçürüləcək.
+          <br />
+          <strong>{source.name}</strong> arxivlənəcək (silinmir — audit izi qalır).
+        </p>
+
+        <label className="block mb-3">
+          <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Hədəf müştəri</span>
+          <select
+            className="input w-full"
+            value={targetId}
+            onChange={(e) => setTargetId(e.target.value)}
+          >
+            <option value="">Seçin…</option>
+            {candidates.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}{c.company ? ` · ${c.company}` : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {target ? (
+          <div
+            className="rounded-card px-3 py-2 text-meta mb-3"
+            style={{ background: 'var(--brand-glow-sm)', color: 'var(--brand-text)' }}
+          >
+            <strong>{source.name}</strong> → <strong>{target.name}</strong>
+          </div>
+        ) : null}
+
+        {err ? (
+          <p className="text-meta mb-3" style={{ color: 'var(--error-deep)' }}>{err}</p>
+        ) : null}
+
+        <div className="flex justify-end gap-2">
+          <button type="button" className="btn-outline" onClick={onClose} disabled={busy}>Ləğv</button>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={!targetId || busy}
+            onClick={confirm}
+          >
+            {busy ? 'Birləşdirilir…' : 'Birləşdir'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// PRD §REQ-CRM — inline edit client name (admin, in ClientPanel header)
+function ClientNameEditor({ clientId, initial }: { clientId: string; initial: string }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(initial);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { if (!editing) setVal(initial); }, [initial, editing]);
+  async function save() {
+    const trimmed = val.trim();
+    if (!trimmed || trimmed === initial) { setEditing(false); setVal(initial); return; }
+    setSaving(true);
+    await supabase.from('clients').update({ name: trimmed }).eq('id', clientId);
+    setSaving(false);
+    qc.invalidateQueries({ queryKey: ['clients'] });
+    setEditing(false);
+  }
+  if (editing) {
+    return (
+      <div className="flex-1 min-w-0 flex items-center gap-1">
+        <input
+          autoFocus
+          className="input"
+          style={{ height: 32, fontSize: 20, fontWeight: 700 }}
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') save();
+            if (e.key === 'Escape') { setVal(initial); setEditing(false); }
+          }}
+          disabled={saving}
+        />
+        <button type="button" className="chip" disabled={saving} onClick={save} style={{ fontSize: 11, color: 'var(--brand-text)' }}>{saving ? '…' : '✓'}</button>
+        <button type="button" className="chip" onClick={() => { setVal(initial); setEditing(false); }} style={{ fontSize: 11 }}>×</button>
+      </div>
+    );
+  }
+  return (
+    <h2
+      className="text-h2 flex-1 min-w-0 truncate cursor-pointer hover:opacity-80"
+      onClick={() => setEditing(true)}
+      title="Adı dəyişdirmək üçün klik"
+    >
+      {initial}
+    </h2>
+  );
+}
+
+// PRD §REQ-CRM — generic inline editor for a clients column (admin only)
+function ClientFieldEditor({
+  clientId,
+  field,
+  label,
+  initial,
+  type,
+  displayFormat,
+}: {
+  clientId: string;
+  field: 'company' | 'email' | 'phone' | 'expected_value';
+  label: string;
+  initial: string | null;
+  type: 'text' | 'email' | 'number';
+  displayFormat?: 'azn';
+}) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(initial ?? '');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { if (!editing) setVal(initial ?? ''); }, [initial, editing]);
+
+  async function save() {
+    setErr(null);
+    const trimmed = val.trim();
+    if (trimmed === (initial ?? '')) { setEditing(false); return; }
+    if (type === 'email' && trimmed && !isValidEmail(trimmed)) {
+      setErr('Etibarsız email');
+      return;
+    }
+    let payload: string | number | null = trimmed || null;
+    if (type === 'number') {
+      if (trimmed === '') payload = null;
+      else {
+        const n = roundAzn(trimmed);
+        if (n == null) { setErr('Rəqəm daxil edin'); return; }
+        payload = n;
+      }
+    }
+    setSaving(true);
+    const { error } = await supabase.from('clients').update({ [field]: payload }).eq('id', clientId);
+    setSaving(false);
+    if (error) { setErr(error.message); return; }
+    qc.invalidateQueries({ queryKey: ['clients'] });
+    setEditing(false);
+  }
+
+  // Read-only display
+  const displayValue = (() => {
+    if (initial == null || initial === '') return '—';
+    if (displayFormat === 'azn') return formatAZN(Number(initial));
+    return initial;
+  })();
+
+  if (!editing) {
+    return (
+      <div className="flex justify-between gap-2">
+        <dt style={{ color: 'var(--text-muted)' }}>{label}</dt>
+        <dd className="flex items-center gap-1">
+          <span>{displayValue}</span>
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="chip opacity-40 hover:opacity-100"
+            style={{ fontSize: 10 }}
+            title={`${label} dəyiş`}
+            aria-label={`${label} dəyiş`}
+          >
+            ✎
+          </button>
+        </dd>
+      </div>
+    );
+  }
+  return (
+    <div className="flex justify-between gap-2 items-start">
+      <dt style={{ color: 'var(--text-muted)' }}>{label}</dt>
+      <dd className="flex items-center gap-1 flex-wrap justify-end">
+        <input
+          autoFocus
+          type={type}
+          className="input"
+          style={{ height: 26, fontSize: 12, maxWidth: 200 }}
+          value={val}
+          onChange={(e) => { setVal(e.target.value); setErr(null); }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') save();
+            if (e.key === 'Escape') { setVal(initial ?? ''); setErr(null); setEditing(false); }
+          }}
+          step={type === 'number' ? '0.01' : undefined}
+          min={type === 'number' ? 0 : undefined}
+        />
+        <button type="button" className="chip" disabled={saving} onClick={save} style={{ fontSize: 11, color: 'var(--brand-text)' }}>{saving ? '…' : '✓'}</button>
+        <button type="button" className="chip" onClick={() => { setVal(initial ?? ''); setErr(null); setEditing(false); }} style={{ fontSize: 11 }}>×</button>
+        {err ? <span className="text-meta block w-full text-right" style={{ color: 'var(--error-deep)', fontSize: 10 }}>{err}</span> : null}
+      </dd>
+    </div>
+  );
+}
+
+// PRD §REQ-CRM — admin inline edit clients.industry (migration 0050)
+function ClientIndustryEditor({ clientId, initial }: { clientId: string; initial: string | null }) {
+  const qc = useQueryClient();
+  const update = useMutation({
+    mutationFn: async (next: string | null) => {
+      const { error } = await supabase.from('clients').update({ industry: next }).eq('id', clientId);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['clients'] }),
+  });
+  return (
+    <div className="flex justify-between gap-2">
+      <dt style={{ color: 'var(--text-muted)' }}>Sahə</dt>
+      <dd>
+        <select
+          className="input"
+          style={{ height: 28, fontSize: 12, padding: '0 6px' }}
+          value={initial ?? ''}
+          onChange={(e) => update.mutate(e.target.value || null)}
+          disabled={update.isPending}
+        >
+          <option value="">— seçilməyib —</option>
+          {INDUSTRY_OPTIONS.map((o) => (
+            <option key={o} value={o}>{o}</option>
+          ))}
+        </select>
+      </dd>
     </div>
   );
 }

@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import { NotificationPreferencesPage } from './NotificationPreferences';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
+import { downloadCsv } from '@/lib/csv';
 import type { Invitation, Role } from '@/types/db';
 
 async function writeAudit(actorId: string, action: string, resource: string, meta?: Record<string, unknown>) {
@@ -24,20 +26,10 @@ export function SettingsPage() {
   return (
     <>
       <PageHead meta="Yalnız admin" title="Parametrlər" />
+      <FirmStatsRow />
+      <BuildInfoFooter />
       <div className="grid grid-cols-1 lg:grid-cols-[200px,1fr] gap-6">
-        <nav className="space-y-1">
-          {NAV.map((n) => (
-            <NavLink
-              key={n.to}
-              to={n.to}
-              className={({ isActive }) =>
-                `block px-3 py-2 rounded-btn text-ui ${isActive ? 'bg-surface-mist' : ''}`
-              }
-            >
-              {n.label}
-            </NavLink>
-          ))}
-        </nav>
+        <SettingsNav />
         <div className="card">
           <Routes>
             <Route index element={<Navigate to="umumi" replace />} />
@@ -50,6 +42,154 @@ export function SettingsPage() {
         </div>
       </div>
     </>
+  );
+}
+
+// PRD §UX — settings nav with pending-invite badge so admin sees
+// outstanding invitations without opening the section.
+function SettingsNav() {
+  const pendingCount = useQuery({
+    queryKey: ['settings-nav-pending-invites'],
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { count } = await supabase
+        .from('invitations')
+        .select('id', { count: 'exact', head: true })
+        .is('accepted_at', null);
+      return count ?? 0;
+    },
+  });
+  // Total KB documents — surfaces growth without entering the section
+  const kbCount = useQuery({
+    queryKey: ['settings-nav-kb-count'],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { count } = await supabase
+        .from('knowledge_base')
+        .select('id', { count: 'exact', head: true });
+      return count ?? 0;
+    },
+  });
+  return (
+    <nav className="space-y-1">
+      {NAV.map((n) => {
+        let badge = 0;
+        if (n.to === 'dəvətlər') badge = pendingCount.data ?? 0;
+        else if (n.to === 'bilik') badge = kbCount.data ?? 0;
+        return (
+          <NavLink
+            key={n.to}
+            to={n.to}
+            className={({ isActive }) =>
+              `flex items-center justify-between gap-2 px-3 py-2 rounded-btn text-ui ${isActive ? 'bg-surface-mist' : ''}`
+            }
+          >
+            <span>{n.label}</span>
+            {badge > 0 ? (
+              <span
+                className="text-ui rounded-full flex items-center justify-center"
+                style={{
+                  background: n.to === 'dəvətlər' ? 'var(--brand-action)' : 'var(--surface-mist)',
+                  color: n.to === 'dəvətlər' ? 'var(--ink)' : 'var(--text-muted)',
+                  fontWeight: n.to === 'dəvətlər' ? 700 : 500,
+                  minWidth: 20,
+                  height: 20,
+                  padding: '0 6px',
+                  fontSize: 11,
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+                aria-label={`${badge}`}
+              >
+                {badge}
+              </span>
+            ) : null}
+          </NavLink>
+        );
+      })}
+    </nav>
+  );
+}
+
+// PRD §9.4 — show what's deployed so admins can correlate bug reports
+// with a specific build. Values injected via vite.config.ts `define`.
+function BuildInfoFooter() {
+  const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '?';
+  const commit = typeof __APP_COMMIT__ !== 'undefined' ? __APP_COMMIT__ : '';
+  const builtAt = typeof __APP_BUILD_TIME__ !== 'undefined' ? __APP_BUILD_TIME__ : '';
+  const builtFmt = builtAt
+    ? new Date(builtAt).toLocaleString('az-AZ', { timeZone: 'Asia/Baku' })
+    : '—';
+  return (
+    <div
+      className="text-meta mb-3 flex items-center gap-3 flex-wrap"
+      style={{ color: 'var(--text-muted)', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}
+    >
+      <span>v{version}</span>
+      {commit ? (
+        <span className="inline-flex items-center gap-1">
+          ·{' '}
+          <a
+            href={`https://github.com/talifaisgandarli-stack/REFLECT/commit/${commit}`}
+            target="_blank"
+            rel="noreferrer noopener"
+            style={{ color: 'var(--brand-text)', textDecoration: 'underline dotted' }}
+            title="GitHub-da bu commit-ə bax"
+          >
+            {commit}
+          </a>
+          <button
+            type="button"
+            onClick={() => { void navigator.clipboard.writeText(commit).catch(() => {}); }}
+            className="text-meta opacity-50 hover:opacity-100"
+            style={{ fontSize: 10, padding: 0, background: 'none', border: 'none', cursor: 'pointer' }}
+            title="Commit SHA-nı kopyala"
+            aria-label="Commit SHA-nı kopyala"
+          >
+            📋
+          </button>
+        </span>
+      ) : null}
+      <span>· qurulub {builtFmt}</span>
+    </div>
+  );
+}
+
+// PRD §10.1 — at-a-glance firm size snapshot above the settings nav. Uses
+// `count: 'exact', head: true` so we don't pull any rows — just the totals.
+function FirmStatsRow() {
+  const stats = useQuery({
+    queryKey: ['settings-firm-stats'],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const [users, projects, clients, tasks] = await Promise.all([
+        supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('is_active', true),
+        supabase.from('projects').select('id', { count: 'exact', head: true }).eq('status', 'active').is('archived_at', null),
+        supabase.from('clients').select('id', { count: 'exact', head: true }),
+        supabase.from('tasks').select('id', { count: 'exact', head: true }).is('archived_at', null).not('status', 'in', '("done","cancelled")'),
+      ]);
+      return {
+        users: users.count ?? 0,
+        projects: projects.count ?? 0,
+        clients: clients.count ?? 0,
+        tasks: tasks.count ?? 0,
+      };
+    },
+  });
+  const items: Array<[string, number]> = [
+    ['Aktiv istifadəçi', stats.data?.users ?? 0],
+    ['Aktiv layihə', stats.data?.projects ?? 0],
+    ['Müştəri', stats.data?.clients ?? 0],
+    ['Açıq tapşırıq', stats.data?.tasks ?? 0],
+  ];
+  return (
+    <div className="card mb-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {items.map(([label, n]) => (
+        <div key={label}>
+          <div className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>{label}</div>
+          <div className="text-h2" style={{ fontVariantNumeric: 'tabular-nums' }}>{n}</div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -208,32 +348,57 @@ function GeneralSettings() {
         </label>
         <label className="block">
           <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Əsas valyuta</span>
-          <select className="input mt-1 max-w-[140px]" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-            <option value="AZN">AZN (₼)</option>
-            <option value="USD">USD ($)</option>
-            <option value="EUR">EUR (€)</option>
-          </select>
+          <div className="flex items-center gap-3 mt-1">
+            <select className="input max-w-[140px]" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+              <option value="AZN">AZN (₼)</option>
+              <option value="USD">USD ($)</option>
+              <option value="EUR">EUR (€)</option>
+            </select>
+            {/* PRD §UX — preview "12 345,67 ₼" so admin sees the exact format used */}
+            <span
+              className="text-meta"
+              style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums', fontSize: 12 }}
+              title="Format nümunəsi"
+            >
+              {(12345.67).toLocaleString('az-AZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
+              {currency === 'AZN' ? '₼' : currency === 'USD' ? '$' : '€'}
+            </span>
+          </div>
         </label>
         <label className="block">
           <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Gündəlik iş saatı</span>
-          <input
-            type="number"
-            min="1"
-            max="24"
-            className="input mt-1 max-w-[100px]"
-            value={workHours}
-            onChange={(e) => setWorkHours(e.target.value)}
-            placeholder="8"
-          />
+          <div className="flex items-center gap-3 mt-1">
+            <input
+              type="number"
+              min="1"
+              max="24"
+              className="input max-w-[100px]"
+              value={workHours}
+              onChange={(e) => setWorkHours(e.target.value)}
+              placeholder="8"
+            />
+            {/* PRD §UX — weekly hint so admin sees implied weekly capacity */}
+            <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+              ≈ {Math.round((Number(workHours) || 8) * 5)}s həftədə
+            </span>
+          </div>
         </label>
-        <label className="flex items-center gap-2 cursor-pointer">
+        <label className="flex items-start gap-2 cursor-pointer">
           <input
             type="checkbox"
             checked={holidaysEnabled}
             onChange={(e) => setHolidaysEnabled(e.target.checked)}
-            style={{ width: 16, height: 16 }}
+            style={{ width: 16, height: 16, marginTop: 3 }}
           />
-          <span className="text-body">AZ dövlət bayramlarını qeyri-iş günü say</span>
+          <div>
+            <div className="text-body">AZ dövlət bayramlarını qeyri-iş günü say</div>
+            {/* PRD §10.1 — show coverage so admin knows what's included */}
+            {holidaysEnabled ? (
+              <div className="text-meta mt-0.5" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                Yeni il · Qadın günü · Novruz · 9 May · Müstəqillik · Konstitusiya · Bayraq · Qurban
+              </div>
+            ) : null}
+          </div>
         </label>
         {/* PRD §10.1 / REQ-SET-07 — Firm logo upload (Supabase Storage: firm-assets) */}
         <div>
@@ -456,6 +621,7 @@ function TemplatesSettings() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<null | { id?: string; category: string; name: string; body: string; mime_type: string }>(null);
   const [preview, setPreview] = useState(false);
+  const [templateSearch, setTemplateSearch] = useState('');
 
   const templates = useQuery({
     queryKey: ['templates'],
@@ -586,21 +752,55 @@ function TemplatesSettings() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center gap-3 flex-wrap">
         <h3 className="text-h3">Şablonlar</h3>
-        <button className="btn-primary" onClick={() => setEditing({ category: 'letter', name: '', body: '', mime_type: 'text/plain' })}>
-          + Yeni şablon
-        </button>
+        <div className="flex gap-2 items-center">
+          {/* PRD §10.2 — name/category search so the list stays usable as it grows */}
+          <input
+            className="input max-w-[200px]"
+            placeholder="Axtar…"
+            value={templateSearch}
+            onChange={(e) => setTemplateSearch(e.target.value)}
+            style={{ height: 32, fontSize: 12 }}
+          />
+          <button className="btn-primary" onClick={() => setEditing({ category: 'letter', name: '', body: '', mime_type: 'text/plain' })}>
+            + Yeni şablon
+          </button>
+        </div>
       </div>
       {templates.isLoading ? <p className="text-meta">Yüklənir…</p> : null}
       {!templates.isLoading && (templates.data ?? []).length === 0 ? (
         <p className="text-meta" style={{ color: 'var(--text-muted)' }}>Hələ şablon yoxdur.</p>
       ) : null}
       <ul className="space-y-2">
-        {(templates.data ?? []).map((t: { id: string; name: string; category: string; body: string; mime_type: string }) => (
+        {((templates.data ?? []) as Array<{ id: string; name: string; category: string; body: string; mime_type: string }>)
+          .filter((t) => !templateSearch.trim() || t.name.toLowerCase().includes(templateSearch.toLowerCase()) || t.category.toLowerCase().includes(templateSearch.toLowerCase()))
+          .map((t) => (
           <li key={t.id} className="flex items-center justify-between gap-3 py-2 border-b" style={{ borderColor: 'var(--line-soft)' }}>
             <div>
-              <div className="text-body font-medium">{t.name}</div>
+              <div className="text-body font-medium flex items-center gap-2">
+                {t.name}
+                {/* PRD §10.2 — variable count so admin sees template complexity at a glance */}
+                {(() => {
+                  const n = extractVars(t.body).length;
+                  if (n === 0) return null;
+                  return (
+                    <span
+                      className="chip"
+                      style={{
+                        background: 'var(--brand-glow-sm)',
+                        color: 'var(--brand-text)',
+                        fontSize: 10,
+                        padding: '0 6px',
+                        fontVariantNumeric: 'tabular-nums',
+                      }}
+                      title={`${n} dəyişən: ${extractVars(t.body).join(', ')}`}
+                    >
+                      {`{{${n}}}`}
+                    </span>
+                  );
+                })()}
+              </div>
               <div className="text-meta" style={{ color: 'var(--text-muted)' }}>{t.category}</div>
             </div>
             <div className="flex gap-2 shrink-0">
@@ -629,10 +829,38 @@ function TemplatesSettings() {
 // Gracefully hides upload UI when RAG is disabled server-side (no OpenAI key),
 // so admins don't see a feature that only ever returns errors.
 function KnowledgeBaseSettings() {
+  const { profile } = useAuth();
   const qc = useQueryClient();
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState<string | null>(null);
   const [uploadOk, setUploadOk] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [kbDragOver, setKbDragOver] = useState(false);
+
+  // PRD §10.3 — admin can prune obsolete PDF sources so RAG retrieval stays clean
+  const deletePdf = useMutation({
+    mutationFn: async (pdfName: string) => {
+      const { error } = await supabase
+        .from('knowledge_base')
+        .delete()
+        .eq('source_pdf', pdfName);
+      if (error) throw error;
+      if (profile?.id) {
+        await supabase.from('audit_log').insert({
+          actor_id: profile.id,
+          action: 'knowledge_base.delete',
+          resource: 'knowledge_base',
+          ip: null,
+          user_agent: navigator.userAgent,
+          meta: { source_pdf: pdfName },
+        });
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['knowledge-base'] });
+      setConfirmDelete(null);
+    },
+  });
 
   const diag = useQuery({
     queryKey: ['diag', 'features'],
@@ -700,15 +928,52 @@ function KnowledgeBaseSettings() {
 
   const pdfs = Object.entries(chunks.data ?? {});
 
+  // PRD §10.3 — surface aggregate counts so admin sees corpus size at a glance
+  const totalChunks = pdfs.reduce(
+    (sum, [, meta]) => sum + ((meta as { count?: number }).count ?? 0), 0,
+  );
+
   return (
     <div className="space-y-5">
-      <h3 className="text-h3">Bilik Bazası (MIRAI RAG)</h3>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h3 className="text-h3">Bilik Bazası (MIRAI RAG)</h3>
+        {pdfs.length > 0 ? (
+          <span
+            className="text-meta"
+            style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}
+          >
+            {pdfs.length} PDF · {totalChunks} hissə
+          </span>
+        ) : null}
+      </div>
       <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
         AZ inşaat normaları, AZDNT sənədlərini yükləyin. MIRAI Hüquqşünas bu mənbələrə istinad edər.
       </p>
       {/* RAG axtarışı Postgres FTS ilə işləyir — heç bir xarici açar tələb olunmur. */}
 
-      <label className="flex items-center gap-3 cursor-pointer">
+      {/* PRD §10.3 — drag-and-drop zone for PDF uploads (also accepts click→file picker) */}
+      <label
+        className="flex items-center gap-3 cursor-pointer rounded-card p-4"
+        style={{
+          border: `1px dashed ${kbDragOver ? 'var(--brand-action)' : 'var(--line)'}`,
+          background: kbDragOver ? 'var(--brand-glow-sm)' : 'transparent',
+          transition: 'background 0.15s, border-color 0.15s',
+        }}
+        onDragOver={(e) => { e.preventDefault(); setKbDragOver(true); }}
+        onDragLeave={() => setKbDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setKbDragOver(false);
+          if (uploading) return;
+          const file = e.dataTransfer.files?.[0];
+          if (!file) return;
+          // Mimic the input change event so existing handler runs
+          const dt = new DataTransfer();
+          dt.items.add(file);
+          const ev = { target: { files: dt.files, value: '' } } as unknown as React.ChangeEvent<HTMLInputElement>;
+          void handleUpload(ev);
+        }}
+      >
         <input
           type="file"
           accept=".pdf"
@@ -717,16 +982,30 @@ function KnowledgeBaseSettings() {
           disabled={uploading}
         />
         <span className="btn-primary">{uploading ? 'Yüklənir…' : 'PDF yüklə'}</span>
-        <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Maks. 4 MB (Vercel limiti)</span>
+        <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+          və ya buraya sürükləyin · maks 4 MB (Vercel limiti)
+        </span>
       </label>
 
       {uploadOk ? <p className="text-meta" style={{ color: 'var(--brand-text)' }}>{uploadOk}</p> : null}
       {uploadErr ? <p className="text-meta" style={{ color: 'var(--error-deep)' }}>{uploadErr}</p> : null}
 
+      {/* PRD §10.3 — chunk content search across uploaded PDFs */}
+      <KnowledgeBaseSearch />
+
       {chunks.isLoading ? <p className="text-meta">Yüklənir…</p> : null}
 
       {pdfs.length === 0 && !chunks.isLoading ? (
-        <p className="text-meta" style={{ color: 'var(--text-muted)' }}>Hələ PDF yüklənməyib.</p>
+        <div
+          className="rounded-card p-6 text-center"
+          style={{ border: '1px dashed var(--line)', background: 'var(--surface-mist)' }}
+        >
+          <div className="text-h3 mb-2">📚 Bilik bazası boşdur</div>
+          <p className="text-meta mb-3" style={{ color: 'var(--text-muted)' }}>
+            PDF yükləyin — MIRAI RAG cavablar verərkən bu sənədlərə istinad edəcək.<br />
+            Tipik istifadə: AZ normativləri, daxili siyasətlər, tender qaydaları.
+          </p>
+        </div>
       ) : null}
 
       {pdfs.length > 0 ? (
@@ -736,16 +1015,49 @@ function KnowledgeBaseSettings() {
               key={pdf}
               className="flex items-center justify-between gap-3 py-2 border-b"
               style={{ borderColor: 'var(--line-soft)' }}
+              title={`${pdf}\n${meta.count} hissə\nYüklənib: ${new Date(meta.uploaded_at).toLocaleString('az-AZ', { timeZone: 'Asia/Baku' })}`}
             >
-              <div>
-                <div className="text-body font-medium truncate max-w-xs">{pdf}</div>
+              <div className="min-w-0 flex-1">
+                <div className="text-body font-medium truncate">{pdf}</div>
                 <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
                   {meta.count} hissə · {new Date(meta.uploaded_at).toLocaleDateString('az-AZ')}
                 </div>
               </div>
-              <span className="chip" style={{ background: 'var(--brand-glow-md)', color: 'var(--brand-text)' }}>
-                RAG
-              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="chip" style={{ background: 'var(--brand-glow-md)', color: 'var(--brand-text)' }}>
+                  RAG
+                </span>
+                {confirmDelete === pdf ? (
+                  <>
+                    <button
+                      type="button"
+                      className="chip"
+                      style={{ background: 'var(--error-deep)', color: 'white' }}
+                      disabled={deletePdf.isPending}
+                      onClick={() => deletePdf.mutate(pdf)}
+                    >
+                      {deletePdf.isPending ? 'Silinir…' : 'Bəli'}
+                    </button>
+                    <button
+                      type="button"
+                      className="chip"
+                      onClick={() => setConfirmDelete(null)}
+                    >
+                      Ləğv
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="chip"
+                    style={{ color: 'var(--error-deep)' }}
+                    onClick={() => setConfirmDelete(pdf)}
+                    title={`${meta.count} hissə silinəcək`}
+                  >
+                    Sil
+                  </button>
+                )}
+              </div>
             </li>
           ))}
         </ul>
@@ -759,7 +1071,322 @@ function NotificationsSettings() {
       <NotificationPreferencesPage />
       {/* PRD §9.4 — admin MIRAI cost dashboard */}
       <MiraiCostDashboard />
+      {/* PRD §9.4 — audit log retention */}
+      <AuditLogRetentionSetting />
+      {/* PRD §9.4 — admin audit log viewer */}
+      <AuditLogViewer />
     </div>
+  );
+}
+
+// PRD §9.4 — admin sets how long audit_log rows are kept (days, default 365)
+function AuditLogRetentionSetting() {
+  const { isAdmin } = useAuth();
+  const qc = useQueryClient();
+  const setting = useQuery({
+    queryKey: ['system_setting', 'audit_log_retention_days'],
+    enabled: isAdmin,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'audit_log_retention_days')
+        .maybeSingle();
+      return Number((data?.value as { days?: number } | null)?.days ?? 365);
+    },
+  });
+  const [val, setVal] = useState<string>('');
+  useEffect(() => {
+    if (setting.data != null && val === '') setVal(String(setting.data));
+  }, [setting.data, val]);
+  const save = useMutation({
+    mutationFn: async () => {
+      const days = Math.max(30, Math.min(3650, Number(val) || 365));
+      const { error } = await supabase.from('system_settings').upsert({
+        key: 'audit_log_retention_days',
+        value: { days },
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['system_setting', 'audit_log_retention_days'] });
+    },
+  });
+  if (!isAdmin) return null;
+  return (
+    <section className="card flex items-center gap-3 flex-wrap" style={{ padding: 16 }}>
+      <div className="flex-1 min-w-0">
+        <h3 className="text-h3">Audit jurnalının saxlama müddəti</h3>
+        <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+          Köhnə qeydlərin avtomatik silinməsi üçün gün sayı (30–3650). Cron işi
+          bu dəyəri oxuyub uyğun sıraları arxivləyir.
+        </p>
+      </div>
+      <input
+        type="number"
+        min={30}
+        max={3650}
+        className="input max-w-[120px]"
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        style={{ fontVariantNumeric: 'tabular-nums' }}
+      />
+      <button
+        type="button"
+        className="btn-primary"
+        disabled={save.isPending || val === String(setting.data ?? '')}
+        onClick={() => save.mutate()}
+      >
+        {save.isPending ? '…' : 'Saxla'}
+      </button>
+    </section>
+  );
+}
+
+// PRD §10.3 — search across knowledge_base chunks (FTS-backed RPC)
+function KnowledgeBaseSearch() {
+  const [q, setQ] = useState('');
+  const [debounced, setDebounced] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(q.trim()), 250);
+    return () => clearTimeout(t);
+  }, [q]);
+  const results = useQuery({
+    queryKey: ['kb-search', debounced],
+    enabled: debounced.length >= 3,
+    queryFn: async () => {
+      const { data } = await supabase.rpc('match_knowledge_base', {
+        query_text: debounced,
+        match_count: 8,
+      });
+      return (data ?? []) as Array<{ source_pdf: string; chunk_index: number; content: string }>;
+    },
+  });
+  return (
+    <div className="mt-4">
+      <input
+        type="text"
+        className="input w-full"
+        placeholder="Bilik bazasında axtar (min 3 simvol)…"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+      />
+      {debounced.length >= 3 ? (
+        <ul className="mt-2 space-y-2">
+          {results.isLoading ? (
+            <li className="text-meta" style={{ color: 'var(--text-muted)' }}>Axtarılır…</li>
+          ) : (results.data ?? []).length === 0 ? (
+            <li className="text-meta" style={{ color: 'var(--text-muted)' }}>Nəticə tapılmadı</li>
+          ) : (
+            (results.data ?? []).map((r, i) => (
+              <li
+                key={`${r.source_pdf}-${r.chunk_index}-${i}`}
+                className="rounded-card p-2 text-meta"
+                style={{ background: 'var(--surface-mist)' }}
+              >
+                <div className="font-medium" style={{ color: 'var(--text)' }}>
+                  {r.source_pdf} <span style={{ color: 'var(--text-muted)' }}>· Hissə {r.chunk_index}</span>
+                </div>
+                <div className="mt-1" style={{ color: 'var(--text-soft)' }}>
+                  {r.content.slice(0, 240)}{r.content.length > 240 ? '…' : ''}
+                </div>
+              </li>
+            ))
+          )}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+// PRD §9.4 — paginated audit_log viewer (admin only; route is RequireAdmin-gated)
+function AuditLogViewer() {
+  const { isAdmin } = useAuth();
+  const [page, setPage] = useState(0);
+  const [actionFilter, setActionFilter] = useState('');
+  const [actorId, setActorId] = useState('');
+  const PAGE_SIZE = 30;
+
+  // PRD §9.4 — actor dropdown for "what did user X do?" forensics
+  const profilesForFilter = useQuery({
+    queryKey: ['profiles', 'audit-actor-filter'],
+    enabled: isAdmin,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .order('full_name');
+      return (data ?? []) as Array<{ id: string; full_name: string | null; email: string }>;
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const audit = useQuery({
+    queryKey: ['audit-log', page, actionFilter, actorId],
+    enabled: isAdmin,
+    queryFn: async () => {
+      let q = supabase
+        .from('audit_log')
+        .select('id, actor_id, action, resource, ip, user_agent, meta, created_at, profile:profiles!audit_log_actor_id_fkey(full_name, email)', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+      if (actionFilter.trim()) q = q.ilike('action', `%${actionFilter.trim()}%`);
+      if (actorId) q = q.eq('actor_id', actorId);
+      const { data, count, error } = await q;
+      if (error) throw error;
+      return { rows: data ?? [], total: count ?? 0 };
+    },
+  });
+
+  if (!isAdmin) return null;
+
+  const rows = audit.data?.rows ?? [];
+  const total = audit.data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  return (
+    <section>
+      <h2 className="text-h2 mb-1">Audit jurnalı</h2>
+      <p className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
+        Privileged əməliyyatların qeydi (PRD §9.4) — rol dəyişiklikləri, dəvətlər, ayar yeniləmələri.
+      </p>
+
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <input
+          className="input max-w-[260px]"
+          placeholder="Action filter (məs: invitation, settings)"
+          value={actionFilter}
+          onChange={(e) => { setActionFilter(e.target.value); setPage(0); }}
+        />
+        <select
+          className="input max-w-[220px]"
+          value={actorId}
+          onChange={(e) => { setActorId(e.target.value); setPage(0); }}
+          aria-label="Aktor filtri"
+        >
+          <option value="">Bütün aktorlar</option>
+          {(profilesForFilter.data ?? []).map((p) => (
+            <option key={p.id} value={p.id}>{p.full_name ?? p.email}</option>
+          ))}
+        </select>
+        {(actionFilter || actorId) ? (
+          <button
+            type="button"
+            className="chip"
+            onClick={() => { setActionFilter(''); setActorId(''); setPage(0); }}
+          >
+            Sıfırla
+          </button>
+        ) : null}
+        <span className="text-meta" style={{ color: 'var(--text-muted)' }}>{total} qeyd</span>
+        <span style={{ flex: 1 }} />
+        <button
+          type="button"
+          className="chip"
+          disabled={total === 0}
+          onClick={async () => {
+            // Export ALL filtered rows (not just current page) — admin needs the full set for forensics
+            let q = supabase
+              .from('audit_log')
+              .select('id, actor_id, action, resource, ip, user_agent, meta, created_at, profile:profiles!audit_log_actor_id_fkey(full_name, email)')
+              .order('created_at', { ascending: false })
+              .limit(5000);
+            if (actionFilter.trim()) q = q.ilike('action', `%${actionFilter.trim()}%`);
+            if (actorId) q = q.eq('actor_id', actorId);
+            const { data } = await q;
+            const rows = (data ?? []).map((r) => {
+              const actor = r.profile as unknown as { full_name?: string; email?: string } | null;
+              return {
+                Vaxt: new Date(r.created_at).toISOString(),
+                Aktor: actor?.full_name ?? actor?.email ?? r.actor_id ?? 'Sistem',
+                Action: r.action,
+                Resource: r.resource ?? '',
+                IP: r.ip ?? '',
+                'User-Agent': r.user_agent ?? '',
+                Meta: r.meta ? JSON.stringify(r.meta) : '',
+              };
+            });
+            downloadCsv(
+              `audit-log-${new Date().toISOString().slice(0, 10)}`,
+              ['Vaxt', 'Aktor', 'Action', 'Resource', 'IP', 'User-Agent', 'Meta'],
+              rows,
+            );
+          }}
+        >
+          ↓ CSV
+        </button>
+      </div>
+
+      {audit.isLoading ? (
+        <div className="text-meta" style={{ color: 'var(--text-muted)' }}>Yüklənir…</div>
+      ) : rows.length === 0 ? (
+        <EmptyState title="Hələ qeyd yoxdur" body="Privileged əməliyyatlar burada görünəcək." />
+      ) : (
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full text-body" style={{ minWidth: 720 }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--line)' }}>
+                  <th className="text-meta text-left py-2 pr-3" style={{ color: 'var(--text-muted)' }}>Vaxt</th>
+                  <th className="text-meta text-left py-2 px-3" style={{ color: 'var(--text-muted)' }}>Aktor</th>
+                  <th className="text-meta text-left py-2 px-3" style={{ color: 'var(--text-muted)' }}>Action</th>
+                  <th className="text-meta text-left py-2 px-3" style={{ color: 'var(--text-muted)' }}>Resource</th>
+                  <th className="text-meta text-left py-2 pl-3" style={{ color: 'var(--text-muted)' }}>Detallar</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => {
+                  const actor = (r.profile as unknown as { full_name?: string; email?: string } | null) ?? null;
+                  return (
+                    <tr key={r.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                      <td className="py-2 pr-3 text-meta" style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                        {new Date(r.created_at).toLocaleString('az-AZ', { timeZone: 'Asia/Baku' })}
+                      </td>
+                      <td className="py-2 px-3">{actor?.full_name ?? actor?.email ?? r.actor_id?.slice(0, 8) ?? 'Sistem'}</td>
+                      <td className="py-2 px-3">
+                        <code style={{ background: 'var(--brand-glow-sm)', padding: '1px 6px', borderRadius: 4, fontSize: 12 }}>
+                          {r.action}
+                        </code>
+                      </td>
+                      <td className="py-2 px-3 text-meta" style={{ color: 'var(--text-muted)' }}>{r.resource ?? '—'}</td>
+                      <td className="py-2 pl-3 text-meta" style={{ color: 'var(--text-muted)', maxWidth: 280 }}>
+                        {r.meta ? (
+                          <code className="block truncate" title={JSON.stringify(r.meta)} style={{ fontSize: 11 }}>
+                            {JSON.stringify(r.meta)}
+                          </code>
+                        ) : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {totalPages > 1 ? (
+            <div className="flex items-center justify-between mt-3">
+              <button
+                className="chip"
+                disabled={page === 0}
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+              >
+                ← Əvvəlki
+              </button>
+              <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                Səhifə {page + 1} / {totalPages}
+              </span>
+              <button
+                className="chip"
+                disabled={page >= totalPages - 1}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Sonrakı →
+              </button>
+            </div>
+          ) : null}
+        </>
+      )}
+    </section>
   );
 }
 
@@ -789,6 +1416,35 @@ function MiraiCostDashboard() {
         cost_usd: (r.cost_usd ?? 0) as number,
         profile: profMap.get(r.user_id) ?? null,
       }));
+    },
+  });
+
+  // PRD §9.4 — 30-day daily MIRAI cost trend
+  const dailyTrend = useQuery({
+    queryKey: ['mirai-cost-daily', period],
+    enabled: isAdmin,
+    queryFn: async () => {
+      const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
+      const { data: msgs } = await supabase
+        .from('mirai_messages')
+        .select('cost_usd, created_at')
+        .gte('created_at', since)
+        .gt('cost_usd', 0);
+      // Bucket by Asia/Baku date
+      const buckets = new Map<string, number>();
+      for (const m of msgs ?? []) {
+        const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baku' })
+          .format(new Date(m.created_at as string));
+        buckets.set(day, (buckets.get(day) ?? 0) + (m.cost_usd ?? 0));
+      }
+      // Fill missing days with 0 so the line is continuous
+      const out: Array<{ day: string; cost: number }> = [];
+      for (let i = 29; i >= 0; i--) {
+        const d = new Date(Date.now() - i * 86_400_000);
+        const key = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baku' }).format(d);
+        out.push({ day: key.slice(5), cost: Number((buckets.get(key) ?? 0).toFixed(4)) });
+      }
+      return out;
     },
   });
 
@@ -857,6 +1513,38 @@ function MiraiCostDashboard() {
           </div>
         </div>
       </div>
+
+      {/* 30-day daily cost trend */}
+      {(dailyTrend.data ?? []).length > 0 ? (
+        <div className="mb-6">
+          <h3 className="text-h3 mb-2">Son 30 günlük xərc trendi</h3>
+          <div style={{ width: '100%', height: 180 }}>
+            <ResponsiveContainer>
+              <LineChart data={dailyTrend.data ?? []} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                <XAxis dataKey="day" stroke="var(--text-muted)" fontSize={10} interval={6} />
+                <YAxis stroke="var(--text-muted)" fontSize={10} tickFormatter={(v) => `$${Number(v).toFixed(2)}`} />
+                <RechartsTooltip
+                  contentStyle={{
+                    background: 'var(--ink)',
+                    border: '1px solid var(--line)',
+                    borderRadius: 8,
+                    color: 'var(--canvas)',
+                  }}
+                  formatter={(v) => [`$${Number(v).toFixed(4)}`, 'Gündəlik xərc']}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="cost"
+                  stroke="var(--brand-action)"
+                  strokeWidth={2}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      ) : null}
 
       {/* Per-user table */}
       <h3 className="text-h3 mb-2">İstifadəçi üzrə</h3>
@@ -972,6 +1660,10 @@ function InvitationsSettings() {
   const invite = useMutation({
     mutationFn: async () => {
       if (!email.trim() || !roleId) throw new Error('Email və rol tələb olunur');
+      // PRD §AUTH-02 — validate email format client-side before hitting API
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+        throw new Error('Email düzgün formatda olmalıdır');
+      }
       const role = (roles.data ?? []).find((r) => r.id === roleId);
       if (!role) throw new Error('Rol tapılmadı');
 
@@ -1058,7 +1750,7 @@ function InvitationsSettings() {
             <option value="">Rol seçin…</option>
             {(roles.data ?? []).map((r) => (
               <option key={r.id} value={r.id}>
-                {r.name}
+                {r.name} (L{r.level})
               </option>
             ))}
           </select>

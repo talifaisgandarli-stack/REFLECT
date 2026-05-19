@@ -8,14 +8,16 @@
  * URL: GET /api/search?q=...
  */
 import { errorResponse, HttpError, jsonResponse, requireUser, userClient } from './_lib/auth';
+import { withSentry } from './_lib/sentry';
 import { checkRateLimit } from './_lib/rate-limit';
 
 export const config = { runtime: 'edge' };
 
-const PER_GROUP = 5;
+// PRD §6.2 — "top 8 results per group, grouped by entity type"
+const PER_GROUP = 8;
 
 type Hit = {
-  type: 'task' | 'project' | 'client' | 'announcement' | 'profile';
+  type: 'task' | 'project' | 'client' | 'announcement' | 'profile' | 'document';
   id: string;
   title: string;
   subtitle?: string;
@@ -27,7 +29,7 @@ function escapeIlike(q: string): string {
   return q.replace(/[%_\\]/g, (c) => `\\${c}`);
 }
 
-export default async function handler(req: Request) {
+async function handler(req: Request) {
   try {
     if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed');
     const user = await requireUser(req);
@@ -43,7 +45,7 @@ export default async function handler(req: Request) {
     const q = `%${escapeIlike(raw)}%`;
     const sb = userClient(user.token);
 
-    const [tasks, projects, clients, announcements, profiles] = await Promise.all([
+    const [tasks, projects, clients, announcements, profiles, documents] = await Promise.all([
       sb
         .from('tasks')
         .select('id, title, status, project_id, deadline')
@@ -73,6 +75,13 @@ export default async function handler(req: Request) {
         .from('profiles')
         .select('id, full_name, email')
         .or(`full_name.ilike.${q},email.ilike.${q}`)
+        .limit(PER_GROUP),
+      // PRD §6.2 — documents (project_documents) included in universal search;
+      // RLS gates by membership / shared_with so users only see their own.
+      sb
+        .from('project_documents')
+        .select('id, title, category, project_id')
+        .ilike('title', q)
         .limit(PER_GROUP),
     ]);
 
@@ -146,9 +155,26 @@ export default async function handler(req: Request) {
         href: '/komanda/heyət',
       });
     }
+    for (const d of (documents.data ?? []) as Array<{
+      id: string;
+      title: string;
+      category: string | null;
+      project_id: string | null;
+    }>) {
+      results.push({
+        type: 'document',
+        id: d.id,
+        title: d.title,
+        subtitle: d.category ?? undefined,
+        // Project documents live inside the project detail page (Documents tab).
+        href: d.project_id ? `/layihelər/${d.project_id}` : '/layihelər',
+      });
+    }
 
     return jsonResponse({ q: raw, results });
   } catch (e) {
     return errorResponse(e);
   }
 }
+
+export default withSentry(handler, 'search');

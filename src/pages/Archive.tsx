@@ -3,13 +3,14 @@
  * REQ-ARC-02 — admin Restore (clears archived_at / reopens project)
  * REQ-ARC-03 — user scope: own tasks + projects; admin: everything
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import { TASK_STATUS_LABEL } from '@/lib/labels';
 import { useAuth } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
+import { useSlashFocus } from '@/lib/useSlashFocus';
 import type { Project, Task } from '@/types/db';
 
 export function ArchivePage() {
@@ -21,6 +22,10 @@ export function ArchivePage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  // PRD §UX — free-text search across task + project titles
+  const [search, setSearch] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchRef);
 
   const profiles = useQuery({
     queryKey: ['profiles', 'list'],
@@ -70,6 +75,7 @@ export function ArchivePage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['archive', 'projects'] }),
   });
 
+  const q = search.trim().toLowerCase();
   const filteredTasks = useMemo(() => {
     return (tasks.data ?? []).filter((t) => {
       if (projectId && t.project_id !== projectId) return false;
@@ -77,18 +83,20 @@ export function ArchivePage() {
       if (statusFilter && t.status !== statusFilter) return false;
       if (dateFrom && t.archived_at && t.archived_at < dateFrom) return false;
       if (dateTo && t.archived_at && t.archived_at > dateTo + 'T23:59:59.999Z') return false;
+      if (q && !t.title.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [tasks.data, projectId, assigneeId, statusFilter, dateFrom, dateTo]);
+  }, [tasks.data, projectId, assigneeId, statusFilter, dateFrom, dateTo, q]);
 
   const filteredProjects = useMemo(() => {
     return (projects.data ?? []).filter((p) => {
       if (projectId && p.id !== projectId) return false;
       if (dateFrom && p.archived_at && p.archived_at < dateFrom) return false;
       if (dateTo && p.archived_at && p.archived_at > dateTo + 'T23:59:59.999Z') return false;
+      if (q && !p.name.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [projects.data, projectId, dateFrom, dateTo]);
+  }, [projects.data, projectId, dateFrom, dateTo, q]);
 
   const empty = !tasks.isLoading && !projects.isLoading && filteredTasks.length === 0 && filteredProjects.length === 0;
 
@@ -98,6 +106,13 @@ export function ArchivePage() {
 
       {/* REQ-ARC-01 — filters */}
       <div className="flex flex-wrap gap-2 mb-4">
+        <input
+          ref={searchRef}
+          className="input max-w-[220px]"
+          placeholder="Axtar… (/)"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
         <select className="input max-w-[180px]" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
           <option value="">Bütün layihələr</option>
           {(projects.data ?? []).map((p) => (
@@ -118,8 +133,8 @@ export function ArchivePage() {
         </select>
         <input type="date" className="input max-w-[160px]" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
         <input type="date" className="input max-w-[160px]" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-        {(projectId || assigneeId || statusFilter || dateFrom || dateTo) ? (
-          <button className="btn-outline" onClick={() => { setProjectId(''); setAssigneeId(''); setStatusFilter(''); setDateFrom(''); setDateTo(''); }}>
+        {(projectId || assigneeId || statusFilter || dateFrom || dateTo || search) ? (
+          <button className="btn-outline" onClick={() => { setProjectId(''); setAssigneeId(''); setStatusFilter(''); setDateFrom(''); setDateTo(''); setSearch(''); }}>
             Sıfırla
           </button>
         ) : null}
