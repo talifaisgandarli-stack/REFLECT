@@ -13,7 +13,17 @@ import type { Task, TaskStatus } from '@/types/db';
 
 type Props = { task: Task; onClose: () => void };
 
-const STATUS_OPTIONS: TaskStatus[] = ['idea', 'queued', 'active', 'review', 'expert', 'done'];
+// PRD §MODULE 4 — full 7-status model. Edit modal must expose `cancelled`
+// so a user can read/clear `cancel_reason`; switching INTO cancelled from this
+// modal requires the reason field to be non-empty (DB trigger guards it too).
+const STATUS_OPTIONS: TaskStatus[] = ['idea', 'queued', 'active', 'review', 'expert', 'done', 'cancelled'];
+const CANCEL_REASONS = [
+  'Müştəri imtina etdi',
+  'Layihə dəyişdi',
+  'Texniki problem',
+  'Yenidən planlaşdırılır',
+  'Digər',
+] as const;
 const STATUS_LABEL: Record<TaskStatus, string> = {
   idea: 'İdeyalar',
   queued: 'Başlanmayıb',
@@ -43,6 +53,20 @@ export function TaskEditModal({ task, onClose }: Props) {
   );
   const [unit, setUnit] = useState<DurationUnit>((task.duration_unit as DurationUnit) ?? 'hours');
   const [assignees, setAssignees] = useState<string[]>(task.assignee_ids ?? []);
+  // PRD §REQ-TASK-04 / REQ-TASK-06 / REQ-TASK-09 — edit modal previously dropped
+  // these fields, so they were creatable but not editable. Add them so the form
+  // round-trips the full task shape.
+  const [riskBuffer, setRiskBuffer] = useState<string>(
+    task.risk_buffer_pct != null ? String(task.risk_buffer_pct) : '0',
+  );
+  const [isExpertise, setIsExpertise] = useState<boolean>(!!task.is_expertise_subtask);
+  const initialReasonKnown = CANCEL_REASONS.find((r) => r === (task.cancel_reason ?? ''));
+  const [cancelReasonChoice, setCancelReasonChoice] = useState<string>(
+    task.cancel_reason ? (initialReasonKnown ?? 'Digər') : '',
+  );
+  const [cancelReasonOther, setCancelReasonOther] = useState<string>(
+    task.cancel_reason && !initialReasonKnown ? task.cancel_reason : '',
+  );
 
   const teamMembers = useQuery({
     queryKey: ['profiles', 'team-list'],
@@ -64,6 +88,16 @@ export function TaskEditModal({ task, onClose }: Props) {
       if (startDate && deadline && deadline < startDate) {
         throw new Error('Bitmə tarixi başlama tarixindən əvvəl ola bilməz.');
       }
+      // PRD REQ-TASK-04 — cancelled requires reason (DB trigger also enforces).
+      let cancelReason: string | null = null;
+      if (status === 'cancelled') {
+        if (!cancelReasonChoice) throw new Error('Ləğv səbəbini seçin.');
+        if (cancelReasonChoice === 'Digər' && !cancelReasonOther.trim()) {
+          throw new Error('Səbəbi yazın (Digər).');
+        }
+        cancelReason = cancelReasonChoice === 'Digər' ? cancelReasonOther.trim() : cancelReasonChoice;
+      }
+      const risk = Math.max(0, Math.min(100, Number(riskBuffer) || 0));
       const { error } = await supabase
         .from('tasks')
         .update({
@@ -76,6 +110,10 @@ export function TaskEditModal({ task, onClose }: Props) {
           estimated_duration: estimated ? Number(estimated) : null,
           duration_unit: unit,
           assignee_ids: assignees,
+          risk_buffer_pct: risk,
+          is_expertise_subtask: isExpertise,
+          // Clear stale reason when leaving cancelled; otherwise persist current.
+          cancel_reason: cancelReason,
         })
         .eq('id', task.id);
       if (error) throw error;
@@ -199,6 +237,63 @@ export function TaskEditModal({ task, onClose }: Props) {
               </select>
             </Field>
           </div>
+
+          {/* PRD §REQ-TASK-06 — risk buffer % (workload formula multiplier) */}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Risk buferi %">
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={5}
+                className="input"
+                value={riskBuffer}
+                onChange={(e) => setRiskBuffer(e.target.value)}
+                title="workload = müddət × (1 + risk%/100)"
+              />
+            </Field>
+            <Field label="Tapşırıq tipi">
+              <label className="flex items-center gap-2 chip cursor-pointer" style={{ background: isExpertise ? 'var(--brand-action)' : 'var(--surface)', color: isExpertise ? 'var(--ink)' : 'var(--text)', height: 38, padding: '0 12px' }}>
+                <input
+                  type="checkbox"
+                  className="sr-only"
+                  checked={isExpertise}
+                  onChange={(e) => setIsExpertise(e.target.checked)}
+                />
+                {isExpertise ? '✓ Ekspertiza tapşırığı' : 'Ekspertiza tapşırığı'}
+              </label>
+            </Field>
+          </div>
+
+          {/* PRD §REQ-TASK-04 — cancelled status requires a reason */}
+          {status === 'cancelled' ? (
+            <>
+              <Field label="Ləğv səbəbi" required>
+                <select
+                  className="input"
+                  value={cancelReasonChoice}
+                  onChange={(e) => setCancelReasonChoice(e.target.value)}
+                  required
+                >
+                  <option value="">— seç —</option>
+                  {CANCEL_REASONS.map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </Field>
+              {cancelReasonChoice === 'Digər' ? (
+                <Field label="Səbəbi yaz" required>
+                  <textarea
+                    className="input"
+                    value={cancelReasonOther}
+                    onChange={(e) => setCancelReasonOther(e.target.value)}
+                    style={{ minHeight: 60, padding: '12px 14px' }}
+                    required
+                  />
+                </Field>
+              ) : null}
+            </>
+          ) : null}
 
           {isAdmin ? (
             <Field label="İcraçılar">

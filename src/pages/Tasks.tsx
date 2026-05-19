@@ -487,13 +487,16 @@ export function TasksPage() {
   const overdueCount = filtered.filter(
     (t) => t.deadline && t.deadline < todayIso && t.status !== 'done' && t.status !== 'cancelled',
   ).length;
-  // PRD §UX — total estimated hours across visible open tasks (for at-a-glance load)
+  // PRD §UX — total estimated hours across visible open tasks (for at-a-glance load).
+  // DB stores duration_unit as 'hours' | 'days' (TaskCreateModal options). Previous
+  // version compared 'day'/'week' which never matched, silently under-counting
+  // day-typed tasks by 8× and ignoring legacy 'week' rows.
   const totalEstimateH = filtered.reduce((sum, t) => {
     if (t.status === 'done' || t.status === 'cancelled') return sum;
     const d = t.estimated_duration;
     if (d == null) return sum;
-    const unit = (t as { duration_unit?: string }).duration_unit ?? 'hour';
-    const h = unit === 'day' ? d * 8 : unit === 'week' ? d * 40 : d;
+    const unit = (t as { duration_unit?: string }).duration_unit ?? 'hours';
+    const h = unit === 'days' ? d * 8 : unit === 'weeks' ? d * 40 : d;
     return sum + h;
   }, 0);
   const meta = `${filtered.length} cəmi · ${grouped.active.length} icrada · ${grouped.review.length} yoxlamada${
@@ -893,12 +896,13 @@ export function TasksPage() {
             const isToday = s === 'active';
             const tone = TASK_STATUS_TONE[s];
             // PRD §UX — sum estimated hours per column so user sees workload per stage.
-            // Falls back to 0 when estimated_duration is null; uses duration_unit for h/d/w.
+            // duration_unit is 'hours' | 'days' from TaskCreateModal; 'weeks' kept as
+            // legacy fallback for any older rows.
             const totalHours = grouped[s].reduce((sum, t) => {
               const d = t.estimated_duration;
               if (d == null) return sum;
-              const unit = (t as { duration_unit?: string }).duration_unit ?? 'hour';
-              const h = unit === 'day' ? d * 8 : unit === 'week' ? d * 40 : d;
+              const unit = (t as { duration_unit?: string }).duration_unit ?? 'hours';
+              const h = unit === 'days' ? d * 8 : unit === 'weeks' ? d * 40 : d;
               return sum + h;
             }, 0);
             return (

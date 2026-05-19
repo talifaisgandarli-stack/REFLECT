@@ -62,6 +62,31 @@ function applyMention(text: string, cursorPos: number, fullName: string): { text
   return { text: newText, cursor: replaced.length + (after.startsWith(' ') ? 0 : 1) };
 }
 
+/**
+ * PRD §REQ-TASK-07 — kick the immediate Telegram dispatch for a freshly
+ * inserted/edited comment. The /api/notifications/dispatch-for-comment endpoint
+ * verifies caller is the comment author via RLS before delivering. Errors are
+ * swallowed: the daily notify-fanout cron is the durable backstop.
+ */
+async function dispatchTelegramForComment(commentId: string): Promise<void> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) return;
+    await fetch('/api/notifications/dispatch-for-comment', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ commentId }),
+      keepalive: true,
+    });
+  } catch {
+    // Cron will retry within 24h; no user-facing error needed.
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 export function TaskCommentsModal({
@@ -284,6 +309,10 @@ export function TaskCommentsModal({
         .update({ body: trimmed, mentions })
         .eq('id', input.id);
       if (error) throw error;
+      // PRD §REQ-TASK-07 — DB trigger 0058 inserts notifications for newly-
+      // added mentions; kick the immediate Telegram dispatch here so the
+      // recipient doesn't wait for the daily cron.
+      void dispatchTelegramForComment(input.id);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['task_comments', taskId] }),
   });
@@ -303,13 +332,21 @@ export function TaskCommentsModal({
 
       // task_comments_notify_mentions trigger (migration 0004 + 0019) handles
       // both the activity_log entry and notification fan-out for each mention.
-      const { error } = await supabase.from('task_comments').insert({
-        task_id: taskId,
-        user_id: profile?.id,
-        body: trimmed,
-        mentions,
-      });
+      const { data: inserted, error } = await supabase
+        .from('task_comments')
+        .insert({
+          task_id: taskId,
+          user_id: profile?.id,
+          body: trimmed,
+          mentions,
+        })
+        .select('id')
+        .single();
       if (error) throw error;
+      // PRD §REQ-TASK-07 — instant Telegram path so the recipient is pinged
+      // in seconds, not via the daily cron. Fire-and-forget; backstop cron
+      // covers any failure here.
+      if (inserted?.id) void dispatchTelegramForComment(inserted.id);
     },
     onSuccess: () => {
       setBody('');
