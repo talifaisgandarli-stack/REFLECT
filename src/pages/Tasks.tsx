@@ -772,12 +772,23 @@ export function TasksPage() {
                           {t.deadline}
                         </span>
                       ) : null}
-                      <span
-                        className="text-meta px-2 py-0.5 rounded"
-                        style={{ background: 'var(--surface-raised)', color: TASK_STATUS_TONE[t.status].text, flexShrink: 0 }}
+                      {/* PRD §US-TASK-06 — inline status dropdown (non-done) for personal view */}
+                      <select
+                        aria-label="Status dəyiş"
+                        value={t.status}
+                        onChange={(e) => moveTask(t.id, e.target.value as TaskStatus, t.status)}
+                        className="text-meta px-2 py-0.5 rounded border-0"
+                        style={{
+                          background: 'var(--surface-raised)',
+                          color: TASK_STATUS_TONE[t.status].text,
+                          flexShrink: 0,
+                          fontSize: 11,
+                        }}
                       >
-                        {TASK_STATUS_LABEL[t.status]}
-                      </span>
+                        {TASK_STATUS_ORDER.map((s) => (
+                          <option key={s} value={s}>{TASK_STATUS_LABEL[s]}</option>
+                        ))}
+                      </select>
                       <button
                         type="button"
                         onClick={() => setCommenting({ id: t.id, title: t.title })}

@@ -20,6 +20,9 @@ type Props = {
   onClose: () => void;
   defaultProjectId?: string;
   defaultStatus?: TaskStatus;
+  // PRD §REQ-TASK-01 — explicit subtask creation (parent context)
+  parentTaskId?: string;
+  parentTaskLevel?: number;
 };
 
 const EXPERTISE_CHILDREN = [
@@ -49,7 +52,7 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
   cancelled: 'Ləğv edilmiş',
 };
 
-export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus }: Props) {
+export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, parentTaskId, parentTaskLevel }: Props) {
   const { profile, isAdmin } = useAuth();
   const projects = useProjects();
   const qc = useQueryClient();
@@ -77,7 +80,9 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus }: Pr
   const [estimated, setEstimated] = useState<string>('');
   const [unit, setUnit] = useState<DurationUnit>('hours');
   const [riskBuffer, setRiskBuffer] = useState<number>(0);
-  const [withExpertise, setWithExpertise] = useState(false);
+  // PRD §REQ-TASK-09 / US-TASK-08 — selectable expertise subtasks (5 checkboxes,
+  // user picks which to seed as linked subtasks with parent_task_id + is_expertise_subtask=true).
+  const [selectedExpertise, setSelectedExpertise] = useState<Set<string>>(new Set());
   const [assignSelf, setAssignSelf] = useState(true);
   const [extraAssignees, setExtraAssignees] = useState<string[]>([]);
 
@@ -132,6 +137,10 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus }: Pr
         duration_unit: unit,
         risk_buffer_pct: Math.max(0, Math.min(100, Math.round(riskBuffer))),
         is_expertise_subtask: false,
+        // PRD §REQ-TASK-01 — propagate parent context when creating a subtask
+        ...(parentTaskId
+          ? { parent_task_id: parentTaskId, task_level: (parentTaskLevel ?? 0) + 1 }
+          : {}),
         assignee_ids: (() => {
           const set = new Set<string>();
           if (assignSelf && profile?.id) set.add(profile.id);
@@ -143,16 +152,18 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus }: Pr
       if (error) throw error;
       const parent = data as Task;
 
-      if (withExpertise) {
-        const children = EXPERTISE_CHILDREN.map((t) => ({
-          title: t,
-          status: 'queued' as TaskStatus,
-          project_id: parent.project_id,
-          parent_task_id: parent.id,
-          task_level: parent.task_level + 1,
-          is_expertise_subtask: true,
-          assignee_ids: parent.assignee_ids,
-        }));
+      if (selectedExpertise.size > 0) {
+        const children = EXPERTISE_CHILDREN
+          .filter((t) => selectedExpertise.has(t))
+          .map((t) => ({
+            title: t,
+            status: 'queued' as TaskStatus,
+            project_id: parent.project_id,
+            parent_task_id: parent.id,
+            task_level: parent.task_level + 1,
+            is_expertise_subtask: true,
+            assignee_ids: parent.assignee_ids,
+          }));
         const { error: childErr } = await supabase.from('tasks').insert(children);
         if (childErr) throw childErr;
       }
@@ -192,7 +203,14 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus }: Pr
         }}
         style={{ padding: 24 }}
       >
-        <h2 id="task-create-title" className="text-h2">Yeni tapşırıq</h2>
+        <h2 id="task-create-title" className="text-h2">
+          {parentTaskId ? 'Yeni alt-tapşırıq' : 'Yeni tapşırıq'}
+        </h2>
+        {parentTaskId ? (
+          <p className="text-meta mt-1" style={{ color: 'var(--text-muted)' }}>
+            Ana tapşırığın altında yaradılır · səviyyə {(parentTaskLevel ?? 0) + 1}
+          </p>
+        ) : null}
 
         <div className="mt-4 space-y-3">
           <Field label="Başlıq" required>
@@ -376,14 +394,76 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus }: Pr
             </Field>
           ) : null}
 
-          <label className="flex items-center gap-2 text-body cursor-pointer">
-            <input
-              type="checkbox"
-              checked={withExpertise}
-              onChange={(e) => setWithExpertise(e.target.checked)}
-            />
-            Ekspertiza alt-tapşırıqlarını əlavə et (5 ədəd)
-          </label>
+          {/* PRD §REQ-TASK-09 / US-TASK-08 — selectable expertise subtask suggestions */}
+          <fieldset className="border rounded-btn p-3" style={{ borderColor: 'var(--line)' }}>
+            <legend className="text-meta px-2" style={{ color: 'var(--text-muted)' }}>
+              Ekspertiza alt-tapşırıqları (seçilənlər avtomatik yaradılacaq)
+            </legend>
+            <div className="space-y-1.5">
+              {EXPERTISE_CHILDREN.map((t) => {
+                const checked = selectedExpertise.has(t);
+                return (
+                  <label key={t} className="flex items-center gap-2 text-body cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        setSelectedExpertise((prev) => {
+                          const next = new Set(prev);
+                          if (e.target.checked) next.add(t);
+                          else next.delete(t);
+                          return next;
+                        });
+                      }}
+                    />
+                    {/* PRD §REQ-TASK-09 — purple "E" badge marker on expertise subtasks */}
+                    <span
+                      aria-hidden
+                      className="text-tiny inline-flex items-center justify-center"
+                      style={{
+                        width: 16, height: 16, borderRadius: 4,
+                        background: 'var(--brand-action)', color: 'var(--ink)',
+                        fontWeight: 700, fontSize: 10,
+                      }}
+                    >E</span>
+                    {t}
+                  </label>
+                );
+              })}
+            </div>
+            {selectedExpertise.size > 0 ? (
+              <div className="flex items-center justify-between mt-2 text-meta" style={{ color: 'var(--brand-text)' }}>
+                <span>{selectedExpertise.size}/{EXPERTISE_CHILDREN.length} seçilib</span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="chip"
+                    style={{ fontSize: 11 }}
+                    onClick={() => setSelectedExpertise(new Set(EXPERTISE_CHILDREN))}
+                  >
+                    Hamısını seç
+                  </button>
+                  <button
+                    type="button"
+                    className="chip"
+                    style={{ fontSize: 11 }}
+                    onClick={() => setSelectedExpertise(new Set())}
+                  >
+                    Təmizlə
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="chip mt-2"
+                style={{ fontSize: 11, color: 'var(--brand-text)' }}
+                onClick={() => setSelectedExpertise(new Set(EXPERTISE_CHILDREN))}
+              >
+                Hamısını seç
+              </button>
+            )}
+          </fieldset>
         </div>
 
         {create.error ? (
