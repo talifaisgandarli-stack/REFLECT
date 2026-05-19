@@ -15,6 +15,7 @@ import { formatDuration } from '@/lib/useTimeTracking';
 import { renderCommentMarkdown } from '@/lib/sanitize';
 import { toast } from '@/components/Toast';
 import { isOpenChildrenError, useUpdateTaskStatus } from '@/lib/hooks';
+import { TASK_STATUS_LABEL } from '@/lib/labels';
 import { SubtaskBlockingModal } from '@/components/SubtaskBlockingModal';
 import { CancelTaskModal } from '@/components/CancelTaskModal';
 import type { TaskStatus } from '@/types/db';
@@ -781,16 +782,10 @@ function TaskDateFields({ taskId }: { taskId: string }) {
   );
 }
 
-// PRD §REQ-TASK-03 + 6.x — inline status / priority / labels editors row
-const STATUS_LABEL_LOCAL: Record<string, string> = {
-  idea: 'İdeya',
-  queued: 'Növbədə',
-  active: 'Aktiv',
-  review: 'Yoxlanır',
-  expert: 'Ekspertizada',
-  done: 'Tamamlandı',
-  cancelled: 'Ləğv edildi',
-};
+// PRD §REQ-TASK-03 + 6.x — inline status / priority / labels editors row.
+// Reuse the canonical labels from @/lib/labels so AZ wording matches what
+// the board chip + cancel modal + edit modal use (previous local copy used
+// "İdeya"/"Növbədə"/"Aktiv" vs canonical "İdeyalar"/"Başlanmayıb"/"İcrada").
 const STATUS_KEYS = ['idea', 'queued', 'active', 'review', 'expert', 'done', 'cancelled'] as const;
 const PRIORITY_VISUAL: Record<string, { icon: string; bg: string; color: string }> = {
   high:   { icon: '↑', bg: 'var(--error-aa, #8a1e18)', color: 'white' },
@@ -885,7 +880,7 @@ function TaskStatusPriorityLabels({ taskId }: { taskId: string }) {
         onChange={(e) => changeStatus(e.target.value as TaskStatus)}
         disabled={updateStatus.isPending}
       >
-        {STATUS_KEYS.map((s) => <option key={s} value={s}>{STATUS_LABEL_LOCAL[s] ?? s}</option>)}
+        {STATUS_KEYS.map((s) => <option key={s} value={s}>{TASK_STATUS_LABEL[s] ?? s}</option>)}
       </select>
       {blocker ? (
         <SubtaskBlockingModal
@@ -1168,11 +1163,18 @@ function TaskEstimateBar({
     const d = Number(duration.replace(',', '.'));
     if (!Number.isFinite(d) || d < 0) { setEditing(false); return; }
     setSaving(true);
-    await supabase
+    // PRD §UX — surface mutation failures instead of silently closing the
+    // editor; the previous "fire and forget" path masked RLS/constraint
+    // errors so the user thought their estimate saved when it didn't.
+    const { error } = await supabase
       .from('tasks')
       .update({ estimated_duration: d > 0 ? d : null, duration_unit: unit })
       .eq('id', taskId);
     setSaving(false);
+    if (error) {
+      toast.error(error.message || 'Plan müddəti saxlanılmadı');
+      return;
+    }
     qc.invalidateQueries({ queryKey: ['task_estimate_vs_actual', taskId] });
     qc.invalidateQueries({ queryKey: ['tasks'] });
     setEditing(false);
@@ -1304,10 +1306,19 @@ function TaskDescriptionEditor({ taskId }: { taskId: string }) {
         onChange={(e) => setVal(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Escape') { setVal(initial); setEditing(false); }
+          // PRD §UX — Ctrl/Cmd+Enter saves (parity with Esc-cancel). Plain
+          // Enter inserts a newline since description is multi-line.
+          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            if (val !== initial) save.mutate();
+          }
         }}
         style={{ fontSize: 12 }}
       />
       <div className="flex justify-end gap-1 mt-1">
+        <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 10, opacity: 0.7, marginRight: 'auto' }}>
+          Ctrl+Enter ilə saxla · Esc ləğv
+        </span>
         <button type="button" className="chip" onClick={() => { setVal(initial); setEditing(false); }} style={{ fontSize: 11 }}>Ləğv</button>
         <button
           type="button"

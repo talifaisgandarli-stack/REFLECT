@@ -27,17 +27,18 @@ import { useFocusTrap } from '@/lib/a11y';
 function bakuDateString(d = new Date()): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baku' }).format(d);
 }
-const todayStr = bakuDateString();
-const endOfWeekStr = (() => {
+// PRD §FIN-09 — recompute on every call (the module-scoped freeze meant a
+// tab kept open past Baku midnight stayed on yesterday's date, so tasks due
+// "tomorrow" stayed in the "today" bucket all night).
+function endOfWeekStrFor(now: Date): string {
   // Compute end-of-week using Baku-shifted Date so the wraparound on Saturday
   // night doesn't get clipped one day early in UTC.
-  const now = new Date();
   const bakuMs = now.getTime() + 4 * 3_600_000; // UTC+4
   const d = new Date(bakuMs);
   const dow = d.getUTCDay() === 0 ? 7 : d.getUTCDay();
   d.setUTCDate(d.getUTCDate() + (7 - dow));
   return bakuDateString(new Date(d.getTime() - 4 * 3_600_000));
-})();
+}
 
 type TimeGroup = 'overdue' | 'today' | 'week' | 'later' | 'none' | 'done_today';
 const TIME_GROUP_LABEL: Record<TimeGroup, string> = {
@@ -75,9 +76,11 @@ function taskTimeGroup(t: Task): TimeGroup {
   // personal grouping step so the list stays scoped to recent work.
   if (t.status === 'done') return 'done_today';
   if (!t.deadline) return 'none';
-  if (t.deadline < todayStr) return 'overdue';
-  if (t.deadline === todayStr) return 'today';
-  if (t.deadline <= endOfWeekStr) return 'week';
+  const today = bakuDateString();
+  const eow = endOfWeekStrFor(new Date());
+  if (t.deadline < today) return 'overdue';
+  if (t.deadline === today) return 'today';
+  if (t.deadline <= eow) return 'week';
   return 'later';
 }
 const TIME_GROUP_ORDER: TimeGroup[] = ['overdue', 'today', 'week', 'later', 'none', 'done_today'];
@@ -103,9 +106,15 @@ export function TasksPage() {
   );
   // URL assignee takes precedence over mineOnly so Roster click always lands on that user
   const filterAssignee = initialUrlAssignee || (mineOnly && profile?.id ? profile.id : null);
-  const { data: tasks = [], isLoading } = useTasks(
-    filterAssignee ? { assigneeId: filterAssignee } : undefined,
+  // Memoize the filter object so its identity is stable across renders.
+  // useQuery's queryKey serializes the value, but the object identity also
+  // affects react-query's internal cache normalisation; a fresh `{}` every
+  // render thrashes the cache slot.
+  const tasksFilter = useMemo(
+    () => (filterAssignee ? { assigneeId: filterAssignee } : undefined),
+    [filterAssignee],
   );
+  const { data: tasks = [], isLoading } = useTasks(tasksFilter);
   const update = useUpdateTaskStatus();
 
   // PRD §6.8 — AvatarGroup: look up names/avatars for assignee_ids
@@ -158,17 +167,25 @@ export function TasksPage() {
     return () => window.removeEventListener('reflect:open-task', onOpenTask);
   }, []);
   const [editing, setEditing] = useState<Task | null>(null);
-  // PRD §6.3 — when a task is open in edit modal, Cmd+N creates a subtask of it.
-  // The Layout reads taskCreateParent from the UI store; we publish/clear here.
+  // PRD §6.3 — when a task is open in EITHER the edit modal OR the comments
+  // modal, Cmd+N creates a subtask of it. Comments is the more common entry
+  // point, so publishing parent context from that state too is essential.
   const setTaskCreateParent = useUI((s) => s.setTaskCreateParent);
   useEffect(() => {
+    // Edit modal takes precedence (it has the full Task object); fall back to
+    // the lighter `commenting` ref (id + title) when there is no edit open.
     if (editing) {
       setTaskCreateParent({ id: editing.id, level: editing.task_level ?? 0 });
+    } else if (commenting) {
+      // We don't have task_level on the commenting ref — look it up from
+      // the tasks cache; default to 0 (top-level subtask depth).
+      const t = tasks.find((x) => x.id === commenting.id);
+      setTaskCreateParent({ id: commenting.id, level: t?.task_level ?? 0 });
     } else {
       setTaskCreateParent(null);
     }
     return () => setTaskCreateParent(null);
-  }, [editing, setTaskCreateParent]);
+  }, [editing, commenting, tasks, setTaskCreateParent]);
   // PRD §6.x — bulk action mode for the table/list view
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -251,6 +268,18 @@ export function TasksPage() {
     mutationFn: async (sourceId: string) => {
       const src = tasks.find((t) => t.id === sourceId);
       if (!src) throw new Error('Tapşırıq tapılmadı');
+      // PRD §REQ-TASK-03 — clone lands at the BOTTOM of the 'queued' column,
+      // i.e. max(sort_order)+1024 for siblings in the same (project, queued)
+      // bucket. Leaving sort_order null caused the clone to sort by
+      // Infinity and appear last in unstable order alongside other nulls.
+      const siblings = tasks.filter(
+        (t) => t.status === 'queued' && t.project_id === src.project_id,
+      );
+      const maxSort = siblings.reduce(
+        (m, t) => Math.max(m, t.sort_order ?? -Infinity),
+        -Infinity,
+      );
+      const nextSort = Number.isFinite(maxSort) ? maxSort + 1024 : 1024;
       const { error } = await supabase.from('tasks').insert({
         title: `${src.title} (kopya)`,
         description: src.description,
@@ -266,6 +295,7 @@ export function TasksPage() {
         task_level: src.task_level,
         labels: src.labels ?? null,
         priority: src.priority ?? null,
+        sort_order: nextSort,
         // parent_task_id intentionally not copied — clone is a top-level task
       });
       if (error) throw error;
@@ -1021,17 +1051,22 @@ export function TasksPage() {
                           {t.deadline}
                         </span>
                       ) : null}
-                      {/* PRD §US-TASK-06 — inline status dropdown (non-done) for personal view */}
+                      {/* PRD §US-TASK-06 / §6.6 — inline status dropdown.
+                          Sized to meet WCAG 2.5.5 minimum target (24×24);
+                          previous 11px font / 0.5 padding fell below the
+                          touch-target floor on mobile. */}
                       <select
                         aria-label="Status dəyiş"
                         value={t.status}
                         onChange={(e) => moveTask(t.id, e.target.value as TaskStatus, t.status)}
-                        className="text-meta px-2 py-0.5 rounded border-0"
+                        className="text-meta rounded border-0"
                         style={{
                           background: 'var(--surface-raised)',
                           color: TASK_STATUS_TONE[t.status].text,
                           flexShrink: 0,
-                          fontSize: 11,
+                          fontSize: 12,
+                          minHeight: 28,
+                          padding: '4px 10px',
                         }}
                       >
                         {TASK_STATUS_ORDER.map((s) => (
