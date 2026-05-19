@@ -130,16 +130,29 @@ export function EquipmentPage() {
   const profileMap = Object.fromEntries((profiles.data ?? []).map((p) => [p.id, p.full_name ?? p.id]));
 
   // PRD §UX — availability filter (Hamısı / Boş / Tapşırılıb) + free-text search +
-  // person filter (narrow to a specific holder when audit-trailing kit)
-  const [availability, setAvailability] = useState<'all' | 'available' | 'assigned'>('all');
+  // person filter (narrow to a specific holder when audit-trailing kit).
+  // All filter state is URL-persisted so deep-links + refresh keep view intact.
+  const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const [availability, setAvailability] = useState<'all' | 'available' | 'assigned'>(
+    (urlParams?.get('avail') as 'all' | 'available' | 'assigned') || 'all',
+  );
   const [search, setSearch] = useState('');
-  // PRD §UX — honor ?holder=<uuid> URL param for deep-links from Roster
-  const initialHolder = typeof window !== 'undefined'
-    ? new URLSearchParams(window.location.search).get('holder') ?? ''
-    : '';
-  const [holderFilter, setHolderFilter] = useState<string>(initialHolder); // '' = all
-  // PRD §8.7 — also narrow by equipment kind (laptop / printer / camera / etc.)
-  const [kindFilter, setKindFilter] = useState<string>('');
+  const [holderFilter, setHolderFilter] = useState<string>(urlParams?.get('holder') ?? ''); // '' = all
+  const [kindFilter, setKindFilter] = useState<string>(urlParams?.get('kind') ?? '');
+  // Persist filters back into the URL so reload / share-link keeps the view
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const next = new URLSearchParams(window.location.search);
+    if (availability === 'all') next.delete('avail'); else next.set('avail', availability);
+    if (!holderFilter) next.delete('holder'); else next.set('holder', holderFilter);
+    if (!kindFilter) next.delete('kind'); else next.set('kind', kindFilter);
+    const newQs = next.toString();
+    const curQs = window.location.search.slice(1);
+    if (newQs !== curQs) {
+      const url = newQs ? `${window.location.pathname}?${newQs}` : window.location.pathname;
+      window.history.replaceState({}, '', url);
+    }
+  }, [availability, holderFilter, kindFilter]);
   const filteredEquipment = (equipment.data ?? []).filter((e) => {
     if (availability === 'available' && e.assigned_to) return false;
     if (availability === 'assigned' && !e.assigned_to) return false;

@@ -318,6 +318,15 @@
   transform-origin: 50% 70%;
 }
 
+/* PRD §UX — modal fade-in for dialogs (Calendar event, etc.) */
+@keyframes modal-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.modal-fade-in {
+  animation: modal-fade-in 0.15s ease-out;
+}
+
 /* PRD §UX — print-friendly stylesheet (invoices, reports, single-page views).
    Hide chrome (sidebar, toasts, modals) and force white background. */
 @media print {

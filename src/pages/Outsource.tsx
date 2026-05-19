@@ -406,6 +406,18 @@ export function OutsourcePage() {
                           → {STATUS_LABEL[STATUS_NEXT[row.status as Status]!]}
                         </button>
                       ) : null}
+                      {/* PRD §REQ-FIN-07 — admin jump straight to paid from any non-paid state */}
+                      {isAdmin && row.status !== 'paid' && row.status !== 'delivered' ? (
+                        <button
+                          className="text-meta hover:underline opacity-60"
+                          style={{ color: 'var(--brand-text)', fontSize: 11 }}
+                          disabled={advanceStatus.isPending}
+                          onClick={() => advanceStatus.mutate({ id: row.id, nextStatus: 'paid' })}
+                          title="Birbaşa Ödənildi vəziyyətinə keç"
+                        >
+                          ⇉ Ödənildi
+                        </button>
+                      ) : null}
                     </div>
                   </td>
                   {isAdmin ? (

@@ -875,7 +875,19 @@ export function MiraiPage() {
               Aylıq MIRAI büdcənin {Math.round((usage.pct) * 100)}%-i istifadə olunub
               ({usage.spent_usd.toFixed(2)}$ / {usage.cap_usd}$).
             </span>
-            <span className="opacity-70">Növbəti ay sıfırlanacaq</span>
+            <span className="opacity-70 flex items-center gap-2">
+              Növbəti ay sıfırlanacaq
+              {/* PRD §7.6 — admin can adjust cap or inspect breakdown in Settings */}
+              {isAdmin ? (
+                <a
+                  href="/parametrlər/umumi"
+                  style={{ color: 'var(--brand-text)', textDecoration: 'underline' }}
+                  title="Aylıq MIRAI büdcəsi parametrlərini aç"
+                >
+                  Parametrlər →
+                </a>
+              ) : null}
+            </span>
           </div>
         ) : null}
 

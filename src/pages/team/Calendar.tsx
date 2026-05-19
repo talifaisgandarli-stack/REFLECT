@@ -753,7 +753,7 @@ function EventModal({
   });
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center px-4 modal-fade-in"
       style={{ background: 'rgba(14,22,17,0.4)' }}
       onClick={onClose}
     >

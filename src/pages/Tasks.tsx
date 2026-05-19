@@ -903,9 +903,12 @@ export function TasksPage() {
                           const parts: string[] = [];
                           if (t.description) parts.push(t.description);
                           if (t.created_at) parts.push(`Yaradılıb: ${new Date(t.created_at).toLocaleDateString('az-AZ')}`);
+                          if (t.priority) parts.push(`Prioritet: ${t.priority}`);
                           return parts.length ? parts.join('\n\n') : undefined;
                         })()}
                       >
+                        {/* PRD §UX — priority emoji prefix (already shown as left border in batch 72) */}
+                        {t.priority === 'high' ? <span aria-hidden style={{ marginRight: 4 }}>🔴</span> : null}
                         {t.title}
                       </div>
                       {/* Assignee avatars — PRD §6.8 */}
