@@ -14,6 +14,10 @@ import { trackRecentEntry } from '@/lib/useRecentlyViewed';
 import { formatDuration } from '@/lib/useTimeTracking';
 import { renderCommentMarkdown } from '@/lib/sanitize';
 import { toast } from '@/components/Toast';
+import { isOpenChildrenError, useUpdateTaskStatus } from '@/lib/hooks';
+import { SubtaskBlockingModal } from '@/components/SubtaskBlockingModal';
+import { CancelTaskModal } from '@/components/CancelTaskModal';
+import type { TaskStatus } from '@/types/db';
 
 type Comment = {
   id: string;
@@ -74,7 +78,12 @@ async function dispatchTelegramForComment(commentId: string): Promise<void> {
     const { data } = await supabase.auth.getSession();
     const token = data.session?.access_token;
     if (!token) return;
-    await fetch('/api/notifications/dispatch-for-comment', {
+    // PRD §REQ-TASK-07 — endpoint URL is env-overridable so deployments under
+    // a sub-path (or to a Supabase Edge Function) can point at the right host.
+    // Defaults to the Vercel co-located route. The daily notify-fanout cron
+    // is the backstop, so a 404 here only delays delivery, not loses it.
+    const base = import.meta.env.VITE_NOTIFY_DISPATCH_URL ?? '/api/notifications/dispatch-for-comment';
+    await fetch(base, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -804,16 +813,18 @@ function TaskStatusPriorityLabels({ taskId }: { taskId: string }) {
     },
   });
 
+  // PRD §REQ-TASK-04/05 — status changes from the inline select must go
+  // through the same hook the board uses (useUpdateTaskStatus) so we get:
+  //   • Optimistic update + rollback
+  //   • SubtaskBlockingModal on parent → done with open children
+  //   • CancelTaskModal on → cancelled (reason required)
+  // Field-only patches (priority/labels) still take the lightweight path.
+  const updateStatus = useUpdateTaskStatus();
+  const [blocker, setBlocker] = useState<{ from?: TaskStatus } | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+
   const updateField = useMutation({
-    mutationFn: async (patch: Partial<{ status: string; priority: string | null; labels: string[] }>) => {
-      // PRD §REQ-TASK-04 — cancelling needs cancel_reason. Inline status select
-      // can't capture a reason; route through the dedicated CancelTaskModal by
-      // refusing here so the caller knows to open it. This replaces the silent
-      // DB rejection ("cancel_reason_required") that left the dropdown snapping
-      // back with no explanation.
-      if (patch.status === 'cancelled') {
-        throw new Error('Ləğv etmək üçün kart üzərində Cancel düyməsindən istifadə et — səbəb tələb olunur.');
-      }
+    mutationFn: async (patch: Partial<{ priority: string | null; labels: string[] }>) => {
       const { error } = await supabase.from('tasks').update(patch).eq('id', taskId);
       if (error) throw error;
     },
@@ -829,6 +840,30 @@ function TaskStatusPriorityLabels({ taskId }: { taskId: string }) {
   const labels = task.data?.labels ?? [];
   const [draftLabel, setDraftLabel] = useState('');
 
+  function changeStatus(next: TaskStatus) {
+    if (next === status) return;
+    if (next === 'cancelled') {
+      setCancelling(true);
+      return;
+    }
+    const from = status as TaskStatus;
+    updateStatus.mutate(
+      { id: taskId, status: next, from },
+      {
+        onError: (e) => {
+          if (next === 'done' && isOpenChildrenError(e)) {
+            setBlocker({ from });
+          } else {
+            toast.error((e as Error).message || 'Status dəyişdirilmədi');
+          }
+        },
+        onSuccess: () => {
+          qc.invalidateQueries({ queryKey: ['task_meta_editable', taskId] });
+        },
+      },
+    );
+  }
+
   function addLabel() {
     const v = draftLabel.trim();
     if (!v || labels.includes(v)) { setDraftLabel(''); return; }
@@ -838,16 +873,41 @@ function TaskStatusPriorityLabels({ taskId }: { taskId: string }) {
 
   return (
     <div className="flex items-center gap-1.5 flex-wrap mb-2 text-meta" style={{ fontSize: 11 }}>
-      {/* Status inline dropdown */}
+      {/* Status inline dropdown — routes through useUpdateTaskStatus so the
+          board's SubtaskBlockingModal + CancelTaskModal flows apply here too. */}
       <select
         className="input"
         style={{ height: 22, fontSize: 11, padding: '0 4px' }}
         value={status}
-        onChange={(e) => updateField.mutate({ status: e.target.value })}
-        disabled={updateField.isPending}
+        onChange={(e) => changeStatus(e.target.value as TaskStatus)}
+        disabled={updateStatus.isPending}
       >
         {STATUS_KEYS.map((s) => <option key={s} value={s}>{STATUS_LABEL_LOCAL[s] ?? s}</option>)}
       </select>
+      {blocker ? (
+        <SubtaskBlockingModal
+          parentTaskId={taskId}
+          onCancel={() => setBlocker(null)}
+          onResolved={() => {
+            const b = blocker;
+            setBlocker(null);
+            if (b) {
+              updateStatus.mutate({ id: taskId, status: 'done', from: b.from });
+            }
+          }}
+        />
+      ) : null}
+      {cancelling ? (
+        <CancelTaskModal
+          taskId={taskId}
+          onCancel={() => setCancelling(false)}
+          onCancelled={() => {
+            setCancelling(false);
+            qc.invalidateQueries({ queryKey: ['task_meta_editable', taskId] });
+            qc.invalidateQueries({ queryKey: ['tasks'] });
+          }}
+        />
+      ) : null}
 
       {/* Priority inline dropdown — small visual chip */}
       <select

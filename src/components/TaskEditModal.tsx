@@ -10,6 +10,8 @@ import { useAuth } from '@/lib/store';
 import { useProjects } from '@/lib/hooks';
 import { useFocusTrap } from '@/lib/a11y';
 import type { Task, TaskStatus } from '@/types/db';
+import { isOpenChildrenError } from '@/lib/hooks';
+import { SubtaskBlockingModal } from '@/components/SubtaskBlockingModal';
 
 type Props = { task: Task; onClose: () => void };
 
@@ -81,6 +83,12 @@ export function TaskEditModal({ task, onClose }: Props) {
     },
   });
 
+  // PRD §REQ-TASK-05 — when status is moved to 'done' but open children
+  // remain, the DB trigger raises `task_has_open_children`. Open the
+  // SubtaskBlockingModal so the user can close children via "Hamısını
+  // tamamla" without leaving the edit modal.
+  const [blockerOpen, setBlockerOpen] = useState(false);
+
   const save = useMutation({
     mutationFn: async () => {
       const trimmed = title.trim();
@@ -121,6 +129,13 @@ export function TaskEditModal({ task, onClose }: Props) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] });
       onClose();
+    },
+    onError: (e) => {
+      // PRD §REQ-TASK-05 — surface the blocker modal instead of dumping the
+      // raw `task_has_open_children` string into the form error area.
+      if (status === 'done' && isOpenChildrenError(e)) {
+        setBlockerOpen(true);
+      }
     },
   });
 
@@ -331,6 +346,17 @@ export function TaskEditModal({ task, onClose }: Props) {
           </button>
         </div>
       </form>
+      {blockerOpen ? (
+        <SubtaskBlockingModal
+          parentTaskId={task.id}
+          onCancel={() => setBlockerOpen(false)}
+          onResolved={() => {
+            setBlockerOpen(false);
+            // Re-run the save now that descendants are closed.
+            save.mutate();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

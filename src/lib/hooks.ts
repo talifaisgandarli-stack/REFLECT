@@ -43,11 +43,25 @@ export function useProject(id: string | undefined) {
 }
 
 // ---------------- Tasks ----------------
+// PRD §REQ-TASK-08 + US-TASK-03 / US-TASK-06 — tasks_auto_archive (0006)
+// stamps archived_at=now() the instant status moves to done/cancelled. A
+// strict `archived_at IS NULL` filter therefore hid those rows from the
+// board within ~150ms, breaking:
+//   • US-TASK-03 "cancelled card is grayed visually" — no rows to render
+//   • US-TASK-06 "Bu gün tamamladıqlarım" personal-view group
+//   • Undo toast on a freshly-done task (row gone from cache)
+// Fix: include archived rows for 24h after archival so recent
+// completions/cancellations stay visible. Older archived rows still drop
+// off the board and surface only in the Arxiv module (REQ-TASK-08).
 export function useTasks(filter?: { projectId?: string; assigneeId?: string }) {
   return useQuery({
     queryKey: ['tasks', filter],
     queryFn: async (): Promise<Task[]> => {
-      let q = supabase.from('tasks').select('*').is('archived_at', null);
+      const cutoff = new Date(Date.now() - 24 * 3600_000).toISOString();
+      let q = supabase
+        .from('tasks')
+        .select('*')
+        .or(`archived_at.is.null,archived_at.gte.${cutoff}`);
       if (filter?.projectId) q = q.eq('project_id', filter.projectId);
       if (filter?.assigneeId) q = q.contains('assignee_ids', [filter.assigneeId]);
       const { data, error } = await q.order('created_at', { ascending: false });
@@ -83,19 +97,30 @@ export function useUpdateTaskStatus() {
       }
       return { snapshots };
     },
-    onError: (_err, input, ctx) => {
-      // Roll back every cache slice we touched. PRD §3.4 — if a realtime
-      // DELETE removed the target task between onMutate and onError, the
-      // snapshot still contains it; filter it out so we don't resurrect a
-      // ghost row in the UI.
+    onError: async (_err, input, ctx) => {
+      // Roll back every cache slice we touched. PRD §3.4 — when the mutation
+      // fails we have to undo the optimistic write, but the row might have
+      // been deleted server-side in the same window. Strategy:
+      //   1. Ask the server "does row X still exist?" — single point of
+      //      truth. If gone, do NOT resurrect it from the snapshot.
+      //   2. If the row exists, restore the snapshot value (the optimistic
+      //      patch reverts to its pre-mutation state).
+      // The eventual onSettled invalidate (below) still acts as a backstop.
+      let stillExistsOnServer = true;
+      try {
+        const { data } = await supabase
+          .from('tasks')
+          .select('id')
+          .eq('id', input.id)
+          .maybeSingle();
+        stillExistsOnServer = !!data;
+      } catch {
+        // Network failure — fall back to optimistic restore so UI isn't blanked.
+      }
       const snapshots = (ctx as { snapshots?: Array<[unknown, unknown]> } | undefined)?.snapshots ?? [];
       for (const [key, value] of snapshots) {
         if (!Array.isArray(value)) { qc.setQueryData(key as readonly unknown[], value); continue; }
-        const current = qc.getQueryData<unknown>(key as readonly unknown[]);
-        const stillExists = Array.isArray(current)
-          ? (current as Array<{ id: string }>).some((t) => t.id === input.id)
-          : true;
-        const restored = stillExists
+        const restored = stillExistsOnServer
           ? value
           : (value as Array<{ id: string }>).filter((t) => t.id !== input.id);
         qc.setQueryData(key as readonly unknown[], restored);
