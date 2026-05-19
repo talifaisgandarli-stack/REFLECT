@@ -18,6 +18,7 @@ import { TaskEditModal } from '@/components/TaskEditModal';
 import { downloadCsv } from '@/lib/csv';
 import { toast } from '@/components/Toast';
 import { formatDuration, useActiveTimeEntry, useStartTimer, useStopTimer, useTaskTimeTotals } from '@/lib/useTimeTracking';
+import { useFocusTrap } from '@/lib/a11y';
 
 // US-TASK-06 — deadline-based groups for personal view.
 // PRD §FIN-09 — all date math anchored to Asia/Baku, not UTC. Without this,
@@ -85,8 +86,12 @@ export function TasksPage() {
   const { profile, isAdmin } = useAuth();
   const qc = useQueryClient();
   const [view, setView] = useState<'board' | 'table'>('board');
-  // PRD §UX — ?assignee=<uuid> deep-links from Roster to "tasks for this person"
-  const initialUrlAssignee = new URLSearchParams(window.location.search).get('assignee');
+  // PRD §UX — ?assignee=<uuid> deep-links from Roster to "tasks for this
+  // person". useSearchParams is reactive — SPA navigation between route
+  // changes will re-render with the new value; previous module-scoped
+  // `new URLSearchParams(window.location.search)` read was stale.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialUrlAssignee = searchParams.get('assignee');
   const [mineOnly, setMineOnly] = useState(false);
   // PRD §UX — drag-over column highlight (board view DnD feedback)
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
@@ -249,10 +254,14 @@ export function TasksPage() {
       });
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      toast.success('Tapşırıq kopyalandı');
+    },
+    onError: (e) => toast.error((e as Error).message || 'Kopyalanmadı'),
   });
   // Persist search filter in URL so refresh / share-link preserves it.
-  const [searchParams, setSearchParams] = useSearchParams();
+  // searchParams/setSearchParams are already destructured at component top.
   const [search, setSearch] = useState(searchParams.get('q') ?? '');
   // PRD §6.3 / §UX — Slack/GitHub-style "/" jumps to search box
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -294,6 +303,17 @@ export function TasksPage() {
     update.mutate(
       { id, status, from },
       {
+        onSuccess: () => {
+          // PRD §UX — undo toast for status moves. Available for ~7s; clicking
+          // "Geri al" reverts to the prior status. Skipped when no `from` is
+          // known (programmatic moves like initial creation).
+          if (from && from !== status && status === 'done') {
+            toast.undo('Tapşırıq tamamlandı', {
+              label: 'Geri al',
+              onClick: () => update.mutate({ id, status: from, from: status }),
+            });
+          }
+        },
         onError: (e) => {
           if (status === 'done' && isOpenChildrenError(e)) {
             setBlocker({ id, from });
@@ -423,7 +443,16 @@ export function TasksPage() {
     catch { /* localStorage disabled */ }
   }, [compactBoard]);
   // PRD §UX — quick "today only" toggle: deadline = today (any status)
-  const [todayOnly, setTodayOnly] = useState(false);
+  const [todayOnly, setTodayOnly] = useState(searchParams.get('today') === '1');
+  // Sync today filter to URL so refresh/share-link preserves it (parity with
+  // q/label/project filters).
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (todayOnly) next.set('today', '1');
+    else next.delete('today');
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayOnly]);
   // PRD §UX — narrow board to one project (URL-persisted so share-link works)
   const [projectFilter, setProjectFilter] = useState<string>(searchParams.get('project') ?? '');
   useEffect(() => {
@@ -446,6 +475,10 @@ export function TasksPage() {
       return (data ?? []) as Array<{ id: string; name: string }>;
     },
   });
+  const projectsById = useMemo(
+    () => new Map((projectsForFilter.data ?? []).map((p) => [p.id, p.name])),
+    [projectsForFilter.data],
+  );
 
   // PRD §6.3 — single key shortcuts: C compact, A mine-only (skip while typing)
   useEffect(() => {
@@ -472,14 +505,25 @@ export function TasksPage() {
   const filtered = useMemo(() => {
     let out = tasks;
     if (labelFilter) out = out.filter((t) => (t.labels ?? []).includes(labelFilter));
-    if (projectFilter) out = out.filter((t) => t.project_id === projectFilter);
+    if (projectFilter === '__none__') out = out.filter((t) => !t.project_id);
+    else if (projectFilter) out = out.filter((t) => t.project_id === projectFilter);
     if (todayOnly) {
       const today = bakuDateString();
       out = out.filter((t) => t.deadline === today);
     }
     if (search.trim()) {
+      // PRD §UX — search spans title, description, labels, and project name
+      // so users can find a task by any reasonable handle. AZ-fold both sides.
       const q = normalizeAz(search.trim());
-      out = out.filter((t) => normalizeAz(t.title).includes(q));
+      out = out.filter((t) => {
+        const haystack = [
+          t.title,
+          t.description ?? '',
+          ...(t.labels ?? []),
+          projectsById.get(t.project_id ?? '') ?? '',
+        ].join(' ');
+        return normalizeAz(haystack).includes(q);
+      });
     }
     return out;
   }, [tasks, search, labelFilter, projectFilter, todayOnly]);
@@ -627,11 +671,13 @@ export function TasksPage() {
               onClick={() => {
                 downloadCsv(
                   `tasks-${bakuDateString()}`,
-                  ['Başlıq', 'Status', 'Layihə', 'Deadline', 'İcraçılar', 'Yaradıldı'],
+                  ['Başlıq', 'Status', 'Prioritet', 'Etiketlər', 'Layihə', 'Deadline', 'İcraçılar', 'Yaradıldı'],
                   filtered.map((t) => ({
                     'Başlıq': t.title,
                     'Status': t.status,
-                    'Layihə': t.project_id ?? '',
+                    'Prioritet': t.priority ?? '',
+                    'Etiketlər': (t.labels ?? []).join('; '),
+                    'Layihə': projectsById.get(t.project_id ?? '') ?? '',
                     'Deadline': t.deadline ?? '',
                     'İcraçılar': (t.assignee_ids ?? []).join('; '),
                     'Yaradıldı': t.created_at ? new Date(t.created_at).toISOString() : '',
@@ -717,6 +763,7 @@ export function TasksPage() {
             aria-label="Layihəyə görə süz"
           >
             <option value="">Bütün layihələr</option>
+            <option value="__none__">— layihəsiz —</option>
             {(projectsForFilter.data ?? []).map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
@@ -823,10 +870,12 @@ export function TasksPage() {
             className="chip"
             style={{ fontSize: 11 }}
             onClick={() => {
+              // SPA: just drop the param. useSearchParams hook re-renders the
+              // page, the useTasks query re-keys without assignee filter, and
+              // no full reload destroys modal/draft state.
               const next = new URLSearchParams(searchParams);
               next.delete('assignee');
               setSearchParams(next, { replace: true });
-              window.location.reload();
             }}
           >
             ✕ Bütün istifadəçilər
@@ -1165,14 +1214,15 @@ export function TasksPage() {
                       >
                         {/* PRD §UX — priority emoji prefix (already shown as left border in batch 72) */}
                         {t.priority === 'high' ? <span aria-hidden style={{ marginRight: 4 }}>🔴</span> : null}
-                        {/* PRD §REQ-TASK-09 — purple E badge for expertise subtasks */}
+                        {/* PRD §REQ-TASK-09 — purple E badge for expertise subtasks
+                            (matches the "expert" status dot hex #7C5CD9 in labels.ts) */}
                         {t.is_expertise_subtask ? (
                           <span
                             aria-hidden
                             className="text-tiny inline-flex items-center justify-center mr-1"
                             style={{
                               width: 14, height: 14, borderRadius: 3,
-                              background: 'var(--brand-action)', color: 'var(--ink)',
+                              background: '#7C5CD9', color: 'white',
                               fontWeight: 700, fontSize: 9, verticalAlign: 'middle',
                             }}
                             title="Ekspertiza alt-tapşırığı"
@@ -1380,9 +1430,9 @@ export function TasksPage() {
         <table className="w-full text-body">
           <thead>
             <tr style={{ borderBottom: '1px solid var(--line)' }}>
-              {['Tapşırıq', 'Status', 'İcraçı', 'Deadline'].map((h) => (
+              {['Tapşırıq', 'Status', 'Prioritet', 'Etiketlər', 'İcraçı', 'Deadline', 'İzlənmiş', ''].map((h, i) => (
                 <th
-                  key={h}
+                  key={i}
                   className="text-meta text-left py-3 px-3"
                   style={{
                     color: 'var(--text-muted)',
@@ -1396,35 +1446,93 @@ export function TasksPage() {
             </tr>
           </thead>
           <tbody>
-            {sortTasks(filtered).map((t) => (
-              <tr
-                key={t.id}
-                onClick={() => setCommenting({ id: t.id, title: t.title })}
-                className="hover:bg-surface-mist cursor-pointer"
-                style={{ borderBottom: '1px solid var(--line-soft)' }}
-                title="Şərhləri aç"
-              >
-                <td className="py-3 px-3">{t.title}</td>
-                <td className="py-3 px-3">{TASK_STATUS_LABEL[t.status]}</td>
-                <td className="py-3 px-3">
-                  <AvatarGroup people={assigneePeople(t.assignee_ids)} size={24} />
-                </td>
-                <td className="py-3 px-3">
-                  {t.deadline ? (
-                    <span
-                      style={{
-                        color: TIME_GROUP_COLOR[taskTimeGroup(t)],
-                        fontVariantNumeric: 'tabular-nums',
-                      }}
+            {sortTasks(filtered).map((t) => {
+              const trackedSec = taskTimeTotals.data?.get(t.id) ?? 0;
+              return (
+                <tr
+                  key={t.id}
+                  onClick={() => setCommenting({ id: t.id, title: t.title })}
+                  className="hover:bg-surface-mist cursor-pointer"
+                  style={{
+                    borderBottom: '1px solid var(--line-soft)',
+                    opacity: t.status === 'cancelled' ? 0.55 : 1,
+                    textDecoration: t.status === 'cancelled' ? 'line-through' : undefined,
+                  }}
+                  title="Şərhləri aç"
+                >
+                  <td className="py-3 px-3">
+                    {t.is_expertise_subtask ? (
+                      <span
+                        aria-hidden
+                        className="inline-flex items-center justify-center mr-1"
+                        style={{ width: 14, height: 14, borderRadius: 3, background: '#7C5CD9', color: 'white', fontWeight: 700, fontSize: 9 }}
+                      >E</span>
+                    ) : null}
+                    {t.title}
+                  </td>
+                  <td className="py-3 px-3">{TASK_STATUS_LABEL[t.status]}</td>
+                  <td className="py-3 px-3">
+                    {t.priority ? (
+                      <span
+                        className="chip"
+                        style={{
+                          fontSize: 10,
+                          background: t.priority === 'high' ? 'var(--error-aa, #8a1e18)' : t.priority === 'medium' ? 'var(--warning-aa, #8a5800)' : 'var(--surface-mist)',
+                          color: t.priority === 'low' ? 'var(--text-muted)' : 'white',
+                        }}
+                      >
+                        {t.priority === 'high' ? '↑' : t.priority === 'medium' ? '→' : '↓'} {t.priority}
+                      </span>
+                    ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                  </td>
+                  <td className="py-3 px-3">
+                    {(t.labels ?? []).length > 0 ? (
+                      <div className="flex gap-1 flex-wrap">
+                        {(t.labels ?? []).slice(0, 3).map((l) => (
+                          <span key={l} className="chip" style={{ background: 'var(--surface-mist)', fontSize: 10 }}>#{l}</span>
+                        ))}
+                        {(t.labels ?? []).length > 3 ? (
+                          <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 10 }}>+{(t.labels ?? []).length - 3}</span>
+                        ) : null}
+                      </div>
+                    ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                  </td>
+                  <td className="py-3 px-3">
+                    <AvatarGroup people={assigneePeople(t.assignee_ids)} size={24} />
+                  </td>
+                  <td className="py-3 px-3">
+                    {t.deadline ? (
+                      <span
+                        style={{
+                          color: TIME_GROUP_COLOR[taskTimeGroup(t)],
+                          fontVariantNumeric: 'tabular-nums',
+                        }}
+                      >
+                        {t.deadline}
+                      </span>
+                    ) : (
+                      <span style={{ color: 'var(--text-muted)' }}>—</span>
+                    )}
+                  </td>
+                  <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {trackedSec > 0 ? formatDuration(trackedSec) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                  </td>
+                  <td className="py-3 px-3" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      onClick={() => cloneTask.mutate(t.id)}
+                      disabled={cloneTask.isPending}
+                      className="chip"
+                      style={{ fontSize: 11 }}
+                      title="Tapşırığı kopyala"
+                      aria-label={`${t.title} kopyala`}
                     >
-                      {t.deadline}
-                    </span>
-                  ) : (
-                    <span style={{ color: 'var(--text-muted)' }}>—</span>
-                  )}
-                </td>
-              </tr>
-            ))}
+                      ⎘
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -1559,39 +1667,13 @@ export function TasksPage() {
       ) : null}
 
       {confirmArchive ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: 'rgba(14,22,17,0.55)' }}
-          onClick={() => setConfirmArchive(false)}
-        >
-          <div
-            className="bg-surface p-6 rounded-card w-[380px]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-h2 mb-2">Toplu arxivləmə</h2>
-            <p className="text-body mb-5" style={{ color: 'var(--text-muted)' }}>
-              {archivableCount} ədəd <strong>Tamamlandı</strong> / <strong>Ləğv edildi</strong>{' '}
-              tapşırığı arxivlənəcək. Tapşırıqlar lövhədən silinəcək; Arxiv bölməsindən bərpa edilə bilər.
-            </p>
-            {bulkArchive.error ? (
-              <p className="text-meta mb-3" style={{ color: 'var(--error-deep)' }}>
-                {(bulkArchive.error as Error).message}
-              </p>
-            ) : null}
-            <div className="flex justify-end gap-2">
-              <button className="btn-outline" onClick={() => setConfirmArchive(false)}>
-                Ləğv et
-              </button>
-              <button
-                className="btn-primary"
-                disabled={bulkArchive.isPending}
-                onClick={() => bulkArchive.mutate()}
-              >
-                {bulkArchive.isPending ? 'Arxivlənir…' : 'Arxivlə'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <BulkArchiveConfirmModal
+          count={archivableCount}
+          pending={bulkArchive.isPending}
+          error={bulkArchive.error ? (bulkArchive.error as Error).message : null}
+          onCancel={() => setConfirmArchive(false)}
+          onConfirm={() => bulkArchive.mutate()}
+        />
       ) : null}
     </>
   );
@@ -1671,5 +1753,60 @@ function QuickAddInline({
         disabled={create.isPending}
       />
     </form>
+  );
+}
+
+// PRD §6.6 / US-TASK-07 — bulk-archive confirm dialog, parity with peer
+// modals (CancelTaskModal, SubtaskBlockingModal): role=dialog + aria-modal,
+// focus trapped, Esc to cancel.
+function BulkArchiveConfirmModal({
+  count,
+  pending,
+  error,
+  onCancel,
+  onConfirm,
+}: {
+  count: number;
+  pending: boolean;
+  error: string | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const trapRef = useFocusTrap<HTMLDivElement>(true);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onCancel]);
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="bulk-archive-title"
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: 'rgba(14,22,17,0.55)' }}
+      onClick={onCancel}
+    >
+      <div
+        ref={trapRef}
+        className="bg-surface p-6 rounded-card w-[380px]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="bulk-archive-title" className="text-h2 mb-2">Toplu arxivləmə</h2>
+        <p className="text-body mb-5" style={{ color: 'var(--text-muted)' }}>
+          {count} ədəd <strong>Tamamlandı</strong> / <strong>Ləğv edildi</strong>{' '}
+          tapşırığı arxivlənəcək. Tapşırıqlar lövhədən silinəcək; Arxiv bölməsindən bərpa edilə bilər.
+        </p>
+        {error ? (
+          <p className="text-meta mb-3" style={{ color: 'var(--error-deep)' }}>{error}</p>
+        ) : null}
+        <div className="flex justify-end gap-2">
+          <button className="btn-outline" onClick={onCancel}>Ləğv et</button>
+          <button className="btn-primary" disabled={pending} onClick={onConfirm}>
+            {pending ? 'Arxivlənir…' : 'Arxivlə'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

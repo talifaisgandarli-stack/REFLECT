@@ -76,6 +76,12 @@ export function useRealtimeSync(userId: string | undefined) {
 
     const cleanups: Array<() => void> = [];
 
+    // PRD §6.6 a11y — only announce user-actionable notification kinds so
+    // screen-reader users aren't bombarded by background system events
+    // (mirai_feed, deadline_reminder backstop runs, etc.). Mention + direct
+    // task assignment + announcement are the ones that genuinely need ear-
+    // catching attention; everything else is still recorded silently.
+    const NOISY_KINDS = new Set(['mention', 'task_assigned', 'announcement', 'leave_approved', 'leave_denied']);
     cleanups.push(
       subscribeTable({
         table: 'notifications',
@@ -83,9 +89,9 @@ export function useRealtimeSync(userId: string | undefined) {
         channelName: `notifications:${userId}`,
         onChange: (payload) => {
           debouncedInvalidate(['notifications']);
-          // Announce new notifications for screen readers.
           if (payload.eventType === 'INSERT') {
-            announce('Yeni bildiriş');
+            const kind = (payload.new as { kind?: string } | null)?.kind ?? '';
+            if (NOISY_KINDS.has(kind)) announce('Yeni bildiriş');
           }
         },
       }),

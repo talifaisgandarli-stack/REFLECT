@@ -13,7 +13,8 @@
 import { useEffect, useState } from 'react';
 
 type ToastKind = 'success' | 'error' | 'info';
-type ToastEntry = { id: number; kind: ToastKind; message: string };
+type ToastAction = { label: string; onClick: () => void };
+type ToastEntry = { id: number; kind: ToastKind; message: string; action?: ToastAction };
 
 let nextId = 1;
 const listeners = new Set<(entries: ToastEntry[]) => void>();
@@ -23,9 +24,9 @@ function notify() {
   for (const fn of listeners) fn([...entries]);
 }
 
-function push(kind: ToastKind, message: string, ttlMs = 4_000) {
+function push(kind: ToastKind, message: string, ttlMs = 4_000, action?: ToastAction) {
   const id = nextId++;
-  entries = [...entries, { id, kind, message }];
+  entries = [...entries, { id, kind, message, action }];
   notify();
   window.setTimeout(() => {
     entries = entries.filter((e) => e.id !== id);
@@ -34,9 +35,11 @@ function push(kind: ToastKind, message: string, ttlMs = 4_000) {
 }
 
 export const toast = {
-  success: (msg: string) => push('success', msg),
-  error: (msg: string) => push('error', msg, 6_000),
-  info: (msg: string) => push('info', msg),
+  success: (msg: string, action?: ToastAction) => push('success', msg, 4_000, action),
+  error: (msg: string, action?: ToastAction) => push('error', msg, 6_000, action),
+  info: (msg: string, action?: ToastAction) => push('info', msg, 4_000, action),
+  // PRD §UX — longer-lived toast for undo affordance (status changes etc.).
+  undo: (msg: string, action: ToastAction) => push('info', msg, 7_000, action),
 };
 
 const KIND_STYLE: Record<ToastKind, { bg: string; border: string; color: string; icon: string }> = {
@@ -75,6 +78,28 @@ export function ToastHost() {
           >
             <span aria-hidden style={{ fontSize: 16, lineHeight: 1, marginTop: 1 }}>{s.icon}</span>
             <span className="text-body flex-1">{t.message}</span>
+            {t.action ? (
+              <button
+                type="button"
+                onClick={() => {
+                  t.action!.onClick();
+                  entries = entries.filter((e) => e.id !== t.id);
+                  notify();
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: s.color,
+                  fontWeight: 600,
+                  textDecoration: 'underline',
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontSize: 13,
+                }}
+              >
+                {t.action.label}
+              </button>
+            ) : null}
           </div>
         );
       })}

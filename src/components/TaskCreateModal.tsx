@@ -101,8 +101,10 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
   useUnsavedChanges(isDirty);
 
   // PRD §UX — auto-save draft to localStorage so accidental close → reopen
-  // restores the in-progress task. Cleared on successful create.
-  const DRAFT_KEY = 'reflect.task-draft';
+  // restores the in-progress task. Cleared on successful create. Scope by
+  // parentTaskId so a subtask draft doesn't bleed into the top-level create
+  // form (and vice versa).
+  const DRAFT_KEY = `reflect.task-draft${parentTaskId ? `:sub:${parentTaskId}` : ''}`;
   useEffect(() => {
     if (!isDirty) return;
     try {
@@ -130,7 +132,13 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
     mutationFn: async () => {
       const trimmed = title.trim();
       if (!trimmed) throw new Error('Başlıq tələb olunur');
-      const payload: Partial<Task> = {
+      const assigneeIds = (() => {
+        const set = new Set<string>();
+        if (assignSelf && profile?.id) set.add(profile.id);
+        for (const id of extraAssignees) set.add(id);
+        return Array.from(set);
+      })();
+      const basePayload = {
         title: trimmed,
         description: description.trim() || null,
         status,
@@ -142,36 +150,28 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
         risk_buffer_pct: Math.max(0, Math.min(100, Math.round(riskBuffer))),
         is_expertise_subtask: isExpertise,
         // PRD §REQ-TASK-01 — propagate parent context when creating a subtask
-        ...(parentTaskId
-          ? { parent_task_id: parentTaskId, task_level: (parentTaskLevel ?? 0) + 1 }
-          : {}),
-        assignee_ids: (() => {
-          const set = new Set<string>();
-          if (assignSelf && profile?.id) set.add(profile.id);
-          for (const id of extraAssignees) set.add(id);
-          return Array.from(set);
-        })(),
+        parent_task_id: parentTaskId ?? null,
+        task_level: parentTaskId ? (parentTaskLevel ?? 0) + 1 : 0,
+        assignee_ids: assigneeIds,
       };
-      const { data, error } = await supabase.from('tasks').insert(payload).select('*').single();
-      if (error) throw error;
-      const parent = data as Task;
 
+      // PRD §REQ-TASK-09 — when expertise children are selected, parent +
+      // children must commit atomically (migration 0063 RPC). Otherwise a
+      // child insert failure orphaned the parent row.
       if (selectedExpertise.size > 0) {
-        const children = EXPERTISE_CHILDREN
-          .filter((t) => selectedExpertise.has(t))
-          .map((t) => ({
-            title: t,
-            status: 'queued' as TaskStatus,
-            project_id: parent.project_id,
-            parent_task_id: parent.id,
-            task_level: parent.task_level + 1,
-            is_expertise_subtask: true,
-            assignee_ids: parent.assignee_ids,
-          }));
-        const { error: childErr } = await supabase.from('tasks').insert(children);
-        if (childErr) throw childErr;
+        const children = EXPERTISE_CHILDREN.filter((t) => selectedExpertise.has(t));
+        const { data: parentId, error: rpcErr } = await supabase.rpc('create_task_with_expertise_seeds', {
+          p_payload: basePayload,
+          p_children: children,
+        });
+        if (rpcErr) throw rpcErr;
+        return { id: parentId } as Task;
       }
-      return parent;
+      // No children: a plain INSERT is sufficient and gives us the full row
+      // back for the onSuccess callback.
+      const { data, error } = await supabase.from('tasks').insert(basePayload as Partial<Task>).select('*').single();
+      if (error) throw error;
+      return data as Task;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] });
@@ -440,7 +440,7 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
                       className="text-tiny inline-flex items-center justify-center"
                       style={{
                         width: 16, height: 16, borderRadius: 4,
-                        background: 'var(--brand-action)', color: 'var(--ink)',
+                        background: '#7C5CD9', color: 'white',
                         fontWeight: 700, fontSize: 10,
                       }}
                     >E</span>
