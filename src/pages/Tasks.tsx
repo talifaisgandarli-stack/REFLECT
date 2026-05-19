@@ -552,7 +552,18 @@ export function TasksPage() {
         }
       />
 
-      <div className="flex gap-2 mb-4 flex-wrap items-center">
+      <div
+        className="flex gap-2 mb-4 flex-wrap items-center"
+        style={{
+          // PRD §UX — keep filters within reach when scrolling long boards
+          position: 'sticky',
+          top: 0,
+          background: 'var(--canvas)',
+          zIndex: 10,
+          paddingTop: 8,
+          marginTop: -8,
+        }}
+      >
         <select
           className="input"
           style={{ maxWidth: 160, height: 32, fontSize: 12 }}

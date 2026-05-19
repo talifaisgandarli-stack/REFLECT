@@ -329,7 +329,11 @@ export function OutsourcePage() {
                 <tr
                   key={row.id}
                   className="hover:bg-surface-mist transition-colors"
-                  style={{ borderBottom: '1px solid var(--line-soft)' }}
+                  style={{
+                    borderBottom: '1px solid var(--line-soft)',
+                    // PRD §UX — paid rows muted so attention goes to active work
+                    opacity: row.status === 'paid' ? 0.6 : 1,
+                  }}
                 >
                   <td className="py-3 px-3">{row.work_title}</td>
                   <td className="py-3 px-3 truncate max-w-[180px]" title={row.project_id ?? ''}>

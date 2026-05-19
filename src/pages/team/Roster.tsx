@@ -1,7 +1,7 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSlashFocus } from '@/lib/useSlashFocus';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { PageHead } from '@/components/PageHead';
 import { Avatar } from '@/components/Avatar';
@@ -124,8 +124,18 @@ export function TeamRosterPage() {
   );
   const eqMap = equipment.data ?? {};
   const taskMap = openTasks.data ?? {};
-  // PRD §UX — sort by name / workload / equipment count
-  const [sortBy, setSortBy] = useState<'name' | 'workload' | 'equipment'>('name');
+  // PRD §UX — sort by name / workload / equipment count (URL-persisted)
+  const [searchParams, setSearchParams] = useSearchParams();
+  type RosterSort = 'name' | 'workload' | 'equipment';
+  const [sortBy, setSortBy] = useState<RosterSort>(
+    (searchParams.get('sort') as RosterSort) || 'name',
+  );
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (sortBy === 'name') next.delete('sort'); else next.set('sort', sortBy);
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortBy]);
   const filteredPpl = search.trim()
     ? allPpl.filter((p) => {
         const q = search.toLowerCase();

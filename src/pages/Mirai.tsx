@@ -983,6 +983,28 @@ export function MiraiPage() {
 
         {/* Message thread */}
         <div className="mt-8 space-y-3">
+          {/* PRD §7 — persona-aware welcome card when conversation is empty */}
+          {msgs.length === 0 && !thinking ? (
+            <div
+              className="rounded-card p-5 text-center"
+              style={{
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px dashed rgba(255,255,255,0.1)',
+                color: 'var(--canvas)',
+              }}
+            >
+              <div style={{ fontSize: 28, marginBottom: 8 }} aria-hidden>
+                {currentPersonaMeta.icon}
+              </div>
+              <div className="text-h3">{currentPersonaMeta.label}</div>
+              <p className="text-meta mt-1" style={{ opacity: 0.7, fontSize: 12 }}>
+                {currentPersonaMeta.hint}
+              </p>
+              <p className="text-meta mt-2" style={{ opacity: 0.6, fontSize: 11 }}>
+                Aşağıda sual ver və ya təklif olunan başlanğıclardan birini seç.
+              </p>
+            </div>
+          ) : null}
           {/* PRD §7 — message count when thread is non-empty + scroll-to-top */}
           {msgs.length > 0 ? (
             <div className="text-meta opacity-60 text-center flex items-center justify-center gap-3" style={{ fontSize: 11 }}>
