@@ -415,6 +415,17 @@ export function TasksPage() {
     if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
+  // Reverse direction: browser back/forward changes searchParams, which must
+  // reflect back into state. Without this, ?view=board in the address bar
+  // would not flip the rendered view after a back-button press.
+  useEffect(() => {
+    const v = searchParams.get('view');
+    const fromUrl: 'board' | 'table' | 'calendar' | 'gantt' =
+      v === 'table' || v === 'calendar' || v === 'gantt' ? v : 'board';
+    setView((cur) => (cur === fromUrl ? cur : fromUrl));
+    const m = searchParams.get('mine') === '1';
+    setMineOnly((cur) => (cur === m ? cur : m));
+  }, [searchParams]);
   // Bulk mode only renders in the table view — auto-exit when switching away
   // so the floating action bar doesn't ghost in other views.
   useEffect(() => {
@@ -512,6 +523,14 @@ export function TasksPage() {
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtered, sortBy]);
+
+  // Table view obeys the same sort dropdown as the board (was raw insertion
+  // order from useTasks before, ignoring user's sort preference).
+  const sortedForTable = useMemo(
+    () => sortTasks(filtered),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filtered, sortBy],
+  );
 
   // US-TASK-06 — time-grouped personal view computed data.
   // todayStr/endOfWeekStr are recomputed per render but are stable by value
@@ -1250,33 +1269,44 @@ export function TasksPage() {
                         Arxivdə Tamamlandı yoxdur.
                       </p>
                     ) : (
-                      (archivedDone.data ?? []).map((t) => (
-                        <article
-                          key={t.id}
-                          className="rounded-card p-2 text-body"
-                          style={{
-                            background: 'var(--surface-mist)',
-                            border: '1px dashed var(--line)',
-                            opacity: 0.75,
-                          }}
-                        >
-                          <div
-                            className="font-medium cursor-pointer"
-                            style={{ fontSize: 12 }}
-                            onClick={() => setCommenting({ id: t.id, title: t.title })}
+                      (archivedDone.data ?? []).map((t) => {
+                        const proj = t.project_id ? projectById[t.project_id] : null;
+                        return (
+                          <article
+                            key={t.id}
+                            className="rounded-card p-2 text-body"
+                            style={{
+                              background: 'var(--surface-mist)',
+                              border: '1px dashed var(--line)',
+                              opacity: 0.75,
+                            }}
                           >
-                            {t.title}
-                          </div>
-                          {t.archived_at ? (
                             <div
-                              className="text-meta"
-                              style={{ color: 'var(--text-muted)', fontSize: 10, fontVariantNumeric: 'tabular-nums' }}
+                              className="font-medium cursor-pointer"
+                              style={{ fontSize: 12 }}
+                              onClick={() => setCommenting({ id: t.id, title: t.title })}
                             >
-                              Arxivləndi: {t.archived_at.slice(0, 10)}
+                              {t.title}
                             </div>
-                          ) : null}
-                        </article>
-                      ))
+                            {proj ? (
+                              <div
+                                className="text-meta"
+                                style={{ color: 'var(--text-muted)', fontSize: 10 }}
+                              >
+                                {proj.name}
+                              </div>
+                            ) : null}
+                            {t.archived_at ? (
+                              <div
+                                className="text-meta"
+                                style={{ color: 'var(--text-muted)', fontSize: 10, fontVariantNumeric: 'tabular-nums' }}
+                              >
+                                Arxivləndi: {t.archived_at.slice(0, 10)}
+                              </div>
+                            ) : null}
+                          </article>
+                        );
+                      })
                     )}
                   </div>
                 ) : null}
@@ -1363,7 +1393,7 @@ export function TasksPage() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((t) => {
+            {sortedForTable.map((t) => {
               const selected = bulkMode && selectedIds.has(t.id);
               const proj = t.project_id ? projectById[t.project_id] : null;
               // Phase: surface project's first declared phase, or "Ekspertiza"
