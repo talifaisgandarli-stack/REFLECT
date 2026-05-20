@@ -57,6 +57,18 @@
   --chip-cancelled-bg:  #FEEEED;
   --chip-queued-bg:     #F1F5F2;
   --chip-queued-text:   #475569;
+  /* Idea / active / expert tones — moved off raw hex in labels.ts per
+     designstyle4.md: "Don't introduce new colors ad-hoc — extend the
+     token system." */
+  --chip-idea-dot:      #A78BFA;
+  --chip-idea-bg:       #F4F0FE;
+  --chip-idea-text:     #7C3AED;
+  --chip-active-dot:    #3B82F6;
+  --chip-active-bg:     #EAF2FF;
+  --chip-active-text:   #1D4ED8;
+  --chip-expert-dot:    #7C5CD9;
+  --chip-expert-bg:     #F0EBFB;
+  --chip-expert-text:   #5B3FB8;
 
   /* Brand-action glow scale — rgba(173,251,73, α) */
   --brand-glow-xs:     rgba(173, 251, 73, 0.04);

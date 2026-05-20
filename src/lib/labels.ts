@@ -26,13 +26,13 @@ export const TASK_STATUS_ORDER: TaskStatus[] = [
 ];
 
 export const TASK_STATUS_TONE: Record<TaskStatus, { dot: string; bg: string; text: string }> = {
-  idea:      { dot: '#A78BFA',          bg: '#F4F0FE',              text: '#7C3AED' },
-  queued:    { dot: 'var(--info)',       bg: 'var(--chip-queued-bg)', text: 'var(--chip-queued-text)' },
-  active:    { dot: '#3B82F6',          bg: '#EAF2FF',              text: '#1D4ED8' },
-  review:    { dot: 'var(--warning)',   bg: 'var(--chip-review-bg)', text: 'var(--chip-review-text)' },
-  expert:    { dot: '#7C5CD9',          bg: '#F0EBFB',              text: '#5B3FB8' },
-  done:      { dot: 'var(--success)',   bg: 'var(--chip-done-bg)',   text: 'var(--chip-done-text)' },
-  cancelled: { dot: 'var(--error)',     bg: 'var(--chip-cancelled-bg)', text: 'var(--error-deep)' },
+  idea:      { dot: 'var(--chip-idea-dot)',   bg: 'var(--chip-idea-bg)',      text: 'var(--chip-idea-text)' },
+  queued:    { dot: 'var(--info)',            bg: 'var(--chip-queued-bg)',    text: 'var(--chip-queued-text)' },
+  active:    { dot: 'var(--chip-active-dot)', bg: 'var(--chip-active-bg)',    text: 'var(--chip-active-text)' },
+  review:    { dot: 'var(--warning)',         bg: 'var(--chip-review-bg)',    text: 'var(--chip-review-text)' },
+  expert:    { dot: 'var(--chip-expert-dot)', bg: 'var(--chip-expert-bg)',    text: 'var(--chip-expert-text)' },
+  done:      { dot: 'var(--success)',         bg: 'var(--chip-done-bg)',      text: 'var(--chip-done-text)' },
+  cancelled: { dot: 'var(--error)',           bg: 'var(--chip-cancelled-bg)', text: 'var(--error-deep)' },
 };
 
 export const PROJECT_STATUS_LABEL: Record<ProjectStatus, string> = {

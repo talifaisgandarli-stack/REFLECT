@@ -19,6 +19,7 @@ import { TaskCalendarView } from '@/components/TaskCalendarView';
 import { TaskGanttView } from '@/components/TaskGanttView';
 import { SkeletonList } from '@/components/Skeleton';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { BulkActionBar } from '@/components/BulkActionBar';
 import { downloadCsv } from '@/lib/csv';
 import { toast } from '@/components/Toast';
 import { formatDuration, useActiveTimeEntry, useStartTimer, useStopTimer, useTaskTimeTotals } from '@/lib/useTimeTracking';
@@ -151,11 +152,11 @@ export function TasksPage() {
     return () => window.removeEventListener('reflect:open-task', onOpenTask);
   }, []);
   const [editing, setEditing] = useState<Task | null>(null);
-  // PRD §6.x — bulk action mode for the table/list view
+  // PRD §6.x — bulk action mode for the table/list view. The reassign
+  // popover / target-id state lives inside BulkActionBar; resetting bulk
+  // mode unmounts the bar which discards that local state automatically.
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [reassignOpen, setReassignOpen] = useState(false);
-  const [reassignTarget, setReassignTarget] = useState('');
 
   function toggleSelected(id: string) {
     setSelectedIds((prev) => {
@@ -168,7 +169,6 @@ export function TasksPage() {
   function exitBulkMode() {
     setBulkMode(false);
     setSelectedIds(new Set());
-    setReassignOpen(false);
   }
 
   const bulkArchiveSelected = useMutation({
@@ -1546,89 +1546,17 @@ export function TasksPage() {
         <TaskEditModal task={editing} onClose={() => setEditing(null)} />
       ) : null}
 
-      {/* PRD §6.x — bulk action floating bar (table view only) */}
       {bulkMode && selectedIds.size > 0 ? (
-        <div
-          className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-capsule px-4 py-3 flex items-center gap-3 shadow-xl z-40"
-          style={{
-            background: 'var(--ink)',
-            color: 'var(--canvas)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            minWidth: 320,
-          }}
-        >
-          <span className="text-body font-medium">{selectedIds.size} seçili</span>
-          <span style={{ flex: 1 }} />
-          {isAdmin ? (
-            <div className="relative">
-              <button
-                type="button"
-                className="chip"
-                style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--canvas)' }}
-                onClick={() => setReassignOpen((v) => !v)}
-              >
-                Yenidən təyin et
-              </button>
-              {reassignOpen ? (
-                <div
-                  className="absolute bottom-full mb-2 right-0 rounded-card p-2 w-[220px]"
-                  style={{
-                    background: 'var(--ink)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                  }}
-                >
-                  <select
-                    className="input w-full mb-2"
-                    style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--canvas)' }}
-                    value={reassignTarget}
-                    onChange={(e) => setReassignTarget(e.target.value)}
-                  >
-                    <option value="">İcraçı seçin…</option>
-                    {allProfiles.map((p) => (
-                      <option key={p.id} value={p.id}>{p.full_name ?? p.id}</option>
-                    ))}
-                  </select>
-                  <div className="flex gap-2 justify-end">
-                    <button
-                      type="button"
-                      className="chip text-meta"
-                      onClick={() => { setReassignOpen(false); setReassignTarget(''); }}
-                    >
-                      Ləğv
-                    </button>
-                    <button
-                      type="button"
-                      className="chip"
-                      style={{ background: 'var(--brand-action)', color: 'var(--ink)' }}
-                      disabled={!reassignTarget || bulkReassign.isPending}
-                      onClick={() => bulkReassign.mutate(reassignTarget)}
-                    >
-                      {bulkReassign.isPending ? '…' : 'Təyin et'}
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-          <button
-            type="button"
-            className="chip"
-            style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--canvas)' }}
-            disabled={bulkArchiveSelected.isPending}
-            onClick={() => bulkArchiveSelected.mutate()}
-          >
-            {bulkArchiveSelected.isPending ? 'Arxivlənir…' : 'Arxivlə'}
-          </button>
-          <button
-            type="button"
-            className="chip"
-            style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--canvas)' }}
-            onClick={exitBulkMode}
-            aria-label="Seçim rejimini bağla"
-          >
-            ×
-          </button>
-        </div>
+        <BulkActionBar
+          selectedCount={selectedIds.size}
+          isAdmin={isAdmin}
+          profiles={allProfiles}
+          onReassign={(id) => bulkReassign.mutate(id)}
+          isReassigning={bulkReassign.isPending}
+          onArchive={() => bulkArchiveSelected.mutate()}
+          isArchiving={bulkArchiveSelected.isPending}
+          onClose={exitBulkMode}
+        />
       ) : null}
 
       {/* PRD §6.6 — uses ConfirmDialog (role=dialog, aria-modal, Escape handler,
