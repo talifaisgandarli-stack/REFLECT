@@ -15,6 +15,8 @@ import { TaskCreateModal } from '@/components/TaskCreateModal';
 import { CancelTaskModal } from '@/components/CancelTaskModal';
 import { TaskCommentsModal } from '@/components/TaskCommentsModal';
 import { TaskEditModal } from '@/components/TaskEditModal';
+import { TaskCalendarView } from '@/components/TaskCalendarView';
+import { TaskGanttView } from '@/components/TaskGanttView';
 import { downloadCsv } from '@/lib/csv';
 import { toast } from '@/components/Toast';
 import { formatDuration, useActiveTimeEntry, useStartTimer, useStopTimer, useTaskTimeTotals } from '@/lib/useTimeTracking';
@@ -52,10 +54,34 @@ function taskTimeGroup(t: Task): TimeGroup {
 }
 const TIME_GROUP_ORDER: TimeGroup[] = ['overdue', 'today', 'week', 'later', 'none'];
 
+// Compact "Vaxt" label for table view: "8s" / "3g" / "2h" depending on unit.
+function formatEstimatedDuration(
+  d: number | null,
+  unit: string | null | undefined,
+): string | null {
+  if (d == null) return null;
+  const suffix = unit === 'day' ? 'g' : unit === 'week' ? 'h' : 's';
+  return `${d}${suffix}`;
+}
+
 export function TasksPage() {
   const { profile, isAdmin } = useAuth();
   const qc = useQueryClient();
-  const [view, setView] = useState<'board' | 'table'>('board');
+  // Design spec §8.3: four view toggles — Lövhə · Cədvəl · Təqvim · Gantt.
+  const [view, setView] = useState<'board' | 'table' | 'calendar' | 'gantt'>('board');
+  // Calendar month being viewed (year + 0-based month). Defaults to current month.
+  const [calMonth, setCalMonth] = useState<{ year: number; month: number }>(() => {
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
+  // Gantt window: ISO date of the left edge (axis spans 42 days from here).
+  const [ganttStart, setGanttStart] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().slice(0, 10);
+  });
+  // Design spec §8.3: "Empty Tamamlandı stub: '+ N daha' — clicks expand archived".
+  const [expandedArchive, setExpandedArchive] = useState(false);
   // Read URL params via useSearchParams so router updates rerender (don't snapshot window.location).
   const [searchParams, setSearchParams] = useSearchParams();
   // PRD §UX — ?assignee=<uuid> deep-links from Roster to "tasks for this person"
@@ -252,6 +278,37 @@ export function TasksPage() {
   // Per-task aggregated time across all entries (chip on board card)
   const taskTimeTotals = useTaskTimeTotals(tasks.map((t) => t.id));
 
+  // Design spec §8.3 — "+ N daha" expand archived in Tamamlandı column.
+  // Count is cheap (head-only); rows are loaded lazily on expand.
+  const archivedDoneCount = useQuery({
+    queryKey: ['tasks', 'archived-done-count', filterAssignee],
+    queryFn: async () => {
+      let q = supabase
+        .from('tasks')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'done')
+        .not('archived_at', 'is', null);
+      if (filterAssignee) q = q.contains('assignee_ids', [filterAssignee]);
+      const { count } = await q;
+      return count ?? 0;
+    },
+  });
+  const archivedDone = useQuery({
+    queryKey: ['tasks', 'archived-done-rows', filterAssignee],
+    enabled: expandedArchive,
+    queryFn: async (): Promise<Task[]> => {
+      let q = supabase
+        .from('tasks')
+        .select('*')
+        .eq('status', 'done')
+        .not('archived_at', 'is', null);
+      if (filterAssignee) q = q.contains('assignee_ids', [filterAssignee]);
+      const { data, error } = await q.order('archived_at', { ascending: false }).limit(50);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
   // PRD §6.x — task templates (admin defines, anyone instantiates)
   const templates = useQuery({
     queryKey: ['task-templates'],
@@ -336,19 +393,23 @@ export function TasksPage() {
     if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectFilter]);
-  // Project list for the dropdown
+  // Project list for the dropdown + lookup map for board/table (name, phase).
   const projectsForFilter = useQuery({
-    queryKey: ['projects-name-map'],
+    queryKey: ['projects-name-phase-map'],
     staleTime: 5 * 60_000,
     queryFn: async () => {
       const { data } = await supabase
         .from('projects')
-        .select('id, name')
+        .select('id, name, phases')
         .is('archived_at', null)
         .order('name');
-      return (data ?? []) as Array<{ id: string; name: string }>;
+      return (data ?? []) as Array<{ id: string; name: string; phases: string[] | null }>;
     },
   });
+  const projectById = useMemo(
+    () => Object.fromEntries((projectsForFilter.data ?? []).map((p) => [p.id, p])),
+    [projectsForFilter.data],
+  );
 
   // PRD §6.3 — single key shortcuts: C compact, A mine-only (skip while typing)
   useEffect(() => {
@@ -624,15 +685,22 @@ export function TasksPage() {
             {compactBoard ? '✓ Yığcam' : 'Yığcam'}
           </button>
         ) : null}
-        {(['board', 'table'] as const).map((v) => (
-          <button
-            key={v}
-            className={`chip ${view === v ? 'chip-brand' : ''}`}
-            onClick={() => setView(v)}
-          >
-            {v === 'board' ? 'Lövhə' : 'Cədvəl'}
-          </button>
-        ))}
+        {/* Design spec §8.3 — view toggles: Lövhə · Cədvəl · Təqvim · Gantt */}
+        {(['board', 'table', 'calendar', 'gantt'] as const).map((v) => {
+          const label =
+            v === 'board' ? 'Lövhə' :
+            v === 'table' ? 'Cədvəl' :
+            v === 'calendar' ? 'Təqvim' : 'Gantt';
+          return (
+            <button
+              key={v}
+              className={`chip ${view === v ? 'chip-brand' : ''}`}
+              onClick={() => setView(v)}
+            >
+              {label}
+            </button>
+          );
+        })}
         {/* PRD §6.x — label filter chips */}
         {allLabels.length > 0 ? (
           <>
@@ -821,7 +889,11 @@ export function TasksPage() {
       ) : view === 'board' ? (
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
           {TASK_STATUS_ORDER.filter((s) => !compactBoard || (s !== 'done' && s !== 'cancelled')).map((s) => {
-            const isToday = s === 'active';
+            // Design spec §8.3 — column order is İdeyalar · BU GÜN · İcrada · …
+            // BU GÜN = "queued" (planned-for-today work), which is the ink column;
+            // İcrada = "active" (in-progress). The status enum's "queued" label is
+            // Başlanmayıb, but on the board the ink column is rebranded BU GÜN.
+            const isToday = s === 'queued';
             const tone = TASK_STATUS_TONE[s];
             // PRD §UX — sum estimated hours per column so user sees workload per stage.
             // Falls back to 0 when estimated_duration is null; uses duration_unit for h/d/w.
@@ -923,6 +995,18 @@ export function TasksPage() {
                         {t.priority === 'high' ? <span aria-hidden style={{ marginRight: 4 }}>🔴</span> : null}
                         {t.title}
                       </div>
+                      {/* Design spec §8.3 — project context on each card */}
+                      {t.project_id && projectById[t.project_id] ? (
+                        <div
+                          className="text-meta mt-0.5"
+                          style={{
+                            color: isToday ? 'var(--text-faint)' : 'var(--text-muted)',
+                            fontSize: 11,
+                          }}
+                        >
+                          {projectById[t.project_id].name}
+                        </div>
+                      ) : null}
                       {/* Assignee avatars — PRD §6.8 */}
                       {t.assignee_ids.length > 0 && (
                         <div className="mt-1">
@@ -1100,6 +1184,59 @@ export function TasksPage() {
                     );
                   })}
                 </div>
+                {/* Design spec §8.3 — "+ N daha" expand archived (Tamamlandı only) */}
+                {s === 'done' && (archivedDoneCount.data ?? 0) > 0 ? (
+                  <button
+                    type="button"
+                    className="mt-2 w-full text-left text-meta opacity-60 hover:opacity-100 py-1 px-2 rounded-btn"
+                    style={{ color: 'var(--text-muted)', fontSize: 12 }}
+                    onClick={() => setExpandedArchive((v) => !v)}
+                    aria-expanded={expandedArchive}
+                  >
+                    {expandedArchive ? '− Arxivi gizlət' : `+ ${archivedDoneCount.data} daha`}
+                  </button>
+                ) : null}
+                {s === 'done' && expandedArchive ? (
+                  <div className="mt-2 space-y-2">
+                    {archivedDone.isLoading ? (
+                      <p className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                        Yüklənir…
+                      </p>
+                    ) : (archivedDone.data ?? []).length === 0 ? (
+                      <p className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                        Arxivdə Tamamlandı yoxdur.
+                      </p>
+                    ) : (
+                      (archivedDone.data ?? []).map((t) => (
+                        <article
+                          key={t.id}
+                          className="rounded-card p-2 text-body"
+                          style={{
+                            background: 'var(--surface-mist)',
+                            border: '1px dashed var(--line)',
+                            opacity: 0.75,
+                          }}
+                        >
+                          <div
+                            className="font-medium cursor-pointer"
+                            style={{ fontSize: 12 }}
+                            onClick={() => setCommenting({ id: t.id, title: t.title })}
+                          >
+                            {t.title}
+                          </div>
+                          {t.archived_at ? (
+                            <div
+                              className="text-meta"
+                              style={{ color: 'var(--text-muted)', fontSize: 10, fontVariantNumeric: 'tabular-nums' }}
+                            >
+                              Arxivləndi: {t.archived_at.slice(0, 10)}
+                            </div>
+                          ) : null}
+                        </article>
+                      ))
+                    )}
+                  </div>
+                ) : null}
                 {/* Quick-add per column: opens TaskCreateModal pre-set to this status */}
                 <button
                   type="button"
@@ -1114,7 +1251,46 @@ export function TasksPage() {
             );
           })}
         </div>
+      ) : view === 'calendar' ? (
+        <TaskCalendarView
+          tasks={filtered}
+          year={calMonth.year}
+          month={calMonth.month}
+          onPrev={() =>
+            setCalMonth(({ year, month }) =>
+              month === 0 ? { year: year - 1, month: 11 } : { year, month: month - 1 },
+            )
+          }
+          onNext={() =>
+            setCalMonth(({ year, month }) =>
+              month === 11 ? { year: year + 1, month: 0 } : { year, month: month + 1 },
+            )
+          }
+          onToday={() => {
+            const d = new Date();
+            setCalMonth({ year: d.getFullYear(), month: d.getMonth() });
+          }}
+          onOpen={(t) => setCommenting({ id: t.id, title: t.title })}
+        />
+      ) : view === 'gantt' ? (
+        <TaskGanttView
+          tasks={filtered}
+          startDate={ganttStart}
+          onShift={(days) => {
+            const d = new Date(ganttStart + 'T00:00:00');
+            d.setDate(d.getDate() + days);
+            setGanttStart(d.toISOString().slice(0, 10));
+          }}
+          onToday={() => {
+            const d = new Date();
+            d.setDate(d.getDate() - 7);
+            setGanttStart(d.toISOString().slice(0, 10));
+          }}
+          onOpen={(t) => setCommenting({ id: t.id, title: t.title })}
+          projectById={projectById}
+        />
       ) : (
+        // Design spec §8.3 — Cədvəl columns: Tapşırıq · Layihə · İcraçı · Phase · Vaxt · Status
         <table className="w-full text-body">
           <thead>
             <tr style={{ borderBottom: '1px solid var(--line)' }}>
@@ -1125,7 +1301,7 @@ export function TasksPage() {
                   aria-label="Seçim sütunu"
                 />
               ) : null}
-              {['Tapşırıq', 'Status', 'İcraçı', 'Deadline'].map((h) => (
+              {['Tapşırıq', 'Layihə', 'İcraçı', 'Phase', 'Vaxt', 'Status'].map((h) => (
                 <th
                   key={h}
                   className="text-meta text-left py-3 px-3"
@@ -1143,6 +1319,16 @@ export function TasksPage() {
           <tbody>
             {filtered.map((t) => {
               const selected = bulkMode && selectedIds.has(t.id);
+              const proj = t.project_id ? projectById[t.project_id] : null;
+              // Phase: surface project's first declared phase, or "Ekspertiza"
+              // for expertise subtasks (architectural-phase concept per PRD §326).
+              const phase = t.is_expertise_subtask
+                ? 'Ekspertiza'
+                : proj?.phases?.[0] ?? null;
+              const durationStr = formatEstimatedDuration(
+                t.estimated_duration,
+                t.duration_unit,
+              );
               return (
                 <tr
                   key={t.id}
@@ -1173,9 +1359,14 @@ export function TasksPage() {
                     </td>
                   ) : null}
                   <td className="py-3 px-3">{t.title}</td>
-                  <td className="py-3 px-3">{TASK_STATUS_LABEL[t.status]}</td>
+                  <td className="py-3 px-3" style={{ color: proj ? undefined : 'var(--text-muted)' }}>
+                    {proj?.name ?? '—'}
+                  </td>
                   <td className="py-3 px-3">
                     <AvatarGroup people={assigneePeople(t.assignee_ids)} size={24} />
+                  </td>
+                  <td className="py-3 px-3" style={{ color: phase ? undefined : 'var(--text-muted)' }}>
+                    {phase ?? '—'}
                   </td>
                   <td className="py-3 px-3">
                     {t.deadline ? (
@@ -1186,11 +1377,27 @@ export function TasksPage() {
                         }}
                       >
                         {t.deadline}
+                        {durationStr ? (
+                          <span
+                            style={{
+                              marginLeft: 6,
+                              color: 'var(--text-muted)',
+                              fontSize: 11,
+                            }}
+                          >
+                            · {durationStr}
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : durationStr ? (
+                      <span style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                        {durationStr}
                       </span>
                     ) : (
                       <span style={{ color: 'var(--text-muted)' }}>—</span>
                     )}
                   </td>
+                  <td className="py-3 px-3">{TASK_STATUS_LABEL[t.status]}</td>
                 </tr>
               );
             })}
