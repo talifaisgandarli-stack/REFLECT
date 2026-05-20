@@ -17,19 +17,15 @@ import { TaskCommentsModal } from '@/components/TaskCommentsModal';
 import { TaskEditModal } from '@/components/TaskEditModal';
 import { TaskCalendarView } from '@/components/TaskCalendarView';
 import { TaskGanttView } from '@/components/TaskGanttView';
+import { SkeletonList } from '@/components/Skeleton';
 import { downloadCsv } from '@/lib/csv';
 import { toast } from '@/components/Toast';
 import { formatDuration, useActiveTimeEntry, useStartTimer, useStopTimer, useTaskTimeTotals } from '@/lib/useTimeTracking';
 
-// US-TASK-06 — deadline-based groups for personal view
-const todayStr = new Date().toISOString().slice(0, 10);
-const endOfWeekStr = (() => {
-  const d = new Date();
-  const diff = 7 - (d.getDay() === 0 ? 7 : d.getDay());
-  d.setDate(d.getDate() + diff);
-  return d.toISOString().slice(0, 10);
-})();
-
+// US-TASK-06 — deadline-based groups for personal view.
+// NOTE: these comparators are computed per-render inside TasksPage rather than
+// at module load. Module-level constants drift in long-lived tabs that cross
+// midnight, putting tasks in the wrong group until reload.
 type TimeGroup = 'overdue' | 'today' | 'week' | 'later' | 'none';
 const TIME_GROUP_LABEL: Record<TimeGroup, string> = {
   overdue: 'Gecikmiş',
@@ -45,7 +41,7 @@ const TIME_GROUP_COLOR: Record<TimeGroup, string> = {
   later: 'var(--text-muted)',
   none: 'var(--text-muted)',
 };
-function taskTimeGroup(t: Task): TimeGroup {
+function taskTimeGroup(t: Task, todayStr: string, endOfWeekStr: string): TimeGroup {
   if (!t.deadline) return 'none';
   if (t.deadline < todayStr) return 'overdue';
   if (t.deadline === todayStr) return 'today';
@@ -67,8 +63,23 @@ function formatEstimatedDuration(
 export function TasksPage() {
   const { profile, isAdmin } = useAuth();
   const qc = useQueryClient();
+  // Per-render comparators (see TimeGroup note above) — fresh on each render
+  // so day-rollover, focus-refetch, etc. always re-bucket against "now".
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const endOfWeekStr = (() => {
+    const d = new Date();
+    const diff = 7 - (d.getDay() === 0 ? 7 : d.getDay());
+    d.setDate(d.getDate() + diff);
+    return d.toISOString().slice(0, 10);
+  })();
+  // Read URL params via useSearchParams so router updates rerender (don't snapshot window.location).
+  const [searchParams, setSearchParams] = useSearchParams();
   // Design spec §8.3: four view toggles — Lövhə · Cədvəl · Təqvim · Gantt.
-  const [view, setView] = useState<'board' | 'table' | 'calendar' | 'gantt'>('board');
+  // Persisted in URL so refresh + share-link land on the same view.
+  const [view, setView] = useState<'board' | 'table' | 'calendar' | 'gantt'>(() => {
+    const v = searchParams.get('view');
+    return v === 'table' || v === 'calendar' || v === 'gantt' ? v : 'board';
+  });
   // Calendar month being viewed (year + 0-based month). Defaults to current month.
   const [calMonth, setCalMonth] = useState<{ year: number; month: number }>(() => {
     const d = new Date();
@@ -82,11 +93,10 @@ export function TasksPage() {
   });
   // Design spec §8.3: "Empty Tamamlandı stub: '+ N daha' — clicks expand archived".
   const [expandedArchive, setExpandedArchive] = useState(false);
-  // Read URL params via useSearchParams so router updates rerender (don't snapshot window.location).
-  const [searchParams, setSearchParams] = useSearchParams();
   // PRD §UX — ?assignee=<uuid> deep-links from Roster to "tasks for this person"
   const urlAssignee = searchParams.get('assignee');
-  const [mineOnly, setMineOnly] = useState(false);
+  // Persisted in URL (?mine=1) for share-link parity with other filters.
+  const [mineOnly, setMineOnly] = useState<boolean>(() => searchParams.get('mine') === '1');
   // PRD §UX — drag-over column highlight (board view DnD feedback)
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
   // URL assignee takes precedence over mineOnly so Roster click always lands on that user
@@ -393,6 +403,27 @@ export function TasksPage() {
     if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectFilter]);
+  // URL sync — view + mineOnly. Same pattern as q/label/project/sort above.
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (view === 'board') next.delete('view');
+    else next.set('view', view);
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
+  // Bulk mode only renders in the table view — auto-exit when switching away
+  // so the floating action bar doesn't ghost in other views.
+  useEffect(() => {
+    if (view !== 'table' && bulkMode) exitBulkMode();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (mineOnly) next.set('mine', '1');
+    else next.delete('mine');
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mineOnly]);
   // Project list for the dropdown + lookup map for board/table (name, phase).
   const projectsForFilter = useQuery({
     queryKey: ['projects-name-phase-map'],
@@ -478,16 +509,18 @@ export function TasksPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtered, sortBy]);
 
-  // US-TASK-06 — time-grouped personal view computed data
+  // US-TASK-06 — time-grouped personal view computed data.
+  // todayStr/endOfWeekStr are recomputed per render but are stable by value
+  // within a day, so the memo still hits when only their identity changes.
   const groupedByTime = useMemo(() => {
     const map = {} as Record<TimeGroup, Task[]>;
     for (const g of TIME_GROUP_ORDER) map[g] = [];
     for (const t of filtered) {
       if (t.status === 'done' || t.status === 'cancelled') continue;
-      map[taskTimeGroup(t)].push(t);
+      map[taskTimeGroup(t, todayStr, endOfWeekStr)].push(t);
     }
     return map;
-  }, [filtered]);
+  }, [filtered, todayStr, endOfWeekStr]);
 
   // PRD §UX — bubble overdue count to the page meta so it's visible from the header
   // even when the board is scrolled. Matches the red border treatment on cards.
@@ -558,7 +591,9 @@ export function TasksPage() {
                 Arxivlə ({archivableCount})
               </button>
             ) : null}
-            {view === 'table' ? (
+            {/* Bulk operations are admin-tier — matches `bulkArchive` and
+                `bulkReassign` gating elsewhere in this file. */}
+            {view === 'table' && isAdmin ? (
               <button
                 className={`btn-outline ${bulkMode ? 'border-brand-text' : ''}`}
                 onClick={() => bulkMode ? exitBulkMode() : setBulkMode(true)}
@@ -770,7 +805,8 @@ export function TasksPage() {
         </div>
       ) : null}
       {isLoading ? (
-        <div className="card text-meta">Yüklənir…</div>
+        // PRD §6.7 — skeleton matches layout (consistent with Projects/Clients).
+        <SkeletonList rows={6} />
       ) : tasks.length === 0 ? (
         <EmptyState
           title="Hələ tapşırıq yoxdur"
@@ -1372,7 +1408,7 @@ export function TasksPage() {
                     {t.deadline ? (
                       <span
                         style={{
-                          color: TIME_GROUP_COLOR[taskTimeGroup(t)],
+                          color: TIME_GROUP_COLOR[taskTimeGroup(t, todayStr, endOfWeekStr)],
                           fontVariantNumeric: 'tabular-nums',
                         }}
                       >
