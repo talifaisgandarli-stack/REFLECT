@@ -447,19 +447,25 @@ export function TasksPage() {
     if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mineOnly]);
-  // Project list for the dropdown + lookup map for board/table (name, phase).
+  // Fetch ALL projects (active + archived) so board/table can resolve a task's
+  // project name even after that project is archived. The dropdown below
+  // filters this client-side to active-only — archived projects aren't
+  // useful filter targets but still need a name in the lookup map.
   const projectsForFilter = useQuery({
     queryKey: ['projects-name-phase-map'],
     staleTime: 5 * 60_000,
     queryFn: async () => {
       const { data } = await supabase
         .from('projects')
-        .select('id, name, phases')
-        .is('archived_at', null)
+        .select('id, name, phases, archived_at')
         .order('name');
-      return (data ?? []) as Array<{ id: string; name: string; phases: string[] | null }>;
+      return (data ?? []) as Array<{ id: string; name: string; phases: string[] | null; archived_at: string | null }>;
     },
   });
+  const activeProjects = useMemo(
+    () => (projectsForFilter.data ?? []).filter((p) => !p.archived_at),
+    [projectsForFilter.data],
+  );
   const projectById = useMemo(
     () => Object.fromEntries((projectsForFilter.data ?? []).map((p) => [p.id, p])),
     [projectsForFilter.data],
@@ -530,13 +536,17 @@ export function TasksPage() {
       setSearchParams(next, { replace: true });
     }
   }
-  useEffect(() => {
-    const next = new URLSearchParams(searchParams);
-    if (sortBy === 'deadline') next.delete('sort');
-    else next.set('sort', sortBy);
-    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortBy]);
+  // sortBy state + URL update in one place — same race-avoidance pattern as
+  // clearAllFilters above. Saves a useEffect and the eslint suppression.
+  function changeSort(next: SortKey) {
+    setSortBy(next);
+    const params = new URLSearchParams(searchParams);
+    if (next === 'deadline') params.delete('sort');
+    else params.set('sort', next);
+    if (params.toString() !== searchParams.toString()) {
+      setSearchParams(params, { replace: true });
+    }
+  }
   const sortTasks = (arr: Task[]): Task[] => {
     const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2, normal: 2 };
     return [...arr].sort((a, b) => {
@@ -671,15 +681,21 @@ export function TasksPage() {
               disabled={filtered.length === 0}
               onClick={() => {
                 downloadCsv(
-                  `tasks-${new Date().toISOString().slice(0, 10)}`,
+                  `tasks-${todayStr}`,
                   ['Başlıq', 'Status', 'Layihə', 'Deadline', 'İcraçılar', 'Yaradıldı'],
                   filtered.map((t) => ({
                     'Başlıq': t.title,
-                    'Status': t.status,
-                    'Layihə': t.project_id ?? '',
+                    'Status': TASK_STATUS_LABEL[t.status],
+                    // Resolve project_id → name; fall back to '' (not the
+                    // UUID) so spreadsheets stay human-readable.
+                    'Layihə': t.project_id ? projectById[t.project_id]?.name ?? '' : '',
                     'Deadline': t.deadline ?? '',
-                    'İcraçılar': (t.assignee_ids ?? []).join('; '),
-                    'Yaradıldı': t.created_at ? new Date(t.created_at).toISOString() : '',
+                    'İcraçılar': (t.assignee_ids ?? [])
+                      .map((id) => profileById[id]?.full_name ?? id)
+                      .join('; '),
+                    // Match the Deadline format (YYYY-MM-DD) so both date
+                    // columns parse the same way in Excel/Numbers.
+                    'Yaradıldı': t.created_at ? t.created_at.slice(0, 10) : '',
                   })),
                 );
               }}
@@ -698,6 +714,7 @@ export function TasksPage() {
                   // placeholder after this render — no DOM mutation needed.
                 }}
                 disabled={createFromTemplate.isPending}
+                aria-label="Şablondan tapşırıq yarat"
               >
                 <option value="">Şablondan yarat…</option>
                 {(templates.data ?? []).map((t) => (
@@ -731,7 +748,7 @@ export function TasksPage() {
           className="input"
           style={{ maxWidth: 160, height: 32, fontSize: 12 }}
           value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as SortKey)}
+          onChange={(e) => changeSort(e.target.value as SortKey)}
           aria-label="Sıralama"
         >
           <option value="deadline">↑ Son tarix</option>
@@ -754,8 +771,10 @@ export function TasksPage() {
         >
           {todayOnly ? '✓ Bugünkü son tarix' : 'Bugünkü son tarix'}
         </button>
-        {/* PRD §UX — narrow to a single project */}
-        {(projectsForFilter.data ?? []).length > 0 ? (
+        {/* PRD §UX — narrow to a single project. Dropdown lists active
+            projects only; the projectById lookup separately covers archived
+            ones so task cards still show their project name post-archive. */}
+        {activeProjects.length > 0 ? (
           <select
             className="input"
             style={{ maxWidth: 200, height: 32, fontSize: 12 }}
@@ -764,7 +783,7 @@ export function TasksPage() {
             aria-label="Layihəyə görə süz"
           >
             <option value="">Bütün layihələr</option>
-            {(projectsForFilter.data ?? []).map((p) => (
+            {activeProjects.map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
@@ -1083,9 +1102,10 @@ export function TasksPage() {
                   {grouped[s].map((t) => {
                     // PRD §UX — surface overdue tasks visually on the board so they
                     // can't be missed when scrolling through a column. Skip done/cancelled.
+                    // Uses todayStr from outer scope (one Date(), not per-card).
                     const isOverdue = !!t.deadline
                       && t.status !== 'done' && t.status !== 'cancelled'
-                      && t.deadline < new Date().toISOString().slice(0, 10);
+                      && t.deadline < todayStr;
                     return (
                     <article
                       key={t.id}
