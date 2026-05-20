@@ -90,9 +90,13 @@ export function TaskCalendarView({
         </button>
       </div>
 
+      {/* overflow-x wrapper keeps day cells usable on narrow viewports.
+          min-width below the cell-count × min-cell-width keeps each cell
+          legible instead of crushing the grid to <50px columns. */}
+      <div className="overflow-x-auto rounded-card" style={{ border: '1px solid var(--line)' }}>
       <div
-        className="grid grid-cols-7 gap-px rounded-card overflow-hidden"
-        style={{ background: 'var(--line)', border: '1px solid var(--line)' }}
+        className="grid grid-cols-7 gap-px overflow-hidden"
+        style={{ background: 'var(--line)', minWidth: 7 * 88 }}
         role="grid"
         aria-label={headerLabel}
       >
@@ -174,6 +178,7 @@ export function TaskCalendarView({
             </div>
           );
         })}
+      </div>
       </div>
     </div>
   );

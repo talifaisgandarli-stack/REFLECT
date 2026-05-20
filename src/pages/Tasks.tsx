@@ -889,12 +889,23 @@ export function TasksPage() {
                         style={{ accentColor: 'var(--brand-action)', width: 16, height: 16, flexShrink: 0, cursor: 'pointer' }}
                         aria-label={bulkMode ? `${t.title} seç` : `${t.title} tamamlandı`}
                       />
-                      <span
-                        className="flex-1 text-body cursor-pointer"
+                      {/* PRD §6.6 — title as a real <button> so Enter/Space
+                          opens the task without needing a mouse. */}
+                      <button
+                        type="button"
+                        className="flex-1 text-body text-left"
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          padding: 0,
+                          cursor: 'pointer',
+                          font: 'inherit',
+                          color: 'inherit',
+                        }}
                         onClick={() => setCommenting({ id: t.id, title: t.title })}
                       >
                         {t.title}
-                      </span>
+                      </button>
                       {t.deadline ? (
                         <span
                           className="text-meta"
@@ -1405,6 +1416,12 @@ export function TasksPage() {
                 t.estimated_duration,
                 t.duration_unit,
               );
+              // Mirror the board's overdue treatment so the same data reads
+              // the same way in both views (not color-only — deadline text is
+              // already red via TIME_GROUP_COLOR; tint adds row-level signal).
+              const isOverdue = !!t.deadline
+                && t.status !== 'done' && t.status !== 'cancelled'
+                && t.deadline < todayStr;
               return (
                 <tr
                   key={t.id}
@@ -1414,7 +1431,11 @@ export function TasksPage() {
                   className="hover:bg-surface-mist cursor-pointer"
                   style={{
                     borderBottom: '1px solid var(--line-soft)',
-                    background: selected ? 'var(--brand-glow-sm)' : undefined,
+                    background: selected
+                      ? 'var(--brand-glow-sm)'
+                      : isOverdue
+                      ? 'var(--error-bg)'
+                      : undefined,
                   }}
                   title={bulkMode ? 'Seçimi dəyişdir' : 'Şərhləri aç'}
                 >

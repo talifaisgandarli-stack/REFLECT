@@ -44,6 +44,9 @@ export function TaskGanttView({
     return out;
   }, [startDate]);
   const axisEnd = days[days.length - 1];
+  // Vertical "today" guideline — only drawn when today is in the visible window.
+  const todayOffset = dayDiff(startDate, todayIso);
+  const todayInWindow = todayOffset >= 0 && todayOffset < WINDOW_DAYS;
 
   // Tasks with a deadline that intersect the window. Bars start from
   // start_date if set, else from created_at (which is always present).
@@ -112,7 +115,26 @@ export function TaskGanttView({
         className="rounded-card overflow-x-auto"
         style={{ border: '1px solid var(--line)', background: 'var(--surface)' }}
       >
-        <div style={{ minWidth: TASK_COL_WIDTH + 42 * 18 }}>
+        <div style={{ minWidth: TASK_COL_WIDTH + 42 * 18, position: 'relative' }}>
+          {/* "Today" guideline spans the chart area only — task-name column is
+              skipped via TASK_COL_WIDTH offset. Z-index 0 keeps the sticky
+              header in front; pointer-events:none lets bars remain clickable. */}
+          {todayInWindow ? (
+            <div
+              aria-hidden
+              style={{
+                position: 'absolute',
+                top: 0,
+                bottom: 0,
+                width: 2,
+                background: 'var(--brand-action)',
+                opacity: 0.5,
+                pointerEvents: 'none',
+                zIndex: 0,
+                left: `calc(${TASK_COL_WIDTH}px + (100% - ${TASK_COL_WIDTH}px) * ${todayOffset / WINDOW_DAYS})`,
+              }}
+            />
+          ) : null}
           {/* Header row: day labels */}
           <div
             className="flex"
