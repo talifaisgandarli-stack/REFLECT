@@ -94,17 +94,25 @@ export function TaskCalendarView({
 
       {/* overflow-x wrapper keeps day cells usable on narrow viewports.
           min-width below the cell-count × min-cell-width keeps each cell
-          legible instead of crushing the grid to <50px columns. */}
+          legible instead of crushing the grid to <50px columns.
+          A11y note: we previously claimed role="grid" + role="gridcell"
+          but did not implement WAI-ARIA grid keyboard nav (arrow keys,
+          one focusable cell). Falsely claiming grid semantics confuses
+          screen readers more than it helps — dropped in favour of an
+          honest region label + per-cell date label. Task buttons inside
+          remain the focusable interactives. */}
       <div className="overflow-x-auto rounded-card" style={{ border: '1px solid var(--line)' }}>
-      <div
+      <section
         className="grid grid-cols-7 gap-px overflow-hidden"
         style={{ background: 'var(--line)', minWidth: 7 * 88 }}
-        role="grid"
-        aria-label={headerLabel}
+        aria-label={`${headerLabel} təqvim`}
       >
         {WEEKDAY_LABEL_AZ.map((w) => (
           <div
             key={w}
+            // Each date cell carries the full date in aria-label, so the
+            // weekday header strip is decorative for screen-reader users.
+            aria-hidden="true"
             className="text-meta py-2 px-2 text-center"
             style={{
               background: 'var(--surface-mist)',
@@ -129,7 +137,6 @@ export function TaskCalendarView({
                 minHeight: 96,
                 border: isToday ? '2px solid var(--brand-action)' : undefined,
               }}
-              role="gridcell"
               aria-label={c.date ?? undefined}
             >
               {c.day != null ? (
@@ -180,7 +187,7 @@ export function TaskCalendarView({
             </div>
           );
         })}
-      </div>
+      </section>
       </div>
     </div>
   );

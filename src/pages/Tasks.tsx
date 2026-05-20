@@ -107,6 +107,9 @@ export function TasksPage() {
   const [ganttStart, setGanttStart] = useState<string>(() => daysFromTodayInBaku(-7));
   // Design spec §8.3: "Empty Tamamlandı stub: '+ N daha' — clicks expand archived".
   const [expandedArchive, setExpandedArchive] = useState(false);
+  // PRD §6.6 — screen reader announcement after status moves so DnD users
+  // who can't see the column highlight still hear what happened.
+  const [statusAnnouncement, setStatusAnnouncement] = useState('');
   // PRD §UX — ?assignee=<uuid> deep-links from Roster to "tasks for this person"
   const urlAssignee = searchParams.get('assignee');
   // Persisted in URL (?mine=1) for share-link parity with other filters.
@@ -311,9 +314,16 @@ export function TasksPage() {
       setCancelling({ id, title: t?.title ?? '' });
       return;
     }
+    const task = tasks.find((x) => x.id === id);
     update.mutate(
       { id, status, from },
       {
+        onSuccess: () => {
+          // Mirror the column-highlight visual feedback with an aria-live
+          // message for keyboard / screen-reader users.
+          const title = task?.title ?? 'Tapşırıq';
+          setStatusAnnouncement(`${title}: ${TASK_STATUS_LABEL[status]}`);
+        },
         onError: (e) => {
           // Subtask-blocker is handled with its own modal flow; every other
           // error (RLS denial, network, validation) needs to surface as a
@@ -654,6 +664,13 @@ export function TasksPage() {
 
   return (
     <>
+      {/* PRD §6.6 / designstyle4.md §6.6 — polite live region for status
+          moves. Screen readers announce "<title>: <status>" without
+          interrupting the user (assertive would). Visually hidden via
+          the shared sr-only utility. */}
+      <div aria-live="polite" aria-atomic="true" className="sr-only">
+        {statusAnnouncement}
+      </div>
       <PageHead
         meta={meta}
         title="Tapşırıqlar"
@@ -664,6 +681,8 @@ export function TasksPage() {
                 ref={searchInputRef}
                 className="input max-w-[240px] pr-7"
                 placeholder="Axtar… (/)"
+                // PRD §6.6 — placeholder isn't a label substitute under WCAG.
+                aria-label="Tapşırıq axtarışı"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={(e) => {
@@ -1156,6 +1175,11 @@ export function TasksPage() {
                     return (
                     <article
                       key={t.id}
+                      // Parent <div> declares role="list"; <article> default
+                      // implicit role is "article" which breaks the list
+                      // semantics. Explicit listitem keeps the row count
+                      // exposed to AT.
+                      role="listitem"
                       draggable
                       onDragStart={(e) =>
                         e.dataTransfer.setData(
