@@ -32,42 +32,18 @@ import { toast } from '@/components/Toast';
 import { formatDuration, useActiveTimeEntry, useStartTimer, useStopTimer, useTaskTimeTotals } from '@/lib/useTimeTracking';
 import { todayInBaku, endOfWeekInBaku, daysFromTodayInBaku, currentMonthInBaku } from '@/lib/time';
 import { onOpenTask } from '@/lib/events';
+import { durationToHours, formatEstimatedDuration } from '@/lib/duration';
+import { filterTasks } from '@/lib/taskFilters';
+import { sortTasks as sortTasksPure, type TaskSortKey } from '@/lib/taskSort';
 
 // US-TASK-06 — deadline-based groups for the "Mənim" view. The labels +
 // colour + bucketing logic now live with TaskPersonalList; the table view
 // still uses TIME_GROUP_COLOR to colour the deadline cell, imported below.
 
-// Tunables — keep magic numbers out of the render path.
-const HOURS_PER_DAY = 8;          // standard architects' workday
-const HOURS_PER_WEEK = 40;        // 5 × HOURS_PER_DAY
+// Tunables — keep magic numbers out of the render path. Duration helpers
+// (HOURS_PER_*, normalizeDurationUnit, durationToHours, formatEstimatedDuration)
+// now live in src/lib/duration.ts so the conversion is unit-testable.
 const LOOKUP_STALE_MS = 5 * 60_000; // 5 min — applied to profile/project/template lookups
-
-// `tasks.duration_unit` is stored loosely as text: TaskCreateModal /
-// TaskEditModal write 'hours' / 'days' (plural), DB default is 'hours',
-// some legacy rows may be singular. Normalize once so every conversion
-// site agrees.
-function normalizeDurationUnit(unit: string | null | undefined): 'hour' | 'day' | 'week' {
-  if (!unit) return 'hour';
-  const s = unit.toLowerCase().replace(/s$/, '');
-  return s === 'day' ? 'day' : s === 'week' ? 'week' : 'hour';
-}
-
-// Convert {value, unit} to hours so column / page totals sum apples-to-apples.
-function durationToHours(d: number, unit: string | null | undefined): number {
-  const u = normalizeDurationUnit(unit);
-  return u === 'day' ? d * HOURS_PER_DAY : u === 'week' ? d * HOURS_PER_WEEK : d;
-}
-
-// Compact "Vaxt" label for table view: "8s" / "3g" / "2h" depending on unit.
-function formatEstimatedDuration(
-  d: number | null,
-  unit: string | null | undefined,
-): string | null {
-  if (d == null) return null;
-  const u = normalizeDurationUnit(unit);
-  const suffix = u === 'day' ? 'g' : u === 'week' ? 'h' : 's';
-  return `${d}${suffix}`;
-}
 
 export function TasksPage() {
   const { profile, isAdmin } = useAuth();
@@ -462,10 +438,11 @@ export function TasksPage() {
     };
   }, [tasks]);
 
-  // PRD §UX — sort within columns; persisted in URL so it survives reload + share
-  type SortKey = 'deadline' | 'priority' | 'created';
-  const [sortBy, setSortBy] = useState<SortKey>(
-    (searchParams.get('sort') as SortKey) || 'deadline',
+  // PRD §UX — sort within columns; persisted in URL so it survives reload + share.
+  // TaskSortKey is exported from src/lib/taskSort.ts so the state type and
+  // the helper stay in lock-step.
+  const [sortBy, setSortBy] = useState<TaskSortKey>(
+    (searchParams.get('sort') as TaskSortKey) || 'deadline',
   );
   // PRD §UX — compact mode persisted in localStorage so the user's preference
   // survives across reloads/sessions without bloating the URL.
@@ -578,17 +555,10 @@ export function TasksPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const filtered = useMemo(() => {
-    let out = tasks;
-    if (labelFilter) out = out.filter((t) => (t.labels ?? []).includes(labelFilter));
-    if (projectFilter) out = out.filter((t) => t.project_id === projectFilter);
-    if (todayOnly) out = out.filter((t) => t.deadline === todayStr);
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      out = out.filter((t) => t.title.toLowerCase().includes(q));
-    }
-    return out;
-  }, [tasks, search, labelFilter, projectFilter, todayOnly, todayStr]);
+  const filtered = useMemo(
+    () => filterTasks(tasks, { labelFilter, projectFilter, todayOnly, todayStr, search }),
+    [tasks, search, labelFilter, projectFilter, todayOnly, todayStr],
+  );
 
   // Atomic clear-all. The per-filter URL-sync effects each read the same
   // pre-batch `searchParams` snapshot, so calling 4 setters and letting the
@@ -611,7 +581,7 @@ export function TasksPage() {
   }
   // sortBy state + URL update in one place — same race-avoidance pattern as
   // clearAllFilters above. Saves a useEffect and the eslint suppression.
-  function changeSort(next: SortKey) {
+  function changeSort(next: TaskSortKey) {
     setSortBy(next);
     const params = new URLSearchParams(searchParams);
     if (next === 'deadline') params.delete('sort');
@@ -620,22 +590,13 @@ export function TasksPage() {
       setSearchParams(params, { replace: true });
     }
   }
-  // useCallback so the dependent useMemos can list sortTasks honestly in
-  // their deps — sortBy is the only real input, so referential identity is
-  // stable across renders that don't change the sort key.
-  const sortTasks = useCallback((arr: Task[]): Task[] => {
-    const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2, normal: 2 };
-    return [...arr].sort((a, b) => {
-      if (sortBy === 'priority') {
-        const ap = PRIORITY_ORDER[a.priority ?? 'normal'] ?? 3;
-        const bp = PRIORITY_ORDER[b.priority ?? 'normal'] ?? 3;
-        if (ap !== bp) return ap - bp;
-      }
-      if (sortBy === 'created') return (b.created_at ?? '').localeCompare(a.created_at ?? '');
-      // deadline (default): nulls last, ascending
-      return (a.deadline ?? '￿').localeCompare(b.deadline ?? '￿');
-    });
-  }, [sortBy]);
+  // Bind the pure sortTasks helper to current sortBy so the dependent
+  // useMemos can list one stable reference. The sort logic itself lives
+  // in src/lib/taskSort.ts and is unit-tested there.
+  const sortTasks = useCallback(
+    (arr: Task[]): Task[] => sortTasksPure(arr, sortBy),
+    [sortBy],
+  );
 
   const grouped = useMemo(() => {
     const map: Record<TaskStatus, Task[]> = {
@@ -845,7 +806,7 @@ export function TasksPage() {
           className="input"
           style={{ maxWidth: 160, height: 32, fontSize: 12 }}
           value={sortBy}
-          onChange={(e) => changeSort(e.target.value as SortKey)}
+          onChange={(e) => changeSort(e.target.value as TaskSortKey)}
           aria-label="Sıralama"
         >
           <option value="deadline">↑ Son tarix</option>
