@@ -457,14 +457,23 @@ export function TasksPage() {
     [projectsForFilter.data],
   );
 
-  // PRD §6.3 — single key shortcuts: C compact, A mine-only (skip while typing)
+  // PRD §6.3 — single key shortcuts: C compact (board only), A mine-only,
+  // V cycle views. Listener registered once at mount; current view read via
+  // ref so the empty-deps closure stays valid.
+  const viewRef = useRef(view);
+  useEffect(() => { viewRef.current = view; }, [view]);
   useEffect(() => {
+    const VIEW_ORDER: Array<'board' | 'table' | 'calendar' | 'gantt'> =
+      ['board', 'table', 'calendar', 'gantt'];
     function onKey(e: KeyboardEvent) {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const tag = (e.target as HTMLElement).tagName;
       const editing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement).isContentEditable;
       if (editing) return;
       if (e.key === 'c' || e.key === 'C') {
+        // Compact mode is board-only — silently ignore on other views so
+        // the shortcut doesn't flip hidden state.
+        if (viewRef.current !== 'board') return;
         e.preventDefault();
         setCompactBoard((v) => !v);
       } else if (e.key === 'a' || e.key === 'A') {
@@ -472,7 +481,7 @@ export function TasksPage() {
         setMineOnly((v) => !v);
       } else if (e.key === 'v' || e.key === 'V') {
         e.preventDefault();
-        setView((v) => (v === 'board' ? 'table' : 'board'));
+        setView((v) => VIEW_ORDER[(VIEW_ORDER.indexOf(v) + 1) % VIEW_ORDER.length]);
       }
     }
     window.addEventListener('keydown', onKey);
@@ -493,6 +502,26 @@ export function TasksPage() {
     }
     return out;
   }, [tasks, search, labelFilter, projectFilter, todayOnly]);
+
+  // Atomic clear-all. The per-filter URL-sync effects each read the same
+  // pre-batch `searchParams` snapshot, so calling 4 setters and letting the
+  // effects race produces a last-write-wins URL (some params survive). Doing
+  // the URL update inline avoids the race — one setSearchParams call wipes
+  // every param at once, then the individual effects no-op because state and
+  // URL already agree.
+  function clearAllFilters() {
+    setSearch('');
+    setLabelFilter(null);
+    setProjectFilter('');
+    setTodayOnly(false);
+    const next = new URLSearchParams(searchParams);
+    next.delete('q');
+    next.delete('label');
+    next.delete('project');
+    if (next.toString() !== searchParams.toString()) {
+      setSearchParams(next, { replace: true });
+    }
+  }
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
     if (sortBy === 'deadline') next.delete('sort');
@@ -556,7 +585,7 @@ export function TasksPage() {
     if (t.status === 'done' || t.status === 'cancelled') return sum;
     const d = t.estimated_duration;
     if (d == null) return sum;
-    const unit = (t as { duration_unit?: string }).duration_unit ?? 'hour';
+    const unit = t.duration_unit ?? 'hour';
     const h = unit === 'day' ? d * 8 : unit === 'week' ? d * 40 : d;
     return sum + h;
   }, 0);
@@ -652,10 +681,9 @@ export function TasksPage() {
                 className="input max-w-[200px]"
                 value=""
                 onChange={(e) => {
-                  if (e.target.value) {
-                    createFromTemplate.mutate(e.target.value);
-                    e.target.value = '';
-                  }
+                  if (e.target.value) createFromTemplate.mutate(e.target.value);
+                  // Controlled value="" already pins the select back to the
+                  // placeholder after this render — no DOM mutation needed.
                 }}
                 disabled={createFromTemplate.isPending}
               >
@@ -798,7 +826,7 @@ export function TasksPage() {
               type="button"
               className="chip"
               style={{ fontSize: 11, color: 'var(--text-muted)' }}
-              onClick={() => { setSearch(''); setLabelFilter(null); setProjectFilter(''); setTodayOnly(false); }}
+              onClick={clearAllFilters}
               title="Bütün filtrləri təmizlə"
             >
               ✕ Təmizlə
@@ -852,7 +880,7 @@ export function TasksPage() {
             <button
               type="button"
               className="btn-outline"
-              onClick={() => { setSearch(''); setLabelFilter(null); setTodayOnly(false); setProjectFilter(''); }}
+              onClick={clearAllFilters}
             >
               ✕ Filtrləri təmizlə
             </button>
@@ -973,7 +1001,7 @@ export function TasksPage() {
             const totalHours = grouped[s].reduce((sum, t) => {
               const d = t.estimated_duration;
               if (d == null) return sum;
-              const unit = (t as { duration_unit?: string }).duration_unit ?? 'hour';
+              const unit = t.duration_unit ?? 'hour';
               const h = unit === 'day' ? d * 8 : unit === 'week' ? d * 40 : d;
               return sum + h;
             }, 0);
