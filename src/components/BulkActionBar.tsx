@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 /**
  * Floating action bar for bulk-mode in the Tasks Cədvəl view.
@@ -30,9 +30,6 @@ export function BulkActionBar({
   isArchiving,
   onClose,
 }: Props) {
-  const [reassignOpen, setReassignOpen] = useState(false);
-  const [reassignTarget, setReassignTarget] = useState('');
-
   return (
     <div
       className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-capsule px-4 py-3 flex items-center gap-3 shadow-xl z-40"
@@ -49,57 +46,11 @@ export function BulkActionBar({
       <span style={{ flex: 1 }} />
 
       {isAdmin ? (
-        <div className="relative">
-          <button
-            type="button"
-            className="chip"
-            style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--canvas)' }}
-            onClick={() => setReassignOpen((v) => !v)}
-            aria-expanded={reassignOpen}
-          >
-            Yenidən təyin et
-          </button>
-          {reassignOpen ? (
-            <div
-              className="absolute bottom-full mb-2 right-0 rounded-card p-2 w-[220px]"
-              style={{
-                background: 'var(--ink)',
-                border: '1px solid rgba(255,255,255,0.1)',
-              }}
-            >
-              <select
-                className="input w-full mb-2"
-                style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--canvas)' }}
-                value={reassignTarget}
-                onChange={(e) => setReassignTarget(e.target.value)}
-                aria-label="Yeni icraçı"
-              >
-                <option value="">İcraçı seçin…</option>
-                {profiles.map((p) => (
-                  <option key={p.id} value={p.id}>{p.full_name ?? p.id}</option>
-                ))}
-              </select>
-              <div className="flex gap-2 justify-end">
-                <button
-                  type="button"
-                  className="chip text-meta"
-                  onClick={() => { setReassignOpen(false); setReassignTarget(''); }}
-                >
-                  Ləğv
-                </button>
-                <button
-                  type="button"
-                  className="chip"
-                  style={{ background: 'var(--brand-action)', color: 'var(--ink)' }}
-                  disabled={!reassignTarget || isReassigning}
-                  onClick={() => onReassign(reassignTarget)}
-                >
-                  {isReassigning ? '…' : 'Təyin et'}
-                </button>
-              </div>
-            </div>
-          ) : null}
-        </div>
+        <ReassignPopover
+          profiles={profiles}
+          isReassigning={isReassigning}
+          onReassign={onReassign}
+        />
       ) : null}
 
       <button
@@ -121,6 +72,103 @@ export function BulkActionBar({
       >
         ×
       </button>
+    </div>
+  );
+}
+
+/**
+ * Admin-only reassign popover. Self-contained so the click-outside +
+ * Escape behaviour can use refs without polluting the parent.
+ */
+function ReassignPopover({
+  profiles,
+  isReassigning,
+  onReassign,
+}: {
+  profiles: Array<{ id: string; full_name: string | null }>;
+  isReassigning: boolean;
+  onReassign: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [target, setTarget] = useState('');
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Click-outside + Escape dismissal. Listener only mounted while open so
+  // we don't pay event-cost when the popover is closed (the bar itself
+  // unmounts as soon as the selection clears, so this is bounded).
+  useEffect(() => {
+    if (!open) return;
+    function onPointer(e: PointerEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setTarget('');
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setOpen(false);
+        setTarget('');
+      }
+    }
+    document.addEventListener('pointerdown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        className="chip"
+        style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--canvas)' }}
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        Yenidən təyin et
+      </button>
+      {open ? (
+        <div
+          className="absolute bottom-full mb-2 right-0 rounded-card p-2 w-[220px]"
+          style={{
+            background: 'var(--ink)',
+            border: '1px solid rgba(255,255,255,0.1)',
+          }}
+        >
+          <select
+            className="input w-full mb-2"
+            style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--canvas)' }}
+            value={target}
+            onChange={(e) => setTarget(e.target.value)}
+            aria-label="Yeni icraçı"
+          >
+            <option value="">İcraçı seçin…</option>
+            {profiles.map((p) => (
+              <option key={p.id} value={p.id}>{p.full_name ?? p.id}</option>
+            ))}
+          </select>
+          <div className="flex gap-2 justify-end">
+            <button
+              type="button"
+              className="chip text-meta"
+              onClick={() => { setOpen(false); setTarget(''); }}
+            >
+              Ləğv
+            </button>
+            <button
+              type="button"
+              className="chip"
+              style={{ background: 'var(--brand-action)', color: 'var(--ink)' }}
+              disabled={!target || isReassigning}
+              onClick={() => onReassign(target)}
+            >
+              {isReassigning ? '…' : 'Təyin et'}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

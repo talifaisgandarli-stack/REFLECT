@@ -35,7 +35,7 @@ const TIME_GROUP_LABEL: Record<TimeGroup, string> = {
   today: 'Bu gün',
   week: 'Bu həftə',
   later: 'Sonra',
-  none: 'Deadline yoxdur',
+  none: 'Son tarix yoxdur',
 };
 const TIME_GROUP_COLOR: Record<TimeGroup, string> = {
   overdue: 'var(--error)',
@@ -116,6 +116,9 @@ export function TasksPage() {
   const [mineOnly, setMineOnly] = useState<boolean>(() => searchParams.get('mine') === '1');
   // PRD §UX — drag-over column highlight (board view DnD feedback)
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
+  // Source-card dim during drag so the user can tell which card is being
+  // moved (browser ghost-image follows the cursor, but the source stays solid).
+  const [draggingId, setDraggingId] = useState<string | null>(null);
   // URL assignee takes precedence over mineOnly so Roster click always lands on that user
   const filterAssignee = urlAssignee || (mineOnly && profile?.id ? profile.id : null);
   const { data: tasks = [], isLoading } = useTasks(
@@ -201,6 +204,26 @@ export function TasksPage() {
     setBulkMode(false);
     setSelectedIds(new Set());
   }
+
+  // Personal-view: checking the box on a task triggers moveTask → done.
+  // The DB round-trip + refetch isn't instant, so React would un-check the
+  // controlled checkbox before the row disappears, producing a tick → un-tick
+  // → vanish flicker. Tracking "I just checked this" locally keeps the tick
+  // visible until the row falls out of groupedByTime entirely.
+  const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const visible = new Set(tasks.map((t) => t.id));
+    setCompletingIds((s) => {
+      if (s.size === 0) return s;
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of s) {
+        if (visible.has(id)) next.add(id);
+        else changed = true;
+      }
+      return changed ? next : s;
+    });
+  }, [tasks]);
 
   const bulkArchiveSelected = useMutation({
     mutationFn: async () => {
@@ -376,9 +399,12 @@ export function TasksPage() {
     },
   });
 
-  // PRD §6.x — task templates (admin defines, anyone instantiates)
+  // PRD §6.x — task templates (admin defines, anyone instantiates).
+  // Templates rarely change at runtime — match the 5-min staleTime used
+  // for the profile / project lookups so we don't refetch every focus.
   const templates = useQuery({
     queryKey: ['task-templates'],
+    staleTime: 5 * 60_000,
     queryFn: async () => {
       const { data } = await supabase
         .from('task_templates')
@@ -527,8 +553,8 @@ export function TasksPage() {
   );
 
   // PRD §6.3 — single key shortcuts: C compact (board only), A mine-only,
-  // V cycle views. Listener registered once at mount; current view read via
-  // ref so the empty-deps closure stays valid.
+  // V cycle views, N new task. Listener registered once at mount; current
+  // view read via ref so the empty-deps closure stays valid.
   const viewRef = useRef(view);
   useEffect(() => { viewRef.current = view; }, [view]);
   useEffect(() => {
@@ -551,6 +577,11 @@ export function TasksPage() {
       } else if (e.key === 'v' || e.key === 'V') {
         e.preventDefault();
         setView((v) => VIEW_ORDER[(VIEW_ORDER.indexOf(v) + 1) % VIEW_ORDER.length]);
+      } else if (e.key === 'n' || e.key === 'N') {
+        // Page-local "new task" — doesn't conflict with the global Cmd+N
+        // since modifier keys early-exit at the top of this handler.
+        e.preventDefault();
+        setCreating(true);
       }
     }
     window.addEventListener('keydown', onKey);
@@ -709,12 +740,17 @@ export function TasksPage() {
               ) : null}
             </div>
             {/* Matches the Seç button's active treatment: filled brand bg +
-                ✓ prefix so the active state is unmissable, not just a border tint. */}
+                ✓ prefix so the active state is unmissable, not just a border tint.
+                Disabled while urlAssignee is set — that takes precedence in
+                filterAssignee, so toggling Mənim would be a silent no-op.
+                The banner above the board explains the override. */}
             <button
               className={`btn-outline ${mineOnly ? 'border-brand-text' : ''}`}
               style={mineOnly ? { background: 'var(--brand-action)', color: 'var(--ink)' } : undefined}
               onClick={() => setMineOnly((v) => !v)}
               aria-pressed={mineOnly}
+              disabled={!!urlAssignee}
+              title={urlAssignee ? 'Başqa istifadəçi süzgəci aktivdir — yuxarıdakı banner-dən təmizlə' : undefined}
             >
               {mineOnly ? '✓ Mənim' : 'Mənim'}
             </button>
@@ -886,8 +922,9 @@ export function TasksPage() {
             <button
               className={`chip ${labelFilter === null ? 'chip-brand' : ''}`}
               onClick={() => setLabelFilter(null)}
+              aria-pressed={labelFilter === null}
             >
-              Bütün etiketlər
+              {labelFilter === null ? '✓ Bütün etiketlər' : 'Bütün etiketlər'}
             </button>
             {allLabels.map((l) => {
               // PRD §UX — show per-label task count so filter chips signal volume
@@ -951,15 +988,26 @@ export function TasksPage() {
         // PRD §6.7 — skeleton matches layout (consistent with Projects/Clients).
         <SkeletonList rows={6} />
       ) : tasks.length === 0 ? (
-        <EmptyState
-          title="Hələ tapşırıq yoxdur"
-          body="İlk tapşırığı yarat və BU GÜN sütunu canlanacaq."
-          cta={
-            <button className="btn-primary" onClick={() => setCreating(true)}>
-              + Yeni tapşırıq
-            </button>
-          }
-        />
+        // Two empty-state branches: a true "no tasks anywhere" message vs.
+        // "you're scoped to one user and they have none". The latter
+        // shouldn't push a "+ Yeni tapşırıq" CTA — the viewer might not be
+        // an admin and can't usefully create on someone else's behalf here.
+        filterAssignee ? (
+          <EmptyState
+            title="Bu istifadəçinin tapşırığı yoxdur"
+            body="Hələ heç bir aktiv tapşırıq təyin edilməyib."
+          />
+        ) : (
+          <EmptyState
+            title="Hələ tapşırıq yoxdur"
+            body="İlk tapşırığı yarat və BU GÜN sütunu canlanacaq."
+            cta={
+              <button className="btn-primary" onClick={() => setCreating(true)}>
+                + Yeni tapşırıq
+              </button>
+            }
+          />
+        )
       ) : filtered.length === 0 ? (
         // PRD §UX — filters silenced all rows; tell user how to undo
         <EmptyState
@@ -1003,8 +1051,14 @@ export function TasksPage() {
                     >
                       <input
                         type="checkbox"
-                        checked={bulkMode ? selectedIds.has(t.id) : false}
-                        onChange={() => bulkMode ? toggleSelected(t.id) : moveTask(t.id, 'done', t.status)}
+                        checked={bulkMode ? selectedIds.has(t.id) : completingIds.has(t.id)}
+                        onChange={() => {
+                          if (bulkMode) return toggleSelected(t.id);
+                          // Keep the tick visible until the row falls out
+                          // of groupedByTime when the mutation refetches.
+                          setCompletingIds((s) => new Set(s).add(t.id));
+                          moveTask(t.id, 'done', t.status);
+                        }}
                         style={{ accentColor: 'var(--brand-action)', width: 16, height: 16, flexShrink: 0, cursor: 'pointer' }}
                         aria-label={bulkMode ? `${t.title} seç` : `${t.title} tamamlandı`}
                       />
@@ -1181,16 +1235,20 @@ export function TasksPage() {
                       // exposed to AT.
                       role="listitem"
                       draggable
-                      onDragStart={(e) =>
+                      onDragStart={(e) => {
                         e.dataTransfer.setData(
                           'text/plain',
                           JSON.stringify({ id: t.id, from: t.status }),
-                        )
-                      }
+                        );
+                        setDraggingId(t.id);
+                      }}
                       // dragEnd fires even when the drop happens outside any
                       // column (or is cancelled with Esc) — clear the
-                      // highlight so it doesn't ghost on the last-hovered column.
-                      onDragEnd={() => setDragOverColumn(null)}
+                      // highlight + the source-dim so neither ghosts.
+                      onDragEnd={() => {
+                        setDragOverColumn(null);
+                        setDraggingId(null);
+                      }}
                       className="rounded-card p-3 text-body"
                       style={{
                         background: isToday ? 'var(--card-dark-bg)' : 'var(--surface)',
@@ -1208,6 +1266,8 @@ export function TasksPage() {
                           : t.priority === 'low'
                           ? '3px solid var(--success-deep, #16794a)'
                           : undefined,
+                        opacity: draggingId === t.id ? 0.4 : 1,
+                        transition: 'opacity 120ms ease',
                       }}
                     >
                       {/* Priority is conveyed by the left border (3px coloured
@@ -1671,6 +1731,10 @@ export function TasksPage() {
       {quickAddCol ? (
         <TaskCreateModal
           defaultStatus={quickAddCol}
+          // If the user has narrowed the board to a single project, pre-fill
+          // it on the new task — otherwise the quick-add modal opens with
+          // no project context and the user has to re-pick.
+          defaultProjectId={projectFilter || undefined}
           onClose={() => setQuickAddCol(null)}
         />
       ) : null}
