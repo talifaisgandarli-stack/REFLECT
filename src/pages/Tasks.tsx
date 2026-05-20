@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
@@ -365,8 +365,11 @@ export function TasksPage() {
   const { data: activeTimer } = useActiveTimeEntry();
   const startTimer = useStartTimer();
   const stopTimer = useStopTimer();
-  // Per-task aggregated time across all entries (chip on board card)
-  const taskTimeTotals = useTaskTimeTotals(tasks.map((t) => t.id));
+  // Per-task aggregated time across all entries (chip on board card).
+  // Memoize the id list so identity is stable across renders where `tasks`
+  // didn't change — keeps the hook's internal cache key check on the fast path.
+  const taskIds = useMemo(() => tasks.map((t) => t.id), [tasks]);
+  const taskTimeTotals = useTaskTimeTotals(taskIds);
 
   // Design spec §8.3 — "+ N daha" expand archived in Tamamlandı column.
   // Count is cheap (head-only); rows are loaded lazily on expand.
@@ -464,10 +467,18 @@ export function TasksPage() {
     if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [labelFilter]);
-  const allLabels = useMemo(() => {
-    const set = new Set<string>();
-    for (const t of tasks) for (const l of t.labels ?? []) set.add(l);
-    return Array.from(set).sort();
+  // Single pass over tasks to build both the sorted label list AND the
+  // per-label counts. The previous code recomputed `filter().length` per
+  // chip per render — O(L × N) every paint, with L labels and N tasks.
+  const { allLabels, labelCounts } = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const t of tasks) {
+      for (const l of t.labels ?? []) counts.set(l, (counts.get(l) ?? 0) + 1);
+    }
+    return {
+      allLabels: Array.from(counts.keys()).sort(),
+      labelCounts: counts,
+    };
   }, [tasks]);
 
   // PRD §UX — sort within columns; persisted in URL so it survives reload + share
@@ -630,7 +641,10 @@ export function TasksPage() {
       setSearchParams(params, { replace: true });
     }
   }
-  const sortTasks = (arr: Task[]): Task[] => {
+  // useCallback so the dependent useMemos can list sortTasks honestly in
+  // their deps — sortBy is the only real input, so referential identity is
+  // stable across renders that don't change the sort key.
+  const sortTasks = useCallback((arr: Task[]): Task[] => {
     const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2, normal: 2 };
     return [...arr].sort((a, b) => {
       if (sortBy === 'priority') {
@@ -642,7 +656,7 @@ export function TasksPage() {
       // deadline (default): nulls last, ascending
       return (a.deadline ?? '￿').localeCompare(b.deadline ?? '￿');
     });
-  };
+  }, [sortBy]);
 
   const grouped = useMemo(() => {
     const map: Record<TaskStatus, Task[]> = {
@@ -651,15 +665,13 @@ export function TasksPage() {
     for (const t of filtered) map[t.status].push(t);
     for (const k of Object.keys(map) as TaskStatus[]) map[k] = sortTasks(map[k]);
     return map;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered, sortBy]);
+  }, [filtered, sortTasks]);
 
   // Table view obeys the same sort dropdown as the board (was raw insertion
   // order from useTasks before, ignoring user's sort preference).
   const sortedForTable = useMemo(
     () => sortTasks(filtered),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filtered, sortBy],
+    [filtered, sortTasks],
   );
 
   // US-TASK-06 — time-grouped personal view computed data.
@@ -677,16 +689,28 @@ export function TasksPage() {
 
   // PRD §UX — bubble overdue count to the page meta so it's visible from the header
   // even when the board is scrolled. Matches the red border treatment on cards.
-  const overdueCount = filtered.filter(
-    (t) => t.deadline && t.deadline < todayStr && t.status !== 'done' && t.status !== 'cancelled',
-  ).length;
+  const overdueCount = useMemo(
+    () =>
+      filtered.filter(
+        (t) =>
+          t.deadline &&
+          t.deadline < todayStr &&
+          t.status !== 'done' &&
+          t.status !== 'cancelled',
+      ).length,
+    [filtered, todayStr],
+  );
   // PRD §UX — total estimated hours across visible open tasks (for at-a-glance load)
-  const totalEstimateH = filtered.reduce((sum, t) => {
-    if (t.status === 'done' || t.status === 'cancelled') return sum;
-    return t.estimated_duration == null
-      ? sum
-      : sum + durationToHours(t.estimated_duration, t.duration_unit);
-  }, 0);
+  const totalEstimateH = useMemo(
+    () =>
+      filtered.reduce((sum, t) => {
+        if (t.status === 'done' || t.status === 'cancelled') return sum;
+        return t.estimated_duration == null
+          ? sum
+          : sum + durationToHours(t.estimated_duration, t.duration_unit);
+      }, 0),
+    [filtered],
+  );
   const meta = `${filtered.length} cəmi · ${grouped.active.length} icrada · ${grouped.review.length} yoxlamada${
     totalEstimateH > 0 ? ` · ~${Math.round(totalEstimateH)}s` : ''
   }${
@@ -927,8 +951,9 @@ export function TasksPage() {
               {labelFilter === null ? '✓ Bütün etiketlər' : 'Bütün etiketlər'}
             </button>
             {allLabels.map((l) => {
-              // PRD §UX — show per-label task count so filter chips signal volume
-              const count = tasks.filter((t) => (t.labels ?? []).includes(l)).length;
+              // PRD §UX — show per-label task count so filter chips signal volume.
+              // Pulled from the labelCounts memo so this is O(1) per chip.
+              const count = labelCounts.get(l) ?? 0;
               return (
                 <button
                   key={l}
