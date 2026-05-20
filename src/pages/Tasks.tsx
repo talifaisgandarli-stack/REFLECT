@@ -361,8 +361,16 @@ export function TasksPage() {
         assignee_ids: profile?.id ? [profile.id] : [],
       });
       if (error) throw error;
+      return tpl.name;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+    // Toast confirms the create so a stray click on the dropdown doesn't
+    // silently spawn a task. The new task lands in queued + (kopya-less)
+    // — user can archive from the toast-adjacent UI if they didn't mean it.
+    onSuccess: (templateName) => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      toast.success(`"${templateName}" şablonundan tapşırıq yaradıldı`);
+    },
+    onError: (e) => toast.error((e as Error).message),
   });
 
   // PRD §6.x — label filter (chip row above the kanban)
@@ -632,11 +640,15 @@ export function TasksPage() {
                 </button>
               ) : null}
             </div>
+            {/* Matches the Seç button's active treatment: filled brand bg +
+                ✓ prefix so the active state is unmissable, not just a border tint. */}
             <button
               className={`btn-outline ${mineOnly ? 'border-brand-text' : ''}`}
+              style={mineOnly ? { background: 'var(--brand-action)', color: 'var(--ink)' } : undefined}
               onClick={() => setMineOnly((v) => !v)}
+              aria-pressed={mineOnly}
             >
-              Mənim
+              {mineOnly ? '✓ Mənim' : 'Mənim'}
             </button>
             {isAdmin && archivableCount > 0 ? (
               <button className="btn-outline" onClick={() => setConfirmArchive(true)}>
@@ -875,7 +887,7 @@ export function TasksPage() {
         // PRD §UX — filters silenced all rows; tell user how to undo
         <EmptyState
           title="Filtrə uyğun tapşırıq yoxdur"
-          body="Axtarış, etiket və ya son tarix filtrini ləğv et."
+          body="Axtarış, etiket, layihə və ya son tarix filtrini ləğv et."
           cta={
             <button
               type="button"
@@ -901,7 +913,9 @@ export function TasksPage() {
                   {TIME_GROUP_LABEL[g]} · {items.length}
                 </h3>
                 <div className="space-y-1">
-                  {items.map((t) => (
+                  {items.map((t) => {
+                    const proj = t.project_id ? projectById[t.project_id] : null;
+                    return (
                     <div
                       key={t.id}
                       className="flex items-center gap-3 py-2 px-3 rounded-card"
@@ -929,11 +943,31 @@ export function TasksPage() {
                           cursor: 'pointer',
                           font: 'inherit',
                           color: 'inherit',
+                          minWidth: 0,
                         }}
                         onClick={() => setCommenting({ id: t.id, title: t.title })}
                       >
                         {t.title}
                       </button>
+                      {/* Project context — matches the project subtitle on board
+                          cards and the Layihə column in the table. */}
+                      {proj ? (
+                        <span
+                          className="text-meta"
+                          style={{
+                            color: 'var(--text-muted)',
+                            fontSize: 11,
+                            flexShrink: 0,
+                            maxWidth: 160,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                          title={proj.name}
+                        >
+                          {proj.name}
+                        </span>
+                      ) : null}
                       {t.deadline ? (
                         <span
                           className="text-meta"
@@ -978,7 +1012,8 @@ export function TasksPage() {
                         Ləğv et
                       </button>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </section>
             );
@@ -1080,6 +1115,10 @@ export function TasksPage() {
                           : undefined,
                       }}
                     >
+                      {/* Priority is conveyed by the left border (3px coloured
+                          stripe above) and the ↑/→/↓ chip below — title stays
+                          clean. Previously also had a 🔴 prefix only for "high",
+                          which made the visual treatment asymmetric. */}
                       <div
                         className="font-medium cursor-pointer"
                         onClick={(e) => { e.stopPropagation(); setCommenting({ id: t.id, title: t.title }); }}
@@ -1092,8 +1131,6 @@ export function TasksPage() {
                           return parts.length ? parts.join('\n\n') : undefined;
                         })()}
                       >
-                        {/* PRD §UX — priority emoji prefix (already shown as left border in batch 72) */}
-                        {t.priority === 'high' ? <span aria-hidden style={{ marginRight: 4 }}>🔴</span> : null}
                         {t.title}
                       </div>
                       {/* Design spec §8.3 — project context on each card */}
