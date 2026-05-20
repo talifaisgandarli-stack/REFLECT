@@ -18,6 +18,7 @@ import { TaskEditModal } from '@/components/TaskEditModal';
 import { TaskCalendarView } from '@/components/TaskCalendarView';
 import { TaskGanttView } from '@/components/TaskGanttView';
 import { SkeletonList } from '@/components/Skeleton';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { downloadCsv } from '@/lib/csv';
 import { toast } from '@/components/Toast';
 import { formatDuration, useActiveTimeEntry, useStartTimer, useStopTimer, useTaskTimeTotals } from '@/lib/useTimeTracking';
@@ -261,6 +262,9 @@ export function TasksPage() {
       qc.invalidateQueries({ queryKey: ['tasks'] });
       setConfirmArchive(false);
     },
+    // Surface failure via toast so ConfirmDialog stays a pure yes/no primitive.
+    // Matches bulkArchiveSelected's error pattern.
+    onError: (e) => toast.error((e as Error).message),
   });
 
   function moveTask(id: string, status: TaskStatus, from?: TaskStatus) {
@@ -650,6 +654,9 @@ export function TasksPage() {
       />
 
       <div
+        // PRD §6.6 — toolbar landmark groups the filter cluster for screen readers.
+        role="toolbar"
+        aria-label="Tapşırıq filtrləri və görünüş"
         className="flex gap-2 mb-4 flex-wrap items-center"
         style={{
           // PRD §UX — keep filters within reach when scrolling long boards
@@ -1327,7 +1334,10 @@ export function TasksPage() {
         />
       ) : (
         // Design spec §8.3 — Cədvəl columns: Tapşırıq · Layihə · İcraçı · Phase · Vaxt · Status
-        <table className="w-full text-body">
+        <table
+          className="w-full text-body"
+          aria-label={`Tapşırıq cədvəli, ${filtered.length} sıra`}
+        >
           <thead>
             <tr style={{ borderBottom: '1px solid var(--line)' }}>
               {bulkMode ? (
@@ -1570,41 +1580,18 @@ export function TasksPage() {
         </div>
       ) : null}
 
-      {confirmArchive ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: 'rgba(14,22,17,0.55)' }}
-          onClick={() => setConfirmArchive(false)}
-        >
-          <div
-            className="bg-surface p-6 rounded-card w-[380px]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-h2 mb-2">Toplu arxivləmə</h2>
-            <p className="text-body mb-5" style={{ color: 'var(--text-muted)' }}>
-              {archivableCount} ədəd <strong>Tamamlandı</strong> / <strong>Ləğv edildi</strong>{' '}
-              tapşırığı arxivlənəcək. Tapşırıqlar lövhədən silinəcək; Arxiv bölməsindən bərpa edilə bilər.
-            </p>
-            {bulkArchive.error ? (
-              <p className="text-meta mb-3" style={{ color: 'var(--error-deep)' }}>
-                {(bulkArchive.error as Error).message}
-              </p>
-            ) : null}
-            <div className="flex justify-end gap-2">
-              <button className="btn-outline" onClick={() => setConfirmArchive(false)}>
-                Ləğv et
-              </button>
-              <button
-                className="btn-primary"
-                disabled={bulkArchive.isPending}
-                onClick={() => bulkArchive.mutate()}
-              >
-                {bulkArchive.isPending ? 'Arxivlənir…' : 'Arxivlə'}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {/* PRD §6.6 — uses ConfirmDialog (role=dialog, aria-modal, Escape handler,
+          focus styles) instead of a hand-rolled overlay. */}
+      <ConfirmDialog
+        open={confirmArchive}
+        title="Toplu arxivləmə"
+        body={`${archivableCount} ədəd Tamamlandı / Ləğv edildi tapşırığı arxivlənəcək. Tapşırıqlar lövhədən silinəcək; Arxiv bölməsindən bərpa edilə bilər.`}
+        confirmLabel="Arxivlə"
+        cancelLabel="Ləğv et"
+        busy={bulkArchive.isPending}
+        onConfirm={() => bulkArchive.mutate()}
+        onCancel={() => setConfirmArchive(false)}
+      />
     </>
   );
 }
