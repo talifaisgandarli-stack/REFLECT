@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { Task } from '@/types/db';
 import { TASK_STATUS_TONE } from '@/lib/labels';
+import { todayInBaku } from '@/lib/time';
 
 interface Props {
   tasks: Task[];
@@ -36,7 +37,8 @@ export function TaskGanttView({
   onOpen,
   projectById,
 }: Props) {
-  const todayIso = new Date().toISOString().slice(0, 10);
+  // PRD §FIN-09 — "today" anchored to Asia/Baku, not the browser's UTC.
+  const todayIso = todayInBaku();
 
   const days = useMemo(() => {
     const out: string[] = [];

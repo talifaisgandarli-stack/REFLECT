@@ -23,6 +23,7 @@ import { BulkActionBar } from '@/components/BulkActionBar';
 import { downloadCsv } from '@/lib/csv';
 import { toast } from '@/components/Toast';
 import { formatDuration, useActiveTimeEntry, useStartTimer, useStopTimer, useTaskTimeTotals } from '@/lib/useTimeTracking';
+import { todayInBaku, endOfWeekInBaku, daysFromTodayInBaku, currentMonthInBaku } from '@/lib/time';
 
 // US-TASK-06 — deadline-based groups for personal view.
 // NOTE: these comparators are computed per-render inside TasksPage rather than
@@ -52,13 +53,30 @@ function taskTimeGroup(t: Task, todayStr: string, endOfWeekStr: string): TimeGro
 }
 const TIME_GROUP_ORDER: TimeGroup[] = ['overdue', 'today', 'week', 'later', 'none'];
 
+// `tasks.duration_unit` is stored loosely as text: TaskCreateModal /
+// TaskEditModal write 'hours' / 'days' (plural), DB default is 'hours',
+// some legacy rows may be singular. Normalize once so every conversion
+// site agrees.
+function normalizeDurationUnit(unit: string | null | undefined): 'hour' | 'day' | 'week' {
+  if (!unit) return 'hour';
+  const s = unit.toLowerCase().replace(/s$/, '');
+  return s === 'day' ? 'day' : s === 'week' ? 'week' : 'hour';
+}
+
+// Convert {value, unit} to hours so column / page totals sum apples-to-apples.
+function durationToHours(d: number, unit: string | null | undefined): number {
+  const u = normalizeDurationUnit(unit);
+  return u === 'day' ? d * 8 : u === 'week' ? d * 40 : d;
+}
+
 // Compact "Vaxt" label for table view: "8s" / "3g" / "2h" depending on unit.
 function formatEstimatedDuration(
   d: number | null,
   unit: string | null | undefined,
 ): string | null {
   if (d == null) return null;
-  const suffix = unit === 'day' ? 'g' : unit === 'week' ? 'h' : 's';
+  const u = normalizeDurationUnit(unit);
+  const suffix = u === 'day' ? 'g' : u === 'week' ? 'h' : 's';
   return `${d}${suffix}`;
 }
 
@@ -67,13 +85,9 @@ export function TasksPage() {
   const qc = useQueryClient();
   // Per-render comparators (see TimeGroup note above) — fresh on each render
   // so day-rollover, focus-refetch, etc. always re-bucket against "now".
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const endOfWeekStr = (() => {
-    const d = new Date();
-    const diff = 7 - (d.getDay() === 0 ? 7 : d.getDay());
-    d.setDate(d.getDate() + diff);
-    return d.toISOString().slice(0, 10);
-  })();
+  // PRD §FIN-09 — date math anchored to Asia/Baku, not the browser's UTC.
+  const todayStr = todayInBaku();
+  const endOfWeekStr = endOfWeekInBaku();
   // Read URL params via useSearchParams so router updates rerender (don't snapshot window.location).
   const [searchParams, setSearchParams] = useSearchParams();
   // Design spec §8.3: four view toggles — Lövhə · Cədvəl · Təqvim · Gantt.
@@ -82,17 +96,15 @@ export function TasksPage() {
     const v = searchParams.get('view');
     return v === 'table' || v === 'calendar' || v === 'gantt' ? v : 'board';
   });
-  // Calendar month being viewed (year + 0-based month). Defaults to current month.
-  const [calMonth, setCalMonth] = useState<{ year: number; month: number }>(() => {
-    const d = new Date();
-    return { year: d.getFullYear(), month: d.getMonth() };
-  });
-  // Gantt window: ISO date of the left edge (axis spans 42 days from here).
-  const [ganttStart, setGanttStart] = useState<string>(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 7);
-    return d.toISOString().slice(0, 10);
-  });
+  // Calendar month being viewed (year + 0-based month). Defaults to current
+  // Bakı month so users right after Bakı midnight don't see "December" while
+  // their wall clock already reads January.
+  const [calMonth, setCalMonth] = useState<{ year: number; month: number }>(
+    () => currentMonthInBaku(),
+  );
+  // Gantt window: ISO date of the left edge (axis spans 42 days). Anchored
+  // to Bakı time so "today − 7" doesn't drift across midnight.
+  const [ganttStart, setGanttStart] = useState<string>(() => daysFromTodayInBaku(-7));
   // Design spec §8.3: "Empty Tamamlandı stub: '+ N daha' — clicks expand archived".
   const [expandedArchive, setExpandedArchive] = useState(false);
   // PRD §UX — ?assignee=<uuid> deep-links from Roster to "tasks for this person"
@@ -151,6 +163,22 @@ export function TasksPage() {
     window.addEventListener('reflect:open-task', onOpenTask);
     return () => window.removeEventListener('reflect:open-task', onOpenTask);
   }, []);
+  // Deep-link consumer for ?focus=<task-id>. TaskCommentsModal builds links
+  // like /tapşırıqlar?focus=<id>; without this effect those links land here
+  // but the modal never opens. The param is cleared after first consumption
+  // so a reload doesn't re-open the same task.
+  const focusConsumedRef = useRef(false);
+  useEffect(() => {
+    const focusId = searchParams.get('focus');
+    if (!focusId || focusConsumedRef.current) return;
+    const t = tasks.find((x) => x.id === focusId);
+    if (!t) return; // tasks still loading or focus id doesn't match current scope
+    focusConsumedRef.current = true;
+    setCommenting({ id: t.id, title: t.title });
+    const next = new URLSearchParams(searchParams);
+    next.delete('focus');
+    setSearchParams(next, { replace: true });
+  }, [tasks, searchParams, setSearchParams]);
   const [editing, setEditing] = useState<Task | null>(null);
   // PRD §6.x — bulk action mode for the table/list view. The reassign
   // popover / target-id state lives inside BulkActionBar; resetting bulk
@@ -200,11 +228,14 @@ export function TasksPage() {
         .update({ assignee_ids: [newAssigneeId] })
         .in('id', ids);
       if (error) throw error;
+      return ids.length;
     },
-    onSuccess: () => {
+    onSuccess: (count) => {
       qc.invalidateQueries({ queryKey: ['tasks'] });
       exitBulkMode();
+      if (count) toast.success(`${count} tapşırıq yenidən təyin edildi`);
     },
+    onError: (e) => toast.error((e as Error).message),
   });
 
   // PRD §6.x — clone a task (title + project + duration + assignees).
@@ -225,11 +256,18 @@ export function TasksPage() {
         risk_buffer_pct: src.risk_buffer_pct,
         is_expertise_subtask: src.is_expertise_subtask,
         task_level: src.task_level,
+        // Schema has no DEFAULT for created_by — must be set explicitly,
+        // otherwise the row's creator lineage is null.
+        created_by: profile?.id ?? null,
         // parent_task_id intentionally not copied — clone is a top-level task
       });
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      toast.success('Tapşırıq klonlandı');
+    },
+    onError: (e) => toast.error((e as Error).message),
   });
   // Persist search filter in URL so refresh / share-link preserves it.
   const [search, setSearch] = useState(searchParams.get('q') ?? '');
@@ -277,9 +315,14 @@ export function TasksPage() {
       { id, status, from },
       {
         onError: (e) => {
+          // Subtask-blocker is handled with its own modal flow; every other
+          // error (RLS denial, network, validation) needs to surface as a
+          // toast so the user knows the card didn't move.
           if (status === 'done' && isOpenChildrenError(e)) {
             setBlocker({ id, from });
+            return;
           }
+          toast.error((e as Error).message);
         },
       },
     );
@@ -359,6 +402,8 @@ export function TasksPage() {
         labels: tpl.labels ?? [],
         is_expertise_subtask: tpl.is_expertise_subtask,
         assignee_ids: profile?.id ? [profile.id] : [],
+        // Same created_by note as cloneTask above — schema has no DEFAULT.
+        created_by: profile?.id ?? null,
       });
       if (error) throw error;
       return tpl.name;
@@ -506,16 +551,13 @@ export function TasksPage() {
     let out = tasks;
     if (labelFilter) out = out.filter((t) => (t.labels ?? []).includes(labelFilter));
     if (projectFilter) out = out.filter((t) => t.project_id === projectFilter);
-    if (todayOnly) {
-      const today = new Date().toISOString().slice(0, 10);
-      out = out.filter((t) => t.deadline === today);
-    }
+    if (todayOnly) out = out.filter((t) => t.deadline === todayStr);
     if (search.trim()) {
       const q = search.toLowerCase();
       out = out.filter((t) => t.title.toLowerCase().includes(q));
     }
     return out;
-  }, [tasks, search, labelFilter, projectFilter, todayOnly]);
+  }, [tasks, search, labelFilter, projectFilter, todayOnly, todayStr]);
 
   // Atomic clear-all. The per-filter URL-sync effects each read the same
   // pre-batch `searchParams` snapshot, so calling 4 setters and letting the
@@ -594,18 +636,15 @@ export function TasksPage() {
 
   // PRD §UX — bubble overdue count to the page meta so it's visible from the header
   // even when the board is scrolled. Matches the red border treatment on cards.
-  const todayIso = new Date().toISOString().slice(0, 10);
   const overdueCount = filtered.filter(
-    (t) => t.deadline && t.deadline < todayIso && t.status !== 'done' && t.status !== 'cancelled',
+    (t) => t.deadline && t.deadline < todayStr && t.status !== 'done' && t.status !== 'cancelled',
   ).length;
   // PRD §UX — total estimated hours across visible open tasks (for at-a-glance load)
   const totalEstimateH = filtered.reduce((sum, t) => {
     if (t.status === 'done' || t.status === 'cancelled') return sum;
-    const d = t.estimated_duration;
-    if (d == null) return sum;
-    const unit = t.duration_unit ?? 'hour';
-    const h = unit === 'day' ? d * 8 : unit === 'week' ? d * 40 : d;
-    return sum + h;
+    return t.estimated_duration == null
+      ? sum
+      : sum + durationToHours(t.estimated_duration, t.duration_unit);
   }, 0);
   const meta = `${filtered.length} cəmi · ${grouped.active.length} icrada · ${grouped.review.length} yoxlamada${
     totalEstimateH > 0 ? ` · ~${Math.round(totalEstimateH)}s` : ''
@@ -1052,13 +1091,13 @@ export function TasksPage() {
             const tone = TASK_STATUS_TONE[s];
             // PRD §UX — sum estimated hours per column so user sees workload per stage.
             // Falls back to 0 when estimated_duration is null; uses duration_unit for h/d/w.
-            const totalHours = grouped[s].reduce((sum, t) => {
-              const d = t.estimated_duration;
-              if (d == null) return sum;
-              const unit = t.duration_unit ?? 'hour';
-              const h = unit === 'day' ? d * 8 : unit === 'week' ? d * 40 : d;
-              return sum + h;
-            }, 0);
+            const totalHours = grouped[s].reduce(
+              (sum, t) =>
+                t.estimated_duration == null
+                  ? sum
+                  : sum + durationToHours(t.estimated_duration, t.duration_unit),
+              0,
+            );
             return (
               <div
                 key={s}
@@ -1077,10 +1116,18 @@ export function TasksPage() {
                 onDragLeave={() => setDragOverColumn(null)}
                 onDrop={(e) => {
                   setDragOverColumn(null);
+                  // Drop payload may be foreign (browser bookmark, plain text
+                  // from another app) — never let JSON.parse throw into React.
                   const raw = e.dataTransfer.getData('text/plain');
                   if (!raw) return;
-                  const { id, from } = JSON.parse(raw);
-                  if (from !== s) moveTask(id, s, from);
+                  let payload: { id?: string; from?: TaskStatus };
+                  try {
+                    payload = JSON.parse(raw);
+                  } catch {
+                    return;
+                  }
+                  if (!payload?.id) return;
+                  if (payload.from !== s) moveTask(payload.id, s, payload.from);
                 }}
               >
                 <h3
@@ -1116,6 +1163,10 @@ export function TasksPage() {
                           JSON.stringify({ id: t.id, from: t.status }),
                         )
                       }
+                      // dragEnd fires even when the drop happens outside any
+                      // column (or is cancelled with Esc) — clear the
+                      // highlight so it doesn't ghost on the last-hovered column.
+                      onDragEnd={() => setDragOverColumn(null)}
                       className="rounded-card p-3 text-body"
                       style={{
                         background: isToday ? 'var(--card-dark-bg)' : 'var(--surface)',
@@ -1435,10 +1486,7 @@ export function TasksPage() {
               month === 11 ? { year: year + 1, month: 0 } : { year, month: month + 1 },
             )
           }
-          onToday={() => {
-            const d = new Date();
-            setCalMonth({ year: d.getFullYear(), month: d.getMonth() });
-          }}
+          onToday={() => setCalMonth(currentMonthInBaku())}
           onOpen={(t) => setCommenting({ id: t.id, title: t.title })}
         />
       ) : view === 'gantt' ? (
@@ -1450,11 +1498,7 @@ export function TasksPage() {
             d.setDate(d.getDate() + days);
             setGanttStart(d.toISOString().slice(0, 10));
           }}
-          onToday={() => {
-            const d = new Date();
-            d.setDate(d.getDate() - 7);
-            setGanttStart(d.toISOString().slice(0, 10));
-          }}
+          onToday={() => setGanttStart(daysFromTodayInBaku(-7))}
           onOpen={(t) => setCommenting({ id: t.id, title: t.title })}
           projectById={projectById}
         />
@@ -1612,10 +1656,7 @@ export function TasksPage() {
           taskId={cancelling.id}
           taskTitle={cancelling.title}
           onCancel={() => setCancelling(null)}
-          onCancelled={() => {
-            setCancelling(null);
-            update.reset();
-          }}
+          onCancelled={() => setCancelling(null)}
         />
       ) : null}
 
