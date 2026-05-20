@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
@@ -15,54 +15,98 @@ import { TaskCreateModal } from '@/components/TaskCreateModal';
 import { CancelTaskModal } from '@/components/CancelTaskModal';
 import { TaskCommentsModal } from '@/components/TaskCommentsModal';
 import { TaskEditModal } from '@/components/TaskEditModal';
+import { TaskCalendarView } from '@/components/TaskCalendarView';
+import { TaskGanttView } from '@/components/TaskGanttView';
+import { SkeletonList } from '@/components/Skeleton';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { BulkActionBar } from '@/components/BulkActionBar';
+import {
+  TaskPersonalList,
+  TIME_GROUP_ORDER,
+  TIME_GROUP_COLOR,
+  type TimeGroup,
+  taskTimeGroup,
+} from '@/components/TaskPersonalList';
 import { downloadCsv } from '@/lib/csv';
 import { toast } from '@/components/Toast';
 import { formatDuration, useActiveTimeEntry, useStartTimer, useStopTimer, useTaskTimeTotals } from '@/lib/useTimeTracking';
+import { todayInBaku, endOfWeekInBaku, daysFromTodayInBaku, currentMonthInBaku } from '@/lib/time';
+import { onOpenTask } from '@/lib/events';
+import { durationToHours, formatEstimatedDuration } from '@/lib/duration';
+import { filterTasks } from '@/lib/taskFilters';
+import { sortTasks as sortTasksPure, type TaskSortKey } from '@/lib/taskSort';
 
-// US-TASK-06 — deadline-based groups for personal view
-const todayStr = new Date().toISOString().slice(0, 10);
-const endOfWeekStr = (() => {
-  const d = new Date();
-  const diff = 7 - (d.getDay() === 0 ? 7 : d.getDay());
-  d.setDate(d.getDate() + diff);
-  return d.toISOString().slice(0, 10);
-})();
+// US-TASK-06 — deadline-based groups for the "Mənim" view. The labels +
+// colour + bucketing logic now live with TaskPersonalList; the table view
+// still uses TIME_GROUP_COLOR to colour the deadline cell, imported below.
 
-type TimeGroup = 'overdue' | 'today' | 'week' | 'later' | 'none';
-const TIME_GROUP_LABEL: Record<TimeGroup, string> = {
-  overdue: 'Gecikmiş',
-  today: 'Bu gün',
-  week: 'Bu həftə',
-  later: 'Sonra',
-  none: 'Deadline yoxdur',
-};
-const TIME_GROUP_COLOR: Record<TimeGroup, string> = {
-  overdue: 'var(--error)',
-  today: 'var(--warning)',
-  week: 'var(--success)',
-  later: 'var(--text-muted)',
-  none: 'var(--text-muted)',
-};
-function taskTimeGroup(t: Task): TimeGroup {
-  if (!t.deadline) return 'none';
-  if (t.deadline < todayStr) return 'overdue';
-  if (t.deadline === todayStr) return 'today';
-  if (t.deadline <= endOfWeekStr) return 'week';
-  return 'later';
-}
-const TIME_GROUP_ORDER: TimeGroup[] = ['overdue', 'today', 'week', 'later', 'none'];
+// Tunables — keep magic numbers out of the render path. Duration helpers
+// (HOURS_PER_*, normalizeDurationUnit, durationToHours, formatEstimatedDuration)
+// now live in src/lib/duration.ts so the conversion is unit-testable.
+const LOOKUP_STALE_MS = 5 * 60_000; // 5 min — applied to profile/project/template lookups
 
 export function TasksPage() {
   const { profile, isAdmin } = useAuth();
   const qc = useQueryClient();
-  const [view, setView] = useState<'board' | 'table'>('board');
+  // Per-render comparators (see TimeGroup note above) — fresh on each render
+  // so day-rollover, focus-refetch, etc. always re-bucket against "now".
+  // PRD §FIN-09 — date math anchored to Asia/Baku, not the browser's UTC.
+  const todayStr = todayInBaku();
+  const endOfWeekStr = endOfWeekInBaku();
+  // Read URL params via useSearchParams so router updates rerender (don't snapshot window.location).
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Stable ref to the latest searchParams so setUrlParam can be a stable
+  // useCallback (and thus safe to capture in the keyboard-shortcut effect
+  // that runs with empty deps). Updated on every render where searchParams
+  // changes identity, which is exactly the contract react-router-dom gives.
+  const searchParamsRef = useRef(searchParams);
+  useEffect(() => { searchParamsRef.current = searchParams; }, [searchParams]);
+  // Single atomic state+URL writer for every URL-managed filter. Pass
+  // value=null to delete the key. Skips the write entirely when state and
+  // URL already agree (no churn for reverse-sync setState calls below).
+  const setUrlParam = useCallback((key: string, value: string | null) => {
+    const cur = searchParamsRef.current;
+    const next = new URLSearchParams(cur);
+    if (value !== null && value !== '') next.set(key, value);
+    else next.delete(key);
+    if (next.toString() !== cur.toString()) {
+      setSearchParams(next, { replace: true });
+    }
+  }, [setSearchParams]);
+  // Design spec §8.3: four view toggles — Lövhə · Cədvəl · Təqvim · Gantt.
+  // Persisted in URL so refresh + share-link land on the same view.
+  const [view, setView] = useState<'board' | 'table' | 'calendar' | 'gantt'>(() => {
+    const v = searchParams.get('view');
+    return v === 'table' || v === 'calendar' || v === 'gantt' ? v : 'board';
+  });
+  // Calendar month being viewed (year + 0-based month). Defaults to current
+  // Bakı month so users right after Bakı midnight don't see "December" while
+  // their wall clock already reads January.
+  const [calMonth, setCalMonth] = useState<{ year: number; month: number }>(
+    () => currentMonthInBaku(),
+  );
+  // Gantt window: ISO date of the left edge (axis spans 42 days). Anchored
+  // to Bakı time so "today − 7" doesn't drift across midnight.
+  const [ganttStart, setGanttStart] = useState<string>(() => daysFromTodayInBaku(-7));
+  // Design spec §8.3: "Empty Tamamlandı stub: '+ N daha' — clicks expand archived".
+  const [expandedArchive, setExpandedArchive] = useState(false);
+  // PRD §6.6 — screen reader announcement after status moves so DnD users
+  // who can't see the column highlight still hear what happened.
+  const [statusAnnouncement, setStatusAnnouncement] = useState('');
   // PRD §UX — ?assignee=<uuid> deep-links from Roster to "tasks for this person"
-  const initialUrlAssignee = new URLSearchParams(window.location.search).get('assignee');
-  const [mineOnly, setMineOnly] = useState(false);
+  const urlAssignee = searchParams.get('assignee');
+  // Persisted in URL (?mine=1) for share-link parity with other filters.
+  const [mineOnly, setMineOnly] = useState<boolean>(() => searchParams.get('mine') === '1');
+  // Ref for the keyboard-shortcut handler (empty deps → stale closure otherwise).
+  const mineOnlyRef = useRef(mineOnly);
+  useEffect(() => { mineOnlyRef.current = mineOnly; }, [mineOnly]);
   // PRD §UX — drag-over column highlight (board view DnD feedback)
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
+  // Source-card dim during drag so the user can tell which card is being
+  // moved (browser ghost-image follows the cursor, but the source stays solid).
+  const [draggingId, setDraggingId] = useState<string | null>(null);
   // URL assignee takes precedence over mineOnly so Roster click always lands on that user
-  const filterAssignee = initialUrlAssignee || (mineOnly && profile?.id ? profile.id : null);
+  const filterAssignee = urlAssignee || (mineOnly && profile?.id ? profile.id : null);
   const { data: tasks = [], isLoading } = useTasks(
     filterAssignee ? { assigneeId: filterAssignee } : undefined,
   );
@@ -78,7 +122,7 @@ export function TasksPage() {
         .eq('is_active', true);
       return (data ?? []) as { id: string; full_name: string | null; avatar_url: string | null }[];
     },
-    staleTime: 5 * 60_000,
+    staleTime: LOOKUP_STALE_MS,
   });
   const profileById = useMemo(
     () => Object.fromEntries(allProfiles.map((p) => [p.id, p])),
@@ -98,25 +142,33 @@ export function TasksPage() {
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [commenting, setCommenting] = useState<{ id: string; title: string } | null>(null);
 
-  // PRD §REQ-TASK — subtask navigation: TaskCommentsModal dispatches
-  // 'reflect:open-task' when user clicks a subtask or the parent back-chip.
+  // PRD §REQ-TASK — subtask navigation: TaskCommentsModal dispatches an
+  // open-task event when the user clicks a subtask or the parent back-chip;
   // Tasks.tsx (modal owner) swaps the open task without re-rendering tree.
+  // Event name + payload shape live in src/lib/events.ts.
+  useEffect(() => onOpenTask((detail) => setCommenting(detail)), []);
+  // Deep-link consumer for ?focus=<task-id>. TaskCommentsModal builds links
+  // like /tapşırıqlar?focus=<id>; without this effect those links land here
+  // but the modal never opens. The param is cleared after first consumption
+  // so a reload doesn't re-open the same task.
+  const focusConsumedRef = useRef(false);
   useEffect(() => {
-    function onOpenTask(e: Event) {
-      const detail = (e as CustomEvent).detail as { id?: string; title?: string };
-      if (detail?.id && detail.title) {
-        setCommenting({ id: detail.id, title: detail.title });
-      }
-    }
-    window.addEventListener('reflect:open-task', onOpenTask);
-    return () => window.removeEventListener('reflect:open-task', onOpenTask);
-  }, []);
+    const focusId = searchParams.get('focus');
+    if (!focusId || focusConsumedRef.current) return;
+    const t = tasks.find((x) => x.id === focusId);
+    if (!t) return; // tasks still loading or focus id doesn't match current scope
+    focusConsumedRef.current = true;
+    setCommenting({ id: t.id, title: t.title });
+    const next = new URLSearchParams(searchParams);
+    next.delete('focus');
+    setSearchParams(next, { replace: true });
+  }, [tasks, searchParams, setSearchParams]);
   const [editing, setEditing] = useState<Task | null>(null);
-  // PRD §6.x — bulk action mode for the table/list view
+  // PRD §6.x — bulk action mode for the table/list view. The reassign
+  // popover / target-id state lives inside BulkActionBar; resetting bulk
+  // mode unmounts the bar which discards that local state automatically.
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [reassignOpen, setReassignOpen] = useState(false);
-  const [reassignTarget, setReassignTarget] = useState('');
 
   function toggleSelected(id: string) {
     setSelectedIds((prev) => {
@@ -126,11 +178,32 @@ export function TasksPage() {
       return next;
     });
   }
-  function exitBulkMode() {
+  // useCallback so dependent effects can list it honestly. Inner setters
+  // are stable; empty deps are correct.
+  const exitBulkMode = useCallback(() => {
     setBulkMode(false);
     setSelectedIds(new Set());
-    setReassignOpen(false);
-  }
+  }, []);
+
+  // Personal-view: checking the box on a task triggers moveTask → done.
+  // The DB round-trip + refetch isn't instant, so React would un-check the
+  // controlled checkbox before the row disappears, producing a tick → un-tick
+  // → vanish flicker. Tracking "I just checked this" locally keeps the tick
+  // visible until the row falls out of groupedByTime entirely.
+  const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const visible = new Set(tasks.map((t) => t.id));
+    setCompletingIds((s) => {
+      if (s.size === 0) return s;
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of s) {
+        if (visible.has(id)) next.add(id);
+        else changed = true;
+      }
+      return changed ? next : s;
+    });
+  }, [tasks]);
 
   const bulkArchiveSelected = useMutation({
     mutationFn: async () => {
@@ -161,11 +234,14 @@ export function TasksPage() {
         .update({ assignee_ids: [newAssigneeId] })
         .in('id', ids);
       if (error) throw error;
+      return ids.length;
     },
-    onSuccess: () => {
+    onSuccess: (count) => {
       qc.invalidateQueries({ queryKey: ['tasks'] });
       exitBulkMode();
+      if (count) toast.success(`${count} tapşırıq yenidən təyin edildi`);
     },
+    onError: (e) => toast.error((e as Error).message),
   });
 
   // PRD §6.x — clone a task (title + project + duration + assignees).
@@ -186,25 +262,30 @@ export function TasksPage() {
         risk_buffer_pct: src.risk_buffer_pct,
         is_expertise_subtask: src.is_expertise_subtask,
         task_level: src.task_level,
+        // Schema has no DEFAULT for created_by — must be set explicitly,
+        // otherwise the row's creator lineage is null.
+        created_by: profile?.id ?? null,
         // parent_task_id intentionally not copied — clone is a top-level task
       });
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      toast.success('Tapşırıq klonlandı');
+    },
+    onError: (e) => toast.error((e as Error).message),
   });
   // Persist search filter in URL so refresh / share-link preserves it.
-  const [searchParams, setSearchParams] = useSearchParams();
+  // State + URL written atomically via changeSearch (no forward-sync effect);
+  // reverse-sync below handles browser back/forward.
   const [search, setSearch] = useState(searchParams.get('q') ?? '');
+  function changeSearch(next: string) {
+    setSearch(next);
+    setUrlParam('q', next);
+  }
   // PRD §6.3 / §UX — Slack/GitHub-style "/" jumps to search box
   const searchInputRef = useRef<HTMLInputElement>(null);
   useSlashFocus(searchInputRef);
-  useEffect(() => {
-    const next = new URLSearchParams(searchParams);
-    if (search) next.set('q', search);
-    else next.delete('q');
-    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
 
   const archivableCount = useMemo(
     () => tasks.filter((t) => t.status === 'done' || t.status === 'cancelled').length,
@@ -224,6 +305,9 @@ export function TasksPage() {
       qc.invalidateQueries({ queryKey: ['tasks'] });
       setConfirmArchive(false);
     },
+    // Surface failure via toast so ConfirmDialog stays a pure yes/no primitive.
+    // Matches bulkArchiveSelected's error pattern.
+    onError: (e) => toast.error((e as Error).message),
   });
 
   function moveTask(id: string, status: TaskStatus, from?: TaskStatus) {
@@ -232,13 +316,25 @@ export function TasksPage() {
       setCancelling({ id, title: t?.title ?? '' });
       return;
     }
+    const task = tasks.find((x) => x.id === id);
     update.mutate(
       { id, status, from },
       {
+        onSuccess: () => {
+          // Mirror the column-highlight visual feedback with an aria-live
+          // message for keyboard / screen-reader users.
+          const title = task?.title ?? 'Tapşırıq';
+          setStatusAnnouncement(`${title}: ${TASK_STATUS_LABEL[status]}`);
+        },
         onError: (e) => {
+          // Subtask-blocker is handled with its own modal flow; every other
+          // error (RLS denial, network, validation) needs to surface as a
+          // toast so the user knows the card didn't move.
           if (status === 'done' && isOpenChildrenError(e)) {
             setBlocker({ id, from });
+            return;
           }
+          toast.error((e as Error).message);
         },
       },
     );
@@ -248,12 +344,49 @@ export function TasksPage() {
   const { data: activeTimer } = useActiveTimeEntry();
   const startTimer = useStartTimer();
   const stopTimer = useStopTimer();
-  // Per-task aggregated time across all entries (chip on board card)
-  const taskTimeTotals = useTaskTimeTotals(tasks.map((t) => t.id));
+  // Per-task aggregated time across all entries (chip on board card).
+  // Memoize the id list so identity is stable across renders where `tasks`
+  // didn't change — keeps the hook's internal cache key check on the fast path.
+  const taskIds = useMemo(() => tasks.map((t) => t.id), [tasks]);
+  const taskTimeTotals = useTaskTimeTotals(taskIds);
 
-  // PRD §6.x — task templates (admin defines, anyone instantiates)
+  // Design spec §8.3 — "+ N daha" expand archived in Tamamlandı column.
+  // Count is cheap (head-only); rows are loaded lazily on expand.
+  const archivedDoneCount = useQuery({
+    queryKey: ['tasks', 'archived-done-count', filterAssignee],
+    queryFn: async () => {
+      let q = supabase
+        .from('tasks')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'done')
+        .not('archived_at', 'is', null);
+      if (filterAssignee) q = q.contains('assignee_ids', [filterAssignee]);
+      const { count } = await q;
+      return count ?? 0;
+    },
+  });
+  const archivedDone = useQuery({
+    queryKey: ['tasks', 'archived-done-rows', filterAssignee],
+    enabled: expandedArchive,
+    queryFn: async (): Promise<Task[]> => {
+      let q = supabase
+        .from('tasks')
+        .select('*')
+        .eq('status', 'done')
+        .not('archived_at', 'is', null);
+      if (filterAssignee) q = q.contains('assignee_ids', [filterAssignee]);
+      const { data, error } = await q.order('archived_at', { ascending: false }).limit(50);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  // PRD §6.x — task templates (admin defines, anyone instantiates).
+  // Templates rarely change at runtime — match the 5-min staleTime used
+  // for the profile / project lookups so we don't refetch every focus.
   const templates = useQuery({
     queryKey: ['task-templates'],
+    staleTime: LOOKUP_STALE_MS,
     queryFn: async () => {
       const { data } = await supabase
         .from('task_templates')
@@ -287,33 +420,50 @@ export function TasksPage() {
         labels: tpl.labels ?? [],
         is_expertise_subtask: tpl.is_expertise_subtask,
         assignee_ids: profile?.id ? [profile.id] : [],
+        // Same created_by note as cloneTask above — schema has no DEFAULT.
+        created_by: profile?.id ?? null,
       });
       if (error) throw error;
+      return tpl.name;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+    // Toast confirms the create so a stray click on the dropdown doesn't
+    // silently spawn a task. The new task lands in queued + (kopya-less)
+    // — user can archive from the toast-adjacent UI if they didn't mean it.
+    onSuccess: (templateName) => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      toast.success(`"${templateName}" şablonundan tapşırıq yaradıldı`);
+    },
+    onError: (e) => toast.error((e as Error).message),
   });
 
-  // PRD §6.x — label filter (chip row above the kanban)
-  // PRD §UX — label filter persisted in URL
+  // PRD §6.x — label filter (chip row above the kanban). URL-persisted.
   const [labelFilter, setLabelFilter] = useState<string | null>(searchParams.get('label'));
-  useEffect(() => {
-    const next = new URLSearchParams(searchParams);
-    if (labelFilter) next.set('label', labelFilter);
-    else next.delete('label');
-    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [labelFilter]);
-  const allLabels = useMemo(() => {
-    const set = new Set<string>();
-    for (const t of tasks) for (const l of t.labels ?? []) set.add(l);
-    return Array.from(set).sort();
+  function changeLabel(next: string | null) {
+    setLabelFilter(next);
+    setUrlParam('label', next);
+  }
+  // Single pass over tasks to build both the sorted label list AND the
+  // per-label counts. The previous code recomputed `filter().length` per
+  // chip per render — O(L × N) every paint, with L labels and N tasks.
+  const { allLabels, labelCounts } = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const t of tasks) {
+      for (const l of t.labels ?? []) counts.set(l, (counts.get(l) ?? 0) + 1);
+    }
+    return {
+      allLabels: Array.from(counts.keys()).sort(),
+      labelCounts: counts,
+    };
   }, [tasks]);
 
-  // PRD §UX — sort within columns; persisted in URL so it survives reload + share
-  type SortKey = 'deadline' | 'priority' | 'created';
-  const [sortBy, setSortBy] = useState<SortKey>(
-    (searchParams.get('sort') as SortKey) || 'deadline',
-  );
+  // PRD §UX — sort within columns; persisted in URL so it survives reload + share.
+  // TaskSortKey is exported from src/lib/taskSort.ts so the state type and
+  // the helper stay in lock-step. Initial value validated so a bogus
+  // ?sort=garbage URL collapses to the default instead of leaking into state.
+  const [sortBy, setSortBy] = useState<TaskSortKey>(() => {
+    const v = searchParams.get('sort');
+    return v === 'priority' || v === 'created' ? v : 'deadline';
+  });
   // PRD §UX — compact mode persisted in localStorage so the user's preference
   // survives across reloads/sessions without bloating the URL.
   const [compactBoard, setCompactBoard] = useState<boolean>(() => {
@@ -328,83 +478,150 @@ export function TasksPage() {
   const [todayOnly, setTodayOnly] = useState(false);
   // PRD §UX — narrow board to one project (URL-persisted so share-link works)
   const [projectFilter, setProjectFilter] = useState<string>(searchParams.get('project') ?? '');
+  function changeProject(next: string) {
+    setProjectFilter(next);
+    setUrlParam('project', next);
+  }
+  function changeView(next: 'board' | 'table' | 'calendar' | 'gantt') {
+    setView(next);
+    setUrlParam('view', next === 'board' ? null : next);
+  }
+  function changeMine(next: boolean) {
+    setMineOnly(next);
+    setUrlParam('mine', next ? '1' : null);
+  }
+
+  // SINGLE source of URL → state propagation. Browser back/forward, external
+  // links, in-app navigation — all funnel through here. Every other write
+  // path is imperative (change*) and updates state + URL atomically; that
+  // means by the time this effect runs after an imperative write, state
+  // already matches URL and every functional updater bails out → no churn.
   useEffect(() => {
-    const next = new URLSearchParams(searchParams);
-    if (projectFilter) next.set('project', projectFilter);
-    else next.delete('project');
-    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectFilter]);
-  // Project list for the dropdown
+    const q = searchParams.get('q') ?? '';
+    setSearch((cur) => (cur === q ? cur : q));
+    const label = searchParams.get('label');
+    setLabelFilter((cur) => (cur === label ? cur : label));
+    const project = searchParams.get('project') ?? '';
+    setProjectFilter((cur) => (cur === project ? cur : project));
+    const sortFromUrl = searchParams.get('sort');
+    const validSort: TaskSortKey =
+      sortFromUrl === 'priority' || sortFromUrl === 'created' ? sortFromUrl : 'deadline';
+    setSortBy((cur) => (cur === validSort ? cur : validSort));
+    const v = searchParams.get('view');
+    const fromUrl: 'board' | 'table' | 'calendar' | 'gantt' =
+      v === 'table' || v === 'calendar' || v === 'gantt' ? v : 'board';
+    setView((cur) => (cur === fromUrl ? cur : fromUrl));
+    const m = searchParams.get('mine') === '1';
+    setMineOnly((cur) => (cur === m ? cur : m));
+  }, [searchParams]);
+
+  // Bulk mode only renders in the table view — auto-exit when switching away
+  // so the floating action bar doesn't ghost in other views. exitBulkMode is
+  // useCallback above; bulkMode is included so the effect resets cleanly if
+  // it ever becomes true outside the table view (defensive).
+  useEffect(() => {
+    if (view !== 'table' && bulkMode) exitBulkMode();
+  }, [view, bulkMode, exitBulkMode]);
+  // Fetch ALL projects (active + archived) so board/table can resolve a task's
+  // project name even after that project is archived. The dropdown below
+  // filters this client-side to active-only — archived projects aren't
+  // useful filter targets but still need a name in the lookup map.
   const projectsForFilter = useQuery({
-    queryKey: ['projects-name-map'],
-    staleTime: 5 * 60_000,
+    queryKey: ['projects-name-phase-map'],
+    staleTime: LOOKUP_STALE_MS,
     queryFn: async () => {
       const { data } = await supabase
         .from('projects')
-        .select('id, name')
-        .is('archived_at', null)
+        .select('id, name, phases, archived_at')
         .order('name');
-      return (data ?? []) as Array<{ id: string; name: string }>;
+      return (data ?? []) as Array<{ id: string; name: string; phases: string[] | null; archived_at: string | null }>;
     },
   });
+  const activeProjects = useMemo(
+    () => (projectsForFilter.data ?? []).filter((p) => !p.archived_at),
+    [projectsForFilter.data],
+  );
+  const projectById = useMemo(
+    () => Object.fromEntries((projectsForFilter.data ?? []).map((p) => [p.id, p])),
+    [projectsForFilter.data],
+  );
 
-  // PRD §6.3 — single key shortcuts: C compact, A mine-only (skip while typing)
+  // PRD §6.3 — single key shortcuts: C compact (board only), A mine-only,
+  // V cycle views, N new task. Listener registered once at mount; current
+  // view read via ref so the empty-deps closure stays valid.
+  const viewRef = useRef(view);
+  useEffect(() => { viewRef.current = view; }, [view]);
   useEffect(() => {
+    const VIEW_ORDER: Array<'board' | 'table' | 'calendar' | 'gantt'> =
+      ['board', 'table', 'calendar', 'gantt'];
     function onKey(e: KeyboardEvent) {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const tag = (e.target as HTMLElement).tagName;
       const editing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement).isContentEditable;
       if (editing) return;
       if (e.key === 'c' || e.key === 'C') {
+        // Compact mode is board-only — silently ignore on other views so
+        // the shortcut doesn't flip hidden state.
+        if (viewRef.current !== 'board') return;
         e.preventDefault();
         setCompactBoard((v) => !v);
       } else if (e.key === 'a' || e.key === 'A') {
         e.preventDefault();
-        setMineOnly((v) => !v);
+        // Atomic state+URL update so back-button restores the previous
+        // toggle. Reads current from a ref because this handler's empty
+        // deps would otherwise close over stale state.
+        const next = !mineOnlyRef.current;
+        setMineOnly(next);
+        setUrlParam('mine', next ? '1' : null);
       } else if (e.key === 'v' || e.key === 'V') {
         e.preventDefault();
-        setView((v) => (v === 'board' ? 'table' : 'board'));
+        const next = VIEW_ORDER[(VIEW_ORDER.indexOf(viewRef.current) + 1) % VIEW_ORDER.length];
+        setView(next);
+        setUrlParam('view', next === 'board' ? null : next);
+      } else if (e.key === 'n' || e.key === 'N') {
+        // Page-local "new task" — doesn't conflict with the global Cmd+N
+        // since modifier keys early-exit at the top of this handler.
+        e.preventDefault();
+        setCreating(true);
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [setUrlParam]);
 
-  const filtered = useMemo(() => {
-    let out = tasks;
-    if (labelFilter) out = out.filter((t) => (t.labels ?? []).includes(labelFilter));
-    if (projectFilter) out = out.filter((t) => t.project_id === projectFilter);
-    if (todayOnly) {
-      const today = new Date().toISOString().slice(0, 10);
-      out = out.filter((t) => t.deadline === today);
+  const filtered = useMemo(
+    () => filterTasks(tasks, { labelFilter, projectFilter, todayOnly, todayStr, search }),
+    [tasks, search, labelFilter, projectFilter, todayOnly, todayStr],
+  );
+
+  // Clear every user-set filter. State setters are batched; the URL update
+  // is one setSearchParams call so we don't write four times in succession.
+  function clearAllFilters() {
+    setSearch('');
+    setLabelFilter(null);
+    setProjectFilter('');
+    setTodayOnly(false);
+    const next = new URLSearchParams(searchParamsRef.current);
+    next.delete('q');
+    next.delete('label');
+    next.delete('project');
+    if (next.toString() !== searchParamsRef.current.toString()) {
+      setSearchParams(next, { replace: true });
     }
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      out = out.filter((t) => t.title.toLowerCase().includes(q));
-    }
-    return out;
-  }, [tasks, search, labelFilter, projectFilter, todayOnly]);
-  useEffect(() => {
-    const next = new URLSearchParams(searchParams);
-    if (sortBy === 'deadline') next.delete('sort');
-    else next.set('sort', sortBy);
-    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortBy]);
-  const sortTasks = (arr: Task[]): Task[] => {
-    const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2, normal: 2 };
-    return [...arr].sort((a, b) => {
-      if (sortBy === 'priority') {
-        const ap = PRIORITY_ORDER[a.priority ?? 'normal'] ?? 3;
-        const bp = PRIORITY_ORDER[b.priority ?? 'normal'] ?? 3;
-        if (ap !== bp) return ap - bp;
-      }
-      if (sortBy === 'created') return (b.created_at ?? '').localeCompare(a.created_at ?? '');
-      // deadline (default): nulls last, ascending
-      return (a.deadline ?? '￿').localeCompare(b.deadline ?? '￿');
-    });
-  };
+  }
+  // sortBy state + URL update in one place — uses the same setUrlParam
+  // helper as every other URL-managed filter (changeSearch/Label/Project/View/Mine).
+  function changeSort(next: TaskSortKey) {
+    setSortBy(next);
+    setUrlParam('sort', next === 'deadline' ? null : next);
+  }
+  // Bind the pure sortTasks helper to current sortBy so the dependent
+  // useMemos can list one stable reference. The sort logic itself lives
+  // in src/lib/taskSort.ts and is unit-tested there.
+  const sortTasks = useCallback(
+    (arr: Task[]): Task[] => sortTasksPure(arr, sortBy),
+    [sortBy],
+  );
 
   const grouped = useMemo(() => {
     const map: Record<TaskStatus, Task[]> = {
@@ -413,35 +630,52 @@ export function TasksPage() {
     for (const t of filtered) map[t.status].push(t);
     for (const k of Object.keys(map) as TaskStatus[]) map[k] = sortTasks(map[k]);
     return map;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered, sortBy]);
+  }, [filtered, sortTasks]);
 
-  // US-TASK-06 — time-grouped personal view computed data
+  // Table view obeys the same sort dropdown as the board (was raw insertion
+  // order from useTasks before, ignoring user's sort preference).
+  const sortedForTable = useMemo(
+    () => sortTasks(filtered),
+    [filtered, sortTasks],
+  );
+
+  // US-TASK-06 — time-grouped personal view computed data.
+  // todayStr/endOfWeekStr are recomputed per render but are stable by value
+  // within a day, so the memo still hits when only their identity changes.
   const groupedByTime = useMemo(() => {
     const map = {} as Record<TimeGroup, Task[]>;
     for (const g of TIME_GROUP_ORDER) map[g] = [];
     for (const t of filtered) {
       if (t.status === 'done' || t.status === 'cancelled') continue;
-      map[taskTimeGroup(t)].push(t);
+      map[taskTimeGroup(t, todayStr, endOfWeekStr)].push(t);
     }
     return map;
-  }, [filtered]);
+  }, [filtered, todayStr, endOfWeekStr]);
 
   // PRD §UX — bubble overdue count to the page meta so it's visible from the header
   // even when the board is scrolled. Matches the red border treatment on cards.
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const overdueCount = filtered.filter(
-    (t) => t.deadline && t.deadline < todayIso && t.status !== 'done' && t.status !== 'cancelled',
-  ).length;
+  const overdueCount = useMemo(
+    () =>
+      filtered.filter(
+        (t) =>
+          t.deadline &&
+          t.deadline < todayStr &&
+          t.status !== 'done' &&
+          t.status !== 'cancelled',
+      ).length,
+    [filtered, todayStr],
+  );
   // PRD §UX — total estimated hours across visible open tasks (for at-a-glance load)
-  const totalEstimateH = filtered.reduce((sum, t) => {
-    if (t.status === 'done' || t.status === 'cancelled') return sum;
-    const d = t.estimated_duration;
-    if (d == null) return sum;
-    const unit = (t as { duration_unit?: string }).duration_unit ?? 'hour';
-    const h = unit === 'day' ? d * 8 : unit === 'week' ? d * 40 : d;
-    return sum + h;
-  }, 0);
+  const totalEstimateH = useMemo(
+    () =>
+      filtered.reduce((sum, t) => {
+        if (t.status === 'done' || t.status === 'cancelled') return sum;
+        return t.estimated_duration == null
+          ? sum
+          : sum + durationToHours(t.estimated_duration, t.duration_unit);
+      }, 0),
+    [filtered],
+  );
   const meta = `${filtered.length} cəmi · ${grouped.active.length} icrada · ${grouped.review.length} yoxlamada${
     totalEstimateH > 0 ? ` · ~${Math.round(totalEstimateH)}s` : ''
   }${
@@ -450,6 +684,13 @@ export function TasksPage() {
 
   return (
     <>
+      {/* PRD §6.6 / designstyle4.md §6.6 — polite live region for status
+          moves. Screen readers announce "<title>: <status>" without
+          interrupting the user (assertive would). Visually hidden via
+          the shared sr-only utility. */}
+      <div aria-live="polite" aria-atomic="true" className="sr-only">
+        {statusAnnouncement}
+      </div>
       <PageHead
         meta={meta}
         title="Tapşırıqlar"
@@ -460,13 +701,15 @@ export function TasksPage() {
                 ref={searchInputRef}
                 className="input max-w-[240px] pr-7"
                 placeholder="Axtar… (/)"
+                // PRD §6.6 — placeholder isn't a label substitute under WCAG.
+                aria-label="Tapşırıq axtarışı"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => changeSearch(e.target.value)}
                 onKeyDown={(e) => {
                   // PRD §UX — Esc clears + blurs (cancel-out pattern)
                   if (e.key === 'Escape' && search) {
                     e.preventDefault();
-                    setSearch('');
+                    changeSearch('');
                     (e.currentTarget as HTMLInputElement).blur();
                   }
                 }}
@@ -477,7 +720,7 @@ export function TasksPage() {
                   type="button"
                   className="absolute right-2 top-1/2 -translate-y-1/2 opacity-50 hover:opacity-100"
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14 }}
-                  onClick={() => setSearch('')}
+                  onClick={() => changeSearch('')}
                   aria-label="Axtarışı təmizlə"
                   tabIndex={-1}
                 >
@@ -485,18 +728,29 @@ export function TasksPage() {
                 </button>
               ) : null}
             </div>
+            {/* Matches the Seç button's active treatment: filled brand bg +
+                ✓ prefix so the active state is unmissable, not just a border tint.
+                Disabled while urlAssignee is set — that takes precedence in
+                filterAssignee, so toggling Mənim would be a silent no-op.
+                The banner above the board explains the override. */}
             <button
               className={`btn-outline ${mineOnly ? 'border-brand-text' : ''}`}
-              onClick={() => setMineOnly((v) => !v)}
+              style={mineOnly ? { background: 'var(--brand-action)', color: 'var(--ink)' } : undefined}
+              onClick={() => changeMine(!mineOnly)}
+              aria-pressed={mineOnly}
+              disabled={!!urlAssignee}
+              title={urlAssignee ? 'Başqa istifadəçi süzgəci aktivdir — yuxarıdakı banner-dən təmizlə' : undefined}
             >
-              Mənim
+              {mineOnly ? '✓ Mənim' : 'Mənim'}
             </button>
             {isAdmin && archivableCount > 0 ? (
               <button className="btn-outline" onClick={() => setConfirmArchive(true)}>
                 Arxivlə ({archivableCount})
               </button>
             ) : null}
-            {view === 'table' ? (
+            {/* Bulk operations are admin-tier — matches `bulkArchive` and
+                `bulkReassign` gating elsewhere in this file. */}
+            {view === 'table' && isAdmin ? (
               <button
                 className={`btn-outline ${bulkMode ? 'border-brand-text' : ''}`}
                 onClick={() => bulkMode ? exitBulkMode() : setBulkMode(true)}
@@ -510,15 +764,21 @@ export function TasksPage() {
               disabled={filtered.length === 0}
               onClick={() => {
                 downloadCsv(
-                  `tasks-${new Date().toISOString().slice(0, 10)}`,
+                  `tasks-${todayStr}`,
                   ['Başlıq', 'Status', 'Layihə', 'Deadline', 'İcraçılar', 'Yaradıldı'],
                   filtered.map((t) => ({
                     'Başlıq': t.title,
-                    'Status': t.status,
-                    'Layihə': t.project_id ?? '',
+                    'Status': TASK_STATUS_LABEL[t.status],
+                    // Resolve project_id → name; fall back to '' (not the
+                    // UUID) so spreadsheets stay human-readable.
+                    'Layihə': t.project_id ? projectById[t.project_id]?.name ?? '' : '',
                     'Deadline': t.deadline ?? '',
-                    'İcraçılar': (t.assignee_ids ?? []).join('; '),
-                    'Yaradıldı': t.created_at ? new Date(t.created_at).toISOString() : '',
+                    'İcraçılar': (t.assignee_ids ?? [])
+                      .map((id) => profileById[id]?.full_name ?? id)
+                      .join('; '),
+                    // Match the Deadline format (YYYY-MM-DD) so both date
+                    // columns parse the same way in Excel/Numbers.
+                    'Yaradıldı': t.created_at ? t.created_at.slice(0, 10) : '',
                   })),
                 );
               }}
@@ -532,12 +792,12 @@ export function TasksPage() {
                 className="input max-w-[200px]"
                 value=""
                 onChange={(e) => {
-                  if (e.target.value) {
-                    createFromTemplate.mutate(e.target.value);
-                    e.target.value = '';
-                  }
+                  if (e.target.value) createFromTemplate.mutate(e.target.value);
+                  // Controlled value="" already pins the select back to the
+                  // placeholder after this render — no DOM mutation needed.
                 }}
                 disabled={createFromTemplate.isPending}
+                aria-label="Şablondan tapşırıq yarat"
               >
                 <option value="">Şablondan yarat…</option>
                 {(templates.data ?? []).map((t) => (
@@ -553,6 +813,9 @@ export function TasksPage() {
       />
 
       <div
+        // PRD §6.6 — toolbar landmark groups the filter cluster for screen readers.
+        role="toolbar"
+        aria-label="Tapşırıq filtrləri və görünüş"
         className="flex gap-2 mb-4 flex-wrap items-center"
         style={{
           // PRD §UX — keep filters within reach when scrolling long boards
@@ -568,14 +831,15 @@ export function TasksPage() {
           className="input"
           style={{ maxWidth: 160, height: 32, fontSize: 12 }}
           value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as SortKey)}
+          onChange={(e) => changeSort(e.target.value as TaskSortKey)}
           aria-label="Sıralama"
         >
           <option value="deadline">↑ Son tarix</option>
           <option value="priority">Prioritet</option>
           <option value="created">Yenilər əvvəl</option>
         </select>
-        {/* PRD §UX — "Bu gün" quick filter (deadline = today) */}
+        {/* PRD §UX — deadline=today quick filter. Distinct from the BU GÜN column,
+            which is status-based; this is purely deadline-based. */}
         <button
           type="button"
           className="chip"
@@ -586,21 +850,23 @@ export function TasksPage() {
           }}
           onClick={() => setTodayOnly((v) => !v)}
           aria-pressed={todayOnly}
-          title="Yalnız bu günə düşənləri göstər"
+          title="Yalnız bu gün son tarixi olanları göstər"
         >
-          {todayOnly ? '✓ Bu gün' : 'Bu gün'}
+          {todayOnly ? '✓ Bugünkü son tarix' : 'Bugünkü son tarix'}
         </button>
-        {/* PRD §UX — narrow to a single project */}
-        {(projectsForFilter.data ?? []).length > 0 ? (
+        {/* PRD §UX — narrow to a single project. Dropdown lists active
+            projects only; the projectById lookup separately covers archived
+            ones so task cards still show their project name post-archive. */}
+        {activeProjects.length > 0 ? (
           <select
             className="input"
             style={{ maxWidth: 200, height: 32, fontSize: 12 }}
             value={projectFilter}
-            onChange={(e) => setProjectFilter(e.target.value)}
+            onChange={(e) => changeProject(e.target.value)}
             aria-label="Layihəyə görə süz"
           >
             <option value="">Bütün layihələr</option>
-            {(projectsForFilter.data ?? []).map((p) => (
+            {activeProjects.map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
@@ -622,33 +888,42 @@ export function TasksPage() {
             {compactBoard ? '✓ Yığcam' : 'Yığcam'}
           </button>
         ) : null}
-        {(['board', 'table'] as const).map((v) => (
-          <button
-            key={v}
-            className={`chip ${view === v ? 'chip-brand' : ''}`}
-            onClick={() => setView(v)}
-          >
-            {v === 'board' ? 'Lövhə' : 'Cədvəl'}
-          </button>
-        ))}
+        {/* Design spec §8.3 — view toggles: Lövhə · Cədvəl · Təqvim · Gantt */}
+        {(['board', 'table', 'calendar', 'gantt'] as const).map((v) => {
+          const label =
+            v === 'board' ? 'Lövhə' :
+            v === 'table' ? 'Cədvəl' :
+            v === 'calendar' ? 'Təqvim' : 'Gantt';
+          return (
+            <button
+              key={v}
+              className={`chip ${view === v ? 'chip-brand' : ''}`}
+              onClick={() => changeView(v)}
+            >
+              {label}
+            </button>
+          );
+        })}
         {/* PRD §6.x — label filter chips */}
         {allLabels.length > 0 ? (
           <>
             <span style={{ width: 1, background: 'var(--line)', margin: '0 4px' }} />
             <button
               className={`chip ${labelFilter === null ? 'chip-brand' : ''}`}
-              onClick={() => setLabelFilter(null)}
+              onClick={() => changeLabel(null)}
+              aria-pressed={labelFilter === null}
             >
-              Bütün etiketlər
+              {labelFilter === null ? '✓ Bütün etiketlər' : 'Bütün etiketlər'}
             </button>
             {allLabels.map((l) => {
-              // PRD §UX — show per-label task count so filter chips signal volume
-              const count = tasks.filter((t) => (t.labels ?? []).includes(l)).length;
+              // PRD §UX — show per-label task count so filter chips signal volume.
+              // Pulled from the labelCounts memo so this is O(1) per chip.
+              const count = labelCounts.get(l) ?? 0;
               return (
                 <button
                   key={l}
                   className={`chip ${labelFilter === l ? 'chip-brand' : ''}`}
-                  onClick={() => setLabelFilter(labelFilter === l ? null : l)}
+                  onClick={() => changeLabel(labelFilter === l ? null : l)}
                 >
                   # {l}
                   <span style={{ marginLeft: 4, opacity: 0.6, fontVariantNumeric: 'tabular-nums' }}>
@@ -667,7 +942,7 @@ export function TasksPage() {
               type="button"
               className="chip"
               style={{ fontSize: 11, color: 'var(--text-muted)' }}
-              onClick={() => { setSearch(''); setLabelFilter(null); setProjectFilter(''); setTodayOnly(false); }}
+              onClick={clearAllFilters}
               title="Bütün filtrləri təmizlə"
             >
               ✕ Təmizlə
@@ -677,7 +952,7 @@ export function TasksPage() {
       </div>
 
       {/* PRD §UX — assignee filter from URL banner with one-click clear */}
-      {initialUrlAssignee ? (
+      {urlAssignee ? (
         <div
           className="card mb-3 flex items-center justify-between gap-3 flex-wrap"
           style={{ background: 'var(--brand-glow-sm)' }}
@@ -689,148 +964,82 @@ export function TasksPage() {
             type="button"
             className="chip"
             style={{ fontSize: 11 }}
-            onClick={() => {
-              const next = new URLSearchParams(searchParams);
-              next.delete('assignee');
-              setSearchParams(next, { replace: true });
-              window.location.reload();
-            }}
+            onClick={() => setUrlParam('assignee', null)}
           >
             ✕ Bütün istifadəçilər
           </button>
         </div>
       ) : null}
       {isLoading ? (
-        <div className="card text-meta">Yüklənir…</div>
+        // PRD §6.7 — skeleton matches layout (consistent with Projects/Clients).
+        <SkeletonList rows={6} />
       ) : tasks.length === 0 ? (
-        <EmptyState
-          title="Hələ tapşırıq yoxdur"
-          body="İlk tapşırığı yarat və BU GÜN sütunu canlanacaq."
-          cta={
-            <button className="btn-primary" onClick={() => setCreating(true)}>
-              + Yeni tapşırıq
-            </button>
-          }
-        />
+        // Two empty-state branches: a true "no tasks anywhere" message vs.
+        // "you're scoped to one user and they have none". The latter
+        // shouldn't push a "+ Yeni tapşırıq" CTA — the viewer might not be
+        // an admin and can't usefully create on someone else's behalf here.
+        filterAssignee ? (
+          <EmptyState
+            title="Bu istifadəçinin tapşırığı yoxdur"
+            body="Hələ heç bir aktiv tapşırıq təyin edilməyib."
+          />
+        ) : (
+          <EmptyState
+            title="Hələ tapşırıq yoxdur"
+            body="İlk tapşırığı yarat və BU GÜN sütunu canlanacaq."
+            cta={
+              <button className="btn-primary" onClick={() => setCreating(true)}>
+                + Yeni tapşırıq
+              </button>
+            }
+          />
+        )
       ) : filtered.length === 0 ? (
         // PRD §UX — filters silenced all rows; tell user how to undo
         <EmptyState
           title="Filtrə uyğun tapşırıq yoxdur"
-          body="Axtarış, etiket və ya 'Bu gün' filtrini ləğv et."
+          body="Axtarış, etiket, layihə və ya son tarix filtrini ləğv et."
           cta={
             <button
               type="button"
               className="btn-outline"
-              onClick={() => { setSearch(''); setLabelFilter(null); setTodayOnly(false); setProjectFilter(''); }}
+              onClick={clearAllFilters}
             >
               ✕ Filtrləri təmizlə
             </button>
           }
         />
       ) : mineOnly ? (
-        // US-TASK-06 — personal view: time-grouped list with inline actions
-        <div className="space-y-6">
-          {TIME_GROUP_ORDER.map((g) => {
-            const items = groupedByTime[g];
-            if (!items.length) return null;
-            return (
-              <section key={g}>
-                <h3
-                  className="text-tiny mb-3"
-                  style={{ color: TIME_GROUP_COLOR[g], letterSpacing: '0.08em', textTransform: 'uppercase' }}
-                >
-                  {TIME_GROUP_LABEL[g]} · {items.length}
-                </h3>
-                <div className="space-y-1">
-                  {items.map((t) => (
-                    <div
-                      key={t.id}
-                      className="flex items-center gap-3 py-2 px-3 rounded-card"
-                      style={{
-                        background: bulkMode && selectedIds.has(t.id) ? 'var(--brand-glow-sm)' : 'var(--surface)',
-                        border: '1px solid var(--line)',
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={bulkMode ? selectedIds.has(t.id) : false}
-                        onChange={() => bulkMode ? toggleSelected(t.id) : moveTask(t.id, 'done', t.status)}
-                        style={{ accentColor: 'var(--brand-action)', width: 16, height: 16, flexShrink: 0, cursor: 'pointer' }}
-                        aria-label={bulkMode ? `${t.title} seç` : `${t.title} tamamlandı`}
-                      />
-                      <span
-                        className="flex-1 text-body cursor-pointer"
-                        onClick={() => setCommenting({ id: t.id, title: t.title })}
-                      >
-                        {t.title}
-                      </span>
-                      {t.deadline ? (
-                        <span
-                          className="text-meta"
-                          style={{ color: TIME_GROUP_COLOR[g], fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}
-                        >
-                          {t.deadline}
-                        </span>
-                      ) : null}
-                      {/* PRD §US-TASK-06 — inline status dropdown (non-done) for personal view */}
-                      <select
-                        aria-label="Status dəyiş"
-                        value={t.status}
-                        onChange={(e) => moveTask(t.id, e.target.value as TaskStatus, t.status)}
-                        className="text-meta px-2 py-0.5 rounded border-0"
-                        style={{
-                          background: 'var(--surface-raised)',
-                          color: TASK_STATUS_TONE[t.status].text,
-                          flexShrink: 0,
-                          fontSize: 11,
-                        }}
-                      >
-                        {TASK_STATUS_ORDER.map((s) => (
-                          <option key={s} value={s}>{TASK_STATUS_LABEL[s]}</option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => setCommenting({ id: t.id, title: t.title })}
-                        className="opacity-60 hover:opacity-100"
-                        style={{ color: 'var(--text-muted)', fontSize: 13, flexShrink: 0 }}
-                        aria-label="Şərhlər"
-                      >
-                        💬
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCancelling({ id: t.id, title: t.title })}
-                        className="text-meta opacity-60 hover:opacity-100"
-                        style={{ color: 'var(--text-muted)', flexShrink: 0 }}
-                        aria-label={`Tapşırığı ləğv et: ${t.title}`}
-                      >
-                        Ləğv et
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            );
-          })}
-          {TIME_GROUP_ORDER.every((g) => !groupedByTime[g].length) && (
-            <p className="text-meta" style={{ color: 'var(--text-muted)' }}>Aktiv tapşırıq yoxdur.</p>
-          )}
-        </div>
+        <TaskPersonalList
+          groupedByTime={groupedByTime}
+          projectById={projectById}
+          bulkMode={bulkMode}
+          selectedIds={selectedIds}
+          completingIds={completingIds}
+          onToggleSelected={toggleSelected}
+          onMarkCompleting={(id) => setCompletingIds((s) => new Set(s).add(id))}
+          onMove={moveTask}
+          onOpenComments={(t) => setCommenting({ id: t.id, title: t.title })}
+          onCancel={(t) => setCancelling({ id: t.id, title: t.title })}
+        />
       ) : view === 'board' ? (
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
           {TASK_STATUS_ORDER.filter((s) => !compactBoard || (s !== 'done' && s !== 'cancelled')).map((s) => {
-            const isToday = s === 'active';
+            // Design spec §8.3 — column order is İdeyalar · BU GÜN · İcrada · …
+            // BU GÜN = "queued" (planned-for-today work), which is the ink column;
+            // İcrada = "active" (in-progress). The status enum's "queued" label is
+            // Başlanmayıb, but on the board the ink column is rebranded BU GÜN.
+            const isToday = s === 'queued';
             const tone = TASK_STATUS_TONE[s];
             // PRD §UX — sum estimated hours per column so user sees workload per stage.
             // Falls back to 0 when estimated_duration is null; uses duration_unit for h/d/w.
-            const totalHours = grouped[s].reduce((sum, t) => {
-              const d = t.estimated_duration;
-              if (d == null) return sum;
-              const unit = (t as { duration_unit?: string }).duration_unit ?? 'hour';
-              const h = unit === 'day' ? d * 8 : unit === 'week' ? d * 40 : d;
-              return sum + h;
-            }, 0);
+            const totalHours = grouped[s].reduce(
+              (sum, t) =>
+                t.estimated_duration == null
+                  ? sum
+                  : sum + durationToHours(t.estimated_duration, t.duration_unit),
+              0,
+            );
             return (
               <div
                 key={s}
@@ -849,10 +1058,18 @@ export function TasksPage() {
                 onDragLeave={() => setDragOverColumn(null)}
                 onDrop={(e) => {
                   setDragOverColumn(null);
+                  // Drop payload may be foreign (browser bookmark, plain text
+                  // from another app) — never let JSON.parse throw into React.
                   const raw = e.dataTransfer.getData('text/plain');
                   if (!raw) return;
-                  const { id, from } = JSON.parse(raw);
-                  if (from !== s) moveTask(id, s, from);
+                  let payload: { id?: string; from?: TaskStatus };
+                  try {
+                    payload = JSON.parse(raw);
+                  } catch {
+                    return;
+                  }
+                  if (!payload?.id) return;
+                  if (payload.from !== s) moveTask(payload.id, s, payload.from);
                 }}
               >
                 <h3
@@ -874,19 +1091,33 @@ export function TasksPage() {
                   {grouped[s].map((t) => {
                     // PRD §UX — surface overdue tasks visually on the board so they
                     // can't be missed when scrolling through a column. Skip done/cancelled.
+                    // Uses todayStr from outer scope (one Date(), not per-card).
                     const isOverdue = !!t.deadline
                       && t.status !== 'done' && t.status !== 'cancelled'
-                      && t.deadline < new Date().toISOString().slice(0, 10);
+                      && t.deadline < todayStr;
                     return (
                     <article
                       key={t.id}
+                      // Parent <div> declares role="list"; <article> default
+                      // implicit role is "article" which breaks the list
+                      // semantics. Explicit listitem keeps the row count
+                      // exposed to AT.
+                      role="listitem"
                       draggable
-                      onDragStart={(e) =>
+                      onDragStart={(e) => {
                         e.dataTransfer.setData(
                           'text/plain',
                           JSON.stringify({ id: t.id, from: t.status }),
-                        )
-                      }
+                        );
+                        setDraggingId(t.id);
+                      }}
+                      // dragEnd fires even when the drop happens outside any
+                      // column (or is cancelled with Esc) — clear the
+                      // highlight + the source-dim so neither ghosts.
+                      onDragEnd={() => {
+                        setDragOverColumn(null);
+                        setDraggingId(null);
+                      }}
                       className="rounded-card p-3 text-body"
                       style={{
                         background: isToday ? 'var(--card-dark-bg)' : 'var(--surface)',
@@ -904,8 +1135,14 @@ export function TasksPage() {
                           : t.priority === 'low'
                           ? '3px solid var(--success-deep, #16794a)'
                           : undefined,
+                        opacity: draggingId === t.id ? 0.4 : 1,
+                        transition: 'opacity 120ms ease',
                       }}
                     >
+                      {/* Priority is conveyed by the left border (3px coloured
+                          stripe above) and the ↑/→/↓ chip below — title stays
+                          clean. Previously also had a 🔴 prefix only for "high",
+                          which made the visual treatment asymmetric. */}
                       <div
                         className="font-medium cursor-pointer"
                         onClick={(e) => { e.stopPropagation(); setCommenting({ id: t.id, title: t.title }); }}
@@ -918,10 +1155,20 @@ export function TasksPage() {
                           return parts.length ? parts.join('\n\n') : undefined;
                         })()}
                       >
-                        {/* PRD §UX — priority emoji prefix (already shown as left border in batch 72) */}
-                        {t.priority === 'high' ? <span aria-hidden style={{ marginRight: 4 }}>🔴</span> : null}
                         {t.title}
                       </div>
+                      {/* Design spec §8.3 — project context on each card */}
+                      {t.project_id && projectById[t.project_id] ? (
+                        <div
+                          className="text-meta mt-0.5"
+                          style={{
+                            color: isToday ? 'var(--text-faint)' : 'var(--text-muted)',
+                            fontSize: 11,
+                          }}
+                        >
+                          {projectById[t.project_id].name}
+                        </div>
+                      ) : null}
                       {/* Assignee avatars — PRD §6.8 */}
                       {t.assignee_ids.length > 0 && (
                         <div className="mt-1">
@@ -1099,6 +1346,70 @@ export function TasksPage() {
                     );
                   })}
                 </div>
+                {/* Design spec §8.3 — "+ N daha" expand archived (Tamamlandı only) */}
+                {s === 'done' && (archivedDoneCount.data ?? 0) > 0 ? (
+                  <button
+                    type="button"
+                    className="mt-2 w-full text-left text-meta opacity-60 hover:opacity-100 py-1 px-2 rounded-btn"
+                    style={{ color: 'var(--text-muted)', fontSize: 12 }}
+                    onClick={() => setExpandedArchive((v) => !v)}
+                    aria-expanded={expandedArchive}
+                  >
+                    {expandedArchive ? '− Arxivi gizlət' : `+ ${archivedDoneCount.data} daha`}
+                  </button>
+                ) : null}
+                {s === 'done' && expandedArchive ? (
+                  <div className="mt-2 space-y-2">
+                    {archivedDone.isLoading ? (
+                      <p className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                        Yüklənir…
+                      </p>
+                    ) : (archivedDone.data ?? []).length === 0 ? (
+                      <p className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                        Arxivdə Tamamlandı yoxdur.
+                      </p>
+                    ) : (
+                      (archivedDone.data ?? []).map((t) => {
+                        const proj = t.project_id ? projectById[t.project_id] : null;
+                        return (
+                          <article
+                            key={t.id}
+                            className="rounded-card p-2 text-body"
+                            style={{
+                              background: 'var(--surface-mist)',
+                              border: '1px dashed var(--line)',
+                              opacity: 0.75,
+                            }}
+                          >
+                            <div
+                              className="font-medium cursor-pointer"
+                              style={{ fontSize: 12 }}
+                              onClick={() => setCommenting({ id: t.id, title: t.title })}
+                            >
+                              {t.title}
+                            </div>
+                            {proj ? (
+                              <div
+                                className="text-meta"
+                                style={{ color: 'var(--text-muted)', fontSize: 10 }}
+                              >
+                                {proj.name}
+                              </div>
+                            ) : null}
+                            {t.archived_at ? (
+                              <div
+                                className="text-meta"
+                                style={{ color: 'var(--text-muted)', fontSize: 10, fontVariantNumeric: 'tabular-nums' }}
+                              >
+                                Arxivləndi: {t.archived_at.slice(0, 10)}
+                              </div>
+                            ) : null}
+                          </article>
+                        );
+                      })
+                    )}
+                  </div>
+                ) : null}
                 {/* Quick-add per column: opens TaskCreateModal pre-set to this status */}
                 <button
                   type="button"
@@ -1113,11 +1424,53 @@ export function TasksPage() {
             );
           })}
         </div>
+      ) : view === 'calendar' ? (
+        <TaskCalendarView
+          tasks={filtered}
+          year={calMonth.year}
+          month={calMonth.month}
+          onPrev={() =>
+            setCalMonth(({ year, month }) =>
+              month === 0 ? { year: year - 1, month: 11 } : { year, month: month - 1 },
+            )
+          }
+          onNext={() =>
+            setCalMonth(({ year, month }) =>
+              month === 11 ? { year: year + 1, month: 0 } : { year, month: month + 1 },
+            )
+          }
+          onToday={() => setCalMonth(currentMonthInBaku())}
+          onOpen={(t) => setCommenting({ id: t.id, title: t.title })}
+        />
+      ) : view === 'gantt' ? (
+        <TaskGanttView
+          tasks={filtered}
+          startDate={ganttStart}
+          onShift={(days) => {
+            const d = new Date(ganttStart + 'T00:00:00');
+            d.setDate(d.getDate() + days);
+            setGanttStart(d.toISOString().slice(0, 10));
+          }}
+          onToday={() => setGanttStart(daysFromTodayInBaku(-7))}
+          onOpen={(t) => setCommenting({ id: t.id, title: t.title })}
+          projectById={projectById}
+        />
       ) : (
-        <table className="w-full text-body">
+        // Design spec §8.3 — Cədvəl columns: Tapşırıq · Layihə · İcraçı · Phase · Vaxt · Status
+        <table
+          className="w-full text-body"
+          aria-label={`Tapşırıq cədvəli, ${filtered.length} sıra`}
+        >
           <thead>
             <tr style={{ borderBottom: '1px solid var(--line)' }}>
-              {['Tapşırıq', 'Status', 'İcraçı', 'Deadline'].map((h) => (
+              {bulkMode ? (
+                <th
+                  className="text-meta text-left py-3 px-3"
+                  style={{ width: 36 }}
+                  aria-label="Seçim sütunu"
+                />
+              ) : null}
+              {['Tapşırıq', 'Layihə', 'İcraçı', 'Phase', 'Vaxt', 'Status'].map((h) => (
                 <th
                   key={h}
                   className="text-meta text-left py-3 px-3"
@@ -1133,35 +1486,100 @@ export function TasksPage() {
             </tr>
           </thead>
           <tbody>
-            {tasks.map((t) => (
-              <tr
-                key={t.id}
-                onClick={() => setCommenting({ id: t.id, title: t.title })}
-                className="hover:bg-surface-mist cursor-pointer"
-                style={{ borderBottom: '1px solid var(--line-soft)' }}
-                title="Şərhləri aç"
-              >
-                <td className="py-3 px-3">{t.title}</td>
-                <td className="py-3 px-3">{TASK_STATUS_LABEL[t.status]}</td>
-                <td className="py-3 px-3">
-                  <AvatarGroup people={assigneePeople(t.assignee_ids)} size={24} />
-                </td>
-                <td className="py-3 px-3">
-                  {t.deadline ? (
-                    <span
-                      style={{
-                        color: TIME_GROUP_COLOR[taskTimeGroup(t)],
-                        fontVariantNumeric: 'tabular-nums',
-                      }}
-                    >
-                      {t.deadline}
-                    </span>
-                  ) : (
-                    <span style={{ color: 'var(--text-muted)' }}>—</span>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {sortedForTable.map((t) => {
+              const selected = bulkMode && selectedIds.has(t.id);
+              const proj = t.project_id ? projectById[t.project_id] : null;
+              // Phase: surface project's first declared phase, or "Ekspertiza"
+              // for expertise subtasks (architectural-phase concept per PRD §326).
+              const phase = t.is_expertise_subtask
+                ? 'Ekspertiza'
+                : proj?.phases?.[0] ?? null;
+              const durationStr = formatEstimatedDuration(
+                t.estimated_duration,
+                t.duration_unit,
+              );
+              // Mirror the board's overdue treatment so the same data reads
+              // the same way in both views (not color-only — deadline text is
+              // already red via TIME_GROUP_COLOR; tint adds row-level signal).
+              const isOverdue = !!t.deadline
+                && t.status !== 'done' && t.status !== 'cancelled'
+                && t.deadline < todayStr;
+              return (
+                <tr
+                  key={t.id}
+                  onClick={() =>
+                    bulkMode ? toggleSelected(t.id) : setCommenting({ id: t.id, title: t.title })
+                  }
+                  className="hover:bg-surface-mist cursor-pointer"
+                  style={{
+                    borderBottom: '1px solid var(--line-soft)',
+                    background: selected
+                      ? 'var(--brand-glow-sm)'
+                      : isOverdue
+                      ? 'var(--error-bg)'
+                      : undefined,
+                  }}
+                  title={bulkMode ? 'Seçimi dəyişdir' : 'Şərhləri aç'}
+                >
+                  {bulkMode ? (
+                    <td className="py-3 px-3" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => toggleSelected(t.id)}
+                        style={{
+                          accentColor: 'var(--brand-action)',
+                          width: 16,
+                          height: 16,
+                          cursor: 'pointer',
+                        }}
+                        aria-label={`${t.title} seç`}
+                      />
+                    </td>
+                  ) : null}
+                  <td className="py-3 px-3">{t.title}</td>
+                  <td className="py-3 px-3" style={{ color: proj ? undefined : 'var(--text-muted)' }}>
+                    {proj?.name ?? '—'}
+                  </td>
+                  <td className="py-3 px-3">
+                    <AvatarGroup people={assigneePeople(t.assignee_ids)} size={24} />
+                  </td>
+                  <td className="py-3 px-3" style={{ color: phase ? undefined : 'var(--text-muted)' }}>
+                    {phase ?? '—'}
+                  </td>
+                  <td className="py-3 px-3">
+                    {t.deadline ? (
+                      <span
+                        style={{
+                          color: TIME_GROUP_COLOR[taskTimeGroup(t, todayStr, endOfWeekStr)],
+                          fontVariantNumeric: 'tabular-nums',
+                        }}
+                      >
+                        {t.deadline}
+                        {durationStr ? (
+                          <span
+                            style={{
+                              marginLeft: 6,
+                              color: 'var(--text-muted)',
+                              fontSize: 11,
+                            }}
+                          >
+                            · {durationStr}
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : durationStr ? (
+                      <span style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                        {durationStr}
+                      </span>
+                    ) : (
+                      <span style={{ color: 'var(--text-muted)' }}>—</span>
+                    )}
+                  </td>
+                  <td className="py-3 px-3">{TASK_STATUS_LABEL[t.status]}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -1182,6 +1600,10 @@ export function TasksPage() {
       {quickAddCol ? (
         <TaskCreateModal
           defaultStatus={quickAddCol}
+          // If the user has narrowed the board to a single project, pre-fill
+          // it on the new task — otherwise the quick-add modal opens with
+          // no project context and the user has to re-pick.
+          defaultProjectId={projectFilter || undefined}
           onClose={() => setQuickAddCol(null)}
         />
       ) : null}
@@ -1191,10 +1613,7 @@ export function TasksPage() {
           taskId={cancelling.id}
           taskTitle={cancelling.title}
           onCancel={() => setCancelling(null)}
-          onCancelled={() => {
-            setCancelling(null);
-            update.reset();
-          }}
+          onCancelled={() => setCancelling(null)}
         />
       ) : null}
 
@@ -1210,126 +1629,31 @@ export function TasksPage() {
         <TaskEditModal task={editing} onClose={() => setEditing(null)} />
       ) : null}
 
-      {/* PRD §6.x — bulk action floating bar (table view only) */}
       {bulkMode && selectedIds.size > 0 ? (
-        <div
-          className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-capsule px-4 py-3 flex items-center gap-3 shadow-xl z-40"
-          style={{
-            background: 'var(--ink)',
-            color: 'var(--canvas)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            minWidth: 320,
-          }}
-        >
-          <span className="text-body font-medium">{selectedIds.size} seçili</span>
-          <span style={{ flex: 1 }} />
-          {isAdmin ? (
-            <div className="relative">
-              <button
-                type="button"
-                className="chip"
-                style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--canvas)' }}
-                onClick={() => setReassignOpen((v) => !v)}
-              >
-                Yenidən təyin et
-              </button>
-              {reassignOpen ? (
-                <div
-                  className="absolute bottom-full mb-2 right-0 rounded-card p-2 w-[220px]"
-                  style={{
-                    background: 'var(--ink)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                  }}
-                >
-                  <select
-                    className="input w-full mb-2"
-                    style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--canvas)' }}
-                    value={reassignTarget}
-                    onChange={(e) => setReassignTarget(e.target.value)}
-                  >
-                    <option value="">İcraçı seçin…</option>
-                    {allProfiles.map((p) => (
-                      <option key={p.id} value={p.id}>{p.full_name ?? p.id}</option>
-                    ))}
-                  </select>
-                  <div className="flex gap-2 justify-end">
-                    <button
-                      type="button"
-                      className="chip text-meta"
-                      onClick={() => { setReassignOpen(false); setReassignTarget(''); }}
-                    >
-                      Ləğv
-                    </button>
-                    <button
-                      type="button"
-                      className="chip"
-                      style={{ background: 'var(--brand-action)', color: 'var(--ink)' }}
-                      disabled={!reassignTarget || bulkReassign.isPending}
-                      onClick={() => bulkReassign.mutate(reassignTarget)}
-                    >
-                      {bulkReassign.isPending ? '…' : 'Təyin et'}
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-          <button
-            type="button"
-            className="chip"
-            style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--canvas)' }}
-            disabled={bulkArchiveSelected.isPending}
-            onClick={() => bulkArchiveSelected.mutate()}
-          >
-            {bulkArchiveSelected.isPending ? 'Arxivlənir…' : 'Arxivlə'}
-          </button>
-          <button
-            type="button"
-            className="chip"
-            style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--canvas)' }}
-            onClick={exitBulkMode}
-            aria-label="Seçim rejimini bağla"
-          >
-            ×
-          </button>
-        </div>
+        <BulkActionBar
+          selectedCount={selectedIds.size}
+          isAdmin={isAdmin}
+          profiles={allProfiles}
+          onReassign={(id) => bulkReassign.mutate(id)}
+          isReassigning={bulkReassign.isPending}
+          onArchive={() => bulkArchiveSelected.mutate()}
+          isArchiving={bulkArchiveSelected.isPending}
+          onClose={exitBulkMode}
+        />
       ) : null}
 
-      {confirmArchive ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: 'rgba(14,22,17,0.55)' }}
-          onClick={() => setConfirmArchive(false)}
-        >
-          <div
-            className="bg-surface p-6 rounded-card w-[380px]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-h2 mb-2">Toplu arxivləmə</h2>
-            <p className="text-body mb-5" style={{ color: 'var(--text-muted)' }}>
-              {archivableCount} ədəd <strong>Tamamlandı</strong> / <strong>Ləğv edildi</strong>{' '}
-              tapşırığı arxivlənəcək. Tapşırıqlar lövhədən silinəcək; Arxiv bölməsindən bərpa edilə bilər.
-            </p>
-            {bulkArchive.error ? (
-              <p className="text-meta mb-3" style={{ color: 'var(--error-deep)' }}>
-                {(bulkArchive.error as Error).message}
-              </p>
-            ) : null}
-            <div className="flex justify-end gap-2">
-              <button className="btn-outline" onClick={() => setConfirmArchive(false)}>
-                Ləğv et
-              </button>
-              <button
-                className="btn-primary"
-                disabled={bulkArchive.isPending}
-                onClick={() => bulkArchive.mutate()}
-              >
-                {bulkArchive.isPending ? 'Arxivlənir…' : 'Arxivlə'}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {/* PRD §6.6 — uses ConfirmDialog (role=dialog, aria-modal, Escape handler,
+          focus styles) instead of a hand-rolled overlay. */}
+      <ConfirmDialog
+        open={confirmArchive}
+        title="Toplu arxivləmə"
+        body={`${archivableCount} ədəd Tamamlandı / Ləğv edildi tapşırığı arxivlənəcək. Tapşırıqlar lövhədən silinəcək; Arxiv bölməsindən bərpa edilə bilər.`}
+        confirmLabel="Arxivlə"
+        cancelLabel="Ləğv et"
+        busy={bulkArchive.isPending}
+        onConfirm={() => bulkArchive.mutate()}
+        onCancel={() => setConfirmArchive(false)}
+      />
     </>
   );
 }
