@@ -55,6 +55,24 @@ export function TasksPage() {
   const endOfWeekStr = endOfWeekInBaku();
   // Read URL params via useSearchParams so router updates rerender (don't snapshot window.location).
   const [searchParams, setSearchParams] = useSearchParams();
+  // Stable ref to the latest searchParams so setUrlParam can be a stable
+  // useCallback (and thus safe to capture in the keyboard-shortcut effect
+  // that runs with empty deps). Updated on every render where searchParams
+  // changes identity, which is exactly the contract react-router-dom gives.
+  const searchParamsRef = useRef(searchParams);
+  useEffect(() => { searchParamsRef.current = searchParams; }, [searchParams]);
+  // Single atomic state+URL writer for every URL-managed filter. Pass
+  // value=null to delete the key. Skips the write entirely when state and
+  // URL already agree (no churn for reverse-sync setState calls below).
+  const setUrlParam = useCallback((key: string, value: string | null) => {
+    const cur = searchParamsRef.current;
+    const next = new URLSearchParams(cur);
+    if (value !== null && value !== '') next.set(key, value);
+    else next.delete(key);
+    if (next.toString() !== cur.toString()) {
+      setSearchParams(next, { replace: true });
+    }
+  }, [setSearchParams]);
   // Design spec §8.3: four view toggles — Lövhə · Cədvəl · Təqvim · Gantt.
   // Persisted in URL so refresh + share-link land on the same view.
   const [view, setView] = useState<'board' | 'table' | 'calendar' | 'gantt'>(() => {
@@ -79,6 +97,9 @@ export function TasksPage() {
   const urlAssignee = searchParams.get('assignee');
   // Persisted in URL (?mine=1) for share-link parity with other filters.
   const [mineOnly, setMineOnly] = useState<boolean>(() => searchParams.get('mine') === '1');
+  // Ref for the keyboard-shortcut handler (empty deps → stale closure otherwise).
+  const mineOnlyRef = useRef(mineOnly);
+  useEffect(() => { mineOnlyRef.current = mineOnly; }, [mineOnly]);
   // PRD §UX — drag-over column highlight (board view DnD feedback)
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
   // Source-card dim during drag so the user can tell which card is being
@@ -255,16 +276,16 @@ export function TasksPage() {
     onError: (e) => toast.error((e as Error).message),
   });
   // Persist search filter in URL so refresh / share-link preserves it.
+  // State + URL written atomically via changeSearch (no forward-sync effect);
+  // reverse-sync below handles browser back/forward.
   const [search, setSearch] = useState(searchParams.get('q') ?? '');
+  function changeSearch(next: string) {
+    setSearch(next);
+    setUrlParam('q', next);
+  }
   // PRD §6.3 / §UX — Slack/GitHub-style "/" jumps to search box
   const searchInputRef = useRef<HTMLInputElement>(null);
   useSlashFocus(searchInputRef);
-  useEffect(() => {
-    const next = new URLSearchParams(searchParams);
-    if (search) next.set('q', search);
-    else next.delete('q');
-    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
-  }, [search, searchParams, setSearchParams]);
 
   const archivableCount = useMemo(
     () => tasks.filter((t) => t.status === 'done' || t.status === 'cancelled').length,
@@ -415,15 +436,12 @@ export function TasksPage() {
     onError: (e) => toast.error((e as Error).message),
   });
 
-  // PRD §6.x — label filter (chip row above the kanban)
-  // PRD §UX — label filter persisted in URL
+  // PRD §6.x — label filter (chip row above the kanban). URL-persisted.
   const [labelFilter, setLabelFilter] = useState<string | null>(searchParams.get('label'));
-  useEffect(() => {
-    const next = new URLSearchParams(searchParams);
-    if (labelFilter) next.set('label', labelFilter);
-    else next.delete('label');
-    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
-  }, [labelFilter, searchParams, setSearchParams]);
+  function changeLabel(next: string | null) {
+    setLabelFilter(next);
+    setUrlParam('label', next);
+  }
   // Single pass over tasks to build both the sorted label list AND the
   // per-label counts. The previous code recomputed `filter().length` per
   // chip per render — O(L × N) every paint, with L labels and N tasks.
@@ -440,10 +458,12 @@ export function TasksPage() {
 
   // PRD §UX — sort within columns; persisted in URL so it survives reload + share.
   // TaskSortKey is exported from src/lib/taskSort.ts so the state type and
-  // the helper stay in lock-step.
-  const [sortBy, setSortBy] = useState<TaskSortKey>(
-    (searchParams.get('sort') as TaskSortKey) || 'deadline',
-  );
+  // the helper stay in lock-step. Initial value validated so a bogus
+  // ?sort=garbage URL collapses to the default instead of leaking into state.
+  const [sortBy, setSortBy] = useState<TaskSortKey>(() => {
+    const v = searchParams.get('sort');
+    return v === 'priority' || v === 'created' ? v : 'deadline';
+  });
   // PRD §UX — compact mode persisted in localStorage so the user's preference
   // survives across reloads/sessions without bloating the URL.
   const [compactBoard, setCompactBoard] = useState<boolean>(() => {
@@ -458,23 +478,35 @@ export function TasksPage() {
   const [todayOnly, setTodayOnly] = useState(false);
   // PRD §UX — narrow board to one project (URL-persisted so share-link works)
   const [projectFilter, setProjectFilter] = useState<string>(searchParams.get('project') ?? '');
+  function changeProject(next: string) {
+    setProjectFilter(next);
+    setUrlParam('project', next);
+  }
+  function changeView(next: 'board' | 'table' | 'calendar' | 'gantt') {
+    setView(next);
+    setUrlParam('view', next === 'board' ? null : next);
+  }
+  function changeMine(next: boolean) {
+    setMineOnly(next);
+    setUrlParam('mine', next ? '1' : null);
+  }
+
+  // SINGLE source of URL → state propagation. Browser back/forward, external
+  // links, in-app navigation — all funnel through here. Every other write
+  // path is imperative (change*) and updates state + URL atomically; that
+  // means by the time this effect runs after an imperative write, state
+  // already matches URL and every functional updater bails out → no churn.
   useEffect(() => {
-    const next = new URLSearchParams(searchParams);
-    if (projectFilter) next.set('project', projectFilter);
-    else next.delete('project');
-    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
-  }, [projectFilter, searchParams, setSearchParams]);
-  // URL sync — view + mineOnly. Same pattern as q/label/project above.
-  useEffect(() => {
-    const next = new URLSearchParams(searchParams);
-    if (view === 'board') next.delete('view');
-    else next.set('view', view);
-    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
-  }, [view, searchParams, setSearchParams]);
-  // Reverse direction: browser back/forward changes searchParams, which must
-  // reflect back into state. Without this, ?view=board in the address bar
-  // would not flip the rendered view after a back-button press.
-  useEffect(() => {
+    const q = searchParams.get('q') ?? '';
+    setSearch((cur) => (cur === q ? cur : q));
+    const label = searchParams.get('label');
+    setLabelFilter((cur) => (cur === label ? cur : label));
+    const project = searchParams.get('project') ?? '';
+    setProjectFilter((cur) => (cur === project ? cur : project));
+    const sortFromUrl = searchParams.get('sort');
+    const validSort: TaskSortKey =
+      sortFromUrl === 'priority' || sortFromUrl === 'created' ? sortFromUrl : 'deadline';
+    setSortBy((cur) => (cur === validSort ? cur : validSort));
     const v = searchParams.get('view');
     const fromUrl: 'board' | 'table' | 'calendar' | 'gantt' =
       v === 'table' || v === 'calendar' || v === 'gantt' ? v : 'board';
@@ -482,6 +514,7 @@ export function TasksPage() {
     const m = searchParams.get('mine') === '1';
     setMineOnly((cur) => (cur === m ? cur : m));
   }, [searchParams]);
+
   // Bulk mode only renders in the table view — auto-exit when switching away
   // so the floating action bar doesn't ghost in other views. exitBulkMode is
   // useCallback above; bulkMode is included so the effect resets cleanly if
@@ -489,12 +522,6 @@ export function TasksPage() {
   useEffect(() => {
     if (view !== 'table' && bulkMode) exitBulkMode();
   }, [view, bulkMode, exitBulkMode]);
-  useEffect(() => {
-    const next = new URLSearchParams(searchParams);
-    if (mineOnly) next.set('mine', '1');
-    else next.delete('mine');
-    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
-  }, [mineOnly, searchParams, setSearchParams]);
   // Fetch ALL projects (active + archived) so board/table can resolve a task's
   // project name even after that project is archived. The dropdown below
   // filters this client-side to active-only — archived projects aren't
@@ -540,10 +567,17 @@ export function TasksPage() {
         setCompactBoard((v) => !v);
       } else if (e.key === 'a' || e.key === 'A') {
         e.preventDefault();
-        setMineOnly((v) => !v);
+        // Atomic state+URL update so back-button restores the previous
+        // toggle. Reads current from a ref because this handler's empty
+        // deps would otherwise close over stale state.
+        const next = !mineOnlyRef.current;
+        setMineOnly(next);
+        setUrlParam('mine', next ? '1' : null);
       } else if (e.key === 'v' || e.key === 'V') {
         e.preventDefault();
-        setView((v) => VIEW_ORDER[(VIEW_ORDER.indexOf(v) + 1) % VIEW_ORDER.length]);
+        const next = VIEW_ORDER[(VIEW_ORDER.indexOf(viewRef.current) + 1) % VIEW_ORDER.length];
+        setView(next);
+        setUrlParam('view', next === 'board' ? null : next);
       } else if (e.key === 'n' || e.key === 'N') {
         // Page-local "new task" — doesn't conflict with the global Cmd+N
         // since modifier keys early-exit at the top of this handler.
@@ -553,42 +587,33 @@ export function TasksPage() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [setUrlParam]);
 
   const filtered = useMemo(
     () => filterTasks(tasks, { labelFilter, projectFilter, todayOnly, todayStr, search }),
     [tasks, search, labelFilter, projectFilter, todayOnly, todayStr],
   );
 
-  // Atomic clear-all. The per-filter URL-sync effects each read the same
-  // pre-batch `searchParams` snapshot, so calling 4 setters and letting the
-  // effects race produces a last-write-wins URL (some params survive). Doing
-  // the URL update inline avoids the race — one setSearchParams call wipes
-  // every param at once, then the individual effects no-op because state and
-  // URL already agree.
+  // Clear every user-set filter. State setters are batched; the URL update
+  // is one setSearchParams call so we don't write four times in succession.
   function clearAllFilters() {
     setSearch('');
     setLabelFilter(null);
     setProjectFilter('');
     setTodayOnly(false);
-    const next = new URLSearchParams(searchParams);
+    const next = new URLSearchParams(searchParamsRef.current);
     next.delete('q');
     next.delete('label');
     next.delete('project');
-    if (next.toString() !== searchParams.toString()) {
+    if (next.toString() !== searchParamsRef.current.toString()) {
       setSearchParams(next, { replace: true });
     }
   }
-  // sortBy state + URL update in one place — same race-avoidance pattern as
-  // clearAllFilters above. Saves a useEffect and the eslint suppression.
+  // sortBy state + URL update in one place — uses the same setUrlParam
+  // helper as every other URL-managed filter (changeSearch/Label/Project/View/Mine).
   function changeSort(next: TaskSortKey) {
     setSortBy(next);
-    const params = new URLSearchParams(searchParams);
-    if (next === 'deadline') params.delete('sort');
-    else params.set('sort', next);
-    if (params.toString() !== searchParams.toString()) {
-      setSearchParams(params, { replace: true });
-    }
+    setUrlParam('sort', next === 'deadline' ? null : next);
   }
   // Bind the pure sortTasks helper to current sortBy so the dependent
   // useMemos can list one stable reference. The sort logic itself lives
@@ -679,12 +704,12 @@ export function TasksPage() {
                 // PRD §6.6 — placeholder isn't a label substitute under WCAG.
                 aria-label="Tapşırıq axtarışı"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => changeSearch(e.target.value)}
                 onKeyDown={(e) => {
                   // PRD §UX — Esc clears + blurs (cancel-out pattern)
                   if (e.key === 'Escape' && search) {
                     e.preventDefault();
-                    setSearch('');
+                    changeSearch('');
                     (e.currentTarget as HTMLInputElement).blur();
                   }
                 }}
@@ -695,7 +720,7 @@ export function TasksPage() {
                   type="button"
                   className="absolute right-2 top-1/2 -translate-y-1/2 opacity-50 hover:opacity-100"
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 14 }}
-                  onClick={() => setSearch('')}
+                  onClick={() => changeSearch('')}
                   aria-label="Axtarışı təmizlə"
                   tabIndex={-1}
                 >
@@ -711,7 +736,7 @@ export function TasksPage() {
             <button
               className={`btn-outline ${mineOnly ? 'border-brand-text' : ''}`}
               style={mineOnly ? { background: 'var(--brand-action)', color: 'var(--ink)' } : undefined}
-              onClick={() => setMineOnly((v) => !v)}
+              onClick={() => changeMine(!mineOnly)}
               aria-pressed={mineOnly}
               disabled={!!urlAssignee}
               title={urlAssignee ? 'Başqa istifadəçi süzgəci aktivdir — yuxarıdakı banner-dən təmizlə' : undefined}
@@ -837,7 +862,7 @@ export function TasksPage() {
             className="input"
             style={{ maxWidth: 200, height: 32, fontSize: 12 }}
             value={projectFilter}
-            onChange={(e) => setProjectFilter(e.target.value)}
+            onChange={(e) => changeProject(e.target.value)}
             aria-label="Layihəyə görə süz"
           >
             <option value="">Bütün layihələr</option>
@@ -873,7 +898,7 @@ export function TasksPage() {
             <button
               key={v}
               className={`chip ${view === v ? 'chip-brand' : ''}`}
-              onClick={() => setView(v)}
+              onClick={() => changeView(v)}
             >
               {label}
             </button>
@@ -885,7 +910,7 @@ export function TasksPage() {
             <span style={{ width: 1, background: 'var(--line)', margin: '0 4px' }} />
             <button
               className={`chip ${labelFilter === null ? 'chip-brand' : ''}`}
-              onClick={() => setLabelFilter(null)}
+              onClick={() => changeLabel(null)}
               aria-pressed={labelFilter === null}
             >
               {labelFilter === null ? '✓ Bütün etiketlər' : 'Bütün etiketlər'}
@@ -898,7 +923,7 @@ export function TasksPage() {
                 <button
                   key={l}
                   className={`chip ${labelFilter === l ? 'chip-brand' : ''}`}
-                  onClick={() => setLabelFilter(labelFilter === l ? null : l)}
+                  onClick={() => changeLabel(labelFilter === l ? null : l)}
                 >
                   # {l}
                   <span style={{ marginLeft: 4, opacity: 0.6, fontVariantNumeric: 'tabular-nums' }}>
@@ -939,11 +964,7 @@ export function TasksPage() {
             type="button"
             className="chip"
             style={{ fontSize: 11 }}
-            onClick={() => {
-              const next = new URLSearchParams(searchParams);
-              next.delete('assignee');
-              setSearchParams(next, { replace: true });
-            }}
+            onClick={() => setUrlParam('assignee', null)}
           >
             ✕ Bütün istifadəçilər
           </button>
