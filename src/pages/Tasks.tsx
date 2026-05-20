@@ -20,38 +20,27 @@ import { TaskGanttView } from '@/components/TaskGanttView';
 import { SkeletonList } from '@/components/Skeleton';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { BulkActionBar } from '@/components/BulkActionBar';
+import {
+  TaskPersonalList,
+  TIME_GROUP_ORDER,
+  TIME_GROUP_COLOR,
+  type TimeGroup,
+  taskTimeGroup,
+} from '@/components/TaskPersonalList';
 import { downloadCsv } from '@/lib/csv';
 import { toast } from '@/components/Toast';
 import { formatDuration, useActiveTimeEntry, useStartTimer, useStopTimer, useTaskTimeTotals } from '@/lib/useTimeTracking';
 import { todayInBaku, endOfWeekInBaku, daysFromTodayInBaku, currentMonthInBaku } from '@/lib/time';
+import { onOpenTask } from '@/lib/events';
 
-// US-TASK-06 — deadline-based groups for personal view.
-// NOTE: these comparators are computed per-render inside TasksPage rather than
-// at module load. Module-level constants drift in long-lived tabs that cross
-// midnight, putting tasks in the wrong group until reload.
-type TimeGroup = 'overdue' | 'today' | 'week' | 'later' | 'none';
-const TIME_GROUP_LABEL: Record<TimeGroup, string> = {
-  overdue: 'Gecikmiş',
-  today: 'Bu gün',
-  week: 'Bu həftə',
-  later: 'Sonra',
-  none: 'Son tarix yoxdur',
-};
-const TIME_GROUP_COLOR: Record<TimeGroup, string> = {
-  overdue: 'var(--error)',
-  today: 'var(--warning)',
-  week: 'var(--success)',
-  later: 'var(--text-muted)',
-  none: 'var(--text-muted)',
-};
-function taskTimeGroup(t: Task, todayStr: string, endOfWeekStr: string): TimeGroup {
-  if (!t.deadline) return 'none';
-  if (t.deadline < todayStr) return 'overdue';
-  if (t.deadline === todayStr) return 'today';
-  if (t.deadline <= endOfWeekStr) return 'week';
-  return 'later';
-}
-const TIME_GROUP_ORDER: TimeGroup[] = ['overdue', 'today', 'week', 'later', 'none'];
+// US-TASK-06 — deadline-based groups for the "Mənim" view. The labels +
+// colour + bucketing logic now live with TaskPersonalList; the table view
+// still uses TIME_GROUP_COLOR to colour the deadline cell, imported below.
+
+// Tunables — keep magic numbers out of the render path.
+const HOURS_PER_DAY = 8;          // standard architects' workday
+const HOURS_PER_WEEK = 40;        // 5 × HOURS_PER_DAY
+const LOOKUP_STALE_MS = 5 * 60_000; // 5 min — applied to profile/project/template lookups
 
 // `tasks.duration_unit` is stored loosely as text: TaskCreateModal /
 // TaskEditModal write 'hours' / 'days' (plural), DB default is 'hours',
@@ -66,7 +55,7 @@ function normalizeDurationUnit(unit: string | null | undefined): 'hour' | 'day' 
 // Convert {value, unit} to hours so column / page totals sum apples-to-apples.
 function durationToHours(d: number, unit: string | null | undefined): number {
   const u = normalizeDurationUnit(unit);
-  return u === 'day' ? d * 8 : u === 'week' ? d * 40 : d;
+  return u === 'day' ? d * HOURS_PER_DAY : u === 'week' ? d * HOURS_PER_WEEK : d;
 }
 
 // Compact "Vaxt" label for table view: "8s" / "3g" / "2h" depending on unit.
@@ -136,7 +125,7 @@ export function TasksPage() {
         .eq('is_active', true);
       return (data ?? []) as { id: string; full_name: string | null; avatar_url: string | null }[];
     },
-    staleTime: 5 * 60_000,
+    staleTime: LOOKUP_STALE_MS,
   });
   const profileById = useMemo(
     () => Object.fromEntries(allProfiles.map((p) => [p.id, p])),
@@ -156,19 +145,11 @@ export function TasksPage() {
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [commenting, setCommenting] = useState<{ id: string; title: string } | null>(null);
 
-  // PRD §REQ-TASK — subtask navigation: TaskCommentsModal dispatches
-  // 'reflect:open-task' when user clicks a subtask or the parent back-chip.
+  // PRD §REQ-TASK — subtask navigation: TaskCommentsModal dispatches an
+  // open-task event when the user clicks a subtask or the parent back-chip;
   // Tasks.tsx (modal owner) swaps the open task without re-rendering tree.
-  useEffect(() => {
-    function onOpenTask(e: Event) {
-      const detail = (e as CustomEvent).detail as { id?: string; title?: string };
-      if (detail?.id && detail.title) {
-        setCommenting({ id: detail.id, title: detail.title });
-      }
-    }
-    window.addEventListener('reflect:open-task', onOpenTask);
-    return () => window.removeEventListener('reflect:open-task', onOpenTask);
-  }, []);
+  // Event name + payload shape live in src/lib/events.ts.
+  useEffect(() => onOpenTask((detail) => setCommenting(detail)), []);
   // Deep-link consumer for ?focus=<task-id>. TaskCommentsModal builds links
   // like /tapşırıqlar?focus=<id>; without this effect those links land here
   // but the modal never opens. The param is cleared after first consumption
@@ -200,10 +181,12 @@ export function TasksPage() {
       return next;
     });
   }
-  function exitBulkMode() {
+  // useCallback so dependent effects can list it honestly. Inner setters
+  // are stable; empty deps are correct.
+  const exitBulkMode = useCallback(() => {
     setBulkMode(false);
     setSelectedIds(new Set());
-  }
+  }, []);
 
   // Personal-view: checking the box on a task triggers moveTask → done.
   // The DB round-trip + refetch isn't instant, so React would un-check the
@@ -305,8 +288,7 @@ export function TasksPage() {
     if (search) next.set('q', search);
     else next.delete('q');
     if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  }, [search, searchParams, setSearchParams]);
 
   const archivableCount = useMemo(
     () => tasks.filter((t) => t.status === 'done' || t.status === 'cancelled').length,
@@ -407,7 +389,7 @@ export function TasksPage() {
   // for the profile / project lookups so we don't refetch every focus.
   const templates = useQuery({
     queryKey: ['task-templates'],
-    staleTime: 5 * 60_000,
+    staleTime: LOOKUP_STALE_MS,
     queryFn: async () => {
       const { data } = await supabase
         .from('task_templates')
@@ -465,8 +447,7 @@ export function TasksPage() {
     if (labelFilter) next.set('label', labelFilter);
     else next.delete('label');
     if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [labelFilter]);
+  }, [labelFilter, searchParams, setSearchParams]);
   // Single pass over tasks to build both the sorted label list AND the
   // per-label counts. The previous code recomputed `filter().length` per
   // chip per render — O(L × N) every paint, with L labels and N tasks.
@@ -505,16 +486,14 @@ export function TasksPage() {
     if (projectFilter) next.set('project', projectFilter);
     else next.delete('project');
     if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectFilter]);
-  // URL sync — view + mineOnly. Same pattern as q/label/project/sort above.
+  }, [projectFilter, searchParams, setSearchParams]);
+  // URL sync — view + mineOnly. Same pattern as q/label/project above.
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
     if (view === 'board') next.delete('view');
     else next.set('view', view);
     if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view]);
+  }, [view, searchParams, setSearchParams]);
   // Reverse direction: browser back/forward changes searchParams, which must
   // reflect back into state. Without this, ?view=board in the address bar
   // would not flip the rendered view after a back-button press.
@@ -527,25 +506,25 @@ export function TasksPage() {
     setMineOnly((cur) => (cur === m ? cur : m));
   }, [searchParams]);
   // Bulk mode only renders in the table view — auto-exit when switching away
-  // so the floating action bar doesn't ghost in other views.
+  // so the floating action bar doesn't ghost in other views. exitBulkMode is
+  // useCallback above; bulkMode is included so the effect resets cleanly if
+  // it ever becomes true outside the table view (defensive).
   useEffect(() => {
     if (view !== 'table' && bulkMode) exitBulkMode();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view]);
+  }, [view, bulkMode, exitBulkMode]);
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
     if (mineOnly) next.set('mine', '1');
     else next.delete('mine');
     if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mineOnly]);
+  }, [mineOnly, searchParams, setSearchParams]);
   // Fetch ALL projects (active + archived) so board/table can resolve a task's
   // project name even after that project is archived. The dropdown below
   // filters this client-side to active-only — archived projects aren't
   // useful filter targets but still need a name in the lookup map.
   const projectsForFilter = useQuery({
     queryKey: ['projects-name-phase-map'],
-    staleTime: 5 * 60_000,
+    staleTime: LOOKUP_STALE_MS,
     queryFn: async () => {
       const { data } = await supabase
         .from('projects')
@@ -1049,135 +1028,18 @@ export function TasksPage() {
           }
         />
       ) : mineOnly ? (
-        // US-TASK-06 — personal view: time-grouped list with inline actions
-        <div className="space-y-6">
-          {TIME_GROUP_ORDER.map((g) => {
-            const items = groupedByTime[g];
-            if (!items.length) return null;
-            return (
-              <section key={g}>
-                <h3
-                  className="text-tiny mb-3"
-                  style={{ color: TIME_GROUP_COLOR[g], letterSpacing: '0.08em', textTransform: 'uppercase' }}
-                >
-                  {TIME_GROUP_LABEL[g]} · {items.length}
-                </h3>
-                <div className="space-y-1">
-                  {items.map((t) => {
-                    const proj = t.project_id ? projectById[t.project_id] : null;
-                    return (
-                    <div
-                      key={t.id}
-                      className="flex items-center gap-3 py-2 px-3 rounded-card"
-                      style={{
-                        background: bulkMode && selectedIds.has(t.id) ? 'var(--brand-glow-sm)' : 'var(--surface)',
-                        border: '1px solid var(--line)',
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={bulkMode ? selectedIds.has(t.id) : completingIds.has(t.id)}
-                        onChange={() => {
-                          if (bulkMode) return toggleSelected(t.id);
-                          // Keep the tick visible until the row falls out
-                          // of groupedByTime when the mutation refetches.
-                          setCompletingIds((s) => new Set(s).add(t.id));
-                          moveTask(t.id, 'done', t.status);
-                        }}
-                        style={{ accentColor: 'var(--brand-action)', width: 16, height: 16, flexShrink: 0, cursor: 'pointer' }}
-                        aria-label={bulkMode ? `${t.title} seç` : `${t.title} tamamlandı`}
-                      />
-                      {/* PRD §6.6 — title as a real <button> so Enter/Space
-                          opens the task without needing a mouse. */}
-                      <button
-                        type="button"
-                        className="flex-1 text-body text-left"
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          padding: 0,
-                          cursor: 'pointer',
-                          font: 'inherit',
-                          color: 'inherit',
-                          minWidth: 0,
-                        }}
-                        onClick={() => setCommenting({ id: t.id, title: t.title })}
-                      >
-                        {t.title}
-                      </button>
-                      {/* Project context — matches the project subtitle on board
-                          cards and the Layihə column in the table. */}
-                      {proj ? (
-                        <span
-                          className="text-meta"
-                          style={{
-                            color: 'var(--text-muted)',
-                            fontSize: 11,
-                            flexShrink: 0,
-                            maxWidth: 160,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                          title={proj.name}
-                        >
-                          {proj.name}
-                        </span>
-                      ) : null}
-                      {t.deadline ? (
-                        <span
-                          className="text-meta"
-                          style={{ color: TIME_GROUP_COLOR[g], fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}
-                        >
-                          {t.deadline}
-                        </span>
-                      ) : null}
-                      {/* PRD §US-TASK-06 — inline status dropdown (non-done) for personal view */}
-                      <select
-                        aria-label="Status dəyiş"
-                        value={t.status}
-                        onChange={(e) => moveTask(t.id, e.target.value as TaskStatus, t.status)}
-                        className="text-meta px-2 py-0.5 rounded border-0"
-                        style={{
-                          background: 'var(--surface-raised)',
-                          color: TASK_STATUS_TONE[t.status].text,
-                          flexShrink: 0,
-                          fontSize: 11,
-                        }}
-                      >
-                        {TASK_STATUS_ORDER.map((s) => (
-                          <option key={s} value={s}>{TASK_STATUS_LABEL[s]}</option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => setCommenting({ id: t.id, title: t.title })}
-                        className="opacity-60 hover:opacity-100"
-                        style={{ color: 'var(--text-muted)', fontSize: 13, flexShrink: 0 }}
-                        aria-label="Şərhlər"
-                      >
-                        💬
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCancelling({ id: t.id, title: t.title })}
-                        className="text-meta opacity-60 hover:opacity-100"
-                        style={{ color: 'var(--text-muted)', flexShrink: 0 }}
-                        aria-label={`Tapşırığı ləğv et: ${t.title}`}
-                      >
-                        Ləğv et
-                      </button>
-                    </div>
-                    );
-                  })}
-                </div>
-              </section>
-            );
-          })}
-          {TIME_GROUP_ORDER.every((g) => !groupedByTime[g].length) && (
-            <p className="text-meta" style={{ color: 'var(--text-muted)' }}>Aktiv tapşırıq yoxdur.</p>
-          )}
-        </div>
+        <TaskPersonalList
+          groupedByTime={groupedByTime}
+          projectById={projectById}
+          bulkMode={bulkMode}
+          selectedIds={selectedIds}
+          completingIds={completingIds}
+          onToggleSelected={toggleSelected}
+          onMarkCompleting={(id) => setCompletingIds((s) => new Set(s).add(id))}
+          onMove={moveTask}
+          onOpenComments={(t) => setCommenting({ id: t.id, title: t.title })}
+          onCancel={(t) => setCancelling({ id: t.id, title: t.title })}
+        />
       ) : view === 'board' ? (
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
           {TASK_STATUS_ORDER.filter((s) => !compactBoard || (s !== 'done' && s !== 'cancelled')).map((s) => {

@@ -35,6 +35,19 @@ export const TASK_STATUS_TONE: Record<TaskStatus, { dot: string; bg: string; tex
   cancelled: { dot: 'var(--error)',           bg: 'var(--chip-cancelled-bg)', text: 'var(--error-deep)' },
 };
 
+/**
+ * Duration unit options used by TaskCreateModal / TaskEditModal. Schema
+ * stores `duration_unit` loosely as text; canonical values are plural
+ * ('hours', 'days') to match what those modals write. Tasks.tsx
+ * normalises via normalizeDurationUnit() for legacy / singular rows.
+ */
+export const DURATION_UNITS = ['hours', 'days'] as const;
+export type DurationUnit = (typeof DURATION_UNITS)[number];
+export const DURATION_UNIT_LABEL: Record<DurationUnit, string> = {
+  hours: 'saat',
+  days: 'gün',
+};
+
 export const PROJECT_STATUS_LABEL: Record<ProjectStatus, string> = {
   active: 'Aktiv',
   on_hold: 'Pauzada',

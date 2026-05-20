@@ -9,23 +9,17 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { useProjects } from '@/lib/hooks';
 import { useFocusTrap } from '@/lib/a11y';
+import {
+  TASK_STATUS_LABEL,
+  DURATION_UNITS,
+  DURATION_UNIT_LABEL,
+  type DurationUnit,
+} from '@/lib/labels';
 import type { Task, TaskStatus } from '@/types/db';
 
 type Props = { task: Task; onClose: () => void };
 
 const STATUS_OPTIONS: TaskStatus[] = ['idea', 'queued', 'active', 'review', 'expert', 'done'];
-const STATUS_LABEL: Record<TaskStatus, string> = {
-  idea: 'İdeyalar',
-  queued: 'Başlanmayıb',
-  active: 'İcrada',
-  review: 'Yoxlamada',
-  expert: 'Ekspertizada',
-  done: 'Tamamlandı',
-  cancelled: 'Ləğv edilmiş',
-};
-const DURATION_UNITS = ['hours', 'days'] as const;
-type DurationUnit = (typeof DURATION_UNITS)[number];
-const DURATION_LABEL: Record<DurationUnit, string> = { hours: 'saat', days: 'gün' };
 
 export function TaskEditModal({ task, onClose }: Props) {
   const { isAdmin } = useAuth();
@@ -154,7 +148,7 @@ export function TaskEditModal({ task, onClose }: Props) {
                 onChange={(e) => setStatus(e.target.value as TaskStatus)}
               >
                 {STATUS_OPTIONS.map((s) => (
-                  <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+                  <option key={s} value={s}>{TASK_STATUS_LABEL[s]}</option>
                 ))}
               </select>
             </Field>
@@ -194,7 +188,7 @@ export function TaskEditModal({ task, onClose }: Props) {
             <Field label="Vahid">
               <select className="input" value={unit} onChange={(e) => setUnit(e.target.value as DurationUnit)}>
                 {DURATION_UNITS.map((u) => (
-                  <option key={u} value={u}>{DURATION_LABEL[u]}</option>
+                  <option key={u} value={u}>{DURATION_UNIT_LABEL[u]}</option>
                 ))}
               </select>
             </Field>

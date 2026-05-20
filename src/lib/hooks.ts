@@ -75,11 +75,14 @@ export function useUpdateTaskStatus() {
   });
 }
 
-/** Detect the parent-with-open-children rejection from the DB trigger. */
+/** Detect the parent-with-open-children rejection from the DB trigger.
+ *  The trigger (`0004_activity_triggers.sql`) raises with the prefix
+ *  "task_has_open_children:" — startsWith is tighter than includes
+ *  (won't match unrelated text that happens to contain the substring). */
 export function isOpenChildrenError(e: unknown): boolean {
   if (!e || typeof e !== 'object') return false;
   const msg = (e as { message?: string }).message ?? '';
-  return msg.includes('task_has_open_children');
+  return msg.startsWith('task_has_open_children');
 }
 
 // ---------------- Clients ----------------

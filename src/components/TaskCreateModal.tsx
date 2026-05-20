@@ -14,6 +14,12 @@ import { useAuth } from '@/lib/store';
 import { useProjects } from '@/lib/hooks';
 import { useUnsavedChanges } from '@/lib/useUnsavedChanges';
 import { useFocusTrap } from '@/lib/a11y';
+import {
+  TASK_STATUS_LABEL,
+  DURATION_UNITS,
+  DURATION_UNIT_LABEL,
+  type DurationUnit,
+} from '@/lib/labels';
 import type { Task, TaskStatus } from '@/types/db';
 
 type Props = {
@@ -33,24 +39,9 @@ const EXPERTISE_CHILDREN = [
   'Ekspertizaya təhvil',
 ] as const;
 
-const DURATION_UNITS = ['hours', 'days'] as const;
-type DurationUnit = (typeof DURATION_UNITS)[number];
-
-const DURATION_LABEL: Record<DurationUnit, string> = {
-  hours: 'saat',
-  days: 'gün',
-};
-
+// Create-modal restricts status choice to the three "starting" buckets;
+// labels come from the shared TASK_STATUS_LABEL.
 const STATUS_OPTIONS: TaskStatus[] = ['idea', 'queued', 'active'];
-const STATUS_LABEL: Record<TaskStatus, string> = {
-  idea: 'İdeyalar',
-  queued: 'Başlanmayıb',
-  active: 'İcrada',
-  review: 'Yoxlamada',
-  expert: 'Ekspertizada',
-  done: 'Tamamlandı',
-  cancelled: 'Ləğv edilmiş',
-};
 
 export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, parentTaskId, parentTaskLevel }: Props) {
   const { profile, isAdmin } = useAuth();
@@ -257,7 +248,7 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
               >
                 {STATUS_OPTIONS.map((s) => (
                   <option key={s} value={s}>
-                    {STATUS_LABEL[s]}
+                    {TASK_STATUS_LABEL[s]}
                   </option>
                 ))}
               </select>
@@ -326,7 +317,7 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
               >
                 {DURATION_UNITS.map((u) => (
                   <option key={u} value={u}>
-                    {DURATION_LABEL[u]}
+                    {DURATION_UNIT_LABEL[u]}
                   </option>
                 ))}
               </select>
@@ -353,7 +344,7 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
                 fontVariantNumeric: 'tabular-nums',
               }}
             >
-              İş yükü ≈ <strong>{workloadPreview}</strong> {DURATION_LABEL[unit]}
+              İş yükü ≈ <strong>{workloadPreview}</strong> {DURATION_UNIT_LABEL[unit]}
               <span className="opacity-60"> · DB triggerdə təsdiq olunacaq</span>
             </div>
           ) : null}

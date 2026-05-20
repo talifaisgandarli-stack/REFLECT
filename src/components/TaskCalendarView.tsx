@@ -43,11 +43,13 @@ export function TaskCalendarView({
     return map;
   }, [tasks]);
 
-  // Build 6-row x 7-col grid, Monday-first.
+  // Build Mon-first grid. Lead blanks align the first day to the right
+  // column; trailing blanks used to pad to a multiple of 7 but rendered as
+  // empty 96px-tall cells — visual waste. CSS grid handles a partial last
+  // row natively, so just stop after the last day of the month.
   const cells = useMemo(() => {
     const first = new Date(year, month, 1);
     const last = new Date(year, month + 1, 0);
-    // JS getDay(): 0=Sun..6=Sat; rotate so Monday=0
     const leadBlanks = (first.getDay() + 6) % 7;
     const daysInMonth = last.getDate();
     const out: Array<{ date: string | null; day: number | null }> = [];
@@ -57,7 +59,6 @@ export function TaskCalendarView({
       const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       out.push({ date: iso, day: d });
     }
-    while (out.length % 7 !== 0) out.push({ date: null, day: null });
     return out;
   }, [year, month]);
 

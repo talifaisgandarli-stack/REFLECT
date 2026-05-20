@@ -13,6 +13,7 @@ import { relativeTime } from '@/lib/format';
 import { trackRecentEntry } from '@/lib/useRecentlyViewed';
 import { formatDuration } from '@/lib/useTimeTracking';
 import { renderCommentMarkdown } from '@/lib/sanitize';
+import { dispatchOpenTask } from '@/lib/events';
 
 type Comment = {
   id: string;
@@ -335,11 +336,9 @@ export function TaskCommentsModal({
                 width: '100%',
               }}
               onClick={() => {
-                // Re-mount the modal with the parent task (simulate by closing
-                // and re-opening; modal owner can subscribe to a custom event)
-                window.dispatchEvent(new CustomEvent('reflect:open-task', {
-                  detail: { id: parentTask.data!.id, title: parentTask.data!.title },
-                }));
+                // Re-mount the modal with the parent task; Tasks.tsx owns
+                // the modal and subscribes to the event from src/lib/events.ts.
+                dispatchOpenTask({ id: parentTask.data!.id, title: parentTask.data!.title });
               }}
               title="Ana tapşırığı aç"
             >
@@ -381,11 +380,7 @@ export function TaskCommentsModal({
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        window.dispatchEvent(new CustomEvent('reflect:open-task', {
-                          detail: { id: s.id, title: s.title },
-                        }));
-                      }}
+                      onClick={() => dispatchOpenTask({ id: s.id, title: s.title })}
                       className="text-left hover:underline"
                       style={{
                         color: s.status === 'done' ? 'var(--text-muted)' : 'var(--text)',
