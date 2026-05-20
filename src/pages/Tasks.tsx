@@ -56,13 +56,15 @@ export function TasksPage() {
   const { profile, isAdmin } = useAuth();
   const qc = useQueryClient();
   const [view, setView] = useState<'board' | 'table'>('board');
+  // Read URL params via useSearchParams so router updates rerender (don't snapshot window.location).
+  const [searchParams, setSearchParams] = useSearchParams();
   // PRD §UX — ?assignee=<uuid> deep-links from Roster to "tasks for this person"
-  const initialUrlAssignee = new URLSearchParams(window.location.search).get('assignee');
+  const urlAssignee = searchParams.get('assignee');
   const [mineOnly, setMineOnly] = useState(false);
   // PRD §UX — drag-over column highlight (board view DnD feedback)
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
   // URL assignee takes precedence over mineOnly so Roster click always lands on that user
-  const filterAssignee = initialUrlAssignee || (mineOnly && profile?.id ? profile.id : null);
+  const filterAssignee = urlAssignee || (mineOnly && profile?.id ? profile.id : null);
   const { data: tasks = [], isLoading } = useTasks(
     filterAssignee ? { assigneeId: filterAssignee } : undefined,
   );
@@ -193,7 +195,6 @@ export function TasksPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
   });
   // Persist search filter in URL so refresh / share-link preserves it.
-  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get('q') ?? '');
   // PRD §6.3 / §UX — Slack/GitHub-style "/" jumps to search box
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -575,7 +576,8 @@ export function TasksPage() {
           <option value="priority">Prioritet</option>
           <option value="created">Yenilər əvvəl</option>
         </select>
-        {/* PRD §UX — "Bu gün" quick filter (deadline = today) */}
+        {/* PRD §UX — deadline=today quick filter. Distinct from the BU GÜN column,
+            which is status-based; this is purely deadline-based. */}
         <button
           type="button"
           className="chip"
@@ -586,9 +588,9 @@ export function TasksPage() {
           }}
           onClick={() => setTodayOnly((v) => !v)}
           aria-pressed={todayOnly}
-          title="Yalnız bu günə düşənləri göstər"
+          title="Yalnız bu gün son tarixi olanları göstər"
         >
-          {todayOnly ? '✓ Bu gün' : 'Bu gün'}
+          {todayOnly ? '✓ Bugünkü son tarix' : 'Bugünkü son tarix'}
         </button>
         {/* PRD §UX — narrow to a single project */}
         {(projectsForFilter.data ?? []).length > 0 ? (
@@ -677,7 +679,7 @@ export function TasksPage() {
       </div>
 
       {/* PRD §UX — assignee filter from URL banner with one-click clear */}
-      {initialUrlAssignee ? (
+      {urlAssignee ? (
         <div
           className="card mb-3 flex items-center justify-between gap-3 flex-wrap"
           style={{ background: 'var(--brand-glow-sm)' }}
@@ -693,7 +695,6 @@ export function TasksPage() {
               const next = new URLSearchParams(searchParams);
               next.delete('assignee');
               setSearchParams(next, { replace: true });
-              window.location.reload();
             }}
           >
             ✕ Bütün istifadəçilər
@@ -716,7 +717,7 @@ export function TasksPage() {
         // PRD §UX — filters silenced all rows; tell user how to undo
         <EmptyState
           title="Filtrə uyğun tapşırıq yoxdur"
-          body="Axtarış, etiket və ya 'Bu gün' filtrini ləğv et."
+          body="Axtarış, etiket və ya son tarix filtrini ləğv et."
           cta={
             <button
               type="button"
@@ -1117,6 +1118,13 @@ export function TasksPage() {
         <table className="w-full text-body">
           <thead>
             <tr style={{ borderBottom: '1px solid var(--line)' }}>
+              {bulkMode ? (
+                <th
+                  className="text-meta text-left py-3 px-3"
+                  style={{ width: 36 }}
+                  aria-label="Seçim sütunu"
+                />
+              ) : null}
               {['Tapşırıq', 'Status', 'İcraçı', 'Deadline'].map((h) => (
                 <th
                   key={h}
@@ -1133,35 +1141,59 @@ export function TasksPage() {
             </tr>
           </thead>
           <tbody>
-            {tasks.map((t) => (
-              <tr
-                key={t.id}
-                onClick={() => setCommenting({ id: t.id, title: t.title })}
-                className="hover:bg-surface-mist cursor-pointer"
-                style={{ borderBottom: '1px solid var(--line-soft)' }}
-                title="Şərhləri aç"
-              >
-                <td className="py-3 px-3">{t.title}</td>
-                <td className="py-3 px-3">{TASK_STATUS_LABEL[t.status]}</td>
-                <td className="py-3 px-3">
-                  <AvatarGroup people={assigneePeople(t.assignee_ids)} size={24} />
-                </td>
-                <td className="py-3 px-3">
-                  {t.deadline ? (
-                    <span
-                      style={{
-                        color: TIME_GROUP_COLOR[taskTimeGroup(t)],
-                        fontVariantNumeric: 'tabular-nums',
-                      }}
-                    >
-                      {t.deadline}
-                    </span>
-                  ) : (
-                    <span style={{ color: 'var(--text-muted)' }}>—</span>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {filtered.map((t) => {
+              const selected = bulkMode && selectedIds.has(t.id);
+              return (
+                <tr
+                  key={t.id}
+                  onClick={() =>
+                    bulkMode ? toggleSelected(t.id) : setCommenting({ id: t.id, title: t.title })
+                  }
+                  className="hover:bg-surface-mist cursor-pointer"
+                  style={{
+                    borderBottom: '1px solid var(--line-soft)',
+                    background: selected ? 'var(--brand-glow-sm)' : undefined,
+                  }}
+                  title={bulkMode ? 'Seçimi dəyişdir' : 'Şərhləri aç'}
+                >
+                  {bulkMode ? (
+                    <td className="py-3 px-3" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() => toggleSelected(t.id)}
+                        style={{
+                          accentColor: 'var(--brand-action)',
+                          width: 16,
+                          height: 16,
+                          cursor: 'pointer',
+                        }}
+                        aria-label={`${t.title} seç`}
+                      />
+                    </td>
+                  ) : null}
+                  <td className="py-3 px-3">{t.title}</td>
+                  <td className="py-3 px-3">{TASK_STATUS_LABEL[t.status]}</td>
+                  <td className="py-3 px-3">
+                    <AvatarGroup people={assigneePeople(t.assignee_ids)} size={24} />
+                  </td>
+                  <td className="py-3 px-3">
+                    {t.deadline ? (
+                      <span
+                        style={{
+                          color: TIME_GROUP_COLOR[taskTimeGroup(t)],
+                          fontVariantNumeric: 'tabular-nums',
+                        }}
+                      >
+                        {t.deadline}
+                      </span>
+                    ) : (
+                      <span style={{ color: 'var(--text-muted)' }}>—</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
