@@ -306,9 +306,17 @@ function GeneralSettings() {
 
   const save = useMutation({
     mutationFn: async () => {
-      const incomeNum = Number(incomeAlert) || 5000;
-      const expenseNum = Number(expenseAlert) || 2000;
-      const budgetNum = Number(miraiBudget) || 5;
+      // S-28 — explicit numeric coercion that admits 0 as a real value.
+      // `Number('0') || 5000` collapses to 5000, so a deliberate "alert on
+      // every transaction" / "no MIRAI quota" choice was being silently
+      // overwritten with the default.
+      const parseNonNeg = (v: string, fallback: number): number => {
+        const n = Number(v);
+        return Number.isFinite(n) && n >= 0 ? n : fallback;
+      };
+      const incomeNum = parseNonNeg(incomeAlert, 5000);
+      const expenseNum = parseNonNeg(expenseAlert, 2000);
+      const budgetNum = parseNonNeg(miraiBudget, 5);
       const rows: Array<{ key: string; value: unknown }> = [
         { key: 'finance_alert_income_threshold', value: { azn: incomeNum } },
         { key: 'finance_alert_expense_threshold', value: { azn: expenseNum } },
@@ -1183,6 +1191,7 @@ function AuditLogRetentionSetting() {
     setVal(String(setting.data));
     setHydrated(true);
   }, [setting.data, hydrated]);
+  const [saved, setSaved] = useState(false);
   const save = useMutation({
     mutationFn: async () => {
       const days = Math.max(30, Math.min(3650, Number(val) || 365));
@@ -1194,6 +1203,10 @@ function AuditLogRetentionSetting() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['system_setting', 'audit_log_retention_days'] });
+      // S-29 — match GeneralSettings / RssFeedSettings "Saxlandı ✓"
+      // confirmation so admins see the save landed.
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
     },
     onError: (e) => toast.error((e as Error).message),
   });
@@ -1224,6 +1237,9 @@ function AuditLogRetentionSetting() {
       >
         {save.isPending ? '…' : 'Saxla'}
       </button>
+      {saved ? (
+        <span className="text-meta" style={{ color: 'var(--brand-text)' }}>Saxlandı ✓</span>
+      ) : null}
     </section>
   );
 }
