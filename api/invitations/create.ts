@@ -29,8 +29,21 @@ async function handler(req: Request) {
     const { email, role_key } = parsed.data;
 
     const sb = admin();
-    const { data: role } = await sb.from('roles').select('id').eq('key', role_key).maybeSingle();
-    if (!role) throw new HttpError(400, 'Unknown role');
+    // Diagnose-friendly: surface DB errors AND show the key that was
+    // attempted. Previously "Unknown role" hid whether the table was
+    // empty, the key was misspelled, or the service role couldn't read
+    // the roles table at all.
+    const { data: role, error: roleErr } = await sb
+      .from('roles')
+      .select('id, key, name')
+      .eq('key', role_key)
+      .maybeSingle();
+    if (roleErr) {
+      throw new HttpError(500, `Rol axtarışı uğursuz: ${roleErr.message}`);
+    }
+    if (!role) {
+      throw new HttpError(400, `Bu key DB-də yoxdur: "${role_key}". Seed migrasiyası işləyibmi?`);
+    }
 
     const token = crypto.randomUUID();
     const expires = new Date(Date.now() + 48 * 3600_000).toISOString();
