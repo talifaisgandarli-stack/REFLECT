@@ -1831,31 +1831,39 @@ function InvitationsSettings() {
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error ?? 'Dəvət göndərilmədi');
       }
-
-      // PRD §9.1 / §9.4 — audit privileged action
-      if (profile?.id) {
-        await writeAudit(profile.id, 'invitation.create', 'invitations', {
-          email: email.trim().toLowerCase(),
-          role_key: role.key,
-        });
-      }
+      // D-1 — no frontend writeAudit here: the backend
+      // (api/invitations/create.ts:51 — logAudit 'invitation.created')
+      // already writes the audit row. The previous client-side write was a
+      // duplicate with a different action string ('invitation.create' vs
+      // 'invitation.created'), polluting the audit log with two rows per
+      // invite that didn't even share an action name.
+      return role.name;
     },
-    onSuccess: () => {
+    // D-7 — clear stale formError as soon as the user retries so the previous
+    // error doesn't linger next to the spinner.
+    onMutate: () => setFormError(''),
+    onSuccess: (roleName) => {
       setEmail('');
       setRoleId('');
       setFormError('');
       qc.invalidateQueries({ queryKey: ['invitations'] });
+      // D-6 — explicit confirmation. Form clears + list refreshes weren't
+      // obvious enough on their own.
+      toast.success(`${roleName} rolu ilə dəvət göndərildi`);
     },
     onError: (e) => setFormError((e as Error).message),
   });
 
   const revoke = useMutation({
     mutationFn: async (id: string) => {
-      // Look up invite first so we can record what was revoked
+      // Look up invite first so we can record what was revoked AND surface
+      // the email in the success toast.
       const target = (invitations.data ?? []).find((i) => i.id === id);
       const { error } = await supabase.from('invitations').delete().eq('id', id);
       if (error) throw error;
-      // PRD §9.1 / §9.4 — audit privileged action
+      // PRD §9.1 / §9.4 — audit privileged action. (Revoke has no backend
+      // endpoint, so the audit row must be written client-side — unlike
+      // invite.create where the backend handles it; see D-1.)
       if (profile?.id) {
         await writeAudit(profile.id, 'invitation.revoke', 'invitations', {
           invitation_id: id,
@@ -1863,13 +1871,33 @@ function InvitationsSettings() {
           role_key: target?.role?.key ?? null,
         });
       }
+      return target?.email ?? null;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['invitations'] }),
+    onSuccess: (email) => {
+      qc.invalidateQueries({ queryKey: ['invitations'] });
+      toast.success(email ? `${email} dəvəti ləğv edildi` : 'Dəvət ləğv edildi');
+    },
     onError: (e) => toast.error((e as Error).message),
   });
 
-  const pending = (invitations.data ?? []).filter((i) => !i.accepted_at);
+  // D-11 — the query already filters `accepted_at IS NULL`, so the entire
+  // result IS the pending list. The previous filter was a no-op.
+  const pending = invitations.data ?? [];
   const now = new Date();
+
+  // D-9 — exclude Creator from invitable roles. PRD §2.2 reserves Creator
+  // (level 1) for a single account; letting Admins pick it from the dropdown
+  // is a privilege-escalation foot-gun. Backend should also reject creator
+  // invites, but UI keeps it out of reach in the meantime.
+  const invitableRoles = (roles.data ?? []).filter((r) => r.key !== 'creator');
+
+  // D-2 — warn when the typed email already has a pending invite. The
+  // backend upserts on `email`, silently replacing role + token; surfacing
+  // this in the UI lets the admin choose deliberately instead of by accident.
+  const normalizedEmail = email.trim().toLowerCase();
+  const existingInvite = normalizedEmail
+    ? pending.find((p) => p.email.toLowerCase() === normalizedEmail)
+    : null;
 
   return (
     <div className="space-y-6">
@@ -1900,16 +1928,27 @@ function InvitationsSettings() {
             aria-label="Rol"
           >
             <option value="">Rol seçin…</option>
-            {(roles.data ?? []).map((r) => (
+            {invitableRoles.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.name} (L{r.level})
               </option>
             ))}
           </select>
           <button type="submit" className="btn-primary" disabled={invite.isPending}>
-            {invite.isPending ? 'Göndərilir…' : 'Dəvət et'}
+            {invite.isPending ? 'Göndərilir…' : existingInvite ? 'Yenidən dəvət et' : 'Dəvət et'}
           </button>
         </form>
+        {/* D-2 — re-invite warning. Existing pending invite means the form
+            submit will overwrite role + token rather than create a new row. */}
+        {existingInvite ? (
+          <p
+            className="text-meta mt-2"
+            style={{ color: 'var(--warning, #c47d00)' }}
+          >
+            Bu email üçün dəvət artıq var ({existingInvite.role?.name ?? '—'}).
+            Submit etsən rol və token yenilənəcək.
+          </p>
+        ) : null}
         {formError ? (
           <p className="text-meta mt-2" style={{ color: 'var(--error-deep)' }}>
             {formError}
