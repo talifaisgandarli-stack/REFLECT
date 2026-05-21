@@ -245,7 +245,13 @@ export function TasksPage() {
     onError: (e) => toast.error((e as Error).message),
   });
 
-  // PRD §6.x — clone a task (title + project + duration + assignees).
+  // PRD §6.x — clone a task. Copies the source's full context (title,
+  // description, project, schedule, assignees, labels, priority, expertise
+  // flag) so the user lands on a near-duplicate they can tweak. Two
+  // intentional resets:
+  //  - parent_task_id is not copied: clone is a top-level task.
+  //  - task_level forced to 0 to match the top-level reset (was inherited
+  //    from src, which produced level-N orphans when cloning a subtask).
   // New task lands in "queued" status with a "(kopya)" suffix.
   const cloneTask = useMutation({
     mutationFn: async (sourceId: string) => {
@@ -257,16 +263,18 @@ export function TasksPage() {
         project_id: src.project_id,
         status: 'queued',
         assignee_ids: src.assignee_ids,
+        start_date: src.start_date,
         deadline: src.deadline,
         estimated_duration: src.estimated_duration,
         duration_unit: src.duration_unit,
         risk_buffer_pct: src.risk_buffer_pct,
         is_expertise_subtask: src.is_expertise_subtask,
-        task_level: src.task_level,
+        labels: src.labels ?? [],
+        priority: src.priority ?? null,
+        task_level: 0,
         // Schema has no DEFAULT for created_by — must be set explicitly,
         // otherwise the row's creator lineage is null.
         created_by: profile?.id ?? null,
-        // parent_task_id intentionally not copied — clone is a top-level task
       });
       if (error) throw error;
     },
@@ -295,16 +303,21 @@ export function TasksPage() {
 
   const bulkArchive = useMutation({
     mutationFn: async () => {
+      // Snapshot the count before the update: afterwards the same query
+      // returns 0 (everything matched is now archived).
+      const count = archivableCount;
       const { error } = await supabase
         .from('tasks')
         .update({ archived_at: new Date().toISOString() })
         .in('status', ['done', 'cancelled'])
         .is('archived_at', null);
       if (error) throw error;
+      return count;
     },
-    onSuccess: () => {
+    onSuccess: (count) => {
       qc.invalidateQueries({ queryKey: ['tasks'] });
       setConfirmArchive(false);
+      if (count) toast.success(`${count} tapşırıq arxivləndi`);
     },
     // Surface failure via toast so ConfirmDialog stays a pure yes/no primitive.
     // Matches bulkArchiveSelected's error pattern.

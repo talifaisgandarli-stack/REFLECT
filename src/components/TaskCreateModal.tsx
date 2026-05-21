@@ -39,9 +39,14 @@ const EXPERTISE_CHILDREN = [
   'Ekspertizaya təhvil',
 ] as const;
 
-// Create-modal restricts status choice to the three "starting" buckets;
-// labels come from the shared TASK_STATUS_LABEL.
-const STATUS_OPTIONS: TaskStatus[] = ['idea', 'queued', 'active'];
+// Status options for the new-task dropdown — all non-cancelled statuses.
+// Was previously restricted to the three "starting" buckets, but the board's
+// per-column quick-add ("+ Tapşırıq" on review / expert / done) passes a
+// defaultStatus the dropdown couldn't represent, leaving the controlled
+// select visually empty or wrong while state held the real value.
+// Cancellation has its own modal (CancelTaskModal) because it requires a
+// reason, so 'cancelled' stays out.
+const STATUS_OPTIONS: TaskStatus[] = ['idea', 'queued', 'active', 'review', 'expert', 'done'];
 
 export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, parentTaskId, parentTaskLevel }: Props) {
   const { profile, isAdmin } = useAuth();
