@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
@@ -106,7 +106,11 @@ function SettingsNav() {
                   fontSize: 11,
                   fontVariantNumeric: 'tabular-nums',
                 }}
-                aria-label={`${badge}`}
+                aria-label={
+                  n.to === 'dəvətlər' ? `${badge} gözləyən dəvət` :
+                  n.to === 'bilik' ? `${badge} bilik bazası sənədi` :
+                  `${badge}`
+                }
               >
                 {badge}
               </span>
@@ -643,6 +647,13 @@ function RssFeedSettings({ settings, onSaved }: { settings: Record<string, unkno
   );
 }
 
+/** Pure helper — extracted to module scope so the useMemos inside
+ *  TemplatesSettings can keep their deps array short and avoid the
+ *  exhaustive-deps lint warning. */
+function extractTemplateVars(body: string): string[] {
+  return [...new Set([...body.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]))];
+}
+
 // §10.2 / US-SYS-01 — Templates CRUD with {{variable}} extraction + preview
 function TemplatesSettings() {
   const { profile } = useAuth();
@@ -662,14 +673,22 @@ function TemplatesSettings() {
       ).data ?? [],
   });
 
-  function extractVars(body: string): string[] {
-    return [...new Set([...body.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]))];
-  }
+  // Memoised editor-side derivations. The previous code re-ran the
+  // regex on every render (keystroke), and the preview ran .replace()
+  // over the whole body each time too — S-15.
+  const editorVars = useMemo(
+    () => (editing ? extractTemplateVars(editing.body) : []),
+    [editing],
+  );
+  const editorPreview = useMemo(
+    () => editing?.body.replace(/\{\{(\w+)\}\}/g, (_, k) => `[${k}]`) ?? '',
+    [editing?.body],
+  );
 
   const save = useMutation({
     mutationFn: async () => {
       if (!editing) return;
-      const vars = extractVars(editing.body);
+      const vars = extractTemplateVars(editing.body);
       const payload = {
         category: editing.category,
         name: editing.name,
@@ -728,7 +747,7 @@ function TemplatesSettings() {
   }
 
   if (editing) {
-    const vars = extractVars(editing.body);
+    const vars = editorVars;
     return (
       <div className="space-y-4">
         <h3 className="text-h3">{editing.id ? 'Şablonu redaktə et' : 'Yeni şablon'}</h3>
@@ -771,7 +790,7 @@ function TemplatesSettings() {
         ) : null}
         {vars.length && preview ? (
           <div className="card p-4 font-mono text-body whitespace-pre-wrap" style={{ fontSize: 13, background: 'var(--surface-mist)' }}>
-            {editing.body.replace(/\{\{(\w+)\}\}/g, (_, k) => `[${k}]`)}
+            {editorPreview}
           </div>
         ) : null}
         {save.error ? <p className="text-meta" style={{ color: 'var(--error-deep)' }}>{(save.error as Error).message}</p> : null}
@@ -833,7 +852,7 @@ function TemplatesSettings() {
                     Single extractVars call per item; the regex was running twice
                     (count + tooltip join) on every row on every render — S-9. */}
                 {(() => {
-                  const vars = extractVars(t.body);
+                  const vars = extractTemplateVars(t.body);
                   if (vars.length === 0) return null;
                   return (
                     <span
@@ -935,7 +954,14 @@ function KnowledgeBaseSettings() {
         .order('uploaded_at', { ascending: false });
       const byPdf: Record<string, { count: number; uploaded_at: string }> = {};
       for (const row of data ?? []) {
-        if (!byPdf[row.source_pdf]) byPdf[row.source_pdf] = { count: 0, uploaded_at: row.uploaded_at };
+        if (!byPdf[row.source_pdf]) {
+          byPdf[row.source_pdf] = { count: 0, uploaded_at: row.uploaded_at };
+        } else if (row.uploaded_at < byPdf[row.source_pdf].uploaded_at) {
+          // Track the earliest chunk so the "Yüklənib" label matches the
+          // first-upload date — S-19. Previously the query order (desc)
+          // pinned the field to the newest chunk's timestamp.
+          byPdf[row.source_pdf].uploaded_at = row.uploaded_at;
+        }
         byPdf[row.source_pdf].count++;
       }
       return byPdf;
@@ -1350,11 +1376,12 @@ function AuditLogViewer() {
           disabled={total === 0}
           onClick={async () => {
             // Export ALL filtered rows (not just current page) — admin needs the full set for forensics
+            const CSV_LIMIT = 5000;
             let q = supabase
               .from('audit_log')
               .select('id, actor_id, action, resource, ip, user_agent, meta, created_at, profile:profiles!audit_log_actor_id_fkey(full_name, email)')
               .order('created_at', { ascending: false })
-              .limit(5000);
+              .limit(CSV_LIMIT);
             if (actionFilter.trim()) q = q.ilike('action', `%${actionFilter.trim()}%`);
             if (actorId) q = q.eq('actor_id', actorId);
             const { data } = await q;
@@ -1375,6 +1402,11 @@ function AuditLogViewer() {
               ['Vaxt', 'Aktor', 'Action', 'Resource', 'IP', 'User-Agent', 'Meta'],
               rows,
             );
+            // S-23 — warn when the export hit the cap so admin knows to
+            // narrow the filter rather than think they got everything.
+            if (rows.length === CSV_LIMIT) {
+              toast.info(`İlk ${CSV_LIMIT} sıra ixrac edildi — daha çoxu üçün filtri daraldın.`);
+            }
           }}
         >
           ↓ CSV
