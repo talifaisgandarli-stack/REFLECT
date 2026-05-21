@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import { AvatarGroup } from '@/components/AvatarGroup';
@@ -44,6 +44,10 @@ import { sortTasks as sortTasksPure, type TaskSortKey } from '@/lib/taskSort';
 // (HOURS_PER_*, normalizeDurationUnit, durationToHours, formatEstimatedDuration)
 // now live in src/lib/duration.ts so the conversion is unit-testable.
 const LOOKUP_STALE_MS = 5 * 60_000; // 5 min — applied to profile/project/template lookups
+// Tamamlandı "+ N daha" expansion caps at this many rows; anything beyond is
+// pointed at the Arxiv page. Keeps the kanban column manageable while still
+// letting users skim recent archives inline.
+const ARCHIVE_PEEK_LIMIT = 50;
 
 export function TasksPage() {
   const { profile, isAdmin } = useAuth();
@@ -389,7 +393,9 @@ export function TasksPage() {
         .eq('status', 'done')
         .not('archived_at', 'is', null);
       if (filterAssignee) q = q.contains('assignee_ids', [filterAssignee]);
-      const { data, error } = await q.order('archived_at', { ascending: false }).limit(50);
+      const { data, error } = await q
+        .order('archived_at', { ascending: false })
+        .limit(ARCHIVE_PEEK_LIMIT);
       if (error) throw error;
       return data ?? [];
     },
@@ -609,16 +615,20 @@ export function TasksPage() {
   );
 
   // Clear every user-set filter. State setters are batched; the URL update
-  // is one setSearchParams call so we don't write four times in succession.
+  // is one setSearchParams call so we don't write five times in succession.
+  // mineOnly is included — it's a filter, not a config — so "Təmizlə" really
+  // resets the scope. sortBy stays (config, not filter).
   function clearAllFilters() {
     setSearch('');
     setLabelFilter(null);
     setProjectFilter('');
     setTodayOnly(false);
+    setMineOnly(false);
     const next = new URLSearchParams(searchParamsRef.current);
     next.delete('q');
     next.delete('label');
     next.delete('project');
+    next.delete('mine');
     if (next.toString() !== searchParamsRef.current.toString()) {
       setSearchParams(next, { replace: true });
     }
@@ -949,7 +959,7 @@ export function TasksPage() {
           </>
         ) : null}
         {/* PRD §UX — single clear-all when any filter is active */}
-        {(search || labelFilter || projectFilter || todayOnly) ? (
+        {(search || labelFilter || projectFilter || todayOnly || mineOnly) ? (
           <>
             <span style={{ width: 1, background: 'var(--line)', margin: '0 4px' }} />
             <button
@@ -1383,44 +1393,60 @@ export function TasksPage() {
                         Arxivdə Tamamlandı yoxdur.
                       </p>
                     ) : (
-                      (archivedDone.data ?? []).map((t) => {
-                        const proj = t.project_id ? projectById[t.project_id] : null;
-                        return (
-                          <article
-                            key={t.id}
-                            className="rounded-card p-2 text-body"
-                            style={{
-                              background: 'var(--surface-mist)',
-                              border: '1px dashed var(--line)',
-                              opacity: 0.75,
-                            }}
-                          >
-                            <div
-                              className="font-medium cursor-pointer"
-                              style={{ fontSize: 12 }}
-                              onClick={() => setCommenting({ id: t.id, title: t.title })}
+                      <>
+                        {(archivedDone.data ?? []).map((t) => {
+                          const proj = t.project_id ? projectById[t.project_id] : null;
+                          return (
+                            <article
+                              key={t.id}
+                              className="rounded-card p-2 text-body"
+                              style={{
+                                background: 'var(--surface-mist)',
+                                border: '1px dashed var(--line)',
+                                opacity: 0.75,
+                              }}
                             >
-                              {t.title}
-                            </div>
-                            {proj ? (
                               <div
-                                className="text-meta"
-                                style={{ color: 'var(--text-muted)', fontSize: 10 }}
+                                className="font-medium cursor-pointer"
+                                style={{ fontSize: 12 }}
+                                onClick={() => setCommenting({ id: t.id, title: t.title })}
                               >
-                                {proj.name}
+                                {t.title}
                               </div>
-                            ) : null}
-                            {t.archived_at ? (
-                              <div
-                                className="text-meta"
-                                style={{ color: 'var(--text-muted)', fontSize: 10, fontVariantNumeric: 'tabular-nums' }}
-                              >
-                                Arxivləndi: {t.archived_at.slice(0, 10)}
-                              </div>
-                            ) : null}
-                          </article>
-                        );
-                      })
+                              {proj ? (
+                                <div
+                                  className="text-meta"
+                                  style={{ color: 'var(--text-muted)', fontSize: 10 }}
+                                >
+                                  {proj.name}
+                                </div>
+                              ) : null}
+                              {t.archived_at ? (
+                                <div
+                                  className="text-meta"
+                                  style={{ color: 'var(--text-muted)', fontSize: 10, fontVariantNumeric: 'tabular-nums' }}
+                                >
+                                  Arxivləndi: {t.archived_at.slice(0, 10)}
+                                </div>
+                              ) : null}
+                            </article>
+                          );
+                        })}
+                        {/* If the head-only count exceeds the peek-list size,
+                            tell the user where the rest live. Otherwise the
+                            chip says "+200 daha" but only 50 ever load. */}
+                        {(archivedDoneCount.data ?? 0) > (archivedDone.data?.length ?? 0) ? (
+                          <p
+                            className="text-meta"
+                            style={{ color: 'var(--text-muted)', fontSize: 10, marginTop: 6 }}
+                          >
+                            Göstərilir {archivedDone.data?.length ?? 0} / {archivedDoneCount.data} —{' '}
+                            <Link to="/arxiv" style={{ color: 'var(--brand-text)' }}>
+                              Arxivdə bax →
+                            </Link>
+                          </p>
+                        ) : null}
+                      </>
                     )}
                   </div>
                 ) : null}
