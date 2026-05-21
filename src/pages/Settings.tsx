@@ -221,50 +221,40 @@ function GeneralSettings() {
   // PRD §8.1 / REQ-TG-03: cron reads `finance_alert_income_threshold` and
   // `finance_alert_expense_threshold` (jsonb { azn: number }). Stay aligned.
   const loaded = settings.data;
-  const readAzn = (v: unknown): string => {
-    if (v && typeof v === 'object' && 'azn' in v) {
-      const n = (v as { azn?: number }).azn;
-      return typeof n === 'number' ? String(n) : '';
-    }
-    return '';
-  };
-  if (loaded && incomeAlert === '') {
-    const v = readAzn(loaded.finance_alert_income_threshold);
-    if (v) setIncomeAlert(v);
-  }
-  if (loaded && expenseAlert === '') {
-    const v = readAzn(loaded.finance_alert_expense_threshold);
-    if (v) setExpenseAlert(v);
-  }
-  if (loaded && miraiBudget === '') {
-    const raw = loaded.mirai_monthly_budget;
-    if (raw && typeof raw === 'object' && 'usd' in raw) {
-      const n = (raw as { usd?: number }).usd;
+
+  // Hydrate every editable field from the loaded settings ONCE — after that
+  // local state is the source of truth, so clearing an input stays cleared.
+  // The previous in-render `if (loaded && field === '') setField(loaded.x)`
+  // chain re-populated any field a user backspaced to empty, making it
+  // impossible to erase a value. See audit S-1.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    if (!loaded || hydrated) return;
+    const readAzn = (v: unknown): string => {
+      if (v && typeof v === 'object' && 'azn' in v) {
+        const n = (v as { azn?: number }).azn;
+        return typeof n === 'number' ? String(n) : '';
+      }
+      return '';
+    };
+    setIncomeAlert(readAzn(loaded.finance_alert_income_threshold));
+    setExpenseAlert(readAzn(loaded.finance_alert_expense_threshold));
+    const budgetRaw = loaded.mirai_monthly_budget;
+    if (budgetRaw && typeof budgetRaw === 'object' && 'usd' in budgetRaw) {
+      const n = (budgetRaw as { usd?: number }).usd;
       if (typeof n === 'number') setMiraiBudget(String(n));
     }
-  }
-  if (loaded && firmName === '') {
-    const raw = loaded.firm_name;
-    // firm_name is stored as a quoted JSON string in jsonb.
-    if (typeof raw === 'string') setFirmName(raw);
-  }
-  if (loaded && logoUrl === '') {
-    const raw = loaded.firm_logo_url;
-    if (typeof raw === 'string' && raw) setLogoUrl(raw);
-  }
-  if (loaded && currency === 'AZN') {
-    const raw = loaded.default_currency;
-    if (typeof raw === 'string' && raw) setCurrency(raw);
-  }
-  if (loaded && workHours === '8') {
-    const raw = loaded.working_hours_per_day;
-    if (typeof raw === 'number') setWorkHours(String(raw));
-    else if (typeof raw === 'string' && raw) setWorkHours(raw);
-  }
-  if (loaded) {
-    const raw = loaded.az_public_holidays_enabled;
-    if (typeof raw === 'boolean') setHolidaysEnabled(raw);
-  }
+    if (typeof loaded.firm_name === 'string') setFirmName(loaded.firm_name);
+    if (typeof loaded.firm_logo_url === 'string' && loaded.firm_logo_url) setLogoUrl(loaded.firm_logo_url);
+    if (typeof loaded.default_currency === 'string' && loaded.default_currency) setCurrency(loaded.default_currency);
+    const wh = loaded.working_hours_per_day;
+    if (typeof wh === 'number') setWorkHours(String(wh));
+    else if (typeof wh === 'string' && wh) setWorkHours(wh);
+    if (typeof loaded.az_public_holidays_enabled === 'boolean') {
+      setHolidaysEnabled(loaded.az_public_holidays_enabled);
+    }
+    setHydrated(true);
+  }, [loaded, hydrated]);
 
   /** PRD §10.1 / REQ-SET-07 — Upload firm logo to Supabase Storage firm-assets bucket. */
   async function handleLogoUpload(file: File) {
@@ -440,6 +430,9 @@ function GeneralSettings() {
                 onClick={async () => {
                   await supabase.from('system_settings').delete().eq('key', 'firm_logo_url');
                   setLogoUrl('');
+                  // Refresh the query so a page reload doesn't restore the
+                  // cached URL via the hydration effect above.
+                  qc.invalidateQueries({ queryKey: ['system_settings'] });
                 }}
               >
                 Sil
@@ -524,9 +517,15 @@ function GeneralSettings() {
 // PRD §8.5 — Admin configures custom RSS feeds for MIRAI CMO weekly cron
 // Default feeds (ArchDaily, Dezeen, Architizer, WAF) are hardcoded in the backend cron.
 // Custom feeds stored as JSON array in system_settings[mirai_rss_feeds].
+// Default feeds moved outside the component so its identity is stable and
+// the useEffect below can include it in deps without retriggering — S-8.
+const DEFAULT_RSS_FEEDS = [
+  'https://www.archdaily.com/feed',
+  'https://www.dezeen.com/feed',
+  'https://www.architizer.com/feed',
+];
+
 function RssFeedSettings({ settings, onSaved }: { settings: Record<string, unknown> | undefined; onSaved: () => void }) {
-  const qc = useQueryClient();
-  const defaultFeeds = ['https://www.archdaily.com/feed', 'https://www.dezeen.com/feed', 'https://www.architizer.com/feed'];
   const [feeds, setFeeds] = useState<string[]>([]);
   const [newUrl, setNewUrl] = useState('');
   const [saved, setSaved] = useState(false);
@@ -538,9 +537,9 @@ function RssFeedSettings({ settings, onSaved }: { settings: Record<string, unkno
       const raw = settings.mirai_rss_feeds;
       const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
       if (Array.isArray(parsed) && parsed.length) setFeeds(parsed as string[]);
-      else setFeeds([...defaultFeeds]);
+      else setFeeds([...DEFAULT_RSS_FEEDS]);
     } catch {
-      setFeeds([...defaultFeeds]);
+      setFeeds([...DEFAULT_RSS_FEEDS]);
     }
   }, [settings]);
 
@@ -1096,9 +1095,15 @@ function AuditLogRetentionSetting() {
     },
   });
   const [val, setVal] = useState<string>('');
+  // Hydrate once — see audit S-1. The earlier `val === ''` guard with `val`
+  // in deps re-populated the input when the user backspaced to empty,
+  // making it impossible to clear.
+  const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
-    if (setting.data != null && val === '') setVal(String(setting.data));
-  }, [setting.data, val]);
+    if (setting.data == null || hydrated) return;
+    setVal(String(setting.data));
+    setHydrated(true);
+  }, [setting.data, hydrated]);
   const save = useMutation({
     mutationFn: async () => {
       const days = Math.max(30, Math.min(3650, Number(val) || 365));
