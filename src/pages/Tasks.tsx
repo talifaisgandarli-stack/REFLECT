@@ -149,15 +149,16 @@ export function TasksPage() {
   useEffect(() => onOpenTask((detail) => setCommenting(detail)), []);
   // Deep-link consumer for ?focus=<task-id>. TaskCommentsModal builds links
   // like /tapşırıqlar?focus=<id>; without this effect those links land here
-  // but the modal never opens. The param is cleared after first consumption
-  // so a reload doesn't re-open the same task.
-  const focusConsumedRef = useRef(false);
+  // but the modal never opens. The param is cleared after consumption, so
+  // the next searchParams change re-runs this effect with focusId=null and
+  // early-returns — that's what prevents the same task from re-opening on
+  // its own. A previous version used a "consumed" ref but it persisted
+  // forever, blocking every subsequent deep-link in the same session.
   useEffect(() => {
     const focusId = searchParams.get('focus');
-    if (!focusId || focusConsumedRef.current) return;
+    if (!focusId) return;
     const t = tasks.find((x) => x.id === focusId);
-    if (!t) return; // tasks still loading or focus id doesn't match current scope
-    focusConsumedRef.current = true;
+    if (!t) return; // tasks still loading or focus id outside current scope
     setCommenting({ id: t.id, title: t.title });
     const next = new URLSearchParams(searchParams);
     next.delete('focus');
