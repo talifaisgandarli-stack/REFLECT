@@ -1827,8 +1827,8 @@ function InvitationsSettings() {
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({ email: email.trim().toLowerCase(), role_key: role.key }),
       });
+      const body = await res.json().catch(() => ({} as Record<string, unknown>));
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error ?? 'Dəvət göndərilmədi');
       }
       // D-1 — no frontend writeAudit here: the backend
@@ -1837,19 +1837,31 @@ function InvitationsSettings() {
       // duplicate with a different action string ('invitation.create' vs
       // 'invitation.created'), polluting the audit log with two rows per
       // invite that didn't even share an action name.
-      return role.name;
+      return {
+        roleName: role.name,
+        emailSent: (body as { email_sent?: boolean }).email_sent === true,
+        emailError: (body as { email_error?: string | null }).email_error ?? null,
+      };
     },
     // D-7 — clear stale formError as soon as the user retries so the previous
     // error doesn't linger next to the spinner.
     onMutate: () => setFormError(''),
-    onSuccess: (roleName) => {
+    onSuccess: (result) => {
       setEmail('');
       setRoleId('');
       setFormError('');
       qc.invalidateQueries({ queryKey: ['invitations'] });
-      // D-6 — explicit confirmation. Form clears + list refreshes weren't
-      // obvious enough on their own.
-      toast.success(`${roleName} rolu ilə dəvət göndərildi`);
+      // D-6 — explicit confirmation. Branched so admin sees the actual state
+      // when email config is missing: invite row exists, but Resend didn't
+      // get called → admin must share the link manually from the pending
+      // list. The "Linki kopyala" button below makes that one click.
+      if (result.emailSent) {
+        toast.success(`${result.roleName} rolu ilə dəvət göndərildi`);
+      } else {
+        toast.info(
+          `Dəvət yaradıldı, amma email göndərilmədi (${result.emailError ?? 'naməlum'}). Pending siyahıdan "Linki kopyala" ilə əl ilə paylaş.`,
+        );
+      }
     },
     onError: (e) => setFormError((e as Error).message),
   });
@@ -1999,15 +2011,38 @@ function InvitationsSettings() {
                         {expired ? ' (vaxtı keçib)' : ''}
                       </td>
                       <td className="py-2 text-right">
-                        <button
-                          className="btn-outline text-meta"
-                          style={{ padding: '2px 10px', color: 'var(--error-deep)' }}
-                          onClick={() => revoke.mutate(inv.id)}
-                          disabled={revoke.isPending}
-                          aria-label={`${inv.email} dəvətini ləğv et`}
-                        >
-                          Ləğv et
-                        </button>
+                        <div className="inline-flex items-center gap-2">
+                          {/* Manual share fallback for when Resend isn't
+                              configured (or fails). The token lives in the
+                              invitation row; copying the constructed magic
+                              link lets admin paste into WhatsApp/Telegram. */}
+                          <button
+                            type="button"
+                            className="btn-outline text-meta"
+                            style={{ padding: '2px 10px' }}
+                            onClick={() => {
+                              const url = `${window.location.origin}/login?invite=${inv.token}`;
+                              void navigator.clipboard.writeText(url).then(
+                                () => toast.success('Dəvət linki kopyalandı'),
+                                () => toast.error('Kopyalama uğursuz oldu'),
+                              );
+                            }}
+                            aria-label={`${inv.email} üçün dəvət linkini kopyala`}
+                            disabled={expired}
+                            title={expired ? 'Vaxtı keçib — yenidən dəvət göndər' : 'Linki kopyala və əl ilə paylaş'}
+                          >
+                            Linki kopyala
+                          </button>
+                          <button
+                            className="btn-outline text-meta"
+                            style={{ padding: '2px 10px', color: 'var(--error-deep)' }}
+                            onClick={() => revoke.mutate(inv.id)}
+                            disabled={revoke.isPending}
+                            aria-label={`${inv.email} dəvətini ləğv et`}
+                          >
+                            Ləğv et
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
