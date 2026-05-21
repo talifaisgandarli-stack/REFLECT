@@ -8,6 +8,7 @@ import { NotificationPreferencesPage } from './NotificationPreferences';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { downloadCsv } from '@/lib/csv';
+import { currentMonthInBaku } from '@/lib/time';
 import type { Invitation, Role } from '@/types/db';
 
 async function writeAudit(actorId: string, action: string, resource: string, meta?: Record<string, unknown>) {
@@ -519,11 +520,25 @@ function GeneralSettings() {
 // Custom feeds stored as JSON array in system_settings[mirai_rss_feeds].
 // Default feeds moved outside the component so its identity is stable and
 // the useEffect below can include it in deps without retriggering — S-8.
+// Mirrors the backend cron defaults in api/cron/cmo.ts (ArchDaily, Dezeen,
+// Architizer, WAF) — keep these in lock-step.
 const DEFAULT_RSS_FEEDS = [
   'https://www.archdaily.com/feed',
   'https://www.dezeen.com/feed',
   'https://www.architizer.com/feed',
+  'https://worldarchitecturefestival.com/feed/',
 ];
+
+/** True iff the string parses as an http(s) URL. The previous
+ * `startsWith('http')` test let 'httpfoo' through — S-5. */
+function isValidHttpUrl(s: string): boolean {
+  try {
+    const u = new URL(s);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
 
 function RssFeedSettings({ settings, onSaved }: { settings: Record<string, unknown> | undefined; onSaved: () => void }) {
   const [feeds, setFeeds] = useState<string[]>([]);
@@ -560,8 +575,7 @@ function RssFeedSettings({ settings, onSaved }: { settings: Record<string, unkno
 
   function addFeed() {
     const url = newUrl.trim();
-    if (!url) return;
-    if (!url.startsWith('http')) return;
+    if (!isValidHttpUrl(url)) return;
     if (feeds.includes(url)) return;
     setFeeds((f) => [...f, url]);
     setNewUrl('');
@@ -600,7 +614,7 @@ function RssFeedSettings({ settings, onSaved }: { settings: Record<string, unkno
           onChange={(e) => setNewUrl(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addFeed())}
         />
-        <button className="btn-outline" onClick={addFeed} disabled={!newUrl.trim().startsWith('http')}>
+        <button className="btn-outline" onClick={addFeed} disabled={!isValidHttpUrl(newUrl.trim())}>
           Əlavə et
         </button>
       </div>
@@ -670,7 +684,9 @@ function TemplatesSettings() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${name.replace(/[^a-zA-Zа-яА-Яəüöçşğı\s]/g, '_').trim() || 'sablon'}.txt`;
+    // Include uppercase AZ chars (ƏÇĞÖŞÜİ) so a template named "Çərşənbə
+    // protokolu" doesn't download as "_ərşənbə_protokolu.txt" — S-4.
+    a.download = `${name.replace(/[^a-zA-ZəüöçşğıƏÇĞÖŞÜİа-яА-Я\s]/g, '_').trim() || 'sablon'}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1399,7 +1415,32 @@ function AuditLogViewer() {
 function MiraiCostDashboard() {
   const { isAdmin } = useAuth();
 
-  const period = new Date().toISOString().slice(0, 7).replace('-', ''); // YYYYMM
+  // PRD §FIN-09 — period derived from Bakı clock so the month rolls over
+  // at 00:00 Asia/Baku, not 04:00 (which is what UTC slicing gave us). At
+  // month-end the dashboard would otherwise show last month's totals for
+  // 4 hours after the actual Bakı month change.
+  const { year: bakuY, month: bakuM } = currentMonthInBaku();
+  const period = `${bakuY}${String(bakuM + 1).padStart(2, '0')}`; // YYYYMM
+
+  // PRD §7.6 / S-2 — admin can change the monthly per-user MIRAI budget in
+  // GeneralSettings (mirai_monthly_budget). Read it here instead of using a
+  // hardcoded $5, so the budget percentages on this dashboard stay
+  // consistent with whatever was actually saved.
+  const userBudgetQuery = useQuery({
+    queryKey: ['system_settings', 'mirai_monthly_budget'],
+    enabled: isAdmin,
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'mirai_monthly_budget')
+        .maybeSingle();
+      const v = data?.value as { usd?: number } | null;
+      return typeof v?.usd === 'number' ? v.usd : 5;
+    },
+  });
+  const userBudget = userBudgetQuery.data ?? 5;
 
   const usage = useQuery({
     queryKey: ['mirai-cost-dashboard', period],
@@ -1486,9 +1527,6 @@ function MiraiCostDashboard() {
   const totalCost = rows.reduce((s, r) => s + (r.cost_usd ?? 0), 0);
   const totalIn = rows.reduce((s, r) => s + (r.tokens_in ?? 0), 0);
   const totalOut = rows.reduce((s, r) => s + (r.tokens_out ?? 0), 0);
-
-  // Default per-user budget — PRD §7.6 Cost Guardian (5 USD/user/month default)
-  const userBudget = 5;
 
   return (
     <section>
