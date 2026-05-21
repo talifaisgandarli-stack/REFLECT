@@ -58,7 +58,13 @@ type PrefRow = {
   enabled: boolean;
 };
 
-export function NotificationPreferencesPage() {
+/**
+ * `embedded` skips the PageHead + outer `.card` so the component can be
+ * dropped inside another page (Parametrlər → Bildirişlər tab) without
+ * duplicating the page header or stacking cards. Standalone /tapşırıqlar?
+ * No — it has its own route too (and renders with embedded=false). — S-27
+ */
+export function NotificationPreferencesPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { profile } = useAuth();
   const qc = useQueryClient();
   const [grid, setGrid] = useState<Record<string, boolean>>({});
@@ -126,19 +132,32 @@ export function NotificationPreferencesPage() {
 
   return (
     <>
-      <PageHead
-        meta={profile?.full_name ?? profile?.email ?? '—'}
-        title="Bildirişlər"
-        actions={
-          save.isPending ? (
-            <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
-              Yadda saxlanılır…
-            </span>
-          ) : null
-        }
-      />
+      {embedded ? (
+        // The Settings shell already provides the page header; just give
+        // the same save-pending indicator a place to live.
+        save.isPending ? (
+          <p className="text-meta mb-2" style={{ color: 'var(--text-muted)' }}>
+            Yadda saxlanılır…
+          </p>
+        ) : null
+      ) : (
+        <PageHead
+          meta={profile?.full_name ?? profile?.email ?? '—'}
+          title="Bildirişlər"
+          actions={
+            save.isPending ? (
+              <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                Yadda saxlanılır…
+              </span>
+            ) : null
+          }
+        />
+      )}
 
-      <div className="card overflow-x-auto" style={{ maxHeight: '70vh' }}>
+      <div
+        className={`${embedded ? '' : 'card '}overflow-x-auto`}
+        style={{ maxHeight: '70vh' }}
+      >
         <table className="w-full text-body" style={{ minWidth: 520 }}>
           {/* PRD §UX — sticky header so column labels stay visible when scrolling */}
           <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 }}>

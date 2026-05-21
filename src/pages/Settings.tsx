@@ -50,7 +50,11 @@ export function SettingsPage() {
 // outstanding invitations without opening the section.
 function SettingsNav() {
   const pendingCount = useQuery({
-    queryKey: ['settings-nav-pending-invites'],
+    // Sub-key under ['invitations'] so the existing
+    // invalidateQueries(['invitations']) calls in InvitationsSettings.invite
+    // and .revoke cascade here — keeps the nav badge in sync with the
+    // invitation list (was stale up to 60s otherwise). — S-25
+    queryKey: ['invitations', 'pending-count'],
     staleTime: 60_000,
     queryFn: async () => {
       const { count } = await supabase
@@ -62,7 +66,9 @@ function SettingsNav() {
   });
   // Total KB documents — surfaces growth without entering the section
   const kbCount = useQuery({
-    queryKey: ['settings-nav-kb-count'],
+    // Sub-key under ['knowledge-base'] so existing invalidate calls
+    // (upload + deletePdf) cascade here. — S-26
+    queryKey: ['knowledge-base', 'total-count'],
     staleTime: 5 * 60_000,
     queryFn: async () => {
       const { count } = await supabase
@@ -307,10 +313,14 @@ function GeneralSettings() {
         { key: 'working_hours_per_day', value: Number(workHours) || 8 },
         { key: 'az_public_holidays_enabled', value: holidaysEnabled },
       ];
-      for (const row of rows) {
-        const { error } = await supabase.from('system_settings').upsert(row, { onConflict: 'key' });
-        if (error) throw error;
-      }
+      // S-12 — atomic batch upsert. The previous sequential loop could
+      // leave half the settings saved on partial failure (row 4 errors →
+      // rows 1-3 persisted, rows 5-7 never attempted), surfacing as
+      // "save failed" while the DB still reflected some of the new values.
+      const { error } = await supabase
+        .from('system_settings')
+        .upsert(rows, { onConflict: 'key' });
+      if (error) throw error;
       if (profile?.id) {
         await writeAudit(profile.id, 'settings.update', 'system_settings', {
           keys: rows.map((r) => r.key),
@@ -1103,7 +1113,7 @@ function KnowledgeBaseSettings() {
 function NotificationsSettings() {
   return (
     <div className="space-y-8">
-      <NotificationPreferencesPage />
+      <NotificationPreferencesPage embedded />
       {/* PRD §9.4 — admin MIRAI cost dashboard */}
       <MiraiCostDashboard />
       {/* PRD §9.4 — audit log retention */}
