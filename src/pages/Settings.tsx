@@ -631,6 +631,7 @@ function RssFeedSettings({ settings, onSaved }: { settings: Record<string, unkno
 
 // §10.2 / US-SYS-01 — Templates CRUD with {{variable}} extraction + preview
 function TemplatesSettings() {
+  const { profile } = useAuth();
   const qc = useQueryClient();
   const [editing, setEditing] = useState<null | { id?: string; category: string; name: string; body: string; mime_type: string }>(null);
   const [preview, setPreview] = useState(false);
@@ -674,7 +675,24 @@ function TemplatesSettings() {
   });
 
   const del = useMutation({
-    mutationFn: async (id: string) => { await supabase.from('templates').update({ name: `_deprecated_${Date.now()}` }).eq('id', id); },
+    mutationFn: async (id: string) => {
+      // Look up first so we can record what's being soft-deleted; matches
+      // the invitation revoke flow. PRD §9.4 — privileged ops are audited.
+      const target = ((templates.data ?? []) as Array<{ id: string; name: string; category: string }>)
+        .find((t) => t.id === id);
+      const { error } = await supabase
+        .from('templates')
+        .update({ name: `_deprecated_${Date.now()}` })
+        .eq('id', id);
+      if (error) throw error;
+      if (profile?.id) {
+        await writeAudit(profile.id, 'template.delete', 'templates', {
+          template_id: id,
+          name: target?.name ?? null,
+          category: target?.category ?? null,
+        });
+      }
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['templates'] }),
   });
 
@@ -795,10 +813,12 @@ function TemplatesSettings() {
             <div>
               <div className="text-body font-medium flex items-center gap-2">
                 {t.name}
-                {/* PRD §10.2 — variable count so admin sees template complexity at a glance */}
+                {/* PRD §10.2 — variable count so admin sees template complexity at a glance.
+                    Single extractVars call per item; the regex was running twice
+                    (count + tooltip join) on every row on every render — S-9. */}
                 {(() => {
-                  const n = extractVars(t.body).length;
-                  if (n === 0) return null;
+                  const vars = extractVars(t.body);
+                  if (vars.length === 0) return null;
                   return (
                     <span
                       className="chip"
@@ -809,9 +829,9 @@ function TemplatesSettings() {
                         padding: '0 6px',
                         fontVariantNumeric: 'tabular-nums',
                       }}
-                      title={`${n} dəyişən: ${extractVars(t.body).join(', ')}`}
+                      title={`${vars.length} dəyişən: ${vars.join(', ')}`}
                     >
-                      {`{{${n}}}`}
+                      {`{{${vars.length}}}`}
                     </span>
                   );
                 })()}
