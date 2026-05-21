@@ -4,6 +4,8 @@ import {
   endOfWeekInBaku,
   daysFromTodayInBaku,
   currentMonthInBaku,
+  isoOffset,
+  dayDiff,
 } from './time';
 
 /**
@@ -91,5 +93,68 @@ describe('currentMonthInBaku', () => {
   it('returns the same month inside the day', () => {
     mockNow('2026-05-20T12:00:00Z');
     expect(currentMonthInBaku()).toEqual({ year: 2026, month: 4 });
+  });
+});
+
+describe('isoOffset', () => {
+  it('adds N calendar days', () => {
+    expect(isoOffset('2026-05-13', 0)).toBe('2026-05-13');
+    expect(isoOffset('2026-05-13', 1)).toBe('2026-05-14');
+    expect(isoOffset('2026-05-13', 7)).toBe('2026-05-20');
+    expect(isoOffset('2026-05-13', 41)).toBe('2026-06-23');
+  });
+
+  it('subtracts N calendar days', () => {
+    expect(isoOffset('2026-05-13', -1)).toBe('2026-05-12');
+    expect(isoOffset('2026-05-13', -7)).toBe('2026-05-06');
+  });
+
+  it('crosses month boundaries', () => {
+    expect(isoOffset('2026-05-31', 1)).toBe('2026-06-01');
+    expect(isoOffset('2026-06-01', -1)).toBe('2026-05-31');
+  });
+
+  it('crosses year boundaries', () => {
+    expect(isoOffset('2026-12-31', 1)).toBe('2027-01-01');
+    expect(isoOffset('2026-01-01', -1)).toBe('2025-12-31');
+  });
+
+  it('regression: stays correct in positive-UTC timezones', () => {
+    // The previous local-time-parse implementation lost a day in Bakı
+    // (UTC+4) because parsing without a timezone treats the string as
+    // local midnight and toISOString formats UTC. UTC-based shifts make
+    // the result wall-clock-independent.
+    expect(isoOffset('2026-05-13', 0)).toBe('2026-05-13'); // not '2026-05-12'
+  });
+
+  it('does not compound errors across repeated shifts', () => {
+    // Sequential -1 shifts should descend by exactly one each call.
+    const seq: string[] = [];
+    let cur = '2026-05-13';
+    for (let i = 0; i < 4; i++) {
+      cur = isoOffset(cur, -1);
+      seq.push(cur);
+    }
+    expect(seq).toEqual(['2026-05-12', '2026-05-11', '2026-05-10', '2026-05-09']);
+  });
+});
+
+describe('dayDiff', () => {
+  it('returns 0 for the same date', () => {
+    expect(dayDiff('2026-05-20', '2026-05-20')).toBe(0);
+  });
+
+  it('returns positive when b is after a', () => {
+    expect(dayDiff('2026-05-13', '2026-05-20')).toBe(7);
+    expect(dayDiff('2026-05-13', '2026-06-23')).toBe(41);
+  });
+
+  it('returns negative when b is before a', () => {
+    expect(dayDiff('2026-05-20', '2026-05-13')).toBe(-7);
+  });
+
+  it('handles month and year boundaries', () => {
+    expect(dayDiff('2026-05-31', '2026-06-01')).toBe(1);
+    expect(dayDiff('2026-12-31', '2027-01-01')).toBe(1);
   });
 });

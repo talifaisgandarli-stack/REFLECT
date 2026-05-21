@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { Task } from '@/types/db';
 import { TASK_STATUS_TONE } from '@/lib/labels';
-import { todayInBaku } from '@/lib/time';
+import { todayInBaku, isoOffset, dayDiff } from '@/lib/time';
 
 interface Props {
   tasks: Task[];
@@ -16,18 +16,6 @@ interface Props {
 const WINDOW_DAYS = 42;
 const ROW_HEIGHT = 28;
 const TASK_COL_WIDTH = 220;
-
-function isoOffset(iso: string, days: number): string {
-  const d = new Date(iso + 'T00:00:00');
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
-function dayDiff(a: string, b: string): number {
-  return Math.round(
-    (new Date(b + 'T00:00:00').getTime() - new Date(a + 'T00:00:00').getTime()) / 86400000,
-  );
-}
 
 export function TaskGanttView({
   tasks,

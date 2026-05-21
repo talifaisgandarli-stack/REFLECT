@@ -30,7 +30,7 @@ import {
 import { downloadCsv } from '@/lib/csv';
 import { toast } from '@/components/Toast';
 import { formatDuration, useActiveTimeEntry, useStartTimer, useStopTimer, useTaskTimeTotals } from '@/lib/useTimeTracking';
-import { todayInBaku, endOfWeekInBaku, daysFromTodayInBaku, currentMonthInBaku } from '@/lib/time';
+import { todayInBaku, endOfWeekInBaku, daysFromTodayInBaku, currentMonthInBaku, isoOffset } from '@/lib/time';
 import { onOpenTask } from '@/lib/events';
 import { durationToHours, formatEstimatedDuration } from '@/lib/duration';
 import { filterTasks } from '@/lib/taskFilters';
@@ -1447,11 +1447,7 @@ export function TasksPage() {
         <TaskGanttView
           tasks={filtered}
           startDate={ganttStart}
-          onShift={(days) => {
-            const d = new Date(ganttStart + 'T00:00:00');
-            d.setDate(d.getDate() + days);
-            setGanttStart(d.toISOString().slice(0, 10));
-          }}
+          onShift={(days) => setGanttStart(isoOffset(ganttStart, days))}
           onToday={() => setGanttStart(daysFromTodayInBaku(-7))}
           onOpen={(t) => setCommenting({ id: t.id, title: t.title })}
           projectById={projectById}

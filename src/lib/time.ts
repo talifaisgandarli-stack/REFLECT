@@ -46,3 +46,29 @@ export function currentMonthInBaku(): { year: number; month: number } {
   const d = bakuNow();
   return { year: d.getUTCFullYear(), month: d.getUTCMonth() };
 }
+
+/**
+ * Shift a YYYY-MM-DD date string by N calendar days.
+ *
+ * UTC-based to avoid the off-by-one drift you get from
+ * `new Date(iso + 'T00:00:00').setDate(...).toISOString().slice(0,10)`:
+ * parsing without a timezone treats the string as local midnight, but
+ * toISOString formats UTC, so in any positive-UTC zone (e.g. Bakı +04:00)
+ * the formatted day is one earlier than the local day. This helper
+ * sidesteps that by reading / mutating / formatting entirely in UTC.
+ */
+export function isoOffset(iso: string, days: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+/** Whole-day difference (b − a) between two YYYY-MM-DD strings. */
+export function dayDiff(a: string, b: string): number {
+  const [ya, ma, da] = a.split('-').map(Number);
+  const [yb, mb, db] = b.split('-').map(Number);
+  return Math.round(
+    (Date.UTC(yb, mb - 1, db) - Date.UTC(ya, ma - 1, da)) / 86_400_000,
+  );
+}
