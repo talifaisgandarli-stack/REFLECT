@@ -802,8 +802,20 @@ function TemplatesSettings() {
           </div>
         ) : null}
         {save.error ? <p className="text-meta" style={{ color: 'var(--error-deep)' }}>{(save.error as Error).message}</p> : null}
+        {/* Q-3 — block save when name or body is empty. A nameless / bodyless
+            template is unusable but the form let it through; users could end
+            up with phantom "(no name)" rows in the list. */}
         <div className="flex gap-2">
-          <button className="btn-primary" disabled={save.isPending} onClick={() => save.mutate()}>
+          <button
+            className="btn-primary"
+            disabled={save.isPending || !editing.name.trim() || !editing.body.trim()}
+            onClick={() => save.mutate()}
+            title={
+              !editing.name.trim() ? 'Ad tələb olunur'
+                : !editing.body.trim() ? 'Mətn tələb olunur'
+                : undefined
+            }
+          >
             {save.isPending ? 'Saxlanılır…' : 'Saxla'}
           </button>
           {vars.length ? (
@@ -1546,11 +1558,16 @@ function MiraiCostDashboard() {
         ? await supabase.from('profiles').select('id, full_name, email').in('id', ids)
         : { data: [] as Array<{ id: string; full_name: string | null; email: string }> };
       const profMap = new Map((profileRows ?? []).map((p) => [p.id, p]));
+      // Q-2 — Postgres numeric columns can deserialise as strings via
+      // Supabase JS on some setups (especially for high-precision values).
+      // Coerce with Number() so downstream .toFixed / arithmetic don't blow
+      // up at runtime; the explicit cast was a TypeScript lie when the
+      // value happened to be a string.
       return (usageRows ?? []).map((r) => ({
         user_id: r.user_id as string,
-        tokens_in: (r.tokens_in ?? 0) as number,
-        tokens_out: (r.tokens_out ?? 0) as number,
-        cost_usd: (r.cost_usd ?? 0) as number,
+        tokens_in: Number(r.tokens_in ?? 0),
+        tokens_out: Number(r.tokens_out ?? 0),
+        cost_usd: Number(r.cost_usd ?? 0),
         profile: profMap.get(r.user_id) ?? null,
       }));
     },
@@ -1572,7 +1589,7 @@ function MiraiCostDashboard() {
       for (const m of msgs ?? []) {
         const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baku' })
           .format(new Date(m.created_at as string));
-        buckets.set(day, (buckets.get(day) ?? 0) + (m.cost_usd ?? 0));
+        buckets.set(day, (buckets.get(day) ?? 0) + Number(m.cost_usd ?? 0));
       }
       // Fill missing days with 0 so the line is continuous
       const out: Array<{ day: string; cost: number }> = [];
@@ -1604,7 +1621,7 @@ function MiraiCostDashboard() {
       const costMap = new Map<string, number>();
       for (const m of msgs ?? []) {
         const p = (m.conversation_id && personaMap.get(m.conversation_id)) || 'unknown';
-        costMap.set(p, (costMap.get(p) ?? 0) + (m.cost_usd ?? 0));
+        costMap.set(p, (costMap.get(p) ?? 0) + Number(m.cost_usd ?? 0));
       }
       return Array.from(costMap.entries())
         .map(([persona, cost]) => ({ persona, cost }))
