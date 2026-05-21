@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
+import { toast } from '@/components/Toast';
 import { NotificationPreferencesPage } from './NotificationPreferences';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
@@ -332,6 +333,8 @@ function GeneralSettings() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     },
+    // S-13 — toast.error so failures don't sit silent next to the button.
+    onError: (e) => toast.error((e as Error).message),
   });
 
   return (
@@ -581,6 +584,7 @@ function RssFeedSettings({ settings, onSaved }: { settings: Record<string, unkno
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     },
+    onError: (e) => toast.error((e as Error).message),
   });
 
   function addFeed() {
@@ -682,6 +686,7 @@ function TemplatesSettings() {
       }
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['templates'] }); setEditing(null); },
+    onError: (e) => toast.error((e as Error).message),
   });
 
   const del = useMutation({
@@ -704,6 +709,7 @@ function TemplatesSettings() {
       }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['templates'] }),
+    onError: (e) => toast.error((e as Error).message),
   });
 
   /** PRD §10.2 — export template body as plain-text file for Word/Excel. */
@@ -905,6 +911,7 @@ function KnowledgeBaseSettings() {
       qc.invalidateQueries({ queryKey: ['knowledge-base'] });
       setConfirmDelete(null);
     },
+    onError: (e) => toast.error((e as Error).message),
   });
 
   const diag = useQuery({
@@ -1162,6 +1169,7 @@ function AuditLogRetentionSetting() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['system_setting', 'audit_log_retention_days'] });
     },
+    onError: (e) => toast.error((e as Error).message),
   });
   if (!isAdmin) return null;
   return (
@@ -1276,9 +1284,14 @@ function AuditLogViewer() {
     queryKey: ['audit-log', page, actionFilter, actorId],
     enabled: isAdmin,
     queryFn: async () => {
+      // S-14 — `planned` instead of `exact` so the count comes from the
+      // query planner's row estimate (microsecond-cheap, ~5% accuracy at
+      // worst) instead of a full COUNT(*) on the audit_log table. The
+      // pagination control only needs a rough total; admins who care
+      // about exact numbers export to CSV.
       let q = supabase
         .from('audit_log')
-        .select('id, actor_id, action, resource, ip, user_agent, meta, created_at, profile:profiles!audit_log_actor_id_fkey(full_name, email)', { count: 'exact' })
+        .select('id, actor_id, action, resource, ip, user_agent, meta, created_at, profile:profiles!audit_log_actor_id_fkey(full_name, email)', { count: 'planned' })
         .order('created_at', { ascending: false })
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
       if (actionFilter.trim()) q = q.ilike('action', `%${actionFilter.trim()}%`);
@@ -1787,6 +1800,7 @@ function InvitationsSettings() {
       }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['invitations'] }),
+    onError: (e) => toast.error((e as Error).message),
   });
 
   const pending = (invitations.data ?? []).filter((i) => !i.accepted_at);
