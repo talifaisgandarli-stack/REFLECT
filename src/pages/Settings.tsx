@@ -1922,18 +1922,24 @@ function InvitationsSettings() {
             invite.mutate();
           }}
         >
+          {/* min-w-0 + flex-1 lets the email input actually shrink/grow
+              inside the row. .input sets `w-full`, which on flex children
+              fights flex-1 unless we also allow min-width to drop below
+              the input's intrinsic width. */}
           <input
             type="email"
-            className="input flex-1"
+            className="input flex-1 min-w-0"
             placeholder="email@domain.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
             aria-label="Dəvət e-poçtu"
           />
+          {/* Role select is content-sized: stop it from grabbing the 100%
+              width that `.input` gives it by default. */}
           <select
             className="input"
-            style={{ minWidth: 160 }}
+            style={{ width: 'auto', minWidth: 200, flexShrink: 0 }}
             value={roleId}
             onChange={(e) => setRoleId(e.target.value)}
             required
@@ -1946,7 +1952,14 @@ function InvitationsSettings() {
               </option>
             ))}
           </select>
-          <button type="submit" className="btn-primary" disabled={invite.isPending}>
+          {/* whitespace-nowrap + shrink-0 so "Dəvət et" / "Yenidən dəvət et"
+              stay on one line instead of wrapping into 2-3 lines on tablet. */}
+          <button
+            type="submit"
+            className="btn-primary whitespace-nowrap"
+            style={{ flexShrink: 0 }}
+            disabled={invite.isPending}
+          >
             {invite.isPending ? 'Göndərilir…' : existingInvite ? 'Yenidən dəvət et' : 'Dəvət et'}
           </button>
         </form>
