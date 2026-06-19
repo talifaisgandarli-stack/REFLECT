@@ -46,13 +46,27 @@ export function useAuthBootstrap() {
       }
     }
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (cancelled) return;
-      const uid = data.session?.user?.id ?? null;
-      setSession(uid ? { userId: uid } : null);
-      if (uid) loadProfile(uid).finally(() => setHydrated(true));
-      else setHydrated(true);
-    });
+    // .catch is critical: if VITE_SUPABASE_URL is wrong / unreachable
+    // (DNS failure, dead project, network down), getSession() rejects.
+    // Without a catch the .then never runs, setHydrated(true) is never
+    // called, and RequireAuth renders null forever — white-screening the
+    // whole app instead of bouncing the user to /login with a real error.
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (cancelled) return;
+        const uid = data.session?.user?.id ?? null;
+        setSession(uid ? { userId: uid } : null);
+        if (uid) loadProfile(uid).finally(() => setHydrated(true));
+        else setHydrated(true);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        // eslint-disable-next-line no-console
+        console.error('[auth] getSession failed — Supabase unreachable?', err);
+        setSession(null);
+        setHydrated(true);
+      });
 
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       const uid = session?.user?.id ?? null;
