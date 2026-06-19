@@ -96,11 +96,26 @@ async function handler(req: Request) {
       meta: { role_key, email },
     });
 
-    // Build the magic-link from the admin's current Origin. PUBLIC_APP_URL
-    // stays as a fallback for server-initiated paths (none today, but
-    // future cron-based invites would use it).
-    const origin = req.headers.get('origin') || process.env.PUBLIC_APP_URL || '';
-    const inviteUrl = origin ? `${origin}/login?invite=${token}` : `/login?invite=${token}`;
+    // Build the magic-link host with this precedence:
+    //   1. PUBLIC_APP_URL — explicit operator override (e.g. custom domain).
+    //   2. VERCEL_PROJECT_PRODUCTION_URL — auto-set on every Vercel deploy
+    //      (preview AND prod) and ALWAYS points at the production URL.
+    //      This is what saves us when the admin is browsing a preview
+    //      deploy: their Origin header is the preview host, but preview
+    //      hosts are gated by Vercel Deployment Protection ("Request Sent.
+    //      Team owners emailed."). Inheriting that into the invite link
+    //      means the invitee hits the auth wall and can never reach the
+    //      app. Prefer the prod URL instead — it's the host the invitee
+    //      can actually log in on.
+    //   3. Origin header — last-resort fallback for local dev or non-Vercel
+    //      hosting where neither env var is set.
+    const prodUrlBare = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+    const prodUrl = prodUrlBare
+      ? prodUrlBare.startsWith('http') ? prodUrlBare : `https://${prodUrlBare}`
+      : '';
+    const origin = req.headers.get('origin') || '';
+    const appUrl = process.env.PUBLIC_APP_URL || prodUrl || origin;
+    const inviteUrl = appUrl ? `${appUrl}/login?invite=${token}` : `/login?invite=${token}`;
 
     return jsonResponse({ ok: true, token, invite_url: inviteUrl });
   } catch (e) {
