@@ -1785,6 +1785,10 @@ function InvitationsSettings() {
   const [email, setEmail] = useState('');
   const [roleId, setRoleId] = useState('');
   const [formError, setFormError] = useState('');
+  // After a successful invite the backend returns the magic-link URL.
+  // Pin it to local state so the admin can copy it without scrolling
+  // down to the pending list. Cleared next time they submit.
+  const [lastInvite, setLastInvite] = useState<{ url: string; email: string; roleName: string } | null>(null);
 
   const roles = useQuery({
     queryKey: ['roles'],
@@ -1822,46 +1826,47 @@ function InvitationsSettings() {
       const token = sess.session?.access_token;
       if (!token) throw new Error('Sessiya tapılmadı');
 
+      const submittedEmail = email.trim().toLowerCase();
       const res = await fetch('/api/invitations/create', {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), role_key: role.key }),
+        body: JSON.stringify({ email: submittedEmail, role_key: role.key }),
       });
       const body = await res.json().catch(() => ({} as Record<string, unknown>));
       if (!res.ok) {
         throw new Error((body as { error?: string }).error ?? 'Dəvət göndərilmədi');
       }
       // D-1 — no frontend writeAudit here: the backend
-      // (api/invitations/create.ts:51 — logAudit 'invitation.created')
+      // (api/invitations/create.ts — logAudit 'invitation.created')
       // already writes the audit row. The previous client-side write was a
       // duplicate with a different action string ('invitation.create' vs
       // 'invitation.created'), polluting the audit log with two rows per
       // invite that didn't even share an action name.
+      const inviteUrl = (body as { invite_url?: string }).invite_url;
+      const tokenValue = (body as { token?: string }).token;
+      // Fallback if for some reason invite_url isn't in the response —
+      // build it the same way the backend does so the admin still has
+      // something copyable.
+      const finalUrl = inviteUrl ?? (tokenValue ? `${window.location.origin}/login?invite=${tokenValue}` : '');
       return {
+        email: submittedEmail,
         roleName: role.name,
-        emailSent: (body as { email_sent?: boolean }).email_sent === true,
-        emailError: (body as { email_error?: string | null }).email_error ?? null,
+        url: finalUrl,
       };
     },
     // D-7 — clear stale formError as soon as the user retries so the previous
     // error doesn't linger next to the spinner.
-    onMutate: () => setFormError(''),
+    onMutate: () => {
+      setFormError('');
+      setLastInvite(null);
+    },
     onSuccess: (result) => {
       setEmail('');
       setRoleId('');
       setFormError('');
       qc.invalidateQueries({ queryKey: ['invitations'] });
-      // D-6 — explicit confirmation. Branched so admin sees the actual state
-      // when email config is missing: invite row exists, but Resend didn't
-      // get called → admin must share the link manually from the pending
-      // list. The "Linki kopyala" button below makes that one click.
-      if (result.emailSent) {
-        toast.success(`${result.roleName} rolu ilə dəvət göndərildi`);
-      } else {
-        toast.info(
-          `Dəvət yaradıldı, amma email göndərilmədi (${result.emailError ?? 'naməlum'}). Pending siyahıdan "Linki kopyala" ilə əl ilə paylaş.`,
-        );
-      }
+      setLastInvite({ url: result.url, email: result.email, roleName: result.roleName });
+      toast.success(`${result.roleName} rolu ilə dəvət linki hazırdır`);
     },
     onError: (e) => setFormError((e as Error).message),
   });
@@ -1980,6 +1985,59 @@ function InvitationsSettings() {
           <p className="text-meta mt-2" style={{ color: 'var(--error-deep)' }}>
             {formError}
           </p>
+        ) : null}
+        {/* Post-submit link banner. Renders the magic-link in a fixed-width
+            mono input so admin can copy + paste it into WhatsApp/Telegram
+            without scrolling down to the pending list. Persists until the
+            next submission so a transient toast doesn't lose the link. */}
+        {lastInvite ? (
+          <div
+            className="rounded-card p-4 mt-3"
+            style={{
+              background: 'var(--brand-glow-sm)',
+              border: '1px solid var(--brand-glow-border)',
+            }}
+          >
+            <p className="text-meta mb-2" style={{ color: 'var(--text-soft)' }}>
+              <strong style={{ color: 'var(--text)' }}>{lastInvite.email}</strong>
+              {' '}üçün <strong style={{ color: 'var(--text)' }}>{lastInvite.roleName}</strong>
+              {' '}rolu ilə dəvət linki hazırdır. Aşağıdakı linki kopyala və
+              WhatsApp / Telegram vasitəsilə paylaş — 48 saat keçərlidir.
+            </p>
+            <div className="flex gap-2 items-stretch">
+              <input
+                type="text"
+                readOnly
+                className="input flex-1 min-w-0"
+                style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontSize: 12 }}
+                value={lastInvite.url}
+                onClick={(e) => (e.target as HTMLInputElement).select()}
+                aria-label="Dəvət linki"
+              />
+              <button
+                type="button"
+                className="btn-primary whitespace-nowrap"
+                style={{ flexShrink: 0 }}
+                onClick={() => {
+                  void navigator.clipboard.writeText(lastInvite.url).then(
+                    () => toast.success('Link kopyalandı'),
+                    () => toast.error('Kopyalama uğursuz oldu'),
+                  );
+                }}
+              >
+                Linki kopyala
+              </button>
+              <button
+                type="button"
+                className="btn-outline whitespace-nowrap"
+                style={{ flexShrink: 0 }}
+                onClick={() => setLastInvite(null)}
+                aria-label="Linki gizlət"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
         ) : null}
       </div>
 
