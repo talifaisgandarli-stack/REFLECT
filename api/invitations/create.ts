@@ -48,12 +48,22 @@ async function handler(req: Request) {
     const token = crypto.randomUUID();
     const expires = new Date(Date.now() + 48 * 3600_000).toISOString();
 
-    await sb
+    // Per PRD §270 (REQ-AUTH-02): "Re-invite same email (existing pending) →
+    // reuse and bump expiry." onConflict needs a UNIQUE constraint on email
+    // — migration 0057 adds a partial unique index on (email) WHERE
+    // accepted_at IS NULL. If the upsert ever fails (RLS, grant, missing
+    // index), the error must propagate; the old code awaited without
+    // checking, so the row was never written and the admin saw a green
+    // toast while the pending list stayed empty.
+    const { error: upsertErr } = await sb
       .from('invitations')
       .upsert(
         { email, role_id: role.id, invited_by: user.id, token, expires_at: expires, accepted_at: null },
         { onConflict: 'email' },
       );
+    if (upsertErr) {
+      throw new HttpError(500, `Dəvət DB-yə yazıla bilmədi: ${upsertErr.message}`);
+    }
 
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? undefined;
     await logAudit(sb, {

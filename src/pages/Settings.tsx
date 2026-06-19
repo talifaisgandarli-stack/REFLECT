@@ -1989,6 +1989,14 @@ function InvitationsSettings() {
           <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
             Yüklənir…
           </p>
+        ) : invitations.isError ? (
+          // Without this branch a failed SELECT (RLS, grant, network) renders
+          // as "Aktiv dəvət yoxdur" — indistinguishable from a real empty
+          // state. Admins kept reporting "I sent an invite but the list is
+          // empty"; the truth was that the list query itself was failing.
+          <p className="text-meta" style={{ color: 'var(--error-deep)' }}>
+            Dəvətlər siyahısı yüklənmədi: {(invitations.error as Error).message}
+          </p>
         ) : pending.length === 0 ? (
           <EmptyState title="Aktiv dəvət yoxdur" body="Komanda üzvlərini e-poçt ilə dəvət edin." />
         ) : (
