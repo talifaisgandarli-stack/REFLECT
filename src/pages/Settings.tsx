@@ -1922,10 +1922,9 @@ function InvitationsSettings() {
             invite.mutate();
           }}
         >
-          {/* min-w-0 + flex-1 lets the email input actually shrink/grow
-              inside the row. .input sets `w-full`, which on flex children
-              fights flex-1 unless we also allow min-width to drop below
-              the input's intrinsic width. */}
+          {/* Email input grows to fill all remaining row space. flex-1 sets
+              flex:1 1 0%; min-w-0 unlocks shrinking below intrinsic width
+              (otherwise .input's w-full pins it at 100%). */}
           <input
             type="email"
             className="input flex-1 min-w-0"
@@ -1935,11 +1934,14 @@ function InvitationsSettings() {
             required
             aria-label="Dəvət e-poçtu"
           />
-          {/* Role select is content-sized: stop it from grabbing the 100%
-              width that `.input` gives it by default. */}
+          {/* Native <select width:auto> on Chrome/Windows expands to the
+              longest <option> text, which on locales like "Layihə Rəhbəri
+              (L2)" can push past 400px and starve the email input. Pinning
+              flex-basis to 220px (no grow, no shrink) makes the role
+              column deterministic regardless of role-name length. */}
           <select
             className="input"
-            style={{ width: 'auto', minWidth: 200, flexShrink: 0 }}
+            style={{ flex: '0 0 220px' }}
             value={roleId}
             onChange={(e) => setRoleId(e.target.value)}
             required
