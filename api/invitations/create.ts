@@ -29,8 +29,21 @@ async function handler(req: Request) {
     const { email, role_key } = parsed.data;
 
     const sb = admin();
-    const { data: role } = await sb.from('roles').select('id').eq('key', role_key).maybeSingle();
-    if (!role) throw new HttpError(400, 'Unknown role');
+    // Diagnose-friendly: surface DB errors AND show the key that was
+    // attempted. Previously "Unknown role" hid whether the table was
+    // empty, the key was misspelled, or the service role couldn't read
+    // the roles table at all.
+    const { data: role, error: roleErr } = await sb
+      .from('roles')
+      .select('id, key, name')
+      .eq('key', role_key)
+      .maybeSingle();
+    if (roleErr) {
+      throw new HttpError(500, `Rol axtarışı uğursuz: ${roleErr.message}`);
+    }
+    if (!role) {
+      throw new HttpError(400, `Bu key DB-də yoxdur: "${role_key}". Seed migrasiyası işləyibmi?`);
+    }
 
     const token = crypto.randomUUID();
     const expires = new Date(Date.now() + 48 * 3600_000).toISOString();
@@ -53,23 +66,47 @@ async function handler(req: Request) {
     });
 
     const resendKey = process.env.RESEND_API_KEY;
-    if (resendKey) {
-      await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${resendKey}`,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: 'Reflect <noreply@reflect.az>',
-          to: email,
-          subject: 'Reflect-ə dəvətnamə',
-          html: `<p>Salam,</p><p>Reflect-ə qoşulmaq üçün <a href="${process.env.PUBLIC_APP_URL ?? ''}/login?invite=${token}">linki aç</a>. Müddət: 48 saat.</p>`,
-        }),
-      }).catch(() => null);
+    const appUrl = process.env.PUBLIC_APP_URL;
+
+    // Track email send status so the UI can show admin exactly why the
+    // recipient didn't get an email (and surface the token + manual share
+    // path). Previously the email step was either skipped silently or its
+    // error swallowed via .catch(() => null), so a misconfigured deployment
+    // returned ok:true while no email ever went out.
+    let emailSent = false;
+    let emailError: string | null = null;
+
+    if (!resendKey) {
+      emailError = 'RESEND_API_KEY təyin edilməyib';
+    } else if (!appUrl) {
+      emailError = 'PUBLIC_APP_URL təyin edilməyib';
+    } else {
+      try {
+        const emailRes = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${resendKey}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: 'Reflect <noreply@reflect.az>',
+            to: email,
+            subject: 'Reflect-ə dəvətnamə',
+            html: `<p>Salam,</p><p>Reflect-ə qoşulmaq üçün <a href="${appUrl}/login?invite=${token}">linki aç</a>. Müddət: 48 saat.</p>`,
+          }),
+        });
+        if (emailRes.ok) {
+          emailSent = true;
+        } else {
+          const body = await emailRes.text().catch(() => '');
+          emailError = `Resend ${emailRes.status}: ${body.slice(0, 200) || 'naməlum xəta'}`;
+        }
+      } catch (e) {
+        emailError = (e as Error).message;
+      }
     }
 
-    return jsonResponse({ ok: true, token });
+    return jsonResponse({ ok: true, token, email_sent: emailSent, email_error: emailError });
   } catch (e) {
     return errorResponse(e);
   }

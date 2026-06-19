@@ -1,13 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
+import { toast } from '@/components/Toast';
 import { NotificationPreferencesPage } from './NotificationPreferences';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { downloadCsv } from '@/lib/csv';
+import { currentMonthInBaku } from '@/lib/time';
 import type { Invitation, Role } from '@/types/db';
 
 async function writeAudit(actorId: string, action: string, resource: string, meta?: Record<string, unknown>) {
@@ -49,7 +51,11 @@ export function SettingsPage() {
 // outstanding invitations without opening the section.
 function SettingsNav() {
   const pendingCount = useQuery({
-    queryKey: ['settings-nav-pending-invites'],
+    // Sub-key under ['invitations'] so the existing
+    // invalidateQueries(['invitations']) calls in InvitationsSettings.invite
+    // and .revoke cascade here — keeps the nav badge in sync with the
+    // invitation list (was stale up to 60s otherwise). — S-25
+    queryKey: ['invitations', 'pending-count'],
     staleTime: 60_000,
     queryFn: async () => {
       const { count } = await supabase
@@ -61,7 +67,9 @@ function SettingsNav() {
   });
   // Total KB documents — surfaces growth without entering the section
   const kbCount = useQuery({
-    queryKey: ['settings-nav-kb-count'],
+    // Sub-key under ['knowledge-base'] so existing invalidate calls
+    // (upload + deletePdf) cascade here. — S-26
+    queryKey: ['knowledge-base', 'total-count'],
     staleTime: 5 * 60_000,
     queryFn: async () => {
       const { count } = await supabase
@@ -98,7 +106,11 @@ function SettingsNav() {
                   fontSize: 11,
                   fontVariantNumeric: 'tabular-nums',
                 }}
-                aria-label={`${badge}`}
+                aria-label={
+                  n.to === 'dəvətlər' ? `${badge} gözləyən dəvət` :
+                  n.to === 'bilik' ? `${badge} bilik bazası sənədi` :
+                  `${badge}`
+                }
               >
                 {badge}
               </span>
@@ -221,50 +233,40 @@ function GeneralSettings() {
   // PRD §8.1 / REQ-TG-03: cron reads `finance_alert_income_threshold` and
   // `finance_alert_expense_threshold` (jsonb { azn: number }). Stay aligned.
   const loaded = settings.data;
-  const readAzn = (v: unknown): string => {
-    if (v && typeof v === 'object' && 'azn' in v) {
-      const n = (v as { azn?: number }).azn;
-      return typeof n === 'number' ? String(n) : '';
-    }
-    return '';
-  };
-  if (loaded && incomeAlert === '') {
-    const v = readAzn(loaded.finance_alert_income_threshold);
-    if (v) setIncomeAlert(v);
-  }
-  if (loaded && expenseAlert === '') {
-    const v = readAzn(loaded.finance_alert_expense_threshold);
-    if (v) setExpenseAlert(v);
-  }
-  if (loaded && miraiBudget === '') {
-    const raw = loaded.mirai_monthly_budget;
-    if (raw && typeof raw === 'object' && 'usd' in raw) {
-      const n = (raw as { usd?: number }).usd;
+
+  // Hydrate every editable field from the loaded settings ONCE — after that
+  // local state is the source of truth, so clearing an input stays cleared.
+  // The previous in-render `if (loaded && field === '') setField(loaded.x)`
+  // chain re-populated any field a user backspaced to empty, making it
+  // impossible to erase a value. See audit S-1.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    if (!loaded || hydrated) return;
+    const readAzn = (v: unknown): string => {
+      if (v && typeof v === 'object' && 'azn' in v) {
+        const n = (v as { azn?: number }).azn;
+        return typeof n === 'number' ? String(n) : '';
+      }
+      return '';
+    };
+    setIncomeAlert(readAzn(loaded.finance_alert_income_threshold));
+    setExpenseAlert(readAzn(loaded.finance_alert_expense_threshold));
+    const budgetRaw = loaded.mirai_monthly_budget;
+    if (budgetRaw && typeof budgetRaw === 'object' && 'usd' in budgetRaw) {
+      const n = (budgetRaw as { usd?: number }).usd;
       if (typeof n === 'number') setMiraiBudget(String(n));
     }
-  }
-  if (loaded && firmName === '') {
-    const raw = loaded.firm_name;
-    // firm_name is stored as a quoted JSON string in jsonb.
-    if (typeof raw === 'string') setFirmName(raw);
-  }
-  if (loaded && logoUrl === '') {
-    const raw = loaded.firm_logo_url;
-    if (typeof raw === 'string' && raw) setLogoUrl(raw);
-  }
-  if (loaded && currency === 'AZN') {
-    const raw = loaded.default_currency;
-    if (typeof raw === 'string' && raw) setCurrency(raw);
-  }
-  if (loaded && workHours === '8') {
-    const raw = loaded.working_hours_per_day;
-    if (typeof raw === 'number') setWorkHours(String(raw));
-    else if (typeof raw === 'string' && raw) setWorkHours(raw);
-  }
-  if (loaded) {
-    const raw = loaded.az_public_holidays_enabled;
-    if (typeof raw === 'boolean') setHolidaysEnabled(raw);
-  }
+    if (typeof loaded.firm_name === 'string') setFirmName(loaded.firm_name);
+    if (typeof loaded.firm_logo_url === 'string' && loaded.firm_logo_url) setLogoUrl(loaded.firm_logo_url);
+    if (typeof loaded.default_currency === 'string' && loaded.default_currency) setCurrency(loaded.default_currency);
+    const wh = loaded.working_hours_per_day;
+    if (typeof wh === 'number') setWorkHours(String(wh));
+    else if (typeof wh === 'string' && wh) setWorkHours(wh);
+    if (typeof loaded.az_public_holidays_enabled === 'boolean') {
+      setHolidaysEnabled(loaded.az_public_holidays_enabled);
+    }
+    setHydrated(true);
+  }, [loaded, hydrated]);
 
   /** PRD §10.1 / REQ-SET-07 — Upload firm logo to Supabase Storage firm-assets bucket. */
   async function handleLogoUpload(file: File) {
@@ -304,9 +306,17 @@ function GeneralSettings() {
 
   const save = useMutation({
     mutationFn: async () => {
-      const incomeNum = Number(incomeAlert) || 5000;
-      const expenseNum = Number(expenseAlert) || 2000;
-      const budgetNum = Number(miraiBudget) || 5;
+      // S-28 — explicit numeric coercion that admits 0 as a real value.
+      // `Number('0') || 5000` collapses to 5000, so a deliberate "alert on
+      // every transaction" / "no MIRAI quota" choice was being silently
+      // overwritten with the default.
+      const parseNonNeg = (v: string, fallback: number): number => {
+        const n = Number(v);
+        return Number.isFinite(n) && n >= 0 ? n : fallback;
+      };
+      const incomeNum = parseNonNeg(incomeAlert, 5000);
+      const expenseNum = parseNonNeg(expenseAlert, 2000);
+      const budgetNum = parseNonNeg(miraiBudget, 5);
       const rows: Array<{ key: string; value: unknown }> = [
         { key: 'finance_alert_income_threshold', value: { azn: incomeNum } },
         { key: 'finance_alert_expense_threshold', value: { azn: expenseNum } },
@@ -316,10 +326,14 @@ function GeneralSettings() {
         { key: 'working_hours_per_day', value: Number(workHours) || 8 },
         { key: 'az_public_holidays_enabled', value: holidaysEnabled },
       ];
-      for (const row of rows) {
-        const { error } = await supabase.from('system_settings').upsert(row, { onConflict: 'key' });
-        if (error) throw error;
-      }
+      // S-12 — atomic batch upsert. The previous sequential loop could
+      // leave half the settings saved on partial failure (row 4 errors →
+      // rows 1-3 persisted, rows 5-7 never attempted), surfacing as
+      // "save failed" while the DB still reflected some of the new values.
+      const { error } = await supabase
+        .from('system_settings')
+        .upsert(rows, { onConflict: 'key' });
+      if (error) throw error;
       if (profile?.id) {
         await writeAudit(profile.id, 'settings.update', 'system_settings', {
           keys: rows.map((r) => r.key),
@@ -331,6 +345,8 @@ function GeneralSettings() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     },
+    // S-13 — toast.error so failures don't sit silent next to the button.
+    onError: (e) => toast.error((e as Error).message),
   });
 
   return (
@@ -440,6 +456,9 @@ function GeneralSettings() {
                 onClick={async () => {
                   await supabase.from('system_settings').delete().eq('key', 'firm_logo_url');
                   setLogoUrl('');
+                  // Refresh the query so a page reload doesn't restore the
+                  // cached URL via the hydration effect above.
+                  qc.invalidateQueries({ queryKey: ['system_settings'] });
                 }}
               >
                 Sil
@@ -524,9 +543,29 @@ function GeneralSettings() {
 // PRD §8.5 — Admin configures custom RSS feeds for MIRAI CMO weekly cron
 // Default feeds (ArchDaily, Dezeen, Architizer, WAF) are hardcoded in the backend cron.
 // Custom feeds stored as JSON array in system_settings[mirai_rss_feeds].
+// Default feeds moved outside the component so its identity is stable and
+// the useEffect below can include it in deps without retriggering — S-8.
+// Mirrors the backend cron defaults in api/cron/cmo.ts (ArchDaily, Dezeen,
+// Architizer, WAF) — keep these in lock-step.
+const DEFAULT_RSS_FEEDS = [
+  'https://www.archdaily.com/feed',
+  'https://www.dezeen.com/feed',
+  'https://www.architizer.com/feed',
+  'https://worldarchitecturefestival.com/feed/',
+];
+
+/** True iff the string parses as an http(s) URL. The previous
+ * `startsWith('http')` test let 'httpfoo' through — S-5. */
+function isValidHttpUrl(s: string): boolean {
+  try {
+    const u = new URL(s);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 function RssFeedSettings({ settings, onSaved }: { settings: Record<string, unknown> | undefined; onSaved: () => void }) {
-  const qc = useQueryClient();
-  const defaultFeeds = ['https://www.archdaily.com/feed', 'https://www.dezeen.com/feed', 'https://www.architizer.com/feed'];
   const [feeds, setFeeds] = useState<string[]>([]);
   const [newUrl, setNewUrl] = useState('');
   const [saved, setSaved] = useState(false);
@@ -538,9 +577,9 @@ function RssFeedSettings({ settings, onSaved }: { settings: Record<string, unkno
       const raw = settings.mirai_rss_feeds;
       const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
       if (Array.isArray(parsed) && parsed.length) setFeeds(parsed as string[]);
-      else setFeeds([...defaultFeeds]);
+      else setFeeds([...DEFAULT_RSS_FEEDS]);
     } catch {
-      setFeeds([...defaultFeeds]);
+      setFeeds([...DEFAULT_RSS_FEEDS]);
     }
   }, [settings]);
 
@@ -557,12 +596,12 @@ function RssFeedSettings({ settings, onSaved }: { settings: Record<string, unkno
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     },
+    onError: (e) => toast.error((e as Error).message),
   });
 
   function addFeed() {
     const url = newUrl.trim();
-    if (!url) return;
-    if (!url.startsWith('http')) return;
+    if (!isValidHttpUrl(url)) return;
     if (feeds.includes(url)) return;
     setFeeds((f) => [...f, url]);
     setNewUrl('');
@@ -601,7 +640,7 @@ function RssFeedSettings({ settings, onSaved }: { settings: Record<string, unkno
           onChange={(e) => setNewUrl(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addFeed())}
         />
-        <button className="btn-outline" onClick={addFeed} disabled={!newUrl.trim().startsWith('http')}>
+        <button className="btn-outline" onClick={addFeed} disabled={!isValidHttpUrl(newUrl.trim())}>
           Əlavə et
         </button>
       </div>
@@ -616,8 +655,16 @@ function RssFeedSettings({ settings, onSaved }: { settings: Record<string, unkno
   );
 }
 
+/** Pure helper — extracted to module scope so the useMemos inside
+ *  TemplatesSettings can keep their deps array short and avoid the
+ *  exhaustive-deps lint warning. */
+function extractTemplateVars(body: string): string[] {
+  return [...new Set([...body.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]))];
+}
+
 // §10.2 / US-SYS-01 — Templates CRUD with {{variable}} extraction + preview
 function TemplatesSettings() {
+  const { profile } = useAuth();
   const qc = useQueryClient();
   const [editing, setEditing] = useState<null | { id?: string; category: string; name: string; body: string; mime_type: string }>(null);
   const [preview, setPreview] = useState(false);
@@ -634,14 +681,22 @@ function TemplatesSettings() {
       ).data ?? [],
   });
 
-  function extractVars(body: string): string[] {
-    return [...new Set([...body.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]))];
-  }
+  // Memoised editor-side derivations. The previous code re-ran the
+  // regex on every render (keystroke), and the preview ran .replace()
+  // over the whole body each time too — S-15.
+  const editorVars = useMemo(
+    () => (editing ? extractTemplateVars(editing.body) : []),
+    [editing],
+  );
+  const editorPreview = useMemo(
+    () => editing?.body.replace(/\{\{(\w+)\}\}/g, (_, k) => `[${k}]`) ?? '',
+    [editing?.body],
+  );
 
   const save = useMutation({
     mutationFn: async () => {
       if (!editing) return;
-      const vars = extractVars(editing.body);
+      const vars = extractTemplateVars(editing.body);
       const payload = {
         category: editing.category,
         name: editing.name,
@@ -658,11 +713,30 @@ function TemplatesSettings() {
       }
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['templates'] }); setEditing(null); },
+    onError: (e) => toast.error((e as Error).message),
   });
 
   const del = useMutation({
-    mutationFn: async (id: string) => { await supabase.from('templates').update({ name: `_deprecated_${Date.now()}` }).eq('id', id); },
+    mutationFn: async (id: string) => {
+      // Look up first so we can record what's being soft-deleted; matches
+      // the invitation revoke flow. PRD §9.4 — privileged ops are audited.
+      const target = ((templates.data ?? []) as Array<{ id: string; name: string; category: string }>)
+        .find((t) => t.id === id);
+      const { error } = await supabase
+        .from('templates')
+        .update({ name: `_deprecated_${Date.now()}` })
+        .eq('id', id);
+      if (error) throw error;
+      if (profile?.id) {
+        await writeAudit(profile.id, 'template.delete', 'templates', {
+          template_id: id,
+          name: target?.name ?? null,
+          category: target?.category ?? null,
+        });
+      }
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['templates'] }),
+    onError: (e) => toast.error((e as Error).message),
   });
 
   /** PRD §10.2 — export template body as plain-text file for Word/Excel. */
@@ -671,7 +745,9 @@ function TemplatesSettings() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${name.replace(/[^a-zA-Zа-яА-Яəüöçşğı\s]/g, '_').trim() || 'sablon'}.txt`;
+    // Include uppercase AZ chars (ƏÇĞÖŞÜİ) so a template named "Çərşənbə
+    // protokolu" doesn't download as "_ərşənbə_protokolu.txt" — S-4.
+    a.download = `${name.replace(/[^a-zA-ZəüöçşğıƏÇĞÖŞÜİа-яА-Я\s]/g, '_').trim() || 'sablon'}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -679,7 +755,7 @@ function TemplatesSettings() {
   }
 
   if (editing) {
-    const vars = extractVars(editing.body);
+    const vars = editorVars;
     return (
       <div className="space-y-4">
         <h3 className="text-h3">{editing.id ? 'Şablonu redaktə et' : 'Yeni şablon'}</h3>
@@ -722,12 +798,24 @@ function TemplatesSettings() {
         ) : null}
         {vars.length && preview ? (
           <div className="card p-4 font-mono text-body whitespace-pre-wrap" style={{ fontSize: 13, background: 'var(--surface-mist)' }}>
-            {editing.body.replace(/\{\{(\w+)\}\}/g, (_, k) => `[${k}]`)}
+            {editorPreview}
           </div>
         ) : null}
         {save.error ? <p className="text-meta" style={{ color: 'var(--error-deep)' }}>{(save.error as Error).message}</p> : null}
+        {/* Q-3 — block save when name or body is empty. A nameless / bodyless
+            template is unusable but the form let it through; users could end
+            up with phantom "(no name)" rows in the list. */}
         <div className="flex gap-2">
-          <button className="btn-primary" disabled={save.isPending} onClick={() => save.mutate()}>
+          <button
+            className="btn-primary"
+            disabled={save.isPending || !editing.name.trim() || !editing.body.trim()}
+            onClick={() => save.mutate()}
+            title={
+              !editing.name.trim() ? 'Ad tələb olunur'
+                : !editing.body.trim() ? 'Mətn tələb olunur'
+                : undefined
+            }
+          >
             {save.isPending ? 'Saxlanılır…' : 'Saxla'}
           </button>
           {vars.length ? (
@@ -780,10 +868,12 @@ function TemplatesSettings() {
             <div>
               <div className="text-body font-medium flex items-center gap-2">
                 {t.name}
-                {/* PRD §10.2 — variable count so admin sees template complexity at a glance */}
+                {/* PRD §10.2 — variable count so admin sees template complexity at a glance.
+                    Single extractVars call per item; the regex was running twice
+                    (count + tooltip join) on every row on every render — S-9. */}
                 {(() => {
-                  const n = extractVars(t.body).length;
-                  if (n === 0) return null;
+                  const vars = extractTemplateVars(t.body);
+                  if (vars.length === 0) return null;
                   return (
                     <span
                       className="chip"
@@ -794,9 +884,9 @@ function TemplatesSettings() {
                         padding: '0 6px',
                         fontVariantNumeric: 'tabular-nums',
                       }}
-                      title={`${n} dəyişən: ${extractVars(t.body).join(', ')}`}
+                      title={`${vars.length} dəyişən: ${vars.join(', ')}`}
                     >
-                      {`{{${n}}}`}
+                      {`{{${vars.length}}}`}
                     </span>
                   );
                 })()}
@@ -860,6 +950,7 @@ function KnowledgeBaseSettings() {
       qc.invalidateQueries({ queryKey: ['knowledge-base'] });
       setConfirmDelete(null);
     },
+    onError: (e) => toast.error((e as Error).message),
   });
 
   const diag = useQuery({
@@ -883,7 +974,14 @@ function KnowledgeBaseSettings() {
         .order('uploaded_at', { ascending: false });
       const byPdf: Record<string, { count: number; uploaded_at: string }> = {};
       for (const row of data ?? []) {
-        if (!byPdf[row.source_pdf]) byPdf[row.source_pdf] = { count: 0, uploaded_at: row.uploaded_at };
+        if (!byPdf[row.source_pdf]) {
+          byPdf[row.source_pdf] = { count: 0, uploaded_at: row.uploaded_at };
+        } else if (row.uploaded_at < byPdf[row.source_pdf].uploaded_at) {
+          // Track the earliest chunk so the "Yüklənib" label matches the
+          // first-upload date — S-19. Previously the query order (desc)
+          // pinned the field to the newest chunk's timestamp.
+          byPdf[row.source_pdf].uploaded_at = row.uploaded_at;
+        }
         byPdf[row.source_pdf].count++;
       }
       return byPdf;
@@ -1068,7 +1166,7 @@ function KnowledgeBaseSettings() {
 function NotificationsSettings() {
   return (
     <div className="space-y-8">
-      <NotificationPreferencesPage />
+      <NotificationPreferencesPage embedded />
       {/* PRD §9.4 — admin MIRAI cost dashboard */}
       <MiraiCostDashboard />
       {/* PRD §9.4 — audit log retention */}
@@ -1096,9 +1194,16 @@ function AuditLogRetentionSetting() {
     },
   });
   const [val, setVal] = useState<string>('');
+  // Hydrate once — see audit S-1. The earlier `val === ''` guard with `val`
+  // in deps re-populated the input when the user backspaced to empty,
+  // making it impossible to clear.
+  const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
-    if (setting.data != null && val === '') setVal(String(setting.data));
-  }, [setting.data, val]);
+    if (setting.data == null || hydrated) return;
+    setVal(String(setting.data));
+    setHydrated(true);
+  }, [setting.data, hydrated]);
+  const [saved, setSaved] = useState(false);
   const save = useMutation({
     mutationFn: async () => {
       const days = Math.max(30, Math.min(3650, Number(val) || 365));
@@ -1110,7 +1215,12 @@ function AuditLogRetentionSetting() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['system_setting', 'audit_log_retention_days'] });
+      // S-29 — match GeneralSettings / RssFeedSettings "Saxlandı ✓"
+      // confirmation so admins see the save landed.
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
     },
+    onError: (e) => toast.error((e as Error).message),
   });
   if (!isAdmin) return null;
   return (
@@ -1139,6 +1249,9 @@ function AuditLogRetentionSetting() {
       >
         {save.isPending ? '…' : 'Saxla'}
       </button>
+      {saved ? (
+        <span className="text-meta" style={{ color: 'var(--brand-text)' }}>Saxlandı ✓</span>
+      ) : null}
     </section>
   );
 }
@@ -1225,9 +1338,14 @@ function AuditLogViewer() {
     queryKey: ['audit-log', page, actionFilter, actorId],
     enabled: isAdmin,
     queryFn: async () => {
+      // S-14 — `planned` instead of `exact` so the count comes from the
+      // query planner's row estimate (microsecond-cheap, ~5% accuracy at
+      // worst) instead of a full COUNT(*) on the audit_log table. The
+      // pagination control only needs a rough total; admins who care
+      // about exact numbers export to CSV.
       let q = supabase
         .from('audit_log')
-        .select('id, actor_id, action, resource, ip, user_agent, meta, created_at, profile:profiles!audit_log_actor_id_fkey(full_name, email)', { count: 'exact' })
+        .select('id, actor_id, action, resource, ip, user_agent, meta, created_at, profile:profiles!audit_log_actor_id_fkey(full_name, email)', { count: 'planned' })
         .order('created_at', { ascending: false })
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
       if (actionFilter.trim()) q = q.ilike('action', `%${actionFilter.trim()}%`);
@@ -1286,11 +1404,12 @@ function AuditLogViewer() {
           disabled={total === 0}
           onClick={async () => {
             // Export ALL filtered rows (not just current page) — admin needs the full set for forensics
+            const CSV_LIMIT = 5000;
             let q = supabase
               .from('audit_log')
               .select('id, actor_id, action, resource, ip, user_agent, meta, created_at, profile:profiles!audit_log_actor_id_fkey(full_name, email)')
               .order('created_at', { ascending: false })
-              .limit(5000);
+              .limit(CSV_LIMIT);
             if (actionFilter.trim()) q = q.ilike('action', `%${actionFilter.trim()}%`);
             if (actorId) q = q.eq('actor_id', actorId);
             const { data } = await q;
@@ -1311,6 +1430,11 @@ function AuditLogViewer() {
               ['Vaxt', 'Aktor', 'Action', 'Resource', 'IP', 'User-Agent', 'Meta'],
               rows,
             );
+            // S-23 — warn when the export hit the cap so admin knows to
+            // narrow the filter rather than think they got everything.
+            if (rows.length === CSV_LIMIT) {
+              toast.info(`İlk ${CSV_LIMIT} sıra ixrac edildi — daha çoxu üçün filtri daraldın.`);
+            }
           }}
         >
           ↓ CSV
@@ -1394,7 +1518,32 @@ function AuditLogViewer() {
 function MiraiCostDashboard() {
   const { isAdmin } = useAuth();
 
-  const period = new Date().toISOString().slice(0, 7).replace('-', ''); // YYYYMM
+  // PRD §FIN-09 — period derived from Bakı clock so the month rolls over
+  // at 00:00 Asia/Baku, not 04:00 (which is what UTC slicing gave us). At
+  // month-end the dashboard would otherwise show last month's totals for
+  // 4 hours after the actual Bakı month change.
+  const { year: bakuY, month: bakuM } = currentMonthInBaku();
+  const period = `${bakuY}${String(bakuM + 1).padStart(2, '0')}`; // YYYYMM
+
+  // PRD §7.6 / S-2 — admin can change the monthly per-user MIRAI budget in
+  // GeneralSettings (mirai_monthly_budget). Read it here instead of using a
+  // hardcoded $5, so the budget percentages on this dashboard stay
+  // consistent with whatever was actually saved.
+  const userBudgetQuery = useQuery({
+    queryKey: ['system_settings', 'mirai_monthly_budget'],
+    enabled: isAdmin,
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'mirai_monthly_budget')
+        .maybeSingle();
+      const v = data?.value as { usd?: number } | null;
+      return typeof v?.usd === 'number' ? v.usd : 5;
+    },
+  });
+  const userBudget = userBudgetQuery.data ?? 5;
 
   const usage = useQuery({
     queryKey: ['mirai-cost-dashboard', period],
@@ -1409,11 +1558,16 @@ function MiraiCostDashboard() {
         ? await supabase.from('profiles').select('id, full_name, email').in('id', ids)
         : { data: [] as Array<{ id: string; full_name: string | null; email: string }> };
       const profMap = new Map((profileRows ?? []).map((p) => [p.id, p]));
+      // Q-2 — Postgres numeric columns can deserialise as strings via
+      // Supabase JS on some setups (especially for high-precision values).
+      // Coerce with Number() so downstream .toFixed / arithmetic don't blow
+      // up at runtime; the explicit cast was a TypeScript lie when the
+      // value happened to be a string.
       return (usageRows ?? []).map((r) => ({
         user_id: r.user_id as string,
-        tokens_in: (r.tokens_in ?? 0) as number,
-        tokens_out: (r.tokens_out ?? 0) as number,
-        cost_usd: (r.cost_usd ?? 0) as number,
+        tokens_in: Number(r.tokens_in ?? 0),
+        tokens_out: Number(r.tokens_out ?? 0),
+        cost_usd: Number(r.cost_usd ?? 0),
         profile: profMap.get(r.user_id) ?? null,
       }));
     },
@@ -1435,7 +1589,7 @@ function MiraiCostDashboard() {
       for (const m of msgs ?? []) {
         const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baku' })
           .format(new Date(m.created_at as string));
-        buckets.set(day, (buckets.get(day) ?? 0) + (m.cost_usd ?? 0));
+        buckets.set(day, (buckets.get(day) ?? 0) + Number(m.cost_usd ?? 0));
       }
       // Fill missing days with 0 so the line is continuous
       const out: Array<{ day: string; cost: number }> = [];
@@ -1467,7 +1621,7 @@ function MiraiCostDashboard() {
       const costMap = new Map<string, number>();
       for (const m of msgs ?? []) {
         const p = (m.conversation_id && personaMap.get(m.conversation_id)) || 'unknown';
-        costMap.set(p, (costMap.get(p) ?? 0) + (m.cost_usd ?? 0));
+        costMap.set(p, (costMap.get(p) ?? 0) + Number(m.cost_usd ?? 0));
       }
       return Array.from(costMap.entries())
         .map(([persona, cost]) => ({ persona, cost }))
@@ -1481,9 +1635,6 @@ function MiraiCostDashboard() {
   const totalCost = rows.reduce((s, r) => s + (r.cost_usd ?? 0), 0);
   const totalIn = rows.reduce((s, r) => s + (r.tokens_in ?? 0), 0);
   const totalOut = rows.reduce((s, r) => s + (r.tokens_out ?? 0), 0);
-
-  // Default per-user budget — PRD §7.6 Cost Guardian (5 USD/user/month default)
-  const userBudget = 5;
 
   return (
     <section>
@@ -1676,35 +1827,55 @@ function InvitationsSettings() {
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({ email: email.trim().toLowerCase(), role_key: role.key }),
       });
+      const body = await res.json().catch(() => ({} as Record<string, unknown>));
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error ?? 'Dəvət göndərilmədi');
       }
-
-      // PRD §9.1 / §9.4 — audit privileged action
-      if (profile?.id) {
-        await writeAudit(profile.id, 'invitation.create', 'invitations', {
-          email: email.trim().toLowerCase(),
-          role_key: role.key,
-        });
-      }
+      // D-1 — no frontend writeAudit here: the backend
+      // (api/invitations/create.ts:51 — logAudit 'invitation.created')
+      // already writes the audit row. The previous client-side write was a
+      // duplicate with a different action string ('invitation.create' vs
+      // 'invitation.created'), polluting the audit log with two rows per
+      // invite that didn't even share an action name.
+      return {
+        roleName: role.name,
+        emailSent: (body as { email_sent?: boolean }).email_sent === true,
+        emailError: (body as { email_error?: string | null }).email_error ?? null,
+      };
     },
-    onSuccess: () => {
+    // D-7 — clear stale formError as soon as the user retries so the previous
+    // error doesn't linger next to the spinner.
+    onMutate: () => setFormError(''),
+    onSuccess: (result) => {
       setEmail('');
       setRoleId('');
       setFormError('');
       qc.invalidateQueries({ queryKey: ['invitations'] });
+      // D-6 — explicit confirmation. Branched so admin sees the actual state
+      // when email config is missing: invite row exists, but Resend didn't
+      // get called → admin must share the link manually from the pending
+      // list. The "Linki kopyala" button below makes that one click.
+      if (result.emailSent) {
+        toast.success(`${result.roleName} rolu ilə dəvət göndərildi`);
+      } else {
+        toast.info(
+          `Dəvət yaradıldı, amma email göndərilmədi (${result.emailError ?? 'naməlum'}). Pending siyahıdan "Linki kopyala" ilə əl ilə paylaş.`,
+        );
+      }
     },
     onError: (e) => setFormError((e as Error).message),
   });
 
   const revoke = useMutation({
     mutationFn: async (id: string) => {
-      // Look up invite first so we can record what was revoked
+      // Look up invite first so we can record what was revoked AND surface
+      // the email in the success toast.
       const target = (invitations.data ?? []).find((i) => i.id === id);
       const { error } = await supabase.from('invitations').delete().eq('id', id);
       if (error) throw error;
-      // PRD §9.1 / §9.4 — audit privileged action
+      // PRD §9.1 / §9.4 — audit privileged action. (Revoke has no backend
+      // endpoint, so the audit row must be written client-side — unlike
+      // invite.create where the backend handles it; see D-1.)
       if (profile?.id) {
         await writeAudit(profile.id, 'invitation.revoke', 'invitations', {
           invitation_id: id,
@@ -1712,12 +1883,33 @@ function InvitationsSettings() {
           role_key: target?.role?.key ?? null,
         });
       }
+      return target?.email ?? null;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['invitations'] }),
+    onSuccess: (email) => {
+      qc.invalidateQueries({ queryKey: ['invitations'] });
+      toast.success(email ? `${email} dəvəti ləğv edildi` : 'Dəvət ləğv edildi');
+    },
+    onError: (e) => toast.error((e as Error).message),
   });
 
-  const pending = (invitations.data ?? []).filter((i) => !i.accepted_at);
+  // D-11 — the query already filters `accepted_at IS NULL`, so the entire
+  // result IS the pending list. The previous filter was a no-op.
+  const pending = invitations.data ?? [];
   const now = new Date();
+
+  // D-9 — exclude Creator from invitable roles. PRD §2.2 reserves Creator
+  // (level 1) for a single account; letting Admins pick it from the dropdown
+  // is a privilege-escalation foot-gun. Backend should also reject creator
+  // invites, but UI keeps it out of reach in the meantime.
+  const invitableRoles = (roles.data ?? []).filter((r) => r.key !== 'creator');
+
+  // D-2 — warn when the typed email already has a pending invite. The
+  // backend upserts on `email`, silently replacing role + token; surfacing
+  // this in the UI lets the admin choose deliberately instead of by accident.
+  const normalizedEmail = email.trim().toLowerCase();
+  const existingInvite = normalizedEmail
+    ? pending.find((p) => p.email.toLowerCase() === normalizedEmail)
+    : null;
 
   return (
     <div className="space-y-6">
@@ -1730,34 +1922,60 @@ function InvitationsSettings() {
             invite.mutate();
           }}
         >
+          {/* Email input grows to fill all remaining row space. flex-1 sets
+              flex:1 1 0%; min-w-0 unlocks shrinking below intrinsic width
+              (otherwise .input's w-full pins it at 100%). */}
           <input
             type="email"
-            className="input flex-1"
+            className="input flex-1 min-w-0"
             placeholder="email@domain.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
             aria-label="Dəvət e-poçtu"
           />
+          {/* Native <select width:auto> on Chrome/Windows expands to the
+              longest <option> text, which on locales like "Layihə Rəhbəri
+              (L2)" can push past 400px and starve the email input. Pinning
+              flex-basis to 220px (no grow, no shrink) makes the role
+              column deterministic regardless of role-name length. */}
           <select
             className="input"
-            style={{ minWidth: 160 }}
+            style={{ flex: '0 0 220px' }}
             value={roleId}
             onChange={(e) => setRoleId(e.target.value)}
             required
             aria-label="Rol"
           >
             <option value="">Rol seçin…</option>
-            {(roles.data ?? []).map((r) => (
+            {invitableRoles.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.name} (L{r.level})
               </option>
             ))}
           </select>
-          <button type="submit" className="btn-primary" disabled={invite.isPending}>
-            {invite.isPending ? 'Göndərilir…' : 'Dəvət et'}
+          {/* whitespace-nowrap + shrink-0 so "Dəvət et" / "Yenidən dəvət et"
+              stay on one line instead of wrapping into 2-3 lines on tablet. */}
+          <button
+            type="submit"
+            className="btn-primary whitespace-nowrap"
+            style={{ flexShrink: 0 }}
+            disabled={invite.isPending}
+          >
+            {invite.isPending ? 'Göndərilir…' : existingInvite ? 'Yenidən dəvət et' : 'Dəvət et'}
           </button>
         </form>
+        {/* D-2 — re-invite warning. Existing pending invite means the form
+            submit will overwrite role + token rather than create a new row. */}
+        {existingInvite ? (
+          <p
+            className="text-meta mt-2"
+            style={{ color: 'var(--warning, #c47d00)' }}
+          >
+            Bu email üçün dəvət artıq var ({existingInvite.role?.name ?? '—'}).
+            Submit etsən rol və token yenilənəcək.
+          </p>
+        ) : null}
         {formError ? (
           <p className="text-meta mt-2" style={{ color: 'var(--error-deep)' }}>
             {formError}
@@ -1808,15 +2026,38 @@ function InvitationsSettings() {
                         {expired ? ' (vaxtı keçib)' : ''}
                       </td>
                       <td className="py-2 text-right">
-                        <button
-                          className="btn-outline text-meta"
-                          style={{ padding: '2px 10px', color: 'var(--error-deep)' }}
-                          onClick={() => revoke.mutate(inv.id)}
-                          disabled={revoke.isPending}
-                          aria-label={`${inv.email} dəvətini ləğv et`}
-                        >
-                          Ləğv et
-                        </button>
+                        <div className="inline-flex items-center gap-2">
+                          {/* Manual share fallback for when Resend isn't
+                              configured (or fails). The token lives in the
+                              invitation row; copying the constructed magic
+                              link lets admin paste into WhatsApp/Telegram. */}
+                          <button
+                            type="button"
+                            className="btn-outline text-meta"
+                            style={{ padding: '2px 10px' }}
+                            onClick={() => {
+                              const url = `${window.location.origin}/login?invite=${inv.token}`;
+                              void navigator.clipboard.writeText(url).then(
+                                () => toast.success('Dəvət linki kopyalandı'),
+                                () => toast.error('Kopyalama uğursuz oldu'),
+                              );
+                            }}
+                            aria-label={`${inv.email} üçün dəvət linkini kopyala`}
+                            disabled={expired}
+                            title={expired ? 'Vaxtı keçib — yenidən dəvət göndər' : 'Linki kopyala və əl ilə paylaş'}
+                          >
+                            Linki kopyala
+                          </button>
+                          <button
+                            className="btn-outline text-meta"
+                            style={{ padding: '2px 10px', color: 'var(--error-deep)' }}
+                            onClick={() => revoke.mutate(inv.id)}
+                            disabled={revoke.isPending}
+                            aria-label={`${inv.email} dəvətini ləğv et`}
+                          >
+                            Ləğv et
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

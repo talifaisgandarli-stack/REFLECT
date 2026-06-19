@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import { AvatarGroup } from '@/components/AvatarGroup';
@@ -30,7 +30,7 @@ import {
 import { downloadCsv } from '@/lib/csv';
 import { toast } from '@/components/Toast';
 import { formatDuration, useActiveTimeEntry, useStartTimer, useStopTimer, useTaskTimeTotals } from '@/lib/useTimeTracking';
-import { todayInBaku, endOfWeekInBaku, daysFromTodayInBaku, currentMonthInBaku } from '@/lib/time';
+import { todayInBaku, endOfWeekInBaku, daysFromTodayInBaku, currentMonthInBaku, isoOffset } from '@/lib/time';
 import { onOpenTask } from '@/lib/events';
 import { durationToHours, formatEstimatedDuration } from '@/lib/duration';
 import { filterTasks } from '@/lib/taskFilters';
@@ -44,6 +44,10 @@ import { sortTasks as sortTasksPure, type TaskSortKey } from '@/lib/taskSort';
 // (HOURS_PER_*, normalizeDurationUnit, durationToHours, formatEstimatedDuration)
 // now live in src/lib/duration.ts so the conversion is unit-testable.
 const LOOKUP_STALE_MS = 5 * 60_000; // 5 min — applied to profile/project/template lookups
+// Tamamlandı "+ N daha" expansion caps at this many rows; anything beyond is
+// pointed at the Arxiv page. Keeps the kanban column manageable while still
+// letting users skim recent archives inline.
+const ARCHIVE_PEEK_LIMIT = 50;
 
 export function TasksPage() {
   const { profile, isAdmin } = useAuth();
@@ -149,15 +153,16 @@ export function TasksPage() {
   useEffect(() => onOpenTask((detail) => setCommenting(detail)), []);
   // Deep-link consumer for ?focus=<task-id>. TaskCommentsModal builds links
   // like /tapşırıqlar?focus=<id>; without this effect those links land here
-  // but the modal never opens. The param is cleared after first consumption
-  // so a reload doesn't re-open the same task.
-  const focusConsumedRef = useRef(false);
+  // but the modal never opens. The param is cleared after consumption, so
+  // the next searchParams change re-runs this effect with focusId=null and
+  // early-returns — that's what prevents the same task from re-opening on
+  // its own. A previous version used a "consumed" ref but it persisted
+  // forever, blocking every subsequent deep-link in the same session.
   useEffect(() => {
     const focusId = searchParams.get('focus');
-    if (!focusId || focusConsumedRef.current) return;
+    if (!focusId) return;
     const t = tasks.find((x) => x.id === focusId);
-    if (!t) return; // tasks still loading or focus id doesn't match current scope
-    focusConsumedRef.current = true;
+    if (!t) return; // tasks still loading or focus id outside current scope
     setCommenting({ id: t.id, title: t.title });
     const next = new URLSearchParams(searchParams);
     next.delete('focus');
@@ -244,7 +249,13 @@ export function TasksPage() {
     onError: (e) => toast.error((e as Error).message),
   });
 
-  // PRD §6.x — clone a task (title + project + duration + assignees).
+  // PRD §6.x — clone a task. Copies the source's full context (title,
+  // description, project, schedule, assignees, labels, priority, expertise
+  // flag) so the user lands on a near-duplicate they can tweak. Two
+  // intentional resets:
+  //  - parent_task_id is not copied: clone is a top-level task.
+  //  - task_level forced to 0 to match the top-level reset (was inherited
+  //    from src, which produced level-N orphans when cloning a subtask).
   // New task lands in "queued" status with a "(kopya)" suffix.
   const cloneTask = useMutation({
     mutationFn: async (sourceId: string) => {
@@ -256,12 +267,15 @@ export function TasksPage() {
         project_id: src.project_id,
         status: 'queued',
         assignee_ids: src.assignee_ids,
+        start_date: src.start_date,
         deadline: src.deadline,
         estimated_duration: src.estimated_duration,
         duration_unit: src.duration_unit,
         risk_buffer_pct: src.risk_buffer_pct,
         is_expertise_subtask: src.is_expertise_subtask,
-        task_level: src.task_level,
+        labels: src.labels ?? [],
+        priority: src.priority ?? null,
+        task_level: 0,
         // Schema has no DEFAULT for created_by — must be set explicitly,
         // otherwise the row's creator lineage is null.
         created_by: profile?.id ?? null,
@@ -294,16 +308,21 @@ export function TasksPage() {
 
   const bulkArchive = useMutation({
     mutationFn: async () => {
+      // Snapshot the count before the update: afterwards the same query
+      // returns 0 (everything matched is now archived).
+      const count = archivableCount;
       const { error } = await supabase
         .from('tasks')
         .update({ archived_at: new Date().toISOString() })
         .in('status', ['done', 'cancelled'])
         .is('archived_at', null);
       if (error) throw error;
+      return count;
     },
-    onSuccess: () => {
+    onSuccess: (count) => {
       qc.invalidateQueries({ queryKey: ['tasks'] });
       setConfirmArchive(false);
+      if (count) toast.success(`${count} tapşırıq arxivləndi`);
     },
     // Surface failure via toast so ConfirmDialog stays a pure yes/no primitive.
     // Matches bulkArchiveSelected's error pattern.
@@ -375,7 +394,9 @@ export function TasksPage() {
         .eq('status', 'done')
         .not('archived_at', 'is', null);
       if (filterAssignee) q = q.contains('assignee_ids', [filterAssignee]);
-      const { data, error } = await q.order('archived_at', { ascending: false }).limit(50);
+      const { data, error } = await q
+        .order('archived_at', { ascending: false })
+        .limit(ARCHIVE_PEEK_LIMIT);
       if (error) throw error;
       return data ?? [];
     },
@@ -595,16 +616,20 @@ export function TasksPage() {
   );
 
   // Clear every user-set filter. State setters are batched; the URL update
-  // is one setSearchParams call so we don't write four times in succession.
+  // is one setSearchParams call so we don't write five times in succession.
+  // mineOnly is included — it's a filter, not a config — so "Təmizlə" really
+  // resets the scope. sortBy stays (config, not filter).
   function clearAllFilters() {
     setSearch('');
     setLabelFilter(null);
     setProjectFilter('');
     setTodayOnly(false);
+    setMineOnly(false);
     const next = new URLSearchParams(searchParamsRef.current);
     next.delete('q');
     next.delete('label');
     next.delete('project');
+    next.delete('mine');
     if (next.toString() !== searchParamsRef.current.toString()) {
       setSearchParams(next, { replace: true });
     }
@@ -834,7 +859,7 @@ export function TasksPage() {
           onChange={(e) => changeSort(e.target.value as TaskSortKey)}
           aria-label="Sıralama"
         >
-          <option value="deadline">↑ Son tarix</option>
+          <option value="deadline">Son tarix</option>
           <option value="priority">Prioritet</option>
           <option value="created">Yenilər əvvəl</option>
         </select>
@@ -888,17 +913,28 @@ export function TasksPage() {
             {compactBoard ? '✓ Yığcam' : 'Yığcam'}
           </button>
         ) : null}
-        {/* Design spec §8.3 — view toggles: Lövhə · Cədvəl · Təqvim · Gantt */}
+        {/* Design spec §8.3 — view toggles: Lövhə · Cədvəl · Təqvim · Gantt.
+            Active uses --ink for tab-style selection (matches the BU GÜN
+            column's "current focus" semantic). chip-brand was too close in
+            value to the surrounding gray chips to read as selected. */}
         {(['board', 'table', 'calendar', 'gantt'] as const).map((v) => {
           const label =
             v === 'board' ? 'Lövhə' :
             v === 'table' ? 'Cədvəl' :
             v === 'calendar' ? 'Təqvim' : 'Gantt';
+          const isActive = view === v;
           return (
             <button
               key={v}
-              className={`chip ${view === v ? 'chip-brand' : ''}`}
+              type="button"
+              className="chip"
+              style={{
+                background: isActive ? 'var(--ink)' : undefined,
+                color: isActive ? 'var(--canvas)' : undefined,
+                fontWeight: isActive ? 600 : 400,
+              }}
               onClick={() => changeView(v)}
+              aria-pressed={isActive}
             >
               {label}
             </button>
@@ -935,7 +971,7 @@ export function TasksPage() {
           </>
         ) : null}
         {/* PRD §UX — single clear-all when any filter is active */}
-        {(search || labelFilter || projectFilter || todayOnly) ? (
+        {(search || labelFilter || projectFilter || todayOnly || mineOnly) ? (
           <>
             <span style={{ width: 1, background: 'var(--line)', margin: '0 4px' }} />
             <button
@@ -1369,51 +1405,70 @@ export function TasksPage() {
                         Arxivdə Tamamlandı yoxdur.
                       </p>
                     ) : (
-                      (archivedDone.data ?? []).map((t) => {
-                        const proj = t.project_id ? projectById[t.project_id] : null;
-                        return (
-                          <article
-                            key={t.id}
-                            className="rounded-card p-2 text-body"
-                            style={{
-                              background: 'var(--surface-mist)',
-                              border: '1px dashed var(--line)',
-                              opacity: 0.75,
-                            }}
-                          >
-                            <div
-                              className="font-medium cursor-pointer"
-                              style={{ fontSize: 12 }}
-                              onClick={() => setCommenting({ id: t.id, title: t.title })}
+                      <>
+                        {(archivedDone.data ?? []).map((t) => {
+                          const proj = t.project_id ? projectById[t.project_id] : null;
+                          return (
+                            <article
+                              key={t.id}
+                              className="rounded-card p-2 text-body"
+                              style={{
+                                background: 'var(--surface-mist)',
+                                border: '1px dashed var(--line)',
+                                opacity: 0.75,
+                              }}
                             >
-                              {t.title}
-                            </div>
-                            {proj ? (
                               <div
-                                className="text-meta"
-                                style={{ color: 'var(--text-muted)', fontSize: 10 }}
+                                className="font-medium cursor-pointer"
+                                style={{ fontSize: 12 }}
+                                onClick={() => setCommenting({ id: t.id, title: t.title })}
                               >
-                                {proj.name}
+                                {t.title}
                               </div>
-                            ) : null}
-                            {t.archived_at ? (
-                              <div
-                                className="text-meta"
-                                style={{ color: 'var(--text-muted)', fontSize: 10, fontVariantNumeric: 'tabular-nums' }}
-                              >
-                                Arxivləndi: {t.archived_at.slice(0, 10)}
-                              </div>
-                            ) : null}
-                          </article>
-                        );
-                      })
+                              {proj ? (
+                                <div
+                                  className="text-meta"
+                                  style={{ color: 'var(--text-muted)', fontSize: 10 }}
+                                >
+                                  {proj.name}
+                                </div>
+                              ) : null}
+                              {t.archived_at ? (
+                                <div
+                                  className="text-meta"
+                                  style={{ color: 'var(--text-muted)', fontSize: 10, fontVariantNumeric: 'tabular-nums' }}
+                                >
+                                  Arxivləndi: {t.archived_at.slice(0, 10)}
+                                </div>
+                              ) : null}
+                            </article>
+                          );
+                        })}
+                        {/* If the head-only count exceeds the peek-list size,
+                            tell the user where the rest live. Otherwise the
+                            chip says "+200 daha" but only 50 ever load. */}
+                        {(archivedDoneCount.data ?? 0) > (archivedDone.data?.length ?? 0) ? (
+                          <p
+                            className="text-meta"
+                            style={{ color: 'var(--text-muted)', fontSize: 10, marginTop: 6 }}
+                          >
+                            Göstərilir {archivedDone.data?.length ?? 0} / {archivedDoneCount.data} —{' '}
+                            <Link to="/arxiv" style={{ color: 'var(--brand-text)' }}>
+                              Arxivdə bax →
+                            </Link>
+                          </p>
+                        ) : null}
+                      </>
                     )}
                   </div>
                 ) : null}
-                {/* Quick-add per column: opens TaskCreateModal pre-set to this status */}
+                {/* Quick-add per column: opens TaskCreateModal pre-set to this status.
+                    opacity-50 on the light columns put text-muted below WCAG
+                    contrast (~2.5:1). 0.7 keeps the de-emphasised feel while
+                    staying readable; hover still goes to 1.0. */}
                 <button
                   type="button"
-                  className="mt-2 w-full text-left text-meta opacity-50 hover:opacity-100 py-1 px-2 rounded-btn"
+                  className="mt-2 w-full text-left text-meta opacity-70 hover:opacity-100 py-1 px-2 rounded-btn"
                   style={{ color: isToday ? 'var(--brand-action)' : 'var(--text-muted)', fontSize: 12 }}
                   onClick={() => setQuickAddCol(s)}
                   aria-label={`${TASK_STATUS_LABEL[s]} sütununa tapşırıq əlavə et`}
@@ -1446,11 +1501,7 @@ export function TasksPage() {
         <TaskGanttView
           tasks={filtered}
           startDate={ganttStart}
-          onShift={(days) => {
-            const d = new Date(ganttStart + 'T00:00:00');
-            d.setDate(d.getDate() + days);
-            setGanttStart(d.toISOString().slice(0, 10));
-          }}
+          onShift={(days) => setGanttStart(isoOffset(ganttStart, days))}
           onToday={() => setGanttStart(daysFromTodayInBaku(-7))}
           onOpen={(t) => setCommenting({ id: t.id, title: t.title })}
           projectById={projectById}

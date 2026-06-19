@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { Task } from '@/types/db';
 import { TASK_STATUS_TONE } from '@/lib/labels';
 import { todayInBaku } from '@/lib/time';
@@ -30,6 +30,10 @@ export function TaskCalendarView({
 }: Props) {
   // PRD §FIN-09 — "today" anchored to Asia/Baku, not the browser's UTC.
   const todayIso = todayInBaku();
+  // Per-cell expansion: which date currently shows ALL tasks instead of
+  // the first 3. Single state — only one cell expanded at a time keeps
+  // the grid scannable. Click "+ N daha" → expand; "− Yığ" → collapse.
+  const [expandedDate, setExpandedDate] = useState<string | null>(null);
 
   // Bucket tasks by deadline date once.
   const tasksByDate = useMemo(() => {
@@ -129,6 +133,9 @@ export function TaskCalendarView({
         {cells.map((c, i) => {
           const dayTasks = c.date ? tasksByDate.get(c.date) ?? [] : [];
           const isToday = c.date === todayIso;
+          const isExpanded = c.date != null && expandedDate === c.date;
+          const visibleTasks = isExpanded ? dayTasks : dayTasks.slice(0, 3);
+          const overflowCount = dayTasks.length - 3;
           return (
             <div
               key={i}
@@ -153,7 +160,7 @@ export function TaskCalendarView({
                     {c.day}
                   </div>
                   <div className="space-y-1">
-                    {dayTasks.slice(0, 3).map((t) => {
+                    {visibleTasks.map((t) => {
                       const tone = TASK_STATUS_TONE[t.status];
                       return (
                         <button
@@ -174,13 +181,28 @@ export function TaskCalendarView({
                         </button>
                       );
                     })}
-                    {dayTasks.length > 3 ? (
-                      <div
-                        className="text-meta"
-                        style={{ color: 'var(--text-muted)', fontSize: 10 }}
+                    {overflowCount > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => setExpandedDate(isExpanded ? null : c.date)}
+                        className="block w-full text-left text-meta hover:underline"
+                        style={{
+                          color: 'var(--text-muted)',
+                          fontSize: 10,
+                          background: 'none',
+                          border: 'none',
+                          padding: '2px 0 0',
+                          cursor: 'pointer',
+                        }}
+                        aria-expanded={isExpanded}
+                        aria-label={
+                          isExpanded
+                            ? `${c.date} gününü yığ`
+                            : `${c.date} gününün qalan ${overflowCount} tapşırığını göstər`
+                        }
                       >
-                        + {dayTasks.length - 3} daha
-                      </div>
+                        {isExpanded ? '− Yığ' : `+ ${overflowCount} daha`}
+                      </button>
                     ) : null}
                   </div>
                 </>
