@@ -50,10 +50,15 @@ async function handler(req: Request) {
 
     // 2. Create the auth user. email_confirm=true so Supabase doesn't fire
     //    its own confirmation email (we already "confirmed" via the
-    //    invitation token). If the email is already registered in
-    //    auth.users (admin pre-created it, or the invitee retried after
-    //    a previous successful signup), surface a clear message so the
-    //    frontend can bounce them to plain login.
+    //    invitation token). Recovery branch for "user already exists":
+    //    a previous signup attempt may have crashed mid-way (auth.users
+    //    created + trigger-created profile with role_id=NULL, but the
+    //    role-update + invitation-accept steps never ran). In that case
+    //    the email is registered but the profile is half-baked. If
+    //    profile.role_id IS NULL we finish the setup. If it's already
+    //    populated, this is a genuine collision (real user reusing the
+    //    same address) — refuse and tell them to use the login form.
+    let newUserId: string;
     const { data: created, error: createErr } = await sb.auth.admin.createUser({
       email: inv.email,
       password,
@@ -61,16 +66,49 @@ async function handler(req: Request) {
     });
     if (createErr) {
       const msg = createErr.message.toLowerCase();
-      if (msg.includes('already') || msg.includes('registered') || msg.includes('exists')) {
+      const alreadyExists = msg.includes('already') || msg.includes('registered') || msg.includes('exists');
+      if (!alreadyExists) {
+        throw new HttpError(500, `Hesab yaradılmadı: ${createErr.message}`);
+      }
+      // Look up the existing profile by email (case-insensitive match
+      // since invite emails are lowercased on create.ts but auth.users
+      // may not enforce that).
+      const { data: existingProf, error: profLookupErr } = await sb
+        .from('profiles')
+        .select('id, role_id')
+        .ilike('email', inv.email)
+        .maybeSingle();
+      if (profLookupErr) {
+        throw new HttpError(500, `Mövcud profile axtarışı uğursuz: ${profLookupErr.message}`);
+      }
+      if (!existingProf) {
+        // auth.users exists but no profile — atypical; safer to bail.
+        throw new HttpError(
+          409,
+          'Bu email-də artıq hesab var, amma profile tapılmadı. Admin ilə əlaqə saxla.',
+        );
+      }
+      if (existingProf.role_id) {
+        // Fully-set-up profile: refuse to overwrite.
         throw new HttpError(
           409,
           'Bu email-də artıq hesab var. Şifrə ilə birbaşa daxil olmaq cəhd et.',
         );
       }
-      throw new HttpError(500, `Hesab yaradılmadı: ${createErr.message}`);
+      // Half-baked profile from a previous crash: finish the setup with
+      // the password the invitee just typed. We need to also reset the
+      // auth password (the original signup might have used a different
+      // one or none was stored). updateUserById sets it atomically.
+      const { error: pwErr } = await sb.auth.admin.updateUserById(existingProf.id, { password });
+      if (pwErr) {
+        throw new HttpError(500, `Şifrə təyini uğursuz: ${pwErr.message}`);
+      }
+      newUserId = existingProf.id;
+    } else {
+      const id = created.user?.id;
+      if (!id) throw new HttpError(500, 'Auth istifadəçisi qaytarılmadı');
+      newUserId = id;
     }
-    const newUserId = created.user?.id;
-    if (!newUserId) throw new HttpError(500, 'Auth istifadəçisi qaytarılmadı');
 
     // 3. Attach role_id to the profile. ensure_profile RPC (migration 0025)
     //    creates the row if a trigger didn't, then we update role_id. Two
