@@ -279,6 +279,7 @@ export function TasksPage() {
         // Schema has no DEFAULT for created_by — must be set explicitly,
         // otherwise the row's creator lineage is null.
         created_by: profile?.id ?? null,
+        // parent_task_id intentionally not copied — clone is a top-level task
       });
       if (error) throw error;
     },
