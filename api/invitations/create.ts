@@ -76,7 +76,19 @@ async function handler(req: Request) {
     });
 
     const resendKey = process.env.RESEND_API_KEY;
-    const appUrl = process.env.PUBLIC_APP_URL;
+    // Build the magic-link base from the admin's current Origin first;
+    // PUBLIC_APP_URL is the canonical fallback (used by crons and any
+    // server-initiated invite path where there is no browser origin).
+    // Why prefer Origin: PUBLIC_APP_URL on Vercel is frequently pinned
+    // to a stale preview deploy URL (e.g. reflect-f570tehuq-…vercel.app),
+    // so the invitee got a magic link pointing at a deploy that may be
+    // gone tomorrow. Origin is whatever the admin is actually using
+    // *right now* — same domain they trust the rest of the app on. The
+    // manual-share "Linki kopyala" button in Settings already uses
+    // window.location.origin for the same reason; this keeps the two
+    // paths in sync.
+    const origin = req.headers.get('origin');
+    const appUrl = origin || process.env.PUBLIC_APP_URL;
 
     // Track email send status so the UI can show admin exactly why the
     // recipient didn't get an email (and surface the token + manual share
@@ -89,7 +101,10 @@ async function handler(req: Request) {
     if (!resendKey) {
       emailError = 'RESEND_API_KEY təyin edilməyib';
     } else if (!appUrl) {
-      emailError = 'PUBLIC_APP_URL təyin edilməyib';
+      // Both the request Origin and PUBLIC_APP_URL are missing — extremely
+      // rare in browser-initiated requests, but possible for direct curl
+      // invocations or misconfigured edge runtimes.
+      emailError = 'App URL tapılmadı (nə Origin, nə PUBLIC_APP_URL)';
     } else {
       try {
         const emailRes = await fetch('https://api.resend.com/emails', {
