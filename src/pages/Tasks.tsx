@@ -858,7 +858,7 @@ export function TasksPage() {
           onChange={(e) => changeSort(e.target.value as TaskSortKey)}
           aria-label="Sıralama"
         >
-          <option value="deadline">↑ Son tarix</option>
+          <option value="deadline">Son tarix</option>
           <option value="priority">Prioritet</option>
           <option value="created">Yenilər əvvəl</option>
         </select>
@@ -912,17 +912,28 @@ export function TasksPage() {
             {compactBoard ? '✓ Yığcam' : 'Yığcam'}
           </button>
         ) : null}
-        {/* Design spec §8.3 — view toggles: Lövhə · Cədvəl · Təqvim · Gantt */}
+        {/* Design spec §8.3 — view toggles: Lövhə · Cədvəl · Təqvim · Gantt.
+            Active uses --ink for tab-style selection (matches the BU GÜN
+            column's "current focus" semantic). chip-brand was too close in
+            value to the surrounding gray chips to read as selected. */}
         {(['board', 'table', 'calendar', 'gantt'] as const).map((v) => {
           const label =
             v === 'board' ? 'Lövhə' :
             v === 'table' ? 'Cədvəl' :
             v === 'calendar' ? 'Təqvim' : 'Gantt';
+          const isActive = view === v;
           return (
             <button
               key={v}
-              className={`chip ${view === v ? 'chip-brand' : ''}`}
+              type="button"
+              className="chip"
+              style={{
+                background: isActive ? 'var(--ink)' : undefined,
+                color: isActive ? 'var(--canvas)' : undefined,
+                fontWeight: isActive ? 600 : 400,
+              }}
               onClick={() => changeView(v)}
+              aria-pressed={isActive}
             >
               {label}
             </button>
@@ -1450,10 +1461,13 @@ export function TasksPage() {
                     )}
                   </div>
                 ) : null}
-                {/* Quick-add per column: opens TaskCreateModal pre-set to this status */}
+                {/* Quick-add per column: opens TaskCreateModal pre-set to this status.
+                    opacity-50 on the light columns put text-muted below WCAG
+                    contrast (~2.5:1). 0.7 keeps the de-emphasised feel while
+                    staying readable; hover still goes to 1.0. */}
                 <button
                   type="button"
-                  className="mt-2 w-full text-left text-meta opacity-50 hover:opacity-100 py-1 px-2 rounded-btn"
+                  className="mt-2 w-full text-left text-meta opacity-70 hover:opacity-100 py-1 px-2 rounded-btn"
                   style={{ color: isToday ? 'var(--brand-action)' : 'var(--text-muted)', fontSize: 12 }}
                   onClick={() => setQuickAddCol(s)}
                   aria-label={`${TASK_STATUS_LABEL[s]} sütununa tapşırıq əlavə et`}
