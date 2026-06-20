@@ -22,7 +22,7 @@ import {
   useUpdateTaskStatus,
 } from '@/lib/hooks';
 import { useAuth, useUI } from '@/lib/store';
-import { formatDate, relativeTime, taskHealth } from '@/lib/format';
+import { bakuEndOfWeek, bakuToday, formatDate, relativeTime, taskHealth } from '@/lib/format';
 import { downloadCsv } from '@/lib/csv';
 import { useRecentEntries } from '@/lib/useRecentlyViewed';
 import { FocusWidget } from '@/components/FocusWidget';
@@ -135,15 +135,15 @@ export function DashboardPage() {
     const id = window.setInterval(() => setTick((n) => n + 1), 60_000);
     return () => window.clearInterval(id);
   }, []);
-  const { data: tasks = [] } = useTasks(profile?.id ? { assigneeId: profile.id } : undefined);
-  const { data: presence = [] } = useTeamPresence();
+  const { data: tasks = [], isLoading: tasksLoading } = useTasks(profile?.id ? { assigneeId: profile.id } : undefined);
+  const { data: presence = [], isLoading: presenceLoading } = useTeamPresence();
   // REQ-DASH-02 / PRD §9.1 — admin sees firm-wide; users see only their own
   // (the activity_log RLS policy is permissive, so the gating must happen here).
   // PRD §6.1 — paginated activity feed; user can "Daha çox" if the page is full
   const [activityLimit, setActivityLimit] = useState(50);
-  const { data: activity = [] } = useActivityFeed(activityLimit, isAdmin ? 'firm' : profile?.id ?? 'firm');
-  const { data: announcements = [] } = useRecentAnnouncements(3);
-  const { data: meetings = [] } = useUpcomingMeetings(7);
+  const { data: activity = [], isLoading: activityLoading } = useActivityFeed(activityLimit, isAdmin ? 'firm' : profile?.id ?? 'firm');
+  const { data: announcements = [], isLoading: announcementsLoading } = useRecentAnnouncements(3);
+  const { data: meetings = [], isLoading: meetingsLoading } = useUpcomingMeetings(7);
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all');
   // US-DASH-02 — "Bu gün" / "Bu həftə" tab toggle (user dashboard only)
   const [taskTab, setTaskTab] = useState<'today' | 'week'>('today');
@@ -239,7 +239,7 @@ export function DashboardPage() {
 
   // US-DASH-05 — workload roster derives from the team profile list, not from
   // presence: a member with open tasks but no presence row must still appear.
-  const { data: teamProfiles = [] } = useQuery({
+  const { data: teamProfiles = [], isLoading: teamProfilesLoading } = useQuery({
     // Distinct key from ['profiles','list'] (Archive/Outsource) — that one is
     // unfiltered; sharing it would let an unfiltered cache hit bypass is_active.
     queryKey: ['profiles', 'active'],
@@ -255,7 +255,7 @@ export function DashboardPage() {
   });
 
   // REQ-DASH-01 — admin active project health widget
-  const { data: activeProjects = [] } = useQuery({
+  const { data: activeProjects = [], isLoading: activeProjectsLoading } = useQuery({
     queryKey: ['projects-active-health'],
     enabled: isAdmin,
     queryFn: async () => {
@@ -287,14 +287,11 @@ export function DashboardPage() {
     return map;
   }, [allTasks, isAdmin]);
 
-  // US-DASH-02: filter by deadline date (not status) for user task tabs
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const endOfWeekStr = (() => {
-    const d = new Date();
-    const diff = 7 - (d.getDay() === 0 ? 7 : d.getDay());
-    d.setDate(d.getDate() + diff);
-    return d.toISOString().slice(0, 10);
-  })();
+  // US-DASH-02: filter by deadline date (not status) for user task tabs.
+  // PRD §7/REQ-FIN-09 — date math runs in Asia/Baku, not UTC, so "today"
+  // doesn't flip a day early in the Baku evening.
+  const todayStr = bakuToday();
+  const endOfWeekStr = bakuEndOfWeek();
 
   const openTasks = tasks.filter((t) => t.status !== 'done' && t.status !== 'cancelled');
   const overdueTasks = openTasks.filter((t) => t.deadline && t.deadline < todayStr);
@@ -435,26 +432,32 @@ export function DashboardPage() {
                   }}
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    {/* US-DASH-02 — tick Tamamlandı; row fades out, trigger logs activity */}
+                    {/* US-DASH-02 — tick Tamamlandı; row fades out, trigger logs activity.
+                        44×44 hit area (a11y) with -my-2 so it doesn't inflate the row;
+                        the check is faintly visible at rest (affordance) and fills on hover. */}
                     <button
                       type="button"
                       disabled={removing}
                       onClick={() => completeTask(t.id, t.status)}
                       aria-label="Tamamla"
                       title="Tamamla"
-                      className="shrink-0 rounded-full grid place-items-center transition-colors"
-                      style={{
-                        width: 22,
-                        height: 22,
-                        border: `1.5px solid ${HEALTH_COLOR[h]}`,
-                        color: 'var(--success)',
-                        background: 'transparent',
-                        cursor: removing ? 'default' : 'pointer',
-                        fontSize: 13,
-                        lineHeight: 1,
-                      }}
+                      className="group shrink-0 grid place-items-center -my-2 rounded-full"
+                      style={{ width: 44, height: 44, cursor: removing ? 'default' : 'pointer' }}
                     >
-                      {removing ? '✓' : ''}
+                      <span
+                        className="grid place-items-center rounded-full transition-colors group-hover:bg-white/10"
+                        style={{
+                          width: 22,
+                          height: 22,
+                          border: `1.5px solid ${HEALTH_COLOR[h]}`,
+                          background: removing ? 'var(--success)' : 'transparent',
+                          color: removing ? 'var(--ink)' : HEALTH_COLOR[h],
+                          fontSize: 13,
+                          lineHeight: 1,
+                        }}
+                      >
+                        <span className={removing ? 'opacity-100' : 'opacity-40 group-hover:opacity-100'}>✓</span>
+                      </span>
                     </button>
                     <div className="min-w-0">
                       <div className="text-body font-medium truncate">{t.title}</div>
@@ -472,9 +475,13 @@ export function DashboardPage() {
               );
             })}
             {tabTasks.length === 0 ? (
-              <li className="opacity-70 text-meta py-4 text-center">
-                {taskTab === 'today' ? 'Bu gün üçün tapşırıq yoxdur.' : 'Bu həftə üçün tapşırıq yoxdur.'}
-              </li>
+              tasksLoading ? (
+                <li><LoadingRows rows={3} dark /></li>
+              ) : (
+                <li className="opacity-70 text-meta py-4 text-center">
+                  {taskTab === 'today' ? 'Bu gün üçün tapşırıq yoxdur.' : 'Bu həftə üçün tapşırıq yoxdur.'}
+                </li>
+              )
             ) : null}
           </ul>
         </section>
@@ -515,14 +522,18 @@ export function DashboardPage() {
               <a href="/layihelər" className="text-meta" style={{ color: 'var(--text-muted)' }}>Hamısına bax →</a>
             </div>
             {activeProjects.length === 0 ? (
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                  Aktiv layihə yoxdur.
-                </p>
-                <a href="/layihelər" className="btn-primary text-meta" style={{ padding: '6px 12px' }}>
-                  + Yeni layihə yarat
-                </a>
-              </div>
+              activeProjectsLoading ? (
+                <LoadingRows rows={2} />
+              ) : (
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                    Aktiv layihə yoxdur.
+                  </p>
+                  <a href="/layihelər" className="btn-primary text-meta" style={{ padding: '6px 12px' }}>
+                    + Yeni layihə yarat
+                  </a>
+                </div>
+              )
             ) : (
               <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                 {activeProjects.map((p) => {
@@ -596,9 +607,13 @@ export function DashboardPage() {
             ))}
           </div>
           {filteredActivity.length === 0 ? (
-            <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-              Aktivlik yoxdur.
-            </div>
+            activityLoading ? (
+              <LoadingRows rows={4} />
+            ) : (
+              <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                Aktivlik yoxdur.
+              </div>
+            )
           ) : (
             <ul className="space-y-3 max-h-[400px] overflow-y-auto">
               {filteredActivity.map((a) => {
@@ -677,9 +692,13 @@ export function DashboardPage() {
             </span>
           </div>
           {presence.length === 0 ? (
-            <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-              Heç kim onlayn deyil.
-            </div>
+            presenceLoading ? (
+              <LoadingRows rows={4} />
+            ) : (
+              <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                Heç kim onlayn deyil.
+              </div>
+            )
           ) : (
             <ul className="space-y-2.5">
               {presence.map((p) => {
@@ -721,9 +740,13 @@ export function DashboardPage() {
           <section className="lg:col-span-4 card">
             <h3 className="text-h3 mb-3">Komanda yükü</h3>
             {teamProfiles.length === 0 ? (
-              <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                Komanda üzvü yoxdur.
-              </div>
+              teamProfilesLoading ? (
+                <LoadingRows rows={4} />
+              ) : (
+                <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                  Komanda üzvü yoxdur.
+                </div>
+              )
             ) : (
               <ul className="space-y-2">
                 {/* Overloaded members first — serves "redistribute before burnout" */}
@@ -802,9 +825,13 @@ export function DashboardPage() {
             </a>
           </div>
           {meetings.length === 0 ? (
-            <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-              Bu həftə görüş yoxdur.
-            </div>
+            meetingsLoading ? (
+              <LoadingRows rows={3} />
+            ) : (
+              <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                Bu həftə görüş yoxdur.
+              </div>
+            )
           ) : (
             <ul className="divide-y" style={{ borderColor: 'var(--line-soft)' }}>
               {meetings.map((m) => (
@@ -841,9 +868,13 @@ export function DashboardPage() {
             </a>
           </div>
           {announcements.length === 0 ? (
-            <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-              Hələ elan yoxdur.
-            </div>
+            announcementsLoading ? (
+              <LoadingRows rows={3} />
+            ) : (
+              <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                Hələ elan yoxdur.
+              </div>
+            )
           ) : (
             <ul className="divide-y" style={{ borderColor: 'var(--line-soft)' }}>
               {announcements.map((a) => {
@@ -943,6 +974,23 @@ export function DashboardPage() {
         </button>
       ) : null}
     </>
+  );
+}
+
+// PRD REQ-DASH-05 — empty states are per-widget, but they must not render
+// while the query is still loading (that flashes a false "nothing here" CTA).
+// This skeleton fills the gap during first load.
+function LoadingRows({ rows = 3, dark = false }: { rows?: number; dark?: boolean }) {
+  return (
+    <div className="space-y-2 animate-pulse" aria-hidden="true">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div
+          key={i}
+          className="h-9 rounded-card"
+          style={{ background: dark ? 'var(--card-dark-bg)' : 'var(--surface-mist)' }}
+        />
+      ))}
+    </div>
   );
 }
 
