@@ -135,15 +135,15 @@ export function DashboardPage() {
     const id = window.setInterval(() => setTick((n) => n + 1), 60_000);
     return () => window.clearInterval(id);
   }, []);
-  const { data: tasks = [], isLoading: tasksLoading } = useTasks(profile?.id ? { assigneeId: profile.id } : undefined);
-  const { data: presence = [], isLoading: presenceLoading } = useTeamPresence();
+  const { data: tasks = [], isLoading: tasksLoading, isError: tasksError, refetch: refetchTasks } = useTasks(profile?.id ? { assigneeId: profile.id } : undefined);
+  const { data: presence = [], isLoading: presenceLoading, isError: presenceError, refetch: refetchPresence } = useTeamPresence();
   // REQ-DASH-02 / PRD §9.1 — admin sees firm-wide; users see only their own
   // (the activity_log RLS policy is permissive, so the gating must happen here).
   // PRD §6.1 — paginated activity feed; user can "Daha çox" if the page is full
   const [activityLimit, setActivityLimit] = useState(50);
-  const { data: activity = [], isLoading: activityLoading } = useActivityFeed(activityLimit, isAdmin ? 'firm' : profile?.id ?? 'firm');
-  const { data: announcements = [], isLoading: announcementsLoading } = useRecentAnnouncements(3);
-  const { data: meetings = [], isLoading: meetingsLoading } = useUpcomingMeetings(7);
+  const { data: activity = [], isLoading: activityLoading, isError: activityError, refetch: refetchActivity } = useActivityFeed(activityLimit, isAdmin ? 'firm' : profile?.id ?? 'firm');
+  const { data: announcements = [], isLoading: announcementsLoading, isError: announcementsError, refetch: refetchAnnouncements } = useRecentAnnouncements(3);
+  const { data: meetings = [], isLoading: meetingsLoading, isError: meetingsError, refetch: refetchMeetings } = useUpcomingMeetings(7);
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all');
   // US-DASH-02 — "Bu gün" / "Bu həftə" tab toggle (user dashboard only)
   const [taskTab, setTaskTab] = useState<'today' | 'week'>('today');
@@ -222,24 +222,30 @@ export function DashboardPage() {
     enabled: !isAdmin && !!profile?.id,
   });
 
-  // Team tasks for workload (admin only — US-DASH-05)
-  const { data: allTasks = [] } = useQuery({
-    queryKey: ['tasks-all-open'],
+  // Workload counts (admin only — US-DASH-05). Server-side aggregate via
+  // workload_open_counts() (migration 0057) — exact per-assignee open counts,
+  // no client-side 500-row cap to silently undercount.
+  const {
+    data: workloadByMember = {},
+    isError: workloadError,
+    refetch: refetchWorkload,
+  } = useQuery({
+    queryKey: ['workload-open-counts'],
     enabled: isAdmin,
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('tasks')
-        .select('id, assignee_ids, status')
-        .is('archived_at', null)
-        .not('status', 'in', '("done","cancelled")')
-        .limit(500);
-      return data ?? [];
+    queryFn: async (): Promise<Record<string, number>> => {
+      const { data, error } = await supabase.rpc('workload_open_counts');
+      if (error) throw error;
+      const map: Record<string, number> = {};
+      for (const row of (data ?? []) as Array<{ assignee_id: string; open_count: number }>) {
+        map[row.assignee_id] = Number(row.open_count);
+      }
+      return map;
     },
   });
 
   // US-DASH-05 — workload roster derives from the team profile list, not from
   // presence: a member with open tasks but no presence row must still appear.
-  const { data: teamProfiles = [], isLoading: teamProfilesLoading } = useQuery({
+  const { data: teamProfiles = [], isLoading: teamProfilesLoading, isError: teamProfilesError, refetch: refetchTeamProfiles } = useQuery({
     // Distinct key from ['profiles','list'] (Archive/Outsource) — that one is
     // unfiltered; sharing it would let an unfiltered cache hit bypass is_active.
     queryKey: ['profiles', 'active'],
@@ -255,7 +261,7 @@ export function DashboardPage() {
   });
 
   // REQ-DASH-01 — admin active project health widget
-  const { data: activeProjects = [], isLoading: activeProjectsLoading } = useQuery({
+  const { data: activeProjects = [], isLoading: activeProjectsLoading, isError: activeProjectsError, refetch: refetchActiveProjects } = useQuery({
     queryKey: ['projects-active-health'],
     enabled: isAdmin,
     queryFn: async () => {
@@ -275,17 +281,6 @@ export function DashboardPage() {
       }>;
     },
   });
-
-  const workloadByMember = useMemo(() => {
-    if (!isAdmin) return {};
-    const map: Record<string, number> = {};
-    for (const t of allTasks) {
-      for (const uid of (t.assignee_ids ?? []) as string[]) {
-        map[uid] = (map[uid] ?? 0) + 1;
-      }
-    }
-    return map;
-  }, [allTasks, isAdmin]);
 
   // US-DASH-02: filter by deadline date (not status) for user task tabs.
   // PRD §7/REQ-FIN-09 — date math runs in Asia/Baku, not UTC, so "today"
@@ -475,7 +470,9 @@ export function DashboardPage() {
               );
             })}
             {tabTasks.length === 0 ? (
-              tasksLoading ? (
+              tasksError ? (
+                <li className="py-2"><WidgetError onRetry={() => refetchTasks()} dark /></li>
+              ) : tasksLoading ? (
                 <li><LoadingRows rows={3} dark /></li>
               ) : (
                 <li className="opacity-70 text-meta py-4 text-center">
@@ -522,7 +519,9 @@ export function DashboardPage() {
               <a href="/layihelər" className="text-meta" style={{ color: 'var(--text-muted)' }}>Hamısına bax →</a>
             </div>
             {activeProjects.length === 0 ? (
-              activeProjectsLoading ? (
+              activeProjectsError ? (
+                <WidgetError onRetry={() => refetchActiveProjects()} />
+              ) : activeProjectsLoading ? (
                 <LoadingRows rows={2} />
               ) : (
                 <div className="flex items-center justify-between gap-3">
@@ -607,7 +606,9 @@ export function DashboardPage() {
             ))}
           </div>
           {filteredActivity.length === 0 ? (
-            activityLoading ? (
+            activityError ? (
+              <WidgetError onRetry={() => refetchActivity()} />
+            ) : activityLoading ? (
               <LoadingRows rows={4} />
             ) : (
               <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
@@ -692,7 +693,9 @@ export function DashboardPage() {
             </span>
           </div>
           {presence.length === 0 ? (
-            presenceLoading ? (
+            presenceError ? (
+              <WidgetError onRetry={() => refetchPresence()} />
+            ) : presenceLoading ? (
               <LoadingRows rows={4} />
             ) : (
               <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
@@ -739,7 +742,9 @@ export function DashboardPage() {
         {isAdmin ? (
           <section className="lg:col-span-4 card">
             <h3 className="text-h3 mb-3">Komanda yükü</h3>
-            {teamProfiles.length === 0 ? (
+            {teamProfilesError || workloadError ? (
+              <WidgetError onRetry={() => { refetchTeamProfiles(); refetchWorkload(); }} />
+            ) : teamProfiles.length === 0 ? (
               teamProfilesLoading ? (
                 <LoadingRows rows={4} />
               ) : (
@@ -825,7 +830,9 @@ export function DashboardPage() {
             </a>
           </div>
           {meetings.length === 0 ? (
-            meetingsLoading ? (
+            meetingsError ? (
+              <WidgetError onRetry={() => refetchMeetings()} />
+            ) : meetingsLoading ? (
               <LoadingRows rows={3} />
             ) : (
               <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
@@ -868,7 +875,9 @@ export function DashboardPage() {
             </a>
           </div>
           {announcements.length === 0 ? (
-            announcementsLoading ? (
+            announcementsError ? (
+              <WidgetError onRetry={() => refetchAnnouncements()} />
+            ) : announcementsLoading ? (
               <LoadingRows rows={3} />
             ) : (
               <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
@@ -990,6 +999,24 @@ function LoadingRows({ rows = 3, dark = false }: { rows?: number; dark?: boolean
           style={{ background: dark ? 'var(--card-dark-bg)' : 'var(--surface-mist)' }}
         />
       ))}
+    </div>
+  );
+}
+
+// PRD §6.7 — a read that fails must say so and offer recovery, not silently
+// render as an empty widget (which reads as "nothing here").
+function WidgetError({ onRetry, dark = false }: { onRetry: () => void; dark?: boolean }) {
+  return (
+    <div className="text-meta flex items-center gap-2" style={{ color: dark ? 'var(--canvas)' : 'var(--error-deep)' }}>
+      <span>Yüklənmədi.</span>
+      <button
+        type="button"
+        className="chip"
+        onClick={onRetry}
+        style={{ fontSize: 11, background: dark ? 'rgba(255,255,255,0.1)' : 'var(--surface-mist)' }}
+      >
+        Yenidən cəhd et
+      </button>
     </div>
   );
 }
