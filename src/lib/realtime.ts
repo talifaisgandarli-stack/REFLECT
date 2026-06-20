@@ -132,6 +132,19 @@ export function useRealtimeSync(userId: string | undefined) {
       }),
     );
 
+    // REQ-PRESENCE-01 — presence updates over a realtime channel, no polling.
+    // up_select RLS scopes delivery to authenticated users (the whole team),
+    // matching the presence audience. Every heartbeat write fans out here so
+    // the panel refreshes ≤2s after the source write (§10.5.1 budget) instead
+    // of on a 30s client clock.
+    cleanups.push(
+      subscribeTable({
+        table: 'user_presence',
+        channelName: `presence:${userId}`,
+        onChange: () => debouncedInvalidate(['presence']),
+      }),
+    );
+
     return () => {
       for (const c of cleanups) c();
     };

@@ -391,7 +391,8 @@ export function useMarkNotificationRead() {
 export function useTeamPresence() {
   return useQuery({
     queryKey: ['presence'],
-    refetchInterval: 30_000,
+    // REQ-PRESENCE-01 — no polling; realtime.ts subscribes to `user_presence`
+    // and invalidates ['presence'] on every change (§10.5.1: updates ≤2s).
     queryFn: async (): Promise<UserPresence[]> => {
       const { data, error } = await supabase
         .from('user_presence')
