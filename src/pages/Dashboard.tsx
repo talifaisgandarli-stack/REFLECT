@@ -13,17 +13,21 @@ import { PageHead } from '@/components/PageHead';
 import { Avatar } from '@/components/Avatar';
 import { StatusChip } from '@/components/StatusChip';
 import {
+  isOpenChildrenError,
   useActivityFeed,
   useRecentAnnouncements,
   useTasks,
   useTeamPresence,
   useUpcomingMeetings,
+  useUpdateTaskStatus,
 } from '@/lib/hooks';
 import { useAuth, useUI } from '@/lib/store';
 import { formatDate, relativeTime, taskHealth } from '@/lib/format';
 import { downloadCsv } from '@/lib/csv';
 import { useRecentEntries } from '@/lib/useRecentlyViewed';
 import { FocusWidget } from '@/components/FocusWidget';
+import { toast } from '@/components/Toast';
+import type { TaskStatus } from '@/types/db';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 
@@ -144,6 +148,45 @@ export function DashboardPage() {
   // US-DASH-02 — "Bu gün" / "Bu həftə" tab toggle (user dashboard only)
   const [taskTab, setTaskTab] = useState<'today' | 'week'>('today');
 
+  // US-DASH-02 — tick a task Tamamlandı straight from the ribbon. The exit
+  // animation must play *before* the optimistic cache write removes the row,
+  // so we mark the id "removing" (CSS fades it out) and defer the mutation by
+  // one transition. The status_changed trigger (migration 0004) emits the
+  // activity_log entry the story requires.
+  const updateStatus = useUpdateTaskStatus();
+  const [removingIds, setRemovingIds] = useState<Set<string>>(() => new Set());
+  function completeTask(id: string, from: TaskStatus) {
+    setRemovingIds((prev) => new Set(prev).add(id));
+    window.setTimeout(() => {
+      updateStatus.mutate(
+        { id, status: 'done', from },
+        {
+          onSuccess: () => {
+            setRemovingIds((prev) => {
+              const next = new Set(prev);
+              next.delete(id);
+              return next;
+            });
+            toast.success('Tamamlandı');
+          },
+          onError: (e) => {
+            setRemovingIds((prev) => {
+              const next = new Set(prev);
+              next.delete(id);
+              return next;
+            });
+            // Subtask → Done guard (REQ-TASK-05): DB rejects parents with open children.
+            if (isOpenChildrenError(e)) {
+              toast.error('Açıq alt-tapşırıqlar var — əvvəlcə onları tamamlayın.');
+            } else {
+              toast.error((e as Error).message || 'Status dəyişdirilmədi');
+            }
+          },
+        },
+      );
+    }, 200);
+  }
+
   // PRD §MODULE 9.2 — surface user's career level in the dashboard greeting
   // so they always have visibility into their growth track without navigating.
   // career_level_id lives on profiles (migration 0021) but isn't in the hand-written
@@ -191,6 +234,23 @@ export function DashboardPage() {
         .not('status', 'in', '("done","cancelled")')
         .limit(500);
       return data ?? [];
+    },
+  });
+
+  // US-DASH-05 — workload roster derives from the team profile list, not from
+  // presence: a member with open tasks but no presence row must still appear.
+  const { data: teamProfiles = [] } = useQuery({
+    // Distinct key from ['profiles','list'] (Archive/Outsource) — that one is
+    // unfiltered; sharing it would let an unfiltered cache hit bypass is_active.
+    queryKey: ['profiles', 'active'],
+    enabled: isAdmin,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url')
+        .eq('is_active', true)
+        .order('full_name');
+      return (data ?? []) as Array<{ id: string; full_name: string | null; avatar_url: string | null }>;
     },
   });
 
@@ -360,24 +420,51 @@ export function DashboardPage() {
             {tabTasks.slice(0, 6).map((t) => {
               const isOv = overdueTasks.some((x) => x.id === t.id);
               const h = isOv ? 'red' : taskHealth(t.deadline);
+              const removing = removingIds.has(t.id);
               return (
                 <li
                   key={t.id}
-                  className="rounded-card px-4 py-3 flex items-center justify-between"
+                  className="rounded-card px-4 py-3 flex items-center justify-between gap-3"
                   style={{
                     background: 'var(--card-dark-bg)',
                     border: '1px solid var(--card-dark-border)',
                     borderLeft: `3px solid ${HEALTH_COLOR[h]}`,
+                    transition: 'opacity 200ms ease, transform 200ms ease',
+                    opacity: removing ? 0 : 1,
+                    transform: removing ? 'translateX(12px)' : 'none',
                   }}
                 >
-                  <div>
-                    <div className="text-body font-medium">{t.title}</div>
-                    <div className="text-meta opacity-70">
-                      {t.deadline
-                        ? isOv
-                          ? `Gecikmiş: ${t.deadline}`
-                          : `Son: ${t.deadline}`
-                        : 'Müddət yoxdur'}
+                  <div className="flex items-center gap-3 min-w-0">
+                    {/* US-DASH-02 — tick Tamamlandı; row fades out, trigger logs activity */}
+                    <button
+                      type="button"
+                      disabled={removing}
+                      onClick={() => completeTask(t.id, t.status)}
+                      aria-label="Tamamla"
+                      title="Tamamla"
+                      className="shrink-0 rounded-full grid place-items-center transition-colors"
+                      style={{
+                        width: 22,
+                        height: 22,
+                        border: `1.5px solid ${HEALTH_COLOR[h]}`,
+                        color: 'var(--success)',
+                        background: 'transparent',
+                        cursor: removing ? 'default' : 'pointer',
+                        fontSize: 13,
+                        lineHeight: 1,
+                      }}
+                    >
+                      {removing ? '✓' : ''}
+                    </button>
+                    <div className="min-w-0">
+                      <div className="text-body font-medium truncate">{t.title}</div>
+                      <div className="text-meta opacity-70">
+                        {t.deadline
+                          ? isOv
+                            ? `Gecikmiş: ${t.deadline}`
+                            : `Son: ${t.deadline}`
+                          : 'Müddət yoxdur'}
+                      </div>
                     </div>
                   </div>
                   <StatusChip status={t.status} />
@@ -633,40 +720,50 @@ export function DashboardPage() {
         {isAdmin ? (
           <section className="lg:col-span-4 card">
             <h3 className="text-h3 mb-3">Komanda yükü</h3>
-            {presence.length === 0 ? (
+            {teamProfiles.length === 0 ? (
               <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
                 Komanda üzvü yoxdur.
               </div>
             ) : (
               <ul className="space-y-2">
-                {presence.map((p) => {
-                  const name = p.profiles?.full_name ?? p.user_id.slice(0, 8);
-                  const count = workloadByMember[p.user_id] ?? 0;
-                  const barColor = workloadColor(count);
-                  const barPct = Math.min(100, (count / 15) * 100);
-                  return (
-                    <li key={p.user_id} className="flex items-center gap-2">
-                      <Avatar name={name} size={28} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex justify-between text-meta mb-0.5">
-                          <span className="truncate font-medium">{name}</span>
-                          <span style={{ color: barColor, fontVariantNumeric: 'tabular-nums' }}>
-                            {count}
-                          </span>
-                        </div>
-                        <div
-                          className="h-1.5 rounded-full"
-                          style={{ background: 'var(--line-soft)' }}
+                {/* Overloaded members first — serves "redistribute before burnout" */}
+                {[...teamProfiles]
+                  .sort((a, b) => (workloadByMember[b.id] ?? 0) - (workloadByMember[a.id] ?? 0))
+                  .map((m) => {
+                    const name = m.full_name ?? m.id.slice(0, 8);
+                    const count = workloadByMember[m.id] ?? 0;
+                    const barColor = workloadColor(count);
+                    const barPct = Math.min(100, (count / 15) * 100);
+                    return (
+                      <li key={m.id}>
+                        {/* US-DASH-05 — clicking a member filters Tapşırıqlar to their assignments */}
+                        <Link
+                          to={`/tapşırıqlar?assignee=${m.id}`}
+                          className="flex items-center gap-2 -mx-2 px-2 py-1 rounded-btn hover:bg-surface-mist transition-colors"
+                          title={`${name} — ${count} açıq tapşırıq`}
                         >
-                          <div
-                            className="h-1.5 rounded-full transition-all"
-                            style={{ width: `${barPct}%`, background: barColor }}
-                          />
-                        </div>
-                      </div>
-                    </li>
-                  );
-                })}
+                          <Avatar name={name} size={28} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex justify-between text-meta mb-0.5">
+                              <span className="truncate font-medium">{name}</span>
+                              <span style={{ color: barColor, fontVariantNumeric: 'tabular-nums' }}>
+                                {count}
+                              </span>
+                            </div>
+                            <div
+                              className="h-1.5 rounded-full"
+                              style={{ background: 'var(--line-soft)' }}
+                            >
+                              <div
+                                className="h-1.5 rounded-full transition-all"
+                                style={{ width: `${barPct}%`, background: barColor }}
+                              />
+                            </div>
+                          </div>
+                        </Link>
+                      </li>
+                    );
+                  })}
               </ul>
             )}
           </section>
