@@ -436,6 +436,20 @@ function pageLabel(pathname: string): string {
   return 'Platformada';
 }
 
+// REQ-PRESENCE-05 — classify the session's device so the presence panel can
+// surface the mobile (📱) indicator. Prefer the Client Hints `mobile` boolean
+// (Chromium); fall back to a UA-string test for other engines. Device class is
+// fixed for the session, so this is computed once per heartbeat mount.
+function detectSessionType(): 'desktop' | 'mobile' {
+  const nav = navigator as Navigator & { userAgentData?: { mobile?: boolean } };
+  if (typeof nav.userAgentData?.mobile === 'boolean') {
+    return nav.userAgentData.mobile ? 'mobile' : 'desktop';
+  }
+  return /Android|iPhone|iPad|iPod|Mobile|Opera Mini|IEMobile|BlackBerry/i.test(navigator.userAgent)
+    ? 'mobile'
+    : 'desktop';
+}
+
 export function usePresenceHeartbeat(userId: string | undefined) {
   const lastActivityRef = useRef(Date.now());
   const tabFocusedRef = useRef(true);
@@ -444,6 +458,7 @@ export function usePresenceHeartbeat(userId: string | undefined) {
   useEffect(() => {
     if (!userId) return;
 
+    const sessionType = detectSessionType();
     const INACTIVITY_MS = 5 * 60 * 1000;
     const BLUR_MS = 3 * 60 * 1000;
     let blurAt = 0;
@@ -488,7 +503,7 @@ export function usePresenceHeartbeat(userId: string | undefined) {
         body: JSON.stringify({
           status: derived,
           current_page: pageLabel(pathname),
-          session_type: 'desktop',
+          session_type: sessionType,
         }),
       }).catch(() => {});
     }
@@ -509,7 +524,7 @@ export function usePresenceHeartbeat(userId: string | undefined) {
         fetch('/api/presence/heartbeat', {
           method: 'POST',
           headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-          body: JSON.stringify({ status: 'offline', current_page: null, session_type: 'desktop' }),
+          body: JSON.stringify({ status: 'offline', current_page: null, session_type: sessionType }),
         }).catch(() => {});
       });
     };
