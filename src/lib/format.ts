@@ -82,6 +82,33 @@ export function bakuCurrentMonthRange(now: Date = new Date()): { start: Date; en
   return { start, end };
 }
 
+/**
+ * Today's calendar date in Asia/Baku as YYYY-MM-DD — matches `date` columns
+ * (e.g. tasks.deadline). Using UTC here would be off by one in the Baku
+ * evening (UTC+4), so all "is it due today?" math must go through this.
+ */
+export function bakuToday(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+}
+
+/**
+ * End of the current week (Sunday) as YYYY-MM-DD, anchored to the Baku
+ * calendar date. Weekday is derived from the date itself (UTC-anchored, so it
+ * is timezone-independent) rather than the runtime's local clock.
+ */
+export function bakuEndOfWeek(now: Date = new Date()): string {
+  const d = new Date(`${bakuToday(now)}T00:00:00Z`);
+  const dow = d.getUTCDay(); // 0=Sun..6=Sat
+  const diff = 7 - (dow === 0 ? 7 : dow); // days until Sunday
+  d.setUTCDate(d.getUTCDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
+
 /** Task health color per REQ-DASH-04. */
 export function taskHealth(deadlineISO: string | null | undefined): 'red' | 'amber' | 'green' | 'none' {
   if (!deadlineISO) return 'none';

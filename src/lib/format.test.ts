@@ -6,6 +6,8 @@ import {
   taskHealth,
   bakuMonthKey,
   bakuCurrentMonthRange,
+  bakuToday,
+  bakuEndOfWeek,
 } from './format';
 
 describe('formatAZN', () => {
@@ -32,6 +34,35 @@ describe('formatDate', () => {
     const out = formatDate('2026-01-15T00:00:00Z');
     expect(out).toMatch(/2026/);
     expect(out).toMatch(/15/);
+  });
+});
+
+describe('bakuToday', () => {
+  it('matches the UTC date during Baku daytime', () => {
+    // 12:00 UTC = 16:00 Baku, same calendar day
+    expect(bakuToday(new Date('2026-06-20T12:00:00Z'))).toBe('2026-06-20');
+  });
+
+  it('is one day ahead of UTC in the late Baku evening (the off-by-one bug)', () => {
+    // 22:00 UTC = 02:00 next day in Baku (UTC+4). A UTC slice would say the 20th.
+    expect(bakuToday(new Date('2026-06-20T22:00:00Z'))).toBe('2026-06-21');
+  });
+});
+
+describe('bakuEndOfWeek', () => {
+  it('returns the upcoming Sunday for a midweek date', () => {
+    // 2026-06-20 is a Saturday; end of that week (Sunday) is 2026-06-21
+    expect(bakuEndOfWeek(new Date('2026-06-18T09:00:00Z'))).toBe('2026-06-21'); // Thu → Sun
+  });
+
+  it('returns the same day when it is already Sunday', () => {
+    // 2026-06-21 is a Sunday
+    expect(bakuEndOfWeek(new Date('2026-06-21T09:00:00Z'))).toBe('2026-06-21');
+  });
+
+  it('is never before today', () => {
+    const today = bakuToday(new Date('2026-06-18T09:00:00Z'));
+    expect(bakuEndOfWeek(new Date('2026-06-18T09:00:00Z')) >= today).toBe(true);
   });
 });
 
