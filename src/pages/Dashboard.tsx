@@ -54,14 +54,16 @@ function activityLabel(action: string, entityType: string): string {
   return `${ACTION_LABELS[action] ?? action} — ${ENTITY_LABELS[entityType] ?? entityType}`;
 }
 
-// REQ-DASH-03 filter types
-type ActivityFilter = 'all' | 'task' | 'project' | 'income' | 'expense' | 'client';
+// REQ-DASH-03 filter types — pills mirror the PRD taxonomy exactly:
+// All / Tasks / Projects / Finance / Clients. "Finance" is one pill that
+// matches both income and expense activity entities (FINANCE_ENTITIES).
+type ActivityFilter = 'all' | 'task' | 'project' | 'finance' | 'client';
+const FINANCE_ENTITIES = new Set(['income', 'expense']);
 const ACTIVITY_FILTERS: { key: ActivityFilter; label: string }[] = [
   { key: 'all', label: 'Hamısı' },
   { key: 'task', label: 'Tapşırıqlar' },
   { key: 'project', label: 'Layihələr' },
-  { key: 'income', label: 'Gəlir' },
-  { key: 'expense', label: 'Xərc' },
+  { key: 'finance', label: 'Maliyyə' },
   { key: 'client', label: 'Müştərilər' },
 ];
 
@@ -317,6 +319,7 @@ export function DashboardPage() {
 
   const filteredActivity = useMemo(() => {
     if (activityFilter === 'all') return activity;
+    if (activityFilter === 'finance') return activity.filter((a) => FINANCE_ENTITIES.has(a.entity_type));
     return activity.filter((a) => a.entity_type === activityFilter);
   }, [activity, activityFilter]);
 
