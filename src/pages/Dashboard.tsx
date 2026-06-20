@@ -209,7 +209,7 @@ export function DashboardPage() {
   });
 
   // REQ-DASH-02 — personal OKR progress (non-admin only)
-  const { data: personalOkrs = [] } = useQuery({
+  const { data: personalOkrs = [], isLoading: personalOkrsLoading } = useQuery({
     queryKey: ['okrs', 'personal', profile?.id],
     queryFn: async () => {
       const { data } = await supabase
@@ -923,13 +923,29 @@ export function DashboardPage() {
             </ul>
           )}
         </section>
-        {/* REQ-DASH-02 — Personal OKR progress (non-admin only) */}
-        {!isAdmin && personalOkrs.length > 0 ? (
+        {/* REQ-DASH-02 — Personal OKR progress (non-admin only).
+            REQ-DASH-05 — render the widget with a per-widget empty state rather
+            than vanishing when the user has no OKRs yet. */}
+        {!isAdmin ? (
           <section className="lg:col-span-12 card">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-h3">Şəxsi OKR</h3>
               <a href="/şirkət/okr" className="text-meta" style={{ color: 'var(--brand-text)' }}>Hamısı →</a>
             </div>
+            {personalOkrs.length === 0 ? (
+              personalOkrsLoading ? (
+                <LoadingRows rows={2} />
+              ) : (
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                    Hələ şəxsi OKR yoxdur.
+                  </p>
+                  <a href="/şirkət/okr" className="btn-primary text-meta" style={{ padding: '6px 12px' }}>
+                    + OKR təyin et
+                  </a>
+                </div>
+              )
+            ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {personalOkrs.map((o) => {
                 const krs = o.key_results ?? [];
@@ -951,6 +967,7 @@ export function DashboardPage() {
                 );
               })}
             </div>
+            )}
           </section>
         ) : null}
       </div>
