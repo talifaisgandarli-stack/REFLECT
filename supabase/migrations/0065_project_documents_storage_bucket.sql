@@ -28,7 +28,8 @@ create policy "project-documents read" on storage.objects
         select 1 from public.project_documents d
         where d.storage_path = storage.objects.name
           and d.shared_with is not null
-          and auth.uid() = any (d.shared_with)
+          -- shared_with is text[] (0001), so compare the uid as text.
+          and auth.uid()::text = any (d.shared_with)
       )
     )
   );
