@@ -1,5 +1,7 @@
 /**
  * REQ-DASH-01..08 — admin + user dashboard variants.
+ * REQ-DASH-09..14 — documented dashboard UX enhancements (greeting, scroll-to-top,
+ *   meeting-countdown chip, activity CSV export, favorites + recently-viewed).
  * REQ-DASH-03: activity feed filter pills (client-side).
  * REQ-DASH-04: health colors.
  * REQ-DASH-06: presence panel with real names + current page + last seen (REQ-PRESENCE-03..04).
@@ -106,7 +108,7 @@ function workloadColor(count: number): string {
   return 'var(--error)';
 }
 
-// UX (beyond PRD spec) — time-of-day greeting (Asia/Baku) so the dashboard feels alive.
+// REQ-DASH-09 — time-of-day greeting (Asia/Baku) so the dashboard feels alive.
 // 05–11 sabahın xeyir · 11–17 salam · 17–22 axşamın xeyir · 22–05 gecən xeyir
 function greetingFor(now: Date): string {
   const bakuHour = Number(
@@ -122,7 +124,7 @@ function greetingFor(now: Date): string {
 export function DashboardPage() {
   const { profile, isAdmin } = useAuth();
   const { openTaskCreate } = useUI();
-  // UX (beyond PRD spec) — floating ↑ button appears after the user scrolls past the hero
+  // REQ-DASH-10 — floating ↑ button appears after the user scrolls past the hero
   const [showScrollTop, setShowScrollTop] = useState(false);
   useEffect(() => {
     const onScroll = () => setShowScrollTop(window.scrollY > 600);
@@ -130,7 +132,7 @@ export function DashboardPage() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // UX (beyond PRD spec) — re-render every 60s so the "Növbəti görüş: 12 dəq sonra" chip stays
+  // REQ-DASH-11 — re-render every 60s so the "Növbəti görüş: 12 dəq sonra" chip stays
   // honest without manual refresh. Bound to a ref so setter doesn't re-create handlers.
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -560,7 +562,7 @@ export function DashboardPage() {
           </section>
         ) : null}
 
-        {/* UX (beyond PRD spec) — favorited projects + recently viewed (local) */}
+        {/* REQ-DASH-13 / REQ-DASH-14 — favorited projects + recently viewed (local) */}
         <FavoriteProjectsWidget />
         <RecentlyViewedWidget />
 
@@ -568,7 +570,7 @@ export function DashboardPage() {
         <section className="lg:col-span-5 card">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-h3">Yenilənmiş</h3>
-            {/* UX (beyond PRD spec) — export filtered activity to CSV */}
+            {/* REQ-DASH-12 — export filtered activity to CSV */}
             <button
               type="button"
               className="chip"
@@ -799,7 +801,7 @@ export function DashboardPage() {
         <section className={`${isAdmin ? 'lg:col-span-4' : 'lg:col-span-6'} card`}>
           <div className="flex items-center justify-between mb-3 gap-2">
             <h3 className="text-h3">Yaxınlaşan görüşlər</h3>
-            {/* UX (beyond PRD spec) — surface "minutes-to-next-meeting" so user sees urgency
+            {/* REQ-DASH-11 — surface "minutes-to-next-meeting" so user sees urgency
                 at a glance without parsing timestamps. Only shows for meetings
                 ≤120 min away; otherwise hidden to avoid clutter. */}
             {(() => {
@@ -971,7 +973,7 @@ export function DashboardPage() {
           </section>
         ) : null}
       </div>
-      {/* UX (beyond PRD spec) — floating scroll-to-top when long-scrolled */}
+      {/* REQ-DASH-10 — floating scroll-to-top when long-scrolled */}
       {showScrollTop ? (
         <button
           type="button"
@@ -1118,7 +1120,7 @@ function ActivityHeatmap({
   );
 }
 
-// UX (beyond PRD spec) — user's starred projects (migration 0049) as a Dashboard widget
+// REQ-DASH-13 — user's starred projects (migration 0049) as a Dashboard widget
 function FavoriteProjectsWidget() {
   const { profile } = useAuth();
   const favs = useQuery({
@@ -1164,7 +1166,7 @@ function FavoriteProjectsWidget() {
   );
 }
 
-// UX (beyond PRD spec) — last visited entities (local-only, no server query)
+// REQ-DASH-14 — last visited entities (local-only, no server query)
 function RecentlyViewedWidget() {
   const recents = useRecentEntries();
   if (recents.length === 0) return null;

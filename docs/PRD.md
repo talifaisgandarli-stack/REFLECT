@@ -1,8 +1,11 @@
 # Reflect Architects OS — Product Requirements Document
-**Version:** 3.8 (Presence + Focus dashboard widgets, finance widget removed from dashboard)
-**Date:** 2026-05-05
+**Version:** 3.9 (Dashboard UX enhancements documented — REQ-DASH-09..14)
+**Date:** 2026-06-22
 **Product Owner:** Talifa İsgəndərli
 **Status:** Pre-PMF / Active Development
+
+**v3.9 changes (2026-06-22):**
+- Added REQ-DASH-09..14 — documents shipped dashboard UX additions (time-of-day greeting, scroll-to-top, minutes-to-next-meeting chip, activity CSV export, favorite-projects widget, recently-viewed widget). No behavior change; retroactive traceability only.
 
 **v3.8 changes (2026-05-05):**
 - Added REQ-DASH-06 (Presence panel) + REQ-DASH-07 (Focus Mode widget) — both required on admin and user dashboards
@@ -284,6 +287,15 @@ MIRAI
 **REQ-DASH-06** **Presence panel** required on both admin and user dashboards — shows all team members with online/away/offline status, current page label, last seen timestamp. Specs: see REQ-PRESENCE-01..05 in §10.5.1.
 **REQ-DASH-07** **Focus Mode widget** required on both admin and user dashboards — chameleon mascot Pomodoro timer, configurable intervals, personal-only data. Specs: see REQ-FOCUS-01..06 in §10.5.2.
 **REQ-DASH-08** Finance widget (Gəlir/Xərc/Balans) **removed from dashboard** per product decision (2026-05-05) — finance data lives entirely in Maliyyə Mərkəzi (REQ-FIN-*). Dashboard remains role-agnostic for headline metrics; admin-only finance access governed by Maliyyə Mərkəzi RLS, not dashboard widget visibility.
+
+**Dashboard UX enhancements (REQ-DASH-09..14)** — documented retroactively (v3.9) to give the shipped quality-of-life additions canonical traceability. All are role-agnostic (no `is_admin()` gating) and additive; none alter the headline-metric contract above.
+
+**REQ-DASH-09** Time-of-day greeting in the dashboard header, anchored to Asia/Baku — "Sabahın xeyir" (05–11) / "Salam" (11–17) / "Axşamın xeyir" (17–22) / "Gecən xeyir" (22–05), followed by the user's first name.
+**REQ-DASH-10** Scroll-to-top affordance: a floating "↑" control appears after the user scrolls past the hero (≥600px) and returns to top on click.
+**REQ-DASH-11** Minutes-to-next-meeting urgency chip on the Upcoming Meetings widget — shown only when the next meeting is ≤120 min away; turns red at ≤15 min. Recomputes at least once per minute.
+**REQ-DASH-12** Activity feed CSV export: the current client-side filter (REQ-DASH-03) is exportable to CSV (Vaxt / Kim / Action / Entity).
+**REQ-DASH-13** Favorite projects widget — surfaces the user's starred projects (`project_favorites`, migration 0049); hidden when the user has none.
+**REQ-DASH-14** Recently-viewed widget — last visited projects/tasks/clients, stored local-only (no server query); hidden when empty.
 
 **RLS:** widget aggregates check `is_admin()` server-side where applicable; non-admins receive `0` masked values rather than NULL to keep the API contract uniform. Presence + Focus widgets bypass admin gating (visible to all roles per REQ-PRESENCE-01 and REQ-FOCUS-01).
 
