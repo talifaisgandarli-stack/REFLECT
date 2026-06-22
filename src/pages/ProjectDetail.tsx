@@ -13,8 +13,9 @@ import { useProject, useTasks, useActivityFeed } from '@/lib/hooks';
 import { StatusChip } from '@/components/StatusChip';
 import { Avatar } from '@/components/Avatar';
 import { useAuth } from '@/lib/store';
-import { PROJECT_PHASES } from '@/lib/labels';
+import { PROJECT_PHASES, PROJECT_STATUS_LABEL } from '@/lib/labels';
 import { ProjectPnL } from '@/components/ProjectPnL';
+import { toast } from '@/components/Toast';
 import { TaskCreateModal } from '@/components/TaskCreateModal';
 import { supabase } from '@/lib/supabase';
 import { relativeTime } from '@/lib/format';
@@ -35,6 +36,21 @@ function calcDesignDeadline(expertiseDeadline: string, bufferDays: number): Date
 }
 function daysUntil(date: Date): number {
   return Math.ceil((date.getTime() - Date.now()) / 86_400_000);
+}
+
+// Inline Overview editors share this so a failed projects update surfaces a
+// toast instead of silently reverting (the user would otherwise believe their
+// edit saved). Returns true on success, false on error.
+async function saveProjectPatch(
+  projectId: string,
+  patch: Record<string, unknown>,
+): Promise<boolean> {
+  const { error } = await supabase.from('projects').update(patch).eq('id', projectId);
+  if (error) {
+    toast.error(`Yadda saxlanmadı: ${error.message}`);
+    return false;
+  }
+  return true;
 }
 
 // Closeout checklist defaults (REQ-PROJ-04). Per-project custom items are
@@ -1585,8 +1601,10 @@ function ProjectTagsEditor({ projectId, initial, isAdmin }: { projectId: string;
   });
 
   async function persist(next: string[]) {
-    setTags(next);
-    await supabase.from('projects').update({ tags: next }).eq('id', projectId);
+    const prev = tags;
+    setTags(next); // optimistic
+    const ok = await saveProjectPatch(projectId, { tags: next });
+    if (!ok) { setTags(prev); return; }
     qc.invalidateQueries({ queryKey: ['project', projectId] });
     qc.invalidateQueries({ queryKey: ['projects'] });
   }
@@ -1696,6 +1714,7 @@ function ProjectClientLink({
       qc.invalidateQueries({ queryKey: ['project-client'] });
       setEditing(false);
     },
+    onError: (e) => toast.error(`Yadda saxlanmadı: ${(e as Error).message}`),
   });
 
   // Non-admin: read-only or hidden
@@ -1791,8 +1810,9 @@ function ProjectDescriptionEditor({ projectId, initial, isAdmin }: { projectId: 
     const trimmed = val.trim();
     if (trimmed === (initial ?? '')) { setEditing(false); return; }
     setSaving(true);
-    await supabase.from('projects').update({ description: trimmed || null }).eq('id', projectId);
+    const ok = await saveProjectPatch(projectId, { description: trimmed || null });
     setSaving(false);
+    if (!ok) return;
     qc.invalidateQueries({ queryKey: ['project', projectId] });
     qc.invalidateQueries({ queryKey: ['projects'] });
     setEditing(false);
@@ -1880,13 +1900,23 @@ function ProjectStatusEditor({ projectId, initial }: { projectId: string; initia
       qc.invalidateQueries({ queryKey: ['project', projectId] });
       qc.invalidateQueries({ queryKey: ['projects'] });
     },
+    onError: (e) => toast.error(`Yadda saxlanmadı: ${(e as Error).message}`),
   });
-  const STATUS_LABEL: Record<string, string> = {
-    active: 'Aktiv',
-    on_hold: 'Planlama',
-    closed: 'Bağlı',
-    cancelled: 'Ləğv',
-  };
+
+  // 'closed' is intentionally NOT offered here — closing must go through the
+  // gated closeout flow (REQ-PROJ-04), and reopening through the Closeout tab.
+  // An already-closed project shows a read-only label instead of the dropdown.
+  if (initial === 'closed') {
+    return (
+      <div className="flex justify-between items-center gap-2">
+        <dt style={{ color: 'var(--text-muted)' }}>Status</dt>
+        <dd className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 12, textAlign: 'right' }}>
+          {PROJECT_STATUS_LABEL.closed} · Bağlama tabından yenidən aç
+        </dd>
+      </div>
+    );
+  }
+  const SELECTABLE: Array<'active' | 'on_hold' | 'cancelled'> = ['active', 'on_hold', 'cancelled'];
   return (
     <div className="flex justify-between items-center gap-2">
       <dt style={{ color: 'var(--text-muted)' }}>Status</dt>
@@ -1898,7 +1928,7 @@ function ProjectStatusEditor({ projectId, initial }: { projectId: string; initia
           onChange={(e) => update.mutate(e.target.value)}
           disabled={update.isPending}
         >
-          {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          {SELECTABLE.map((k) => <option key={k} value={k}>{PROJECT_STATUS_LABEL[k]}</option>)}
         </select>
       </dd>
     </div>
@@ -1915,8 +1945,9 @@ function ProjectPaymentBufferEditor({ projectId, initial }: { projectId: string;
   async function save() {
     const n = Math.max(0, Math.min(365, Number(val) || 0));
     setSaving(true);
-    await supabase.from('projects').update({ payment_buffer_days: n }).eq('id', projectId);
+    const ok = await saveProjectPatch(projectId, { payment_buffer_days: n });
     setSaving(false);
+    if (!ok) return;
     qc.invalidateQueries({ queryKey: ['project', projectId] });
     qc.invalidateQueries({ queryKey: ['projects'] });
     setVal(String(n));
@@ -1954,18 +1985,16 @@ function ProjectExpertiseToggle({ projectId, initial }: { projectId: string; ini
 
   async function toggle() {
     const next = !val;
-    setVal(next);
+    setVal(next); // optimistic
     setSaving(true);
-    await supabase
-      .from('projects')
-      .update({
-        requires_expertise: next,
-        // Clear expertise_deadline when toggling off so backward planning
-        // doesn't drift on stale data
-        ...(next ? {} : { expertise_deadline: null }),
-      })
-      .eq('id', projectId);
+    const ok = await saveProjectPatch(projectId, {
+      requires_expertise: next,
+      // Clear expertise_deadline when toggling off so backward planning
+      // doesn't drift on stale data
+      ...(next ? {} : { expertise_deadline: null }),
+    });
     setSaving(false);
+    if (!ok) { setVal(!next); return; } // revert optimistic
     qc.invalidateQueries({ queryKey: ['project', projectId] });
     qc.invalidateQueries({ queryKey: ['projects'] });
   }
@@ -2013,8 +2042,9 @@ function ProjectDateField({
   const dirty = (initial ?? '') !== val.trim();
   async function save() {
     setSaving(true);
-    await supabase.from('projects').update({ [field]: val || null }).eq('id', projectId);
+    const ok = await saveProjectPatch(projectId, { [field]: val || null });
     setSaving(false);
+    if (!ok) return;
     qc.invalidateQueries({ queryKey: ['project', projectId] });
     qc.invalidateQueries({ queryKey: ['projects'] });
   }
@@ -2083,8 +2113,9 @@ function ProjectNameEditor({ projectId, initial }: { projectId: string; initial:
       return;
     }
     setSaving(true);
-    await supabase.from('projects').update({ name: val.trim() }).eq('id', projectId);
+    const ok = await saveProjectPatch(projectId, { name: val.trim() });
     setSaving(false);
+    if (!ok) return;
     qc.invalidateQueries({ queryKey: ['project', projectId] });
     qc.invalidateQueries({ queryKey: ['projects'] });
     setEditing(false);
@@ -2138,10 +2169,18 @@ function ProjectBudgetEditor({ projectId, initialBudget }: { projectId: string; 
   const [saving, setSaving] = useState(false);
   const dirty = (initialBudget != null ? String(initialBudget) : '') !== val.trim();
   async function save() {
+    let num: number | null = null;
+    if (val.trim()) {
+      num = Number(val.replace(',', '.'));
+      if (!Number.isFinite(num) || num < 0) {
+        toast.error('Düzgün məbləğ daxil edin (mənfi olmayan rəqəm).');
+        return;
+      }
+    }
     setSaving(true);
-    const num = val.trim() ? Number(val.replace(',', '.')) : null;
-    await supabase.from('projects').update({ budget_amount: num }).eq('id', projectId);
+    const ok = await saveProjectPatch(projectId, { budget_amount: num });
     setSaving(false);
+    if (!ok) return;
     qc.invalidateQueries({ queryKey: ['project', projectId] });
     qc.invalidateQueries({ queryKey: ['project-budget', projectId] });
   }
