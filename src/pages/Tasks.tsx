@@ -1381,7 +1381,7 @@ export function TasksPage() {
                           ))}
                         </div>
                       ) : null}
-                      <div className="flex items-center justify-between mt-1">
+                      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mt-1">
                         {t.deadline ? (
                           <span
                             className="text-meta"
@@ -1395,7 +1395,7 @@ export function TasksPage() {
                         ) : (
                           <span />
                         )}
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-1.5 justify-end min-w-0">
                           {/* Keyboard alternative to drag-drop: status select. */}
                           <select
                             aria-label="Status dəyiş"
@@ -1413,6 +1413,7 @@ export function TasksPage() {
                               fontSize: 11,
                               padding: '2px 4px',
                               border: 'none',
+                              maxWidth: '100%',
                             }}
                           >
                             {TASK_STATUS_ORDER.map((s) => (
