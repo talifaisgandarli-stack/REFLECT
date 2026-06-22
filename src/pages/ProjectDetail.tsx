@@ -944,6 +944,21 @@ function DocumentRow({
   const [copied, setCopied] = useState<'share' | 'download' | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const { isAdmin } = useAuth();
+
+  // Delete is admin-only (mirrors pd_admin_write + the 0065 storage policy).
+  // Remove the stored object first (best-effort) so a deleted row never leaves
+  // an orphan file, then delete the row.
+  const del = useMutation({
+    mutationFn: async () => {
+      if (doc.storage_path) {
+        await supabase.storage.from('project-documents').remove([doc.storage_path]);
+      }
+      const { error } = await supabase.from('project_documents').delete().eq('id', doc.id);
+      if (error) throw error;
+    },
+    onSuccess: () => onChanged(),
+  });
 
   // Lazy-load profiles only when the share popover is opened
   const profiles = useQuery({
@@ -1069,6 +1084,22 @@ function DocumentRow({
           >
             🔗 Paylaş
           </button>
+          {isAdmin ? (
+            <button
+              type="button"
+              className="chip"
+              style={{ color: 'var(--error-deep)' }}
+              disabled={del.isPending}
+              onClick={() => {
+                if (window.confirm(`"${doc.title}" sənədi silinsin? Bu geri qaytarıla bilməz.`)) {
+                  del.mutate();
+                }
+              }}
+              title="Sil"
+            >
+              {del.isPending ? '…' : '🗑'}
+            </button>
+          ) : null}
           <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
             {relativeTime(doc.created_at)}
           </span>
@@ -1324,16 +1355,47 @@ function AwardsSection({ projectId }: { projectId: string }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['portfolio_workflow', projectId] }),
   });
 
+  const [monthFilter, setMonthFilter] = useState<number | 'all'>('all');
   if (awards.length === 0) return null;
 
   const selectedIds = new Set(workflow?.selected_awards ?? []);
   const today = new Date();
+  // US-PROJ-04 — awards are filterable by deadline_month.
+  const availableMonths = [
+    ...new Set(awards.map((a) => a.deadline_month).filter((m): m is number => typeof m === 'number')),
+  ].sort((a, b) => a - b);
+  const shownAwards =
+    monthFilter === 'all' ? awards : awards.filter((a) => a.deadline_month === monthFilter);
 
   return (
     <div className="card">
       <h3 className="text-h3 mb-4">Mükafat müraciətləri (REQ-PROJ-05)</h3>
+      {availableMonths.length > 1 ? (
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Ay:</span>
+          <button
+            type="button"
+            className="chip"
+            style={monthFilter === 'all' ? { background: 'var(--brand-action)', color: 'var(--canvas)' } : undefined}
+            onClick={() => setMonthFilter('all')}
+          >
+            Hamısı
+          </button>
+          {availableMonths.map((m) => (
+            <button
+              key={m}
+              type="button"
+              className="chip"
+              style={monthFilter === m ? { background: 'var(--brand-action)', color: 'var(--canvas)' } : undefined}
+              onClick={() => setMonthFilter(m)}
+            >
+              {MONTH_NAMES_AZ[m - 1] ?? m}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className="space-y-3">
-        {awards.map((award) => {
+        {shownAwards.map((award) => {
           const isSelected = selectedIds.has(award.id);
           const apps = workflow?.applications?.[award.id] ?? {};
 
