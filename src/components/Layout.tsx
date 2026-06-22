@@ -22,8 +22,8 @@ export function Layout() {
   useRealtimeSync(session?.userId);
   usePresenceHeartbeat(session?.userId);
 
-  // PRD §UX — smooth scroll-to-top on route change so long-scrolled pages
-  // don't leave the user mid-page after navigation.
+  // UX (beyond PRD spec) — smooth scroll-to-top on route change so long-scrolled
+  // pages don't leave the user mid-page after navigation.
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [location.pathname]);
@@ -101,7 +101,7 @@ export function Layout() {
             <div className="flex items-center gap-2">
               {/* Active timer indicator (PRD time tracking) */}
               <ActiveTimerChip />
-              {/* PRD §FIN-09 — display Asia/Baku timezone hint */}
+              {/* REQ-FIN-09 — display Asia/Baku timezone hint */}
               <span
                 className="hidden md:inline text-meta"
                 style={{ color: 'var(--text-muted)', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}
