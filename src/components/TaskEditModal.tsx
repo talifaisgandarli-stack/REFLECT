@@ -28,6 +28,13 @@ type Props = { task: Task; onClose: () => void };
 
 const STATUS_OPTIONS: TaskStatus[] = ['idea', 'queued', 'active', 'review', 'expert', 'done'];
 
+// Calendar days between two ISO dates (null when either is missing/invalid).
+function daysBetween(start: string, end: string): number | null {
+  if (!start || !end) return null;
+  const ms = new Date(`${end}T00:00:00`).getTime() - new Date(`${start}T00:00:00`).getTime();
+  return Number.isNaN(ms) ? null : Math.round(ms / 86400000);
+}
+
 export function TaskEditModal({ task, onClose }: Props) {
   const { isAdmin, profile } = useAuth();
   const projects = useProjects();
@@ -44,6 +51,17 @@ export function TaskEditModal({ task, onClose }: Props) {
   );
   const [unit, setUnit] = useState<DurationUnit>((task.duration_unit as DurationUnit) ?? 'hours');
   const [assignees, setAssignees] = useState<string[]>(task.assignee_ids ?? []);
+
+  // When the user sets both dates, auto-fill Müddət as the day span (editable).
+  // Wired to the date onChange handlers (not a mount effect) so opening the
+  // modal never silently rewrites the task's existing estimate.
+  const applyAutoDuration = (s: string, d: string) => {
+    const days = daysBetween(s, d);
+    if (days != null && days >= 0) {
+      setEstimated(String(days));
+      setUnit('days');
+    }
+  };
   // New subtasks to create on save. Only top-level tasks get a builder (one level).
   const [newSubtasks, setNewSubtasks] = useState<DraftSubtask[]>([]);
   const showSubtasks = !task.parent_task_id;
@@ -73,7 +91,7 @@ export function TaskEditModal({ task, onClose }: Props) {
     [isAdmin, teamMembers.data, profile],
   );
 
-  // Existing subtasks — shown read-only for context while editing the parent.
+  // Existing subtasks — editable (title/deadline/assignees) + deletable.
   const existingSubtasks = useQuery({
     queryKey: ['tasks', 'children', task.id],
     enabled: showSubtasks,
@@ -87,6 +105,45 @@ export function TaskEditModal({ task, onClose }: Props) {
     },
   });
 
+  // Editable working copy of the existing subtasks. `deleted` rows are removed on
+  // save; the rest are updated. Hydrated once the query resolves.
+  const [editSubtasks, setEditSubtasks] = useState<
+    Array<{ id: string; title: string; deadline: string; assigneeIds: string[]; deleted: boolean }>
+  >([]);
+  useEffect(() => {
+    if (!existingSubtasks.data) return;
+    setEditSubtasks(
+      existingSubtasks.data.map((k) => ({
+        id: k.id,
+        title: k.title,
+        deadline: k.deadline ?? '',
+        assigneeIds: k.assignee_ids ?? [],
+        deleted: false,
+      })),
+    );
+  }, [existingSubtasks.data]);
+  const patchEditSubtask = (id: string, patch: Partial<{ title: string; deadline: string; assigneeIds: string[]; deleted: boolean }>) =>
+    setEditSubtasks((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  const toggleEditAssignee = (id: string, mid: string) =>
+    setEditSubtasks((prev) =>
+      prev.map((s) =>
+        s.id === id
+          ? { ...s, assigneeIds: s.assigneeIds.includes(mid) ? s.assigneeIds.filter((x) => x !== mid) : [...s.assigneeIds, mid] }
+          : s,
+      ),
+    );
+  // Validate non-deleted existing subtasks (same mandatory rules as new ones).
+  const existingErr = useMemo(() => {
+    for (const s of editSubtasks) {
+      if (s.deleted) continue;
+      const t = s.title.trim();
+      if (!t) return 'Alt-tapşırığın başlığı boş ola bilməz';
+      if (!s.deadline) return `"${t}" üçün son tarix (deadline) seçin`;
+      if (s.assigneeIds.length === 0) return `"${t}" üçün ən azı bir icraçı seçin`;
+    }
+    return null;
+  }, [editSubtasks]);
+
   const save = useMutation({
     mutationFn: async () => {
       const trimmed = title.trim();
@@ -94,8 +151,8 @@ export function TaskEditModal({ task, onClose }: Props) {
       if (startDate && deadline && deadline < startDate) {
         throw new Error('Bitmə tarixi başlama tarixindən əvvəl ola bilməz.');
       }
-      // Validate new subtasks before touching the DB (deadline + assignee req.).
-      const err = subtaskError(newSubtasks);
+      // Validate new + existing subtasks before touching the DB.
+      const err = subtaskError(newSubtasks) || existingErr;
       if (err) throw new Error(err);
 
       const { error } = await supabase
@@ -113,6 +170,24 @@ export function TaskEditModal({ task, onClose }: Props) {
         })
         .eq('id', task.id);
       if (error) throw error;
+
+      // Apply edits / deletes to existing subtasks.
+      for (const s of editSubtasks) {
+        if (s.deleted) {
+          const { data, error: delErr } = await supabase
+            .from('tasks').delete().eq('id', s.id).select('id');
+          if (delErr) throw delErr;
+          if (!data || data.length === 0) {
+            throw new Error('Alt-tapşırıq silinmədi — icazə yoxdur (DB migration 0067).');
+          }
+        } else {
+          const { error: updErr } = await supabase
+            .from('tasks')
+            .update({ title: s.title.trim(), deadline: s.deadline, assignee_ids: s.assigneeIds })
+            .eq('id', s.id);
+          if (updErr) throw updErr;
+        }
+      }
 
       const children = cleanSubtasks(newSubtasks);
       if (children.length > 0) {
@@ -241,7 +316,7 @@ export function TaskEditModal({ task, onClose }: Props) {
                 type="date"
                 className="input"
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={(e) => { const v = e.target.value; setStartDate(v); applyAutoDuration(v, deadline); }}
               />
             </Field>
             <Field label="Bitmə tarixi">
@@ -249,7 +324,7 @@ export function TaskEditModal({ task, onClose }: Props) {
                 type="date"
                 className="input"
                 value={deadline}
-                onChange={(e) => setDeadline(e.target.value)}
+                onChange={(e) => { const v = e.target.value; setDeadline(v); applyAutoDuration(startDate, v); }}
                 min={startDate || undefined}
               />
             </Field>
@@ -299,30 +374,93 @@ export function TaskEditModal({ task, onClose }: Props) {
             </Field>
           ) : null}
 
-          {/* Existing subtasks (read-only) + builder to add new ones */}
+          {/* Existing subtasks — editable + deletable — and a builder for new ones */}
           {showSubtasks ? (
             <>
-              {(existingSubtasks.data ?? []).length > 0 ? (
-                <div className="rounded-btn p-2" style={{ background: 'var(--surface-mist)' }}>
-                  <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
+              {editSubtasks.length > 0 ? (
+                <fieldset className="border rounded-btn p-3" style={{ borderColor: 'var(--line)' }}>
+                  <legend className="text-meta px-2" style={{ color: 'var(--text-muted)' }}>
                     Mövcud alt-tapşırıqlar
-                  </span>
-                  <ul className="space-y-1">
-                    {(existingSubtasks.data ?? []).map((k) => {
-                      const kDone = k.status === 'done' || k.status === 'cancelled';
-                      return (
-                        <li key={k.id} className="flex items-center justify-between gap-2 text-meta">
-                          <span style={{ textDecoration: kDone ? 'line-through' : 'none', opacity: kDone ? 0.6 : 1 }}>
-                            {k.title}
-                          </span>
-                          <span style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
-                            {k.deadline ?? '— son tarix yoxdur'}
-                          </span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
+                  </legend>
+                  <div className="space-y-3">
+                    {editSubtasks.map((st, i) => (
+                      <div
+                        key={st.id}
+                        className="rounded-btn p-2"
+                        style={{ background: 'var(--surface-mist)', opacity: st.deleted ? 0.5 : 1 }}
+                      >
+                        <div className="flex gap-2 items-center">
+                          <input
+                            className="input flex-1"
+                            value={st.title}
+                            disabled={st.deleted}
+                            onChange={(e) => patchEditSubtask(st.id, { title: e.target.value })}
+                            placeholder={`Alt-tapşırıq ${i + 1}…`}
+                            aria-label={`Alt-tapşırıq ${i + 1} başlığı`}
+                            style={st.deleted ? { textDecoration: 'line-through' } : undefined}
+                          />
+                          <button
+                            type="button"
+                            className="chip shrink-0"
+                            style={{ color: st.deleted ? 'var(--brand-text)' : 'var(--error-deep)' }}
+                            onClick={() => patchEditSubtask(st.id, { deleted: !st.deleted })}
+                            aria-label={st.deleted ? 'Silməni geri qaytar' : 'Alt-tapşırığı sil'}
+                          >
+                            {st.deleted ? '↺ Geri' : '🗑 Sil'}
+                          </button>
+                        </div>
+                        {!st.deleted ? (
+                          <div className="grid grid-cols-2 gap-2 mt-2">
+                            <label className="block">
+                              <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
+                                Son tarix <span style={{ color: 'var(--error-deep)' }}>*</span>
+                              </span>
+                              <input
+                                type="date"
+                                className="input"
+                                value={st.deadline}
+                                min={startDate || undefined}
+                                onChange={(e) => patchEditSubtask(st.id, { deadline: e.target.value })}
+                                aria-label={`Alt-tapşırıq ${i + 1} son tarix`}
+                              />
+                            </label>
+                            <div>
+                              <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
+                                İcraçı(lar) <span style={{ color: 'var(--error-deep)' }}>*</span>
+                              </span>
+                              <div className="flex flex-wrap gap-2">
+                                {assignable.map((m) => {
+                                  const checked = st.assigneeIds.includes(m.id);
+                                  return (
+                                    <label
+                                      key={m.id}
+                                      className="flex items-center gap-1.5 text-meta cursor-pointer chip"
+                                      style={{ background: checked ? 'var(--brand-action)' : 'var(--surface)', color: checked ? 'var(--ink)' : 'var(--text)' }}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        className="sr-only"
+                                        checked={checked}
+                                        onChange={() => toggleEditAssignee(st.id, m.id)}
+                                      />
+                                      {m.full_name ?? m.email}
+                                    </label>
+                                  );
+                                })}
+                                {assignable.length === 0 ? (
+                                  <span className="text-meta" style={{ color: 'var(--text-muted)' }}>İcraçı yoxdur.</span>
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                  {existingErr ? (
+                    <p className="text-meta mt-2" style={{ color: 'var(--error-deep)' }}>{existingErr}</p>
+                  ) : null}
+                </fieldset>
               ) : null}
               <SubtaskBuilder
                 subtasks={newSubtasks}
@@ -381,7 +519,7 @@ export function TaskEditModal({ task, onClose }: Props) {
           </div>
           <div className="flex gap-3">
             <button type="button" className="btn-outline" onClick={onClose}>Ləğv et</button>
-            <button type="submit" className="btn-primary" disabled={save.isPending || !!subtaskErr}>
+            <button type="submit" className="btn-primary" disabled={save.isPending || !!subtaskErr || !!existingErr}>
               {save.isPending ? 'Saxlanılır…' : 'Saxla'}
             </button>
           </div>

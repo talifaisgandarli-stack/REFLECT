@@ -384,6 +384,8 @@ Cancelled     cancelled (with reason)
 
 **REQ-TASK-01a** Board UX: clicking a card body opens the edit modal (inner controls keep their own actions via stopPropagation). Modals animate in (fade + subtle scale, `modal-pop`; respects `prefers-reduced-motion`). Across the Cədvəl / Gantt / Calendar views a subtask shows its parent task ("↳ parent title") so lineage is visible everywhere, not just on the board.
 
+**REQ-TASK-01b** Create/edit modals: when both Başlama and Bitmə tarixi are set, **Müddət auto-fills** with the calendar-day span (unit → gün) — wired to the date inputs (not on open, so an existing estimate isn't silently rewritten); still editable. The edit modal lets you **edit and delete existing subtasks** (title, deadline, assignee(s)); deletes apply on Save (admin-only via RLS `tasks_admin_delete`). Existing subtasks obey the same mandatory deadline + assignee rule as new ones, so saving is blocked until each non-deleted subtask has both.
+
 **REQ-TASK-02** Multi-assignee — `assignee_ids uuid[]` replaces legacy single `assignee_id`. Migration: copy → drop column renamed `_deprecated_assignee_id` (per §10).
 
 **REQ-TASK-03** Drag between status columns → status update + `task_status_history` row + `activity_log` entry.

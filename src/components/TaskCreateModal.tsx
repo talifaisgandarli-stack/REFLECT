@@ -49,6 +49,13 @@ type Props = {
 // reason, so 'cancelled' stays out.
 const STATUS_OPTIONS: TaskStatus[] = ['idea', 'queued', 'active', 'review', 'expert', 'done'];
 
+// Calendar days between two ISO dates (null when either is missing/invalid).
+function daysBetween(start: string, end: string): number | null {
+  if (!start || !end) return null;
+  const ms = new Date(`${end}T00:00:00`).getTime() - new Date(`${start}T00:00:00`).getTime();
+  return Number.isNaN(ms) ? null : Math.round(ms / 86400000);
+}
+
 export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, parentTaskId, parentTaskLevel }: Props) {
   const { profile, isAdmin } = useAuth();
   const projects = useProjects();
@@ -78,6 +85,15 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
   const [unit, setUnit] = useState<DurationUnit>('hours');
   const [riskBuffer, setRiskBuffer] = useState<number>(0);
   const [assignSelf, setAssignSelf] = useState(true);
+
+  // Auto-fill Müddət as the day span when both dates are set (still editable).
+  const applyAutoDuration = (s: string, d: string) => {
+    const days = daysBetween(s, d);
+    if (days != null && days >= 0) {
+      setEstimated(String(days));
+      setUnit('days');
+    }
+  };
   const [extraAssignees, setExtraAssignees] = useState<string[]>([]);
   // PRD §REQ-TASK-01 — manually-built subtasks (shared SubtaskBuilder), each with
   // its own deadline + assignee(s). Hidden when this modal is itself creating a
@@ -287,7 +303,7 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
                 type="date"
                 className="input"
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={(e) => { const v = e.target.value; setStartDate(v); applyAutoDuration(v, deadline); }}
               />
             </Field>
             <Field label="Bitmə tarixi">
@@ -295,7 +311,7 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
                 type="date"
                 className="input"
                 value={deadline}
-                onChange={(e) => setDeadline(e.target.value)}
+                onChange={(e) => { const v = e.target.value; setDeadline(v); applyAutoDuration(startDate, v); }}
                 min={startDate || undefined}
               />
             </Field>
