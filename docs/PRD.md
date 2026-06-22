@@ -1,8 +1,11 @@
 # Reflect Architects OS — Product Requirements Document
-**Version:** 3.11 (Per-session presence — REQ-PRESENCE-05 highest-priority-wins)
+**Version:** 3.12 (§6.9 UX Conventions — canonical home for the `§UX` tag)
 **Date:** 2026-06-22
 **Product Owner:** Talifa İsgəndərli
 **Status:** Pre-PMF / Active Development
+
+**v3.12 changes (2026-06-22):**
+- Added §6.9 UX Conventions — documents the `§UX` tag used ~134× across the codebase (URL state, draft safety, keyboard affordances, empty-state CTAs, live relative time, deep links, reversible-first). Makes those references valid instead of pointing at a non-existent section. No code change.
 
 **v3.11 changes (2026-06-22):**
 - REQ-PRESENCE-05 — added `presence_sessions` (per-device rows) collapsed into the canonical `user_presence` row by a DB trigger so multi-session presence is "highest priority wins" (an idle mobile no longer clobbers an active desktop). UI/realtime read path unchanged.
@@ -568,6 +571,20 @@ Primary AZ. Strings in `locales/az.json`. EN/RU stubs for future. All dates in A
 
 ### 6.8 Avatars
 Circular, initials fallback on deterministic gradient. Stack max 3 + "+N".
+
+### 6.9 UX Conventions (§UX)
+Cross-cutting interaction-quality conventions that apply everywhere but aren't tied to a single numbered REQ. Code references these collectively as **`§UX`** (e.g. `// PRD §UX — …`); this section is their canonical home. They are required defaults for new list/detail/form surfaces, not optional polish:
+
+- **State persistence in URL** — search text, sort key, active filters, and selected-project/assignee scope live in query params so refresh, back/forward, and shared links preserve the view.
+- **Draft safety** — long forms (task/project/client create, comments) auto-save a draft to `localStorage` and warn before accidental tab close while dirty.
+- **Keyboard affordances** — `/` focuses the page search; `Esc` clears-then-blurs / closes modals; visible affordances mirror every shortcut (no hidden-only keys).
+- **Empty states are never dead ends** — every empty surface pairs its AZ message with a primary CTA (extends §6.7).
+- **Live relative time** — relative timestamps ("5 dəq əvvəl") re-tick on a ≤60s interval while visible, without manual refresh.
+- **At-a-glance counts** — list headers surface counts (open tasks, overdue, events in range, per-filter volume) so users gauge load without scanning.
+- **Deep links between modules** — e.g. workload chip → Tasks filtered to that person; holder → Equipment filtered; these use in-app navigation (`<Link>`), never full-page `<a>`.
+- **Reversible-first** — destructive actions get a confirm guard; non-destructive edits prefer inline (click-to-edit) over modal where practical.
+
+New `§UX`-tagged behavior must fit one of the above patterns or extend this list via PRD edit — the tag is not a licence to invent unscoped features.
 
 ---
 
