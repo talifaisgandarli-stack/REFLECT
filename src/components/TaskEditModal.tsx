@@ -254,23 +254,25 @@ export function TaskEditModal({ task, onClose }: Props) {
       role="dialog"
       aria-modal="true"
       aria-label="Tapşırığı düzəlt"
-      className="modal-fade-in fixed inset-0 z-50 flex items-center justify-center px-4 py-8 overflow-y-auto"
+      className="modal-fade-in fixed inset-0 z-50 flex items-center justify-center px-4 py-6 overflow-y-auto"
       style={{ background: 'rgba(14,22,17,0.4)' }}
       onClick={onClose}
     >
       <form
         ref={trapRef}
-        className="modal-pop card w-full max-w-lg"
+        className="modal-pop card w-full max-w-lg flex flex-col"
         onClick={(e) => e.stopPropagation()}
         onSubmit={(e) => {
           e.preventDefault();
           save.mutate();
         }}
-        style={{ padding: 24 }}
+        style={{ padding: 0, maxHeight: 'calc(100vh - 3rem)' }}
       >
-        <h2 className="text-h2">Tapşırığı düzəlt</h2>
+        <h2 className="text-h2 shrink-0" style={{ padding: '20px 24px 0' }}>Tapşırığı düzəlt</h2>
 
-        <div className="mt-4 space-y-3">
+        {/* Scrollable body — header + footer stay pinned, content scrolls inside */}
+        <div className="flex-1 overflow-y-auto" style={{ padding: '16px 24px' }}>
+        <div className="space-y-3">
           <Field label="Başlıq" required>
             <input
               className="input"
@@ -535,8 +537,12 @@ export function TaskEditModal({ task, onClose }: Props) {
             </div>
           ) : null}
         </div>
+        </div>
 
-        <div className="flex gap-3 justify-between items-center mt-5">
+        <div
+          className="shrink-0 flex gap-3 justify-between items-center"
+          style={{ padding: '14px 24px', borderTop: '1px solid var(--line)' }}
+        >
           <div>
             {isAdmin && !confirmDelete ? (
               <button

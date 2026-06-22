@@ -228,30 +228,34 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
       role="dialog"
       aria-modal="true"
       aria-labelledby="task-create-title"
-      className="modal-fade-in fixed inset-0 z-50 flex items-center justify-center px-4 py-8 overflow-y-auto"
+      className="modal-fade-in fixed inset-0 z-50 flex items-center justify-center px-4 py-6 overflow-y-auto"
       style={{ background: 'rgba(14,22,17,0.4)' }}
       onClick={onClose}
     >
       <form
         ref={trapRef}
-        className="modal-pop card w-full max-w-lg"
+        className="modal-pop card w-full max-w-lg flex flex-col"
         onClick={(e) => e.stopPropagation()}
         onSubmit={(e) => {
           e.preventDefault();
           create.mutate();
         }}
-        style={{ padding: 24 }}
+        style={{ padding: 0, maxHeight: 'calc(100vh - 3rem)' }}
       >
-        <h2 id="task-create-title" className="text-h2">
-          {parentTaskId ? 'Yeni alt-tapşırıq' : 'Yeni tapşırıq'}
-        </h2>
-        {parentTaskId ? (
-          <p className="text-meta mt-1" style={{ color: 'var(--text-muted)' }}>
-            Ana tapşırığın altında yaradılır · səviyyə {(parentTaskLevel ?? 0) + 1}
-          </p>
-        ) : null}
+        <div className="shrink-0" style={{ padding: '20px 24px 0' }}>
+          <h2 id="task-create-title" className="text-h2">
+            {parentTaskId ? 'Yeni alt-tapşırıq' : 'Yeni tapşırıq'}
+          </h2>
+          {parentTaskId ? (
+            <p className="text-meta mt-1" style={{ color: 'var(--text-muted)' }}>
+              Ana tapşırığın altında yaradılır · səviyyə {(parentTaskLevel ?? 0) + 1}
+            </p>
+          ) : null}
+        </div>
 
-        <div className="mt-4 space-y-3">
+        {/* Scrollable body — header + footer stay pinned, content scrolls inside */}
+        <div className="flex-1 overflow-y-auto" style={{ padding: '16px 24px' }}>
+        <div className="space-y-3">
           <Field label="Başlıq" required>
             <input
               className="input"
@@ -469,14 +473,17 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
             />
           ) : null}
         </div>
-
         {create.error ? (
           <p className="text-meta mt-3" style={{ color: 'var(--error-deep)' }}>
             {(create.error as Error).message}
           </p>
         ) : null}
+        </div>
 
-        <div className="flex justify-end gap-2 mt-6">
+        <div
+          className="shrink-0 flex justify-end gap-2"
+          style={{ padding: '14px 24px', borderTop: '1px solid var(--line)' }}
+        >
           <button type="button" className="btn-outline" onClick={onClose} disabled={create.isPending}>
             Geri
           </button>
