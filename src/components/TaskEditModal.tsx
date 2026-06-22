@@ -80,6 +80,20 @@ export function TaskEditModal({ task, onClose }: Props) {
     },
   });
 
+  // Hard-delete (danger zone, admin only — enforced by RLS tasks_admin_delete).
+  // The 0001 FKs cascade to subtasks, comments, status history and time entries.
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const del = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from('tasks').delete().eq('id', task.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      onClose();
+    },
+  });
+
   const trapRef = useFocusTrap<HTMLFormElement>(true);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -221,13 +235,54 @@ export function TaskEditModal({ task, onClose }: Props) {
           {save.error ? (
             <p className="text-meta" style={{ color: 'var(--error-deep)' }}>{(save.error as Error).message}</p>
           ) : null}
+
+          {confirmDelete ? (
+            <div
+              className="p-3 rounded-btn"
+              style={{ border: '1px solid var(--error-border)', background: 'var(--surface-mist)' }}
+            >
+              <p className="text-meta mb-2" style={{ color: 'var(--error-deep)' }}>
+                Bu tapşırıq həmişəlik silinəcək — alt-tapşırıqlar, şərhlər, status
+                tarixçəsi və vaxt qeydləri daxil. Bu əməliyyat geri qaytarıla bilməz.
+              </p>
+              {del.error ? (
+                <p className="text-meta mb-2" style={{ color: 'var(--error-deep)' }}>{(del.error as Error).message}</p>
+              ) : null}
+              <div className="flex gap-2 justify-end">
+                <button type="button" className="btn-outline" onClick={() => setConfirmDelete(false)} disabled={del.isPending}>Geri</button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  style={{ background: 'var(--error-deep)', borderColor: 'var(--error-deep)' }}
+                  disabled={del.isPending}
+                  onClick={() => del.mutate()}
+                >
+                  {del.isPending ? 'Silinir…' : 'Həmişəlik sil'}
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
 
-        <div className="flex gap-3 justify-end mt-5">
-          <button type="button" className="btn-outline" onClick={onClose}>Ləğv et</button>
-          <button type="submit" className="btn-primary" disabled={save.isPending}>
-            {save.isPending ? 'Saxlanılır…' : 'Saxla'}
-          </button>
+        <div className="flex gap-3 justify-between items-center mt-5">
+          <div>
+            {isAdmin && !confirmDelete ? (
+              <button
+                type="button"
+                className="btn-outline"
+                style={{ color: 'var(--error-deep)', borderColor: 'var(--error-border)' }}
+                onClick={() => setConfirmDelete(true)}
+              >
+                Sil
+              </button>
+            ) : null}
+          </div>
+          <div className="flex gap-3">
+            <button type="button" className="btn-outline" onClick={onClose}>Ləğv et</button>
+            <button type="submit" className="btn-primary" disabled={save.isPending}>
+              {save.isPending ? 'Saxlanılır…' : 'Saxla'}
+            </button>
+          </div>
         </div>
       </form>
     </div>

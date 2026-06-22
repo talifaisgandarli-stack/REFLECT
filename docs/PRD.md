@@ -408,6 +408,7 @@ workload = estimated_duration × (1 + risk_buffer_pct/100)
 **Edge cases:**
 - Reassign last assignee → must replace, not empty
 - Bakı timezone: all `*_at` stored UTC; UI renders Asia/Baku
+- **Hard delete (admin only, danger zone):** the edit-task modal exposes an admin "Sil" action (inline confirm) that permanently removes the task. Per the 0001 FKs this cascades to subtasks (`parent_task_id`), `task_comments`, `task_status_history` and `time_entries`. Enforced by RLS policy `tasks_admin_delete` (migration 0067 — the original 0002 RLS had no delete policy). Irreversible; archive (`archived_at`) remains the default non-destructive path.
 
 ---
 
@@ -444,6 +445,8 @@ Arxiv          —
 **REQ-CRM-05** Slide-in detail panel (no full-page nav); sections: overview, interactions, proposals, projects, documents.
 **REQ-CRM-06** Proposals = `project_documents` rows with `category='price_protocol'`, optional `project_id`. Share token enables public read-only access.
 **REQ-CRM-07** Retrospective survey: triggered from closeout, public form, NPS 0–10 + per-category 1–5 stars + free text.
+
+**REQ-CRM-08** Hard delete (admin only, danger zone): the detail panel exposes an admin "🗑 Sil" action that permanently removes the client (typed-name confirmation). Per the 0001 FKs this cascades to `client_stage_history` and `client_interactions`; projects, receivables, incomes, documents and retrospective surveys survive with `client_id = null`. Covered by the existing `clients_admin_write` RLS (`FOR ALL`). Irreversible — merge (soft-archive, REQ-CRM via `clients_merge`) stays the preferred path for duplicates.
 
 **RLS:** `clients` admin-only by default. BD Lead role (level 3) granted SELECT/INSERT but NOT financial fields (`expected_value`).
 

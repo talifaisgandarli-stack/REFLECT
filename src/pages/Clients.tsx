@@ -649,6 +649,7 @@ function ClientPanel({ client, onClose }: { client: Client; onClose: () => void 
   const qc = useQueryClient();
   const [tab, setTab] = useState<ClientPanelTab>('overview');
   const [mergeOpen, setMergeOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -695,6 +696,18 @@ function ClientPanel({ client, onClose }: { client: Client; onClose: () => void 
               ⇆ Birləşdir
             </button>
           ) : null}
+          {/* Danger zone — admin hard-deletes the client (typed-name confirm) */}
+          {isAdmin ? (
+            <button
+              type="button"
+              onClick={() => setDeleteOpen(true)}
+              className="chip shrink-0"
+              style={{ color: 'var(--error-deep)' }}
+              title="Müştərini həmişəlik sil"
+            >
+              🗑 Sil
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onClose}
@@ -711,6 +724,17 @@ function ClientPanel({ client, onClose }: { client: Client; onClose: () => void 
             onClose={() => setMergeOpen(false)}
             onMerged={() => {
               setMergeOpen(false);
+              qc.invalidateQueries({ queryKey: ['clients'] });
+              onClose();
+            }}
+          />
+        ) : null}
+        {deleteOpen ? (
+          <ClientDeleteModal
+            client={client}
+            onClose={() => setDeleteOpen(false)}
+            onDeleted={() => {
+              setDeleteOpen(false);
               qc.invalidateQueries({ queryKey: ['clients'] });
               onClose();
             }}
@@ -1406,6 +1430,83 @@ function ClientMergeModal({
             onClick={confirm}
           >
             {busy ? 'Birləşdirilir…' : 'Birləşdir'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Danger zone — admin hard-deletes a client. Per the 0001 FKs this cascades to
+// client_stage_history and client_interactions; projects, receivables, incomes,
+// documents and retrospective surveys survive with client_id = null. Irreversible
+// and gated by typing the exact client name. Merge (soft-archive) stays the
+// preferred path for duplicates — this is the explicit destructive option.
+function ClientDeleteModal({
+  client,
+  onClose,
+  onDeleted,
+}: {
+  client: Client;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const [confirmText, setConfirmText] = useState('');
+  const del = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from('clients').delete().eq('id', client.id);
+      if (error) throw error;
+    },
+    onSuccess: onDeleted,
+  });
+
+  const armed = confirmText.trim() === client.name;
+  return (
+    <div
+      role="dialog"
+      aria-label="Müştərini sil"
+      className="fixed inset-0 z-[55] flex items-center justify-center px-4"
+      style={{ background: 'rgba(14,22,17,0.55)' }}
+      onClick={onClose}
+    >
+      <div className="card w-full max-w-md" style={{ padding: 20, border: '1px solid var(--error-border)' }} onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-h2 mb-2" style={{ color: 'var(--error-deep)' }}>Müştərini sil</h2>
+        <p className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
+          <strong>{client.name}</strong> həmişəlik silinəcək. Mərhələ tarixçəsi və
+          qarşılıqlı əlaqələr silinəcək. Layihələr, debitorlar, gəlirlər və sənədlər
+          qalır, amma müştəri əlaqəsi itir. Bu əməliyyat geri qaytarıla bilməz.
+          <br />
+          Dublikatlar üçün <strong>Birləşdir</strong> daha təhlükəsizdir (audit izi qalır).
+        </p>
+
+        <label className="block mb-3">
+          <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
+            Təsdiq üçün müştəri adını yazın: <strong style={{ color: 'var(--text)' }}>{client.name}</strong>
+          </span>
+          <input
+            className="input w-full"
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            placeholder={client.name}
+            aria-label="Müştəri adı təsdiqi"
+            autoFocus
+          />
+        </label>
+
+        {del.error ? (
+          <p className="text-meta mb-3" style={{ color: 'var(--error-deep)' }}>{(del.error as Error).message}</p>
+        ) : null}
+
+        <div className="flex justify-end gap-2">
+          <button type="button" className="btn-outline" onClick={onClose} disabled={del.isPending}>Ləğv</button>
+          <button
+            type="button"
+            className="btn-primary"
+            style={{ background: 'var(--error-deep)', borderColor: 'var(--error-deep)' }}
+            disabled={!armed || del.isPending}
+            onClick={() => del.mutate()}
+          >
+            {del.isPending ? 'Silinir…' : 'Müştərini sil'}
           </button>
         </div>
       </div>
