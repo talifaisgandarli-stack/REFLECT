@@ -49,6 +49,9 @@ type Props = {
 // reason, so 'cancelled' stays out.
 const STATUS_OPTIONS: TaskStatus[] = ['idea', 'queued', 'active', 'review', 'expert', 'done'];
 
+// Hours per working day — duration readout converts the day span to work hours.
+const WORK_HOURS_PER_DAY = 8;
+
 // Calendar days between two ISO dates (null when either is missing/invalid).
 function daysBetween(start: string, end: string): number | null {
   if (!start || !end) return null;
@@ -317,7 +320,7 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
             </Field>
           </div>
 
-          {/* Auto-computed duration readout: days + equivalent hours (24h/day) */}
+          {/* Auto-computed duration readout: days + equivalent work hours (8h/workday) */}
           {(() => {
             const d = daysBetween(startDate, deadline);
             if (d == null || d < 0) return null;
@@ -326,7 +329,7 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
                 className="text-meta px-3 py-2 rounded-btn"
                 style={{ background: 'var(--brand-mist)', color: 'var(--brand-text)', fontVariantNumeric: 'tabular-nums' }}
               >
-                ⏱ Müddət: <strong>{d} gün</strong> · <strong>{d * 24} saat</strong>
+                ⏱ Müddət: <strong>{d} gün</strong> · <strong>{d * WORK_HOURS_PER_DAY} iş saatı</strong>
               </div>
             );
           })()}
