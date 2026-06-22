@@ -13,7 +13,7 @@ import { useProject, useTasks, useActivityFeed } from '@/lib/hooks';
 import { StatusChip } from '@/components/StatusChip';
 import { Avatar } from '@/components/Avatar';
 import { useAuth } from '@/lib/store';
-import { PROJECT_PHASES, PROJECT_STATUS_LABEL } from '@/lib/labels';
+import { PROJECT_PHASES, PROJECT_STATUS_LABEL, phaseLabel } from '@/lib/labels';
 import { ProjectPnL } from '@/components/ProjectPnL';
 import { toast } from '@/components/Toast';
 import { TaskCreateModal } from '@/components/TaskCreateModal';
@@ -310,7 +310,7 @@ export function ProjectDetailPage() {
   return (
     <>
       <PageHead
-        meta={(project.phases ?? []).join(' → ') || '—'}
+        meta={(project.phases ?? []).map(phaseLabel).join(' → ') || '—'}
         title={project.name}
         actions={
           <>
@@ -409,7 +409,7 @@ export function ProjectDetailPage() {
                           className="w-2 h-2 rounded-full shrink-0"
                           style={{ background: active ? 'var(--brand-action)' : 'var(--line)' }}
                         />
-                        <span style={{ color: active ? 'var(--text)' : 'var(--text-muted)' }}>{p}</span>
+                        <span style={{ color: active ? 'var(--text)' : 'var(--text-muted)' }}>{phaseLabel(p)}</span>
                       </button>
                     ) : (
                       <div className="flex items-center gap-3">
@@ -417,7 +417,7 @@ export function ProjectDetailPage() {
                           className="w-2 h-2 rounded-full shrink-0"
                           style={{ background: active ? 'var(--brand-action)' : 'var(--line)' }}
                         />
-                        <span style={{ color: active ? 'var(--text)' : 'var(--text-muted)' }}>{p}</span>
+                        <span style={{ color: active ? 'var(--text)' : 'var(--text-muted)' }}>{phaseLabel(p)}</span>
                       </div>
                     )}
                   </li>

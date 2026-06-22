@@ -10,6 +10,7 @@ import { supabase } from '@/lib/supabase';
 import { toast } from './Toast';
 import { useAuth } from '@/lib/store';
 import { useClients } from '@/lib/hooks';
+import { phaseLabel } from '@/lib/labels';
 import type { Project } from '@/types/db';
 
 // PRD §5 Module 3 — canonical phase list
@@ -247,7 +248,7 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
                     }}
                     aria-pressed={active}
                   >
-                    {phase}
+                    {phaseLabel(phase)}
                   </button>
                 );
               })}

@@ -5,7 +5,7 @@ import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import { useProjects } from '@/lib/hooks';
 import { Mascot } from '@/components/Mascot';
-import { PROJECT_STATUS_LABEL } from '@/lib/labels';
+import { PROJECT_STATUS_LABEL, phaseLabel } from '@/lib/labels';
 import { ProjectCreateModal } from '@/components/ProjectCreateModal';
 import { SkeletonList } from '@/components/Skeleton';
 import { AvatarGroup } from '@/components/AvatarGroup';
@@ -453,7 +453,7 @@ export function ProjectsPage() {
                         color: dark ? 'var(--canvas)' : 'var(--ink)',
                       }}
                     >
-                      {p.phases[0] ?? '—'}
+                      {p.phases[0] ? phaseLabel(p.phases[0]) : '—'}
                     </span>
                     {/* PRD §UX — completion % badge when ≥1 task */}
                     {pct !== null ? (

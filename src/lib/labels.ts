@@ -77,6 +77,9 @@ export const CLIENT_STAGE_CONFIDENCE: Record<ClientPipelineStage, number> = {
   archived: 0,
 };
 
+// Canonical phase values stored in projects.phases[] (PRD REQ-PROJ-01). These
+// strings are the source of truth in the DB — DO NOT change them (existing rows
+// store them literally). For display, map through PHASE_LABEL below.
 export const PROJECT_PHASES = [
   'Konsepsiya',
   'SD',
@@ -85,6 +88,22 @@ export const PROJECT_PHASES = [
   'Tender',
   'İcra nəzarəti',
 ] as const;
+
+// Full Azerbaijani display names for the canonical phase values. The stored
+// value stays as PROJECT_PHASES (PRD REQ-PROJ-01); only the shown text differs.
+export const PHASE_LABEL: Record<string, string> = {
+  Konsepsiya: 'Konsepsiya',
+  SD: 'Eskiz layihə',
+  DD: 'Detallı layihə',
+  CD: 'İşçi layihə',
+  Tender: 'Tender',
+  'İcra nəzarəti': 'İcra nəzarəti',
+};
+
+// Display helper — falls back to the raw value for any custom/unknown phase.
+export function phaseLabel(phase: string): string {
+  return PHASE_LABEL[phase] ?? phase;
+}
 
 export const PRESENCE_LABEL: Record<PresenceStatus, string> = {
   online: 'Online',

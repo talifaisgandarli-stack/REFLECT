@@ -27,6 +27,7 @@ import {
 import { useAuth, useUI } from '@/lib/store';
 import { bakuEndOfWeek, bakuToday, formatDate, relativeTime, taskHealth } from '@/lib/format';
 import { downloadCsv } from '@/lib/csv';
+import { phaseLabel } from '@/lib/labels';
 import { useRecentEntries } from '@/lib/useRecentlyViewed';
 import { FocusWidget } from '@/components/FocusWidget';
 import { toast } from '@/components/Toast';
@@ -647,7 +648,7 @@ export function DashboardPage() {
                         <div className="text-body font-medium truncate">{p.name}</div>
                         <div className="text-meta flex items-center justify-between gap-2" style={{ color: 'var(--text-muted)' }}>
                           <span className="truncate">
-                            {(p.phases && p.phases.length > 0) ? p.phases[p.phases.length - 1] : 'Faza yoxdur'}
+                            {(p.phases && p.phases.length > 0) ? phaseLabel(p.phases[p.phases.length - 1]) : 'Faza yoxdur'}
                           </span>
                           {/* REQ-DASH-15 — completion %, no health colour of its own */}
                           <span style={{ fontVariantNumeric: 'tabular-nums' }} title="Tamamlanma">
