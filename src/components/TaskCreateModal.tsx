@@ -3,9 +3,12 @@
  * Workload (REQ-TASK-06) is computed by the DB trigger tasks_recompute_workload (0006);
  * the UI shows a live preview only.
  *
- * REQ-TASK-09 — when "Ekspertiza alt-tapşırıqları əlavə et" is checked we
- * seed 5 child tasks (Çertyoj/Spesifikasiya/Möhür+imza/Çap+ciltləmə/Təhvil)
- * after the parent is inserted.
+ * REQ-TASK-01/09 — subtasks are built manually inside this one card: the admin
+ * adds any number of subtask rows, each with its own title and its own
+ * assignee(s). A subtask with a title MUST have at least one assignee. They are
+ * inserted as linked child tasks (parent_task_id + task_level+1) after the parent.
+ * The "Ekspertiza dəsti" shortcut pre-fills the five expertise titles as editable
+ * rows (still requiring an assignee each) — it no longer auto-creates them.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -38,6 +41,22 @@ const EXPERTISE_CHILDREN = [
   'Çap + ciltləmə',
   'Ekspertizaya təhvil',
 ] as const;
+
+// A manually-built subtask row: its own title + its own assignee(s).
+type DraftSubtask = {
+  key: string;
+  title: string;
+  assigneeIds: string[];
+  isExpertise: boolean;
+};
+
+let subtaskKeySeq = 0;
+const newSubtask = (title = '', isExpertise = false): DraftSubtask => ({
+  key: `st-${subtaskKeySeq++}`,
+  title,
+  assigneeIds: [],
+  isExpertise,
+});
 
 // Status options for the new-task dropdown — all non-cancelled statuses.
 // Was previously restricted to the three "starting" buckets, but the board's
@@ -76,11 +95,55 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
   const [estimated, setEstimated] = useState<string>('');
   const [unit, setUnit] = useState<DurationUnit>('hours');
   const [riskBuffer, setRiskBuffer] = useState<number>(0);
-  // PRD §REQ-TASK-09 / US-TASK-08 — selectable expertise subtasks (5 checkboxes,
-  // user picks which to seed as linked subtasks with parent_task_id + is_expertise_subtask=true).
-  const [selectedExpertise, setSelectedExpertise] = useState<Set<string>>(new Set());
   const [assignSelf, setAssignSelf] = useState(true);
   const [extraAssignees, setExtraAssignees] = useState<string[]>([]);
+  // PRD §REQ-TASK-01 — manually-built subtasks, each with its own assignee(s).
+  // Hidden when this modal is itself creating a subtask (we keep it to one level).
+  const [subtasks, setSubtasks] = useState<DraftSubtask[]>([]);
+  const showSubtasks = !parentTaskId;
+
+  // People a subtask can be assigned to: admins pick from the whole team;
+  // everyone else can only assign themselves.
+  const assignable = useMemo(
+    () =>
+      isAdmin
+        ? (teamMembers.data ?? [])
+        : profile
+          ? [{ id: profile.id, full_name: profile.full_name, email: profile.email }]
+          : [],
+    [isAdmin, teamMembers.data, profile],
+  );
+
+  const addSubtask = (title = '', isExpertise = false) =>
+    setSubtasks((prev) => [...prev, newSubtask(title, isExpertise)]);
+  const updateSubtask = (key: string, patch: Partial<DraftSubtask>) =>
+    setSubtasks((prev) => prev.map((s) => (s.key === key ? { ...s, ...patch } : s)));
+  const removeSubtask = (key: string) =>
+    setSubtasks((prev) => prev.filter((s) => s.key !== key));
+  const toggleSubtaskAssignee = (key: string, id: string) =>
+    setSubtasks((prev) =>
+      prev.map((s) =>
+        s.key === key
+          ? {
+              ...s,
+              assigneeIds: s.assigneeIds.includes(id)
+                ? s.assigneeIds.filter((x) => x !== id)
+                : [...s.assigneeIds, id],
+            }
+          : s,
+      ),
+    );
+
+  // Rows with no title and no assignee are ignored; a row with a title needs an
+  // assignee (and vice-versa). First offending row drives the inline message.
+  const subtaskError = useMemo(() => {
+    for (const s of subtasks) {
+      const t = s.title.trim();
+      if (t && s.assigneeIds.length === 0) return `"${t}" üçün ən azı bir icraçı seçin`;
+      if (!t && s.assigneeIds.length > 0) return 'Alt-tapşırığın başlığını yazın';
+    }
+    return null;
+  }, [subtasks]);
 
   const workloadPreview = useMemo(() => {
     const e = parseFloat(estimated);
@@ -144,22 +207,30 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
           return Array.from(set);
         })(),
       };
+      // Validate subtasks up-front (drop fully-empty rows; a titled row needs
+      // an assignee). Keeps a half-filled row from silently creating bad data.
+      const cleanSubtasks = subtasks
+        .map((s) => ({ ...s, title: s.title.trim() }))
+        .filter((s) => s.title.length > 0 || s.assigneeIds.length > 0);
+      for (const s of cleanSubtasks) {
+        if (!s.title) throw new Error('Alt-tapşırığın başlığı boş ola bilməz');
+        if (s.assigneeIds.length === 0) throw new Error(`"${s.title}" üçün ən azı bir icraçı seçin`);
+      }
+
       const { data, error } = await supabase.from('tasks').insert(payload).select('*').single();
       if (error) throw error;
       const parent = data as Task;
 
-      if (selectedExpertise.size > 0) {
-        const children = EXPERTISE_CHILDREN
-          .filter((t) => selectedExpertise.has(t))
-          .map((t) => ({
-            title: t,
-            status: 'queued' as TaskStatus,
-            project_id: parent.project_id,
-            parent_task_id: parent.id,
-            task_level: parent.task_level + 1,
-            is_expertise_subtask: true,
-            assignee_ids: parent.assignee_ids,
-          }));
+      if (cleanSubtasks.length > 0) {
+        const children = cleanSubtasks.map((s) => ({
+          title: s.title,
+          status: 'queued' as TaskStatus,
+          project_id: parent.project_id,
+          parent_task_id: parent.id,
+          task_level: parent.task_level + 1,
+          is_expertise_subtask: s.isExpertise,
+          assignee_ids: s.assigneeIds,
+        }));
         const { error: childErr } = await supabase.from('tasks').insert(children);
         if (childErr) throw childErr;
       }
@@ -390,76 +461,108 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
             </Field>
           ) : null}
 
-          {/* PRD §REQ-TASK-09 / US-TASK-08 — selectable expertise subtask suggestions */}
-          <fieldset className="border rounded-btn p-3" style={{ borderColor: 'var(--line)' }}>
-            <legend className="text-meta px-2" style={{ color: 'var(--text-muted)' }}>
-              Ekspertiza alt-tapşırıqları (seçilənlər avtomatik yaradılacaq)
-            </legend>
-            <div className="space-y-1.5">
-              {EXPERTISE_CHILDREN.map((t) => {
-                const checked = selectedExpertise.has(t);
-                return (
-                  <label key={t} className="flex items-center gap-2 text-body cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => {
-                        setSelectedExpertise((prev) => {
-                          const next = new Set(prev);
-                          if (e.target.checked) next.add(t);
-                          else next.delete(t);
-                          return next;
-                        });
-                      }}
-                    />
-                    {/* PRD §REQ-TASK-09 — purple "E" badge marker on expertise subtasks */}
-                    <span
-                      aria-hidden
-                      className="text-tiny inline-flex items-center justify-center"
-                      style={{
-                        width: 16, height: 16, borderRadius: 4,
-                        background: 'var(--brand-action)', color: 'var(--ink)',
-                        fontWeight: 700, fontSize: 10,
-                      }}
-                    >E</span>
-                    {t}
-                  </label>
-                );
-              })}
-            </div>
-            {selectedExpertise.size > 0 ? (
-              <div className="flex items-center justify-between mt-2 text-meta" style={{ color: 'var(--brand-text)' }}>
-                <span>{selectedExpertise.size}/{EXPERTISE_CHILDREN.length} seçilib</span>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    className="chip"
-                    style={{ fontSize: 11 }}
-                    onClick={() => setSelectedExpertise(new Set(EXPERTISE_CHILDREN))}
-                  >
-                    Hamısını seç
-                  </button>
-                  <button
-                    type="button"
-                    className="chip"
-                    style={{ fontSize: 11 }}
-                    onClick={() => setSelectedExpertise(new Set())}
-                  >
-                    Təmizlə
-                  </button>
+          {/* PRD §REQ-TASK-01 — manual subtasks, each with its own assignee(s) */}
+          {showSubtasks ? (
+            <fieldset className="border rounded-btn p-3" style={{ borderColor: 'var(--line)' }}>
+              <legend className="text-meta px-2" style={{ color: 'var(--text-muted)' }}>
+                Alt-tapşırıqlar (könüllü)
+              </legend>
+
+              {subtasks.length === 0 ? (
+                <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                  Hələ alt-tapşırıq yoxdur. Lazımdırsa əlavə et — hər biri üçün icraçı seçilməlidir.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {subtasks.map((st, i) => (
+                    <div key={st.key} className="rounded-btn p-2" style={{ background: 'var(--surface-mist)' }}>
+                      <div className="flex gap-2 items-center">
+                        {st.isExpertise ? (
+                          <span
+                            aria-hidden
+                            className="inline-flex items-center justify-center shrink-0"
+                            style={{
+                              width: 16, height: 16, borderRadius: 4,
+                              background: 'var(--brand-action)', color: 'var(--ink)',
+                              fontWeight: 700, fontSize: 10,
+                            }}
+                          >E</span>
+                        ) : null}
+                        <input
+                          className="input flex-1"
+                          value={st.title}
+                          onChange={(e) => updateSubtask(st.key, { title: e.target.value })}
+                          placeholder={`Alt-tapşırıq ${i + 1}…`}
+                          aria-label={`Alt-tapşırıq ${i + 1} başlığı`}
+                        />
+                        <button
+                          type="button"
+                          className="chip shrink-0"
+                          style={{ color: 'var(--error-deep)' }}
+                          onClick={() => removeSubtask(st.key)}
+                          aria-label="Alt-tapşırığı sil"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <div className="mt-2">
+                        <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
+                          İcraçı(lar) <span style={{ color: 'var(--error-deep)' }}>*</span>
+                        </span>
+                        <div className="flex flex-wrap gap-2">
+                          {assignable.map((m) => {
+                            const checked = st.assigneeIds.includes(m.id);
+                            return (
+                              <label
+                                key={m.id}
+                                className="flex items-center gap-1.5 text-meta cursor-pointer chip"
+                                style={{ background: checked ? 'var(--brand-action)' : 'var(--surface)', color: checked ? 'var(--ink)' : 'var(--text)' }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="sr-only"
+                                  checked={checked}
+                                  onChange={() => toggleSubtaskAssignee(st.key, m.id)}
+                                />
+                                {m.full_name ?? m.email}
+                              </label>
+                            );
+                          })}
+                          {assignable.length === 0 ? (
+                            <span className="text-meta" style={{ color: 'var(--text-muted)' }}>İcraçı yoxdur.</span>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
+              )}
+
+              <div className="flex flex-wrap gap-2 mt-3">
+                <button
+                  type="button"
+                  className="chip"
+                  style={{ fontSize: 12, color: 'var(--brand-text)' }}
+                  onClick={() => addSubtask()}
+                >
+                  + Alt-tapşırıq əlavə et
+                </button>
+                <button
+                  type="button"
+                  className="chip"
+                  style={{ fontSize: 12, color: 'var(--brand-text)' }}
+                  onClick={() => EXPERTISE_CHILDREN.forEach((t) => addSubtask(t, true))}
+                  title="5 ekspertiza alt-tapşırığını sətir kimi əlavə et (icraçı yenə də seçilməlidir)"
+                >
+                  + Ekspertiza dəsti
+                </button>
               </div>
-            ) : (
-              <button
-                type="button"
-                className="chip mt-2"
-                style={{ fontSize: 11, color: 'var(--brand-text)' }}
-                onClick={() => setSelectedExpertise(new Set(EXPERTISE_CHILDREN))}
-              >
-                Hamısını seç
-              </button>
-            )}
-          </fieldset>
+
+              {subtaskError ? (
+                <p className="text-meta mt-2" style={{ color: 'var(--error-deep)' }}>{subtaskError}</p>
+              ) : null}
+            </fieldset>
+          ) : null}
         </div>
 
         {create.error ? (
@@ -472,7 +575,7 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
           <button type="button" className="btn-outline" onClick={onClose} disabled={create.isPending}>
             Geri
           </button>
-          <button type="submit" className="btn-primary" disabled={create.isPending || !title.trim()}>
+          <button type="submit" className="btn-primary" disabled={create.isPending || !title.trim() || !!subtaskError}>
             {create.isPending ? 'Yaradılır…' : 'Yarat'}
           </button>
         </div>

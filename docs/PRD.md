@@ -380,7 +380,7 @@ Tamamlandı    done
 Cancelled     cancelled (with reason)
 ```
 
-**REQ-TASK-01** Quick create (title only) + full create modal (title, assignee_ids[], project, start_date, deadline, estimated_duration, duration_unit, risk_buffer_pct, is_expertise_subtask, task_level, parent_task_id).
+**REQ-TASK-01** Quick create (title only) + full create modal (title, assignee_ids[], project, start_date, deadline, estimated_duration, duration_unit, risk_buffer_pct, is_expertise_subtask, task_level, parent_task_id). The full modal includes a **manual subtask builder** in the same card: the creator adds any number of subtask rows, each with its own title and its own assignee(s). Subtasks are optional, but a row that has a title MUST have at least one assignee (and vice-versa); fully-empty rows are ignored. On submit each subtask is inserted as a linked child (`parent_task_id`, `task_level + 1`). Flow: write the parent → assign it → optionally add subtasks, each independently assigned. The builder is shown only when creating a top-level task (one level deep).
 
 **REQ-TASK-02** Multi-assignee — `assignee_ids uuid[]` replaces legacy single `assignee_id`. Migration: copy → drop column renamed `_deprecated_assignee_id` (per §10).
 
@@ -400,8 +400,7 @@ workload = estimated_duration × (1 + risk_buffer_pct/100)
 
 **REQ-TASK-08** Archive: tasks `Tamamlandı`/`Cancelled` → `archived_at = now()`. Hidden from board, surfaced in Arxiv module (see Module 5).
 
-**REQ-TASK-09** Expertise subtasks auto-suggested when `is_expertise_subtask = true`:
-- Çertyoj hazırlığı / Spesifikasiya / Möhür+imza / Çap+ciltləmə / Ekspertizaya təhvil
+**REQ-TASK-09** Expertise subtasks (`is_expertise_subtask = true`), titles: Çertyoj hazırlığı / Spesifikasiya / Möhür+imza / Çap+ciltləmə / Ekspertizaya təhvil. These are **not** auto-created. The create modal offers an "Ekspertiza dəsti" shortcut that pre-fills the five titles as editable rows in the manual subtask builder (REQ-TASK-01); each still requires an assignee before it can be created, and the rows keep the purple "E" badge / `is_expertise_subtask` flag.
 
 **RLS:** `tasks` SELECT: project members + admin. Comments visible to anyone with task SELECT.
 
