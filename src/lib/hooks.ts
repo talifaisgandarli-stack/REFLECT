@@ -458,6 +458,22 @@ function detectSessionType(): 'desktop' | 'mobile' {
     : 'desktop';
 }
 
+// REQ-PRESENCE-05 — stable per-tab session id so the backend can track each
+// device/session separately and collapse them to "highest priority wins".
+// sessionStorage keeps it stable across reloads within a tab, unique per tab.
+function getPresenceSessionId(): string {
+  try {
+    let id = sessionStorage.getItem('reflect.presence-session');
+    if (!id) {
+      id = crypto.randomUUID();
+      sessionStorage.setItem('reflect.presence-session', id);
+    }
+    return id;
+  } catch {
+    return 'default';
+  }
+}
+
 export function usePresenceHeartbeat(userId: string | undefined) {
   const lastActivityRef = useRef(Date.now());
   const tabFocusedRef = useRef(true);
@@ -467,6 +483,7 @@ export function usePresenceHeartbeat(userId: string | undefined) {
     if (!userId) return;
 
     const sessionType = detectSessionType();
+    const sessionId = getPresenceSessionId();
     const INACTIVITY_MS = 5 * 60 * 1000;
     const BLUR_MS = 3 * 60 * 1000;
     let blurAt = 0;
@@ -512,6 +529,7 @@ export function usePresenceHeartbeat(userId: string | undefined) {
           status: derived,
           current_page: pageLabel(pathname),
           session_type: sessionType,
+          session_id: sessionId,
         }),
       }).catch(() => {});
     }
@@ -532,7 +550,7 @@ export function usePresenceHeartbeat(userId: string | undefined) {
         fetch('/api/presence/heartbeat', {
           method: 'POST',
           headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-          body: JSON.stringify({ status: 'offline', current_page: null, session_type: sessionType }),
+          body: JSON.stringify({ status: 'offline', current_page: null, session_type: sessionType, session_id: sessionId }),
         }).catch(() => {});
       });
     };

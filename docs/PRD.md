@@ -1,8 +1,11 @@
 # Reflect Architects OS — Product Requirements Document
-**Version:** 3.10 (Project completion % defined — REQ-DASH-15)
+**Version:** 3.11 (Per-session presence — REQ-PRESENCE-05 highest-priority-wins)
 **Date:** 2026-06-22
 **Product Owner:** Talifa İsgəndərli
 **Status:** Pre-PMF / Active Development
+
+**v3.11 changes (2026-06-22):**
+- REQ-PRESENCE-05 — added `presence_sessions` (per-device rows) collapsed into the canonical `user_presence` row by a DB trigger so multi-session presence is "highest priority wins" (an idle mobile no longer clobbers an active desktop). UI/realtime read path unchanged.
 
 **v3.10 changes (2026-06-22):**
 - Added REQ-DASH-15 — defines "completion %" for the active-projects widget (US-DASH-01) as the project's done ÷ (total − cancelled) task ratio; "—" when no countable tasks. No schema change.
@@ -780,9 +783,11 @@ SELECT COUNT(*), SUM(amount) FROM new_view;
 
 **REQ-PRESENCE-05 — Mobile vs desktop session distinction**
 - Track session type. UI may indicate mobile presence (📱) when applicable.
-- Same user with multiple active sessions = single online state (highest priority wins)
+- Same user with multiple active sessions = single online state (highest priority wins). Implemented via per-session rows (`presence_sessions`) collapsed to one `user_presence` row by a DB trigger: status = highest priority (online > away > offline) among sessions whose heartbeat is within 90s; `session_type`/`current_page` follow the winning session. An idle mobile therefore never downgrades an active desktop.
 
-**Data:** `user_presence` table — `user_id, status, last_heartbeat_at, current_page, session_type`
+**Data:**
+- `presence_sessions` — `(user_id, session_id)` PK, `status, last_heartbeat_at, current_page, session_type`. One row per active device/tab; private (self + admin read).
+- `user_presence` — `user_id, status, last_heartbeat_at, current_page, session_type`. Canonical per-user aggregate maintained by trigger from `presence_sessions`; this is the row the UI reads and realtime publishes.
 **RLS:** all authenticated users can read; only system writes (via realtime channel + auth trigger)
 **Performance budget:** ≤50ms p95 to render presence panel; realtime updates ≤2s end-to-end
 
