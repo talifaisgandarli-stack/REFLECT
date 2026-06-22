@@ -197,9 +197,17 @@ export function useClientStageHistory(clientId: string | undefined) {
  *              userId string to scope to that user's own activity (REQ-DASH-02
  *              + PRD §9.1 — non-admins must not see other users' actions).
  */
-export function useActivityFeed(limit = 50, scope: 'firm' | string = 'firm') {
+export function useActivityFeed(
+  limit = 50,
+  scope: 'firm' | string = 'firm',
+  options?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: ['activity', limit, scope],
+    // Caller gates this until scope is known — activity_log RLS is permissive
+    // (al_select: any authenticated user), so a wrong/default scope would leak
+    // firm-wide rows to a non-admin. Never run before the scope is resolved.
+    enabled: options?.enabled ?? true,
     queryFn: async (): Promise<ActivityLogEntry[]> => {
       let q = supabase
         .from('activity_log')

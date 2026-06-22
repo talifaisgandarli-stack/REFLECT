@@ -145,7 +145,17 @@ export function DashboardPage() {
   // (the activity_log RLS policy is permissive, so the gating must happen here).
   // PRD §6.1 — paginated activity feed; user can "Daha çox" if the page is full
   const [activityLimit, setActivityLimit] = useState(50);
-  const { data: activity = [], isLoading: activityLoading } = useActivityFeed(activityLimit, isAdmin ? 'firm' : profile?.id ?? 'firm');
+  // Gate until scope is known: activity_log RLS is permissive, so a non-admin
+  // must never default to 'firm'. After fresh sign-in, profile loads async
+  // (onAuthStateChange) — without this gate the feed would briefly fetch
+  // firm-wide activity for a user whose role isn't known yet.
+  const activityReady = isAdmin || !!profile?.id;
+  const activityScope = isAdmin ? 'firm' : profile?.id ?? 'firm';
+  const { data: activity = [], isLoading: activityLoading } = useActivityFeed(
+    activityLimit,
+    activityScope,
+    { enabled: activityReady },
+  );
   const { data: announcements = [], isLoading: announcementsLoading } = useRecentAnnouncements(3);
   const { data: meetings = [], isLoading: meetingsLoading } = useUpcomingMeetings(7);
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all');
@@ -612,7 +622,7 @@ export function DashboardPage() {
             ))}
           </div>
           {filteredActivity.length === 0 ? (
-            activityLoading ? (
+            activityLoading || !activityReady ? (
               <LoadingRows rows={4} />
             ) : (
               <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
