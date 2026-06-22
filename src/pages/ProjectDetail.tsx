@@ -537,8 +537,12 @@ export function ProjectDetailPage() {
         <div className="card">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-h3">Sənədlər</h3>
-            <AddDocumentButton projectId={id!} onAdded={() => qc.invalidateQueries({ queryKey: ['project-documents', id] })} />
-          </div>
+            {/* Writes are admin-only (pd_admin_write + the storage policies in
+                0065), so only show the add button to admins — otherwise a
+                member would hit a permission error on upload. */}
+            {isAdmin ? (
+              <AddDocumentButton projectId={id!} onAdded={() => qc.invalidateQueries({ queryKey: ['project-documents', id] })} />
+            ) : null}
           {documents.length === 0 ? (
             <div className="text-meta text-center py-8" style={{ color: 'var(--text-muted)' }}>
               Hələ sənəd yoxdur. İlk sənədi əlavə edin.
