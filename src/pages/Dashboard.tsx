@@ -106,7 +106,7 @@ function workloadColor(count: number): string {
   return 'var(--error)';
 }
 
-// PRD §UX — time-of-day greeting (Asia/Baku) so the dashboard feels alive.
+// UX (beyond PRD spec) — time-of-day greeting (Asia/Baku) so the dashboard feels alive.
 // 05–11 sabahın xeyir · 11–17 salam · 17–22 axşamın xeyir · 22–05 gecən xeyir
 function greetingFor(now: Date): string {
   const bakuHour = Number(
@@ -122,7 +122,7 @@ function greetingFor(now: Date): string {
 export function DashboardPage() {
   const { profile, isAdmin } = useAuth();
   const { openTaskCreate } = useUI();
-  // PRD §UX — floating ↑ button appears after the user scrolls past the hero
+  // UX (beyond PRD spec) — floating ↑ button appears after the user scrolls past the hero
   const [showScrollTop, setShowScrollTop] = useState(false);
   useEffect(() => {
     const onScroll = () => setShowScrollTop(window.scrollY > 600);
@@ -130,7 +130,7 @@ export function DashboardPage() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // PRD §UX — re-render every 60s so the "Növbəti görüş: 12 dəq sonra" chip stays
+  // UX (beyond PRD spec) — re-render every 60s so the "Növbəti görüş: 12 dəq sonra" chip stays
   // honest without manual refresh. Bound to a ref so setter doesn't re-create handlers.
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -370,7 +370,7 @@ export function DashboardPage() {
           <p className="text-body mt-2 max-w-md" style={{ color: 'var(--ink)' }}>
             Fokuslan. Bir tapşırıq, 40 dəqiqə.
           </p>
-          {/* PRD §UX — empty state CTA so the card isn't a dead end */}
+          {/* PRD §6.7 — empty state CTA (Empty: AZ message + primary CTA per page) */}
           {!today[0] ? (
             <button
               type="button"
@@ -560,7 +560,7 @@ export function DashboardPage() {
           </section>
         ) : null}
 
-        {/* PRD §UX — favorited projects + recently viewed (local) */}
+        {/* UX (beyond PRD spec) — favorited projects + recently viewed (local) */}
         <FavoriteProjectsWidget />
         <RecentlyViewedWidget />
 
@@ -568,7 +568,7 @@ export function DashboardPage() {
         <section className="lg:col-span-5 card">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-h3">Yenilənmiş</h3>
-            {/* PRD §UX — export filtered activity to CSV */}
+            {/* UX (beyond PRD spec) — export filtered activity to CSV */}
             <button
               type="button"
               className="chip"
@@ -622,7 +622,7 @@ export function DashboardPage() {
               {filteredActivity.map((a) => {
                 const actor = a.profiles;
                 const name = actor?.full_name ?? 'Sistem';
-                // PRD §UX — wrap row in a Link when we know the destination
+                // US-DASH-04 — wrap row in a Link (entity link) when we know the destination
                 const href = (() => {
                   if (a.entity_type === 'task') return '/tapşırıqlar';
                   if (a.entity_type === 'project' && a.entity_id) return `/layihelər/${a.entity_id}`;
@@ -799,7 +799,7 @@ export function DashboardPage() {
         <section className={`${isAdmin ? 'lg:col-span-4' : 'lg:col-span-6'} card`}>
           <div className="flex items-center justify-between mb-3 gap-2">
             <h3 className="text-h3">Yaxınlaşan görüşlər</h3>
-            {/* PRD §UX — surface "minutes-to-next-meeting" so user sees urgency
+            {/* UX (beyond PRD spec) — surface "minutes-to-next-meeting" so user sees urgency
                 at a glance without parsing timestamps. Only shows for meetings
                 ≤120 min away; otherwise hidden to avoid clutter. */}
             {(() => {
@@ -971,7 +971,7 @@ export function DashboardPage() {
           </section>
         ) : null}
       </div>
-      {/* PRD §UX — floating scroll-to-top when long-scrolled */}
+      {/* UX (beyond PRD spec) — floating scroll-to-top when long-scrolled */}
       {showScrollTop ? (
         <button
           type="button"
@@ -1118,7 +1118,7 @@ function ActivityHeatmap({
   );
 }
 
-// PRD §UX — user's starred projects (migration 0049) as a Dashboard widget
+// UX (beyond PRD spec) — user's starred projects (migration 0049) as a Dashboard widget
 function FavoriteProjectsWidget() {
   const { profile } = useAuth();
   const favs = useQuery({
@@ -1164,7 +1164,7 @@ function FavoriteProjectsWidget() {
   );
 }
 
-// PRD §UX — last visited entities (local-only, no server query)
+// UX (beyond PRD spec) — last visited entities (local-only, no server query)
 function RecentlyViewedWidget() {
   const recents = useRecentEntries();
   if (recents.length === 0) return null;
