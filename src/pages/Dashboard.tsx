@@ -457,9 +457,9 @@ export function DashboardPage() {
                 </button>
               ))}
             </div>
-            <a href="/tapşırıqlar" className="text-meta opacity-80 hover:opacity-100" style={{ color: 'var(--canvas)' }}>
+            <Link to="/tapşırıqlar" className="text-meta opacity-80 hover:opacity-100" style={{ color: 'var(--canvas)' }}>
               Hamısına bax →
-            </a>
+            </Link>
           </div>
           <ul className="space-y-2">
             {tabTasks.slice(0, 6).map((t) => {
@@ -550,14 +550,14 @@ export function DashboardPage() {
               { label: 'Maliyyə', href: '/maliyyə', cls: 'bg-grad-folder-forest', adminOnly: true },
               { label: 'Komanda', href: '/komanda/heyət', cls: 'bg-grad-folder-peach', adminOnly: false },
             ].filter((f) => isAdmin || !f.adminOnly).map((f) => (
-              <a
+              <Link
                 key={f.label}
-                href={f.href}
+                to={f.href}
                 className={`rounded-card p-4 min-h-[80px] flex items-end card-interactive ${f.cls}`}
                 style={{ color: 'var(--ink)', textDecoration: 'none' }}
               >
                 <span className="text-h3 font-bold">{f.label}</span>
-              </a>
+              </Link>
             ))}
           </div>
         </section>
@@ -567,7 +567,7 @@ export function DashboardPage() {
           <section className="lg:col-span-12 card">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-h3">Aktiv layihələr</h3>
-              <a href="/layihelər" className="text-meta" style={{ color: 'var(--text-muted)' }}>Hamısına bax →</a>
+              <Link to="/layihelər" className="text-meta" style={{ color: 'var(--text-muted)' }}>Hamısına bax →</Link>
             </div>
             {activeProjects.length === 0 ? (
               activeProjectsLoading ? (
@@ -577,9 +577,9 @@ export function DashboardPage() {
                   <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
                     Aktiv layihə yoxdur.
                   </p>
-                  <a href="/layihelər" className="btn-primary text-meta" style={{ padding: '6px 12px' }}>
+                  <Link to="/layihelər" className="btn-primary text-meta" style={{ padding: '6px 12px' }}>
                     + Yeni layihə yarat
-                  </a>
+                  </Link>
                 </div>
               )
             ) : (
@@ -590,7 +590,7 @@ export function DashboardPage() {
                   const pct = completionPct((projectProgress as Record<string, { done: number; countable: number }>)[p.id]);
                   return (
                     <li key={p.id} className="rounded-card p-3" style={{ background: 'var(--surface-mist)', borderLeft: `3px solid ${HEALTH_COLOR[h]}` }}>
-                      <a href={`/layihelər/${p.id}`} className="block" style={{ textDecoration: 'none', color: 'inherit' }}>
+                      <Link to={`/layihelər/${p.id}`} className="block" style={{ textDecoration: 'none', color: 'inherit' }}>
                         <div className="text-body font-medium truncate">{p.name}</div>
                         <div className="text-meta flex items-center justify-between gap-2" style={{ color: 'var(--text-muted)' }}>
                           <span className="truncate">
@@ -604,7 +604,7 @@ export function DashboardPage() {
                         <div className="text-meta mt-1" style={{ color: HEALTH_COLOR[h] }}>
                           {p.deadline ? `Son: ${formatDate(p.deadline)}` : 'Müddət yoxdur'}
                         </div>
-                      </a>
+                      </Link>
                     </li>
                   );
                 })}
@@ -876,9 +876,9 @@ export function DashboardPage() {
                 </span>
               );
             })()}
-            <a href="/komanda/təqvim" className="text-meta ml-auto" style={{ color: 'var(--brand-text)' }}>
+            <Link to="/komanda/təqvim" className="text-meta ml-auto" style={{ color: 'var(--brand-text)' }}>
               Təqvimə bax →
-            </a>
+            </Link>
           </div>
           {meetings.length === 0 ? (
             meetingsLoading ? (
@@ -919,9 +919,9 @@ export function DashboardPage() {
         <section className={`${isAdmin ? 'lg:col-span-4' : 'lg:col-span-6'} card`}>
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-h3">Son elanlar</h3>
-            <a href="/komanda/elanlar" className="text-meta" style={{ color: 'var(--brand-text)' }}>
+            <Link to="/komanda/elanlar" className="text-meta" style={{ color: 'var(--brand-text)' }}>
               Hamısı →
-            </a>
+            </Link>
           </div>
           {announcements.length === 0 ? (
             announcementsLoading ? (
@@ -983,7 +983,7 @@ export function DashboardPage() {
           <section className="lg:col-span-12 card">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-h3">Şəxsi OKR</h3>
-              <a href="/şirkət/okr" className="text-meta" style={{ color: 'var(--brand-text)' }}>Hamısı →</a>
+              <Link to="/şirkət/okr" className="text-meta" style={{ color: 'var(--brand-text)' }}>Hamısı →</Link>
             </div>
             {personalOkrs.length === 0 ? (
               personalOkrsLoading ? (
@@ -993,9 +993,9 @@ export function DashboardPage() {
                   <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
                     Hələ şəxsi OKR yoxdur.
                   </p>
-                  <a href="/şirkət/okr" className="btn-primary text-meta" style={{ padding: '6px 12px' }}>
+                  <Link to="/şirkət/okr" className="btn-primary text-meta" style={{ padding: '6px 12px' }}>
                     + OKR təyin et
-                  </a>
+                  </Link>
                 </div>
               )
             ) : (
@@ -1200,9 +1200,9 @@ function FavoriteProjectsWidget() {
       </div>
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
         {items.map((p) => (
-          <a
+          <Link
             key={p.id}
-            href={`/layihelər/${p.id}`}
+            to={`/layihelər/${p.id}`}
             className="rounded-card p-3 hover:bg-surface-mist transition-colors"
             style={{ border: '1px solid var(--line)' }}
           >
@@ -1210,7 +1210,7 @@ function FavoriteProjectsWidget() {
             <div className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
               {p.status}{p.deadline ? ` · ${p.deadline}` : ''}
             </div>
-          </a>
+          </Link>
         ))}
       </div>
     </section>
@@ -1240,9 +1240,9 @@ function RecentlyViewedWidget() {
       </div>
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
         {recents.slice(0, 6).map((r) => (
-          <a
+          <Link
             key={`${r.type}-${r.id}`}
-            href={r.href}
+            to={r.href}
             className="rounded-card p-3 hover:bg-surface-mist transition-colors"
             style={{ border: '1px solid var(--line)' }}
           >
@@ -1250,7 +1250,7 @@ function RecentlyViewedWidget() {
               {r.type === 'project' ? 'Layihə' : r.type === 'task' ? 'Tapşırıq' : 'Müştəri'}
             </div>
             <div className="text-body font-medium truncate">{r.title}</div>
-          </a>
+          </Link>
         ))}
       </div>
     </section>
