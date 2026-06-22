@@ -65,6 +65,14 @@ const DEADLINE_TONE: Record<TimeGroup, { dot: string; light: string; dark: strin
   none: { dot: 'var(--text-muted)', light: 'var(--text-muted)', dark: 'var(--text-faint)' },
 };
 
+// Short Azerbaijani date, e.g. "2026-08-15" → "15 Avq".
+const AZ_MONTH_ABBR = ['Yan', 'Fev', 'Mar', 'Apr', 'May', 'İyn', 'İyl', 'Avq', 'Sen', 'Okt', 'Noy', 'Dek'];
+function formatDateAz(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  if (!y || !m || !d) return iso;
+  return `${d} ${AZ_MONTH_ABBR[m - 1] ?? m}`;
+}
+
 // Relative Azerbaijani deadline hint from a day delta (today = 0).
 function deadlineRelative(deltaDays: number): string {
   if (deltaDays < 0) return `${-deltaDays} gün gecikib`;
@@ -1313,14 +1321,12 @@ export function TasksPage() {
                       className={`board-card rounded-card p-3 text-body${dragOverCardId === t.id ? ' is-drop-target' : ''}`}
                       style={{
                         background: isToday ? 'var(--card-dark-bg)' : 'var(--surface)',
-                        border: `1px solid ${
-                          isOverdue
-                            ? 'var(--error)'
-                            : isToday ? 'var(--card-dark-border)' : 'var(--line)'
-                        }`,
-                        boxShadow: isOverdue ? '0 0 0 1px var(--error) inset' : undefined,
-                        // PRD §UX — 3px priority bar on the left edge of each card
-                        borderLeft: t.priority === 'high'
+                        border: `1px solid ${isToday ? 'var(--card-dark-border)' : 'var(--line)'}`,
+                        // Overdue tasks get a bold red left stripe (Trello-style);
+                        // otherwise the left edge carries the priority colour.
+                        borderLeft: isOverdue
+                          ? '4px solid var(--error)'
+                          : t.priority === 'high'
                           ? '3px solid var(--error-deep, #b3261e)'
                           : t.priority === 'medium'
                           ? '3px solid var(--warning, #c47d00)'
@@ -1447,7 +1453,7 @@ export function TasksPage() {
                                 aria-hidden
                                 style={{ width: 7, height: 7, borderRadius: 999, background: tone.dot, flexShrink: 0 }}
                               />
-                              {settled ? t.deadline : deadlineRelative(delta)}
+                              {formatDateAz(t.deadline)}
                             </span>
                           );
                         })() : (
@@ -1673,7 +1679,7 @@ export function TasksPage() {
                                                 aria-hidden
                                                 style={{ width: 6, height: 6, borderRadius: 999, background: kTone.dot, flexShrink: 0 }}
                                               />
-                                              {k.deadline.slice(5)}
+                                              {formatDateAz(k.deadline)}
                                             </span>
                                           );
                                         })() : null}

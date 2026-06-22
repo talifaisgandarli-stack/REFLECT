@@ -52,11 +52,20 @@ const STATUS_OPTIONS: TaskStatus[] = ['idea', 'queued', 'active', 'review', 'exp
 // Hours per working day — duration readout converts the day span to work hours.
 const WORK_HOURS_PER_DAY = 8;
 
-// Calendar days between two ISO dates (null when either is missing/invalid).
-function daysBetween(start: string, end: string): number | null {
+// Working days (Mon–Fri, inclusive of both endpoints) between two ISO dates —
+// like Excel NETWORKDAYS. Weekends don't count toward duration. Null when either
+// date is missing/invalid or end precedes start.
+function workingDaysBetween(start: string, end: string): number | null {
   if (!start || !end) return null;
-  const ms = new Date(`${end}T00:00:00`).getTime() - new Date(`${start}T00:00:00`).getTime();
-  return Number.isNaN(ms) ? null : Math.round(ms / 86400000);
+  const s = new Date(`${start}T00:00:00`);
+  const e = new Date(`${end}T00:00:00`);
+  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime()) || e < s) return null;
+  let count = 0;
+  for (const cur = new Date(s); cur <= e; cur.setDate(cur.getDate() + 1)) {
+    const day = cur.getDay();
+    if (day !== 0 && day !== 6) count++;
+  }
+  return count;
 }
 
 export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, parentTaskId, parentTaskLevel }: Props) {
@@ -91,13 +100,22 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
   // migration 0068 — admin-only task (visible to admins only). Admins set it.
   const [adminOnly, setAdminOnly] = useState(false);
 
-  // Auto-fill Müddət as the day span when both dates are set (still editable).
+  // Auto-fill Müddət as the working-day span (Mon–Fri) when both dates are set.
   const applyAutoDuration = (s: string, d: string) => {
-    const days = daysBetween(s, d);
-    if (days != null && days >= 0) {
+    const days = workingDaysBetween(s, d);
+    if (days != null) {
       setEstimated(String(days));
       setUnit('days');
     }
+  };
+  // Convert the Müddət value when the user flips Vahid (gün ↔ saat, 8h/workday).
+  const changeUnit = (next: DurationUnit) => {
+    const n = parseFloat(estimated);
+    if (!Number.isNaN(n) && next !== unit) {
+      if (unit === 'days' && next === 'hours') setEstimated(String(Math.round(n * WORK_HOURS_PER_DAY)));
+      else if (unit === 'hours' && next === 'days') setEstimated(String(Math.round((n / WORK_HOURS_PER_DAY) * 100) / 100));
+    }
+    setUnit(next);
   };
   const [extraAssignees, setExtraAssignees] = useState<string[]>([]);
   // PRD §REQ-TASK-01 — manually-built subtasks (shared SubtaskBuilder), each with
@@ -327,20 +345,6 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
             </Field>
           </div>
 
-          {/* Auto-computed duration readout: days + equivalent work hours (8h/workday) */}
-          {(() => {
-            const d = daysBetween(startDate, deadline);
-            if (d == null || d < 0) return null;
-            return (
-              <div
-                className="text-meta px-3 py-2 rounded-btn"
-                style={{ background: 'var(--brand-mist)', color: 'var(--brand-text)', fontVariantNumeric: 'tabular-nums' }}
-              >
-                ⏱ Müddət: <strong>{d} gün</strong> · <strong>{d * WORK_HOURS_PER_DAY} iş saatı</strong>
-              </div>
-            );
-          })()}
-
           {/* PRD §REQ-TASK — warn (don't block) if task deadline exceeds project deadline */}
           {(() => {
             if (!deadline || !projectId) return null;
@@ -379,7 +383,7 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
               <select
                 className="input"
                 value={unit}
-                onChange={(e) => setUnit(e.target.value as DurationUnit)}
+                onChange={(e) => changeUnit(e.target.value as DurationUnit)}
               >
                 {DURATION_UNITS.map((u) => (
                   <option key={u} value={u}>
