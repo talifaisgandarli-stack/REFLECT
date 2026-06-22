@@ -9,10 +9,12 @@ type Props = {
   tooltip?: string;
 };
 
+// N14 — single source of truth for presence colours: the --presence-* tokens
+// (tokens.css). Previously away/offline diverged (--warning / #A8B0AB).
 const DOT_COLOR: Record<PresenceStatus, string> = {
   online: 'var(--presence-online)',
-  away: 'var(--warning)',
-  offline: '#A8B0AB',
+  away: 'var(--presence-away)',
+  offline: 'var(--presence-offline)',
 };
 
 export function Avatar({ name, url, size = 32, presence, tooltip }: Props) {

@@ -288,18 +288,15 @@ export function DashboardPage() {
     enabled: !isAdmin && !!profile?.id,
   });
 
-  // Team tasks for workload (admin only — US-DASH-05)
-  const { data: allTasks = [] } = useQuery({
-    queryKey: ['tasks-all-open'],
+  // Workload counts (admin only — US-DASH-05). N15 — aggregated server-side via
+  // open_task_counts() so there's no client-side 500-row truncation.
+  const { data: openCounts = [] } = useQuery({
+    queryKey: ['open-task-counts'],
     enabled: isAdmin,
     queryFn: async () => {
-      const { data } = await supabase
-        .from('tasks')
-        .select('id, assignee_ids, status')
-        .is('archived_at', null)
-        .not('status', 'in', '("done","cancelled")')
-        .limit(500);
-      return data ?? [];
+      const { data, error } = await supabase.rpc('open_task_counts');
+      if (error) throw error;
+      return (data ?? []) as Array<{ user_id: string; open_count: number }>;
     },
   });
 
@@ -368,15 +365,10 @@ export function DashboardPage() {
   });
 
   const workloadByMember = useMemo(() => {
-    if (!isAdmin) return {};
     const map: Record<string, number> = {};
-    for (const t of allTasks) {
-      for (const uid of (t.assignee_ids ?? []) as string[]) {
-        map[uid] = (map[uid] ?? 0) + 1;
-      }
-    }
+    for (const r of openCounts) map[r.user_id] = Number(r.open_count);
     return map;
-  }, [allTasks, isAdmin]);
+  }, [openCounts]);
 
   // US-DASH-02: filter by deadline date (not status) for user task tabs.
   // PRD §7/REQ-FIN-09 — date math runs in Asia/Baku, not UTC, so "today"
