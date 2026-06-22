@@ -49,6 +49,27 @@ const LOOKUP_STALE_MS = 5 * 60_000; // 5 min — applied to profile/project/temp
 // letting users skim recent archives inline.
 const ARCHIVE_PEEK_LIMIT = 50;
 
+// PRD §UX — Trello-style deadline pill colours per urgency bucket. Each card's
+// deadline reads at a glance: red = overdue, amber = today, green = this week,
+// neutral = later. Falls back to literal hex so it renders even if a token is
+// missing.
+const DEADLINE_BADGE: Record<TimeGroup, { bg: string; fg: string }> = {
+  // Solid pills so they read on both light columns and the dark BU GÜN column.
+  overdue: { bg: 'var(--error-deep, #B91C1C)', fg: '#fff' },
+  today: { bg: 'var(--warning, #D97706)', fg: '#fff' },
+  week: { bg: 'var(--success-deep, #16A34A)', fg: '#fff' },
+  later: { bg: 'var(--surface-mist)', fg: 'var(--text-soft)' },
+  none: { bg: 'var(--surface-mist)', fg: 'var(--text-muted)' },
+};
+
+// Relative Azerbaijani deadline hint from a day delta (today = 0).
+function deadlineRelative(deltaDays: number): string {
+  if (deltaDays < 0) return `${-deltaDays} gün gecikib`;
+  if (deltaDays === 0) return 'bu gün';
+  if (deltaDays === 1) return 'sabah';
+  return `${deltaDays} gün qalıb`;
+}
+
 export function TasksPage() {
   const { profile, isAdmin } = useAuth();
   const qc = useQueryClient();
@@ -1397,17 +1418,32 @@ export function TasksPage() {
                         </div>
                       ) : null}
                       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mt-1">
-                        {t.deadline ? (
-                          <span
-                            className="text-meta"
-                            style={{
-                              color: isToday ? 'var(--text-faint)' : 'var(--text-muted)',
-                              fontVariantNumeric: 'tabular-nums',
-                            }}
-                          >
-                            {t.deadline}
-                          </span>
-                        ) : (
+                        {t.deadline ? (() => {
+                          // Done/cancelled tasks never read as "overdue" — show neutral.
+                          const settled = t.status === 'done' || t.status === 'cancelled';
+                          const group = settled ? 'none' : taskTimeGroup(t, todayStr, endOfWeekStr);
+                          const badge = DEADLINE_BADGE[group];
+                          const delta = Math.round(
+                            (Date.parse(t.deadline) - Date.parse(todayStr)) / 86400000,
+                          );
+                          return (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-btn"
+                              style={{
+                                background: badge.bg,
+                                color: badge.fg,
+                                fontSize: 11,
+                                padding: '1px 7px',
+                                fontWeight: 600,
+                                fontVariantNumeric: 'tabular-nums',
+                              }}
+                              title={settled ? t.deadline : `${t.deadline} · ${deadlineRelative(delta)}`}
+                            >
+                              <span aria-hidden>🕑</span>
+                              {settled ? t.deadline : deadlineRelative(delta)}
+                            </span>
+                          );
+                        })() : (
                           <span />
                         )}
                         <div className="flex flex-wrap items-center gap-1.5 justify-end min-w-0">
