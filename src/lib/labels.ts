@@ -93,11 +93,11 @@ export const PROJECT_PHASES = [
 // value stays as PROJECT_PHASES (PRD REQ-PROJ-01); only the shown text differs.
 export const PHASE_LABEL: Record<string, string> = {
   Konsepsiya: 'Konsepsiya',
-  SD: 'Eskiz layihə',
-  DD: 'Detallı layihə',
-  CD: 'İşçi layihə',
-  Tender: 'Tender',
-  'İcra nəzarəti': 'İcra nəzarəti',
+  SD: 'Şəhərsalma Əsaslandırılması',
+  DD: 'Eskiz Layihə (ilkin həllər, planlar)',
+  CD: 'İşçi Layihə',
+  Tender: 'Qiymət Təklifi',
+  'İcra nəzarəti': 'Müəllif Nəzarəti',
 };
 
 // Display helper — falls back to the raw value for any custom/unknown phase.

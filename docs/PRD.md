@@ -325,7 +325,18 @@ MIRAI
 
 **REQ-PROJ-01** Create project: name, client (select/create inline), `phases[]` (Konsepsiya/SD/DD/CD/Tender/İcra nəzarəti), start_date, deadline (required), requires_expertise, expertise_deadline, payment_buffer_days (default 10).
 
-> **Phase labels (display localization).** The `phases[]` values stored in the DB stay canonical (`Konsepsiya/SD/DD/CD/Tender/İcra nəzarəti`) — never change the stored strings. The UI shows full Azerbaijani names via a display map (`PHASE_LABEL` / `phaseLabel()` in `src/lib/labels.ts`): SD → **Eskiz layihə**, DD → **Detallı layihə**, CD → **İşçi layihə**; Konsepsiya / Tender / İcra nəzarəti are shown as-is. Unknown/custom phases fall back to the raw value.
+> **Phase labels (display localization).** The `phases[]` values stored in the DB stay canonical (`Konsepsiya/SD/DD/CD/Tender/İcra nəzarəti`) — never change the stored strings. The UI shows full Azerbaijani names via a display map (`PHASE_LABEL` / `phaseLabel()` in `src/lib/labels.ts`):
+>
+> | Stored value | Displayed label |
+> |---|---|
+> | Konsepsiya | Konsepsiya |
+> | SD | Şəhərsalma Əsaslandırılması |
+> | DD | Eskiz Layihə (ilkin həllər, planlar) |
+> | CD | İşçi Layihə |
+> | Tender | Qiymət Təklifi |
+> | İcra nəzarəti | Müəllif Nəzarəti |
+>
+> Unknown/custom phases fall back to the raw stored value.
 
 **REQ-PROJ-02** Backward-planned timeline when `requires_expertise = true`:
 ```
