@@ -85,8 +85,19 @@ export function TaskEditModal({ task, onClose }: Props) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const del = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from('tasks').delete().eq('id', task.id);
+      // .select() so RLS-blocked deletes (which return 0 rows, no error) surface
+      // as a real failure instead of a silent fake-success that closes the modal.
+      const { data, error } = await supabase
+        .from('tasks')
+        .delete()
+        .eq('id', task.id)
+        .select('id');
       if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error(
+          'Silinmədi — icazə yoxdur. DB miqrasiyası 0067 (tasks_admin_delete) tətbiq edilməlidir.',
+        );
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] });

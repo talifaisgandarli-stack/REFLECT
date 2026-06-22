@@ -2286,8 +2286,17 @@ function ProjectDangerZone({ projectId, projectName }: { projectId: string; proj
         .filter((p): p is string => !!p);
       if (paths.length) await supabase.storage.from('project-documents').remove(paths);
 
-      const { error } = await supabase.from('projects').delete().eq('id', projectId);
+      // .select() so an RLS-blocked delete (0 rows, no error) surfaces as a real
+      // failure instead of silently navigating away as if it succeeded.
+      const { data, error } = await supabase
+        .from('projects')
+        .delete()
+        .eq('id', projectId)
+        .select('id');
       if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error('Silinmədi — admin icazəsi tələb olunur.');
+      }
     },
     onSuccess: () => {
       toast.success('Layihə silindi');

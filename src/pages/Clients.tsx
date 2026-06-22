@@ -1454,8 +1454,17 @@ function ClientDeleteModal({
   const [confirmText, setConfirmText] = useState('');
   const del = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from('clients').delete().eq('id', client.id);
+      // .select() so an RLS-blocked delete (0 rows, no error) surfaces as a real
+      // failure instead of silently closing the modal as if it succeeded.
+      const { data, error } = await supabase
+        .from('clients')
+        .delete()
+        .eq('id', client.id)
+        .select('id');
       if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error('Silinmədi — admin icazəsi tələb olunur.');
+      }
     },
     onSuccess: onDeleted,
   });
