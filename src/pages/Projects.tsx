@@ -24,13 +24,16 @@ const FOLDER_TONE = [
   'bg-grad-folder-lavender',
 ];
 
-type StatusFilter = 'all' | 'active' | 'on_hold' | 'closed';
+type StatusFilter = 'all' | 'active' | 'on_hold' | 'closed' | 'cancelled';
 
+// Labels are driven from PROJECT_STATUS_LABEL so the chip, the page-meta
+// breakdown, and the card status badge always read the same word for a status.
 const STATUS_CHIPS: { label: string; value: StatusFilter }[] = [
-  { label: 'Hamısı',   value: 'all' },
-  { label: 'Aktiv',    value: 'active' },
-  { label: 'Planlama', value: 'on_hold' },
-  { label: 'Bağlı',   value: 'closed' },
+  { label: 'Hamısı',                      value: 'all' },
+  { label: PROJECT_STATUS_LABEL.active,   value: 'active' },
+  { label: PROJECT_STATUS_LABEL.on_hold,  value: 'on_hold' },
+  { label: PROJECT_STATUS_LABEL.closed,   value: 'closed' },
+  { label: PROJECT_STATUS_LABEL.cancelled, value: 'cancelled' },
 ];
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -80,7 +83,9 @@ export function ProjectsPage() {
   useSlashFocus(searchInputRef);
   const initStatus = searchParams.get('status') as StatusFilter | null;
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(
-    initStatus && ['all', 'active', 'on_hold', 'closed'].includes(initStatus) ? initStatus : 'all',
+    initStatus && ['all', 'active', 'on_hold', 'closed', 'cancelled'].includes(initStatus)
+      ? initStatus
+      : 'all',
   );
   // PRD §UX — favorites-only filter chip
   const [favoritesOnly, setFavoritesOnly] = useState(false);
@@ -154,6 +159,10 @@ export function ProjectsPage() {
     mutationFn: async (sourceId: string) => {
       const src = projects.find((p) => p.id === sourceId);
       if (!src) throw new Error('Layihə tapılmadı');
+      // Clone is admin-only, so `src` (from the admin projects payload) carries
+      // tags/description/budget_amount — copy them too so the clone is a faithful
+      // template rather than dropping the firm's metadata. Tasks stay un-copied.
+      const meta = src as { tags?: string[]; description?: string | null; budget_amount?: number | null };
       const { error } = await supabase.from('projects').insert({
         name: `${src.name} (kopya)`,
         client_id: src.client_id,
@@ -164,6 +173,9 @@ export function ProjectsPage() {
         deadline: src.deadline,
         start_date: src.start_date,
         status: 'on_hold',
+        tags: meta.tags ?? [],
+        description: meta.description ?? null,
+        budget_amount: meta.budget_amount ?? null,
       });
       if (error) throw error;
     },
@@ -246,8 +258,8 @@ export function ProjectsPage() {
           const counts: Record<string, number> = {};
           for (const p of projects) counts[p.status] = (counts[p.status] ?? 0) + 1;
           const parts = [`${projects.length} layihə`];
-          if (counts.active) parts.push(`${counts.active} aktiv`);
-          if (counts.on_hold) parts.push(`${counts.on_hold} dayandırılıb`);
+          if (counts.active) parts.push(`${counts.active} ${PROJECT_STATUS_LABEL.active.toLowerCase()}`);
+          if (counts.on_hold) parts.push(`${counts.on_hold} ${PROJECT_STATUS_LABEL.on_hold.toLowerCase()}`);
           return parts.join(' · ');
         })()}
         title="Layihələr"
