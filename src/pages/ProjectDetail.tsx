@@ -17,6 +17,7 @@ import { PROJECT_PHASES, PROJECT_STATUS_LABEL } from '@/lib/labels';
 import { ProjectPnL } from '@/components/ProjectPnL';
 import { toast } from '@/components/Toast';
 import { TaskCreateModal } from '@/components/TaskCreateModal';
+import { SkeletonList } from '@/components/Skeleton';
 import { supabase } from '@/lib/supabase';
 import { relativeTime } from '@/lib/format';
 import { fileSizeError } from '@/lib/validation';
@@ -67,7 +68,7 @@ const CLOSEOUT_DEFAULTS = [
 export function ProjectDetailPage() {
   const { id } = useParams();
   const { data: project } = useProject(id);
-  const { data: tasks = [] } = useTasks({ projectId: id });
+  const { data: tasks = [], isLoading: tasksLoading } = useTasks({ projectId: id });
   const { isAdmin } = useAuth();
   const qc = useQueryClient();
 
@@ -370,9 +371,11 @@ export function ProjectDetailPage() {
               return (
                 <div className="mb-3">
                   <div className="flex items-center justify-between text-meta mb-1">
-                    <span style={{ color: 'var(--text-muted)' }}>İrəliləyiş</span>
+                    {/* phases[] is the project's scope, not completion — label it
+                        honestly rather than implying progress. */}
+                    <span style={{ color: 'var(--text-muted)' }}>Fazalar (əhatə)</span>
                     <span style={{ color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
-                      {active} / {total} ({pct}%)
+                      {active} / {total}
                     </span>
                   </div>
                   <div style={{ height: 4, background: 'var(--line)', borderRadius: 999 }}>
@@ -520,21 +523,29 @@ export function ProjectDetailPage() {
               + Tapşırıq
             </button>
           </div>
-          {filteredTasks.length === 0 ? (
+          {tasksLoading ? (
+            <SkeletonList rows={4} />
+          ) : filteredTasks.length === 0 ? (
             <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
               {tasks.length === 0 ? 'Bu layihədə tapşırıq yoxdur.' : 'Bu statusda tapşırıq yoxdur.'}
             </p>
           ) : (
             <ul className="divide-y" style={{ borderColor: 'var(--line-soft)' }}>
               {filteredTasks.map((t) => (
-                <li key={t.id} className="py-3 flex items-center justify-between gap-3">
-                  <span className="text-body flex-1 min-w-0 truncate">{t.title}</span>
-                  {t.deadline ? (
-                    <span className="text-meta shrink-0" style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
-                      {t.deadline}
-                    </span>
-                  ) : null}
-                  <StatusChip status={t.status} />
+                <li key={t.id}>
+                  {/* Open the task in its modal via the Tasks page ?focus deep-link. */}
+                  <Link
+                    to={`/tapşırıqlar?focus=${t.id}`}
+                    className="py-3 flex items-center justify-between gap-3 hover:bg-surface-mist rounded-btn px-1 -mx-1"
+                  >
+                    <span className="text-body flex-1 min-w-0 truncate">{t.title}</span>
+                    {t.deadline ? (
+                      <span className="text-meta shrink-0" style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                        {t.deadline}
+                      </span>
+                    ) : null}
+                    <StatusChip status={t.status} />
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -1229,10 +1240,28 @@ function DocumentRow({
 
 // REQ-CRM-07 — Retrospective survey trigger from closeout
 function RetroSurveyTrigger({ projectId, clientId }: { projectId: string; clientId: string }) {
-  const { profile } = useAuth();
   const [link, setLink] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // Guard against duplicate surveys: load the latest existing one so a reload
+  // shows its link instead of silently letting the user create another.
+  const existing = useQuery({
+    queryKey: ['retro-survey', projectId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('retrospective_surveys')
+        .select('share_token')
+        .eq('project_id', projectId)
+        .order('sent_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return (data ?? null) as { share_token: string } | null;
+    },
+  });
+
+  const effectiveLink =
+    link ?? (existing.data ? `${window.location.origin}/retro/${existing.data.share_token}` : null);
 
   async function sendSurvey() {
     setSending(true);
@@ -1249,6 +1278,7 @@ function RetroSurveyTrigger({ projectId, clientId }: { projectId: string; client
       const url = `${window.location.origin}/retro/${token}`;
       setLink(url);
       await navigator.clipboard.writeText(url).catch(() => {});
+      existing.refetch();
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -1262,30 +1292,49 @@ function RetroSurveyTrigger({ projectId, clientId }: { projectId: string; client
       <p className="text-meta mb-3" style={{ color: 'var(--text-muted)' }}>
         NPS 0–10 + kateqoriya reytinqləri + şərh. Müştəriyə link göndərin.
       </p>
-      {link ? (
+      {err ? <p className="text-meta mb-2" style={{ color: 'var(--error-deep)' }}>{err}</p> : null}
+      {effectiveLink ? (
         <div>
           <p className="text-meta mb-2" style={{ color: 'var(--success-deep)' }}>
-            Sorğu yaradıldı — link bufer yaddaşına kopyalandı.
+            {link ? 'Sorğu yaradıldı — link bufer yaddaşına kopyalandı.' : 'Bu layihə üçün sorğu artıq mövcuddur.'}
           </p>
           <code
             className="text-meta block p-2 rounded"
             style={{ background: 'var(--surface)', wordBreak: 'break-all' }}
           >
-            {link}
+            {effectiveLink}
           </code>
+          <div className="flex gap-2 mt-2">
+            <button
+              type="button"
+              className="chip"
+              style={{ color: 'var(--brand-text)', fontSize: 11 }}
+              onClick={() => navigator.clipboard.writeText(effectiveLink).catch(() => {})}
+            >
+              Linki kopyala
+            </button>
+            <button
+              type="button"
+              className="chip"
+              style={{ fontSize: 11 }}
+              disabled={sending}
+              onClick={() => {
+                if (window.confirm('Bu layihə üçün yeni sorğu linki yaradılsın?')) sendSurvey();
+              }}
+            >
+              {sending ? '…' : 'Yenidən yarat'}
+            </button>
+          </div>
         </div>
       ) : (
-        <>
-          {err ? <p className="text-meta mb-2" style={{ color: 'var(--error-deep)' }}>{err}</p> : null}
-          <button
-            type="button"
-            className="btn-outline"
-            disabled={sending}
-            onClick={sendSurvey}
-          >
-            {sending ? 'Yaradılır…' : 'Sorğu göndər'}
-          </button>
-        </>
+        <button
+          type="button"
+          className="btn-outline"
+          disabled={sending || existing.isLoading}
+          onClick={sendSurvey}
+        >
+          {sending ? 'Yaradılır…' : 'Sorğu göndər'}
+        </button>
       )}
     </div>
   );
