@@ -115,6 +115,15 @@
     border-color: var(--brand-mid);
     box-shadow: 0 4px 16px rgba(14, 22, 17, 0.06);
   }
+  /* Board kanban cards — subtle Trello-style lift on hover. The card keeps its
+     own inline transition (covers opacity/box-shadow/transform). */
+  .board-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(14, 22, 17, 0.10);
+  }
+  .board-card.is-drop-target {
+    box-shadow: 0 0 0 2px var(--brand-action) inset;
+  }
   .card-feature {
     @apply rounded-card p-6;
     background: radial-gradient(70% 30% at 30% 30%, #ADFB49 0%, #B7E5BA 60%, #5CA87C 100%);

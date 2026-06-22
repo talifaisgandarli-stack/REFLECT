@@ -118,6 +118,9 @@ export function TasksPage() {
   useEffect(() => { mineOnlyRef.current = mineOnly; }, [mineOnly]);
   // PRD §UX — drag-over column highlight (board view DnD feedback)
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
+  // Drag-over highlight on a card that's a valid drop target for re-parenting
+  // (dropping one card onto another nests it as a subtask).
+  const [dragOverCardId, setDragOverCardId] = useState<string | null>(null);
   // Source-card dim during drag so the user can tell which card is being
   // moved (browser ghost-image follows the cursor, but the source stays solid).
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -370,6 +373,50 @@ export function TasksPage() {
       },
     );
   }
+
+  // Resolve a task by id — used by drag-drop nesting (parent lookup, cycle guard)
+  // and by the board's subtask grouping below.
+  const taskById = useMemo(() => {
+    const m = new Map<string, Task>();
+    for (const t of tasks) m.set(t.id, t);
+    return m;
+  }, [tasks]);
+
+  // Re-parent (or detach) a card via drag-drop. parentId=null detaches to a
+  // top-level card; otherwise the task becomes a child of `parentId`. task_level
+  // tracks depth so nesting rules stay consistent. Dropping onto a column with a
+  // status also restacks it there.
+  const reparent = useMutation({
+    mutationFn: async ({ id, parentId, status }: { id: string; parentId: string | null; status?: TaskStatus }) => {
+      const parent = parentId ? tasks.find((x) => x.id === parentId) : null;
+      const patch: Partial<Task> = {
+        parent_task_id: parentId,
+        task_level: parent ? parent.task_level + 1 : 0,
+      };
+      if (status) patch.status = status;
+      const { error } = await supabase.from('tasks').update(patch).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['tasks'] }); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  // Drop guard: a card can't become a child of itself or of one of its own
+  // descendants (would orphan a cycle). Walks up from the prospective parent.
+  const canNestUnder = useCallback(
+    (dragId: string, targetId: string) => {
+      if (dragId === targetId) return false;
+      let cur: Task | undefined = taskById.get(targetId);
+      let hops = 0;
+      while (cur && hops < 50) {
+        if (cur.id === dragId) return false;
+        cur = cur.parent_task_id ? taskById.get(cur.parent_task_id) : undefined;
+        hops++;
+      }
+      return true;
+    },
+    [taskById],
+  );
 
   // Time tracking — global active timer + start/stop mutations
   const { data: activeTimer } = useActiveTimeEntry();
@@ -660,16 +707,11 @@ export function TasksPage() {
     [sortBy],
   );
 
-  // Subtask nesting (board view). taskById resolves a task's parent so we can
-  // tell a direct-child-of-top-level (nested inside the card) from a deeper one
-  // (still shown as its own card, so nothing is ever lost). childrenByParent
-  // feeds each card its own direct children. Built from the full task list, not
-  // `filtered`, so a parent always carries its subtasks regardless of filters.
-  const taskById = useMemo(() => {
-    const m = new Map<string, Task>();
-    for (const t of tasks) m.set(t.id, t);
-    return m;
-  }, [tasks]);
+  // Subtask nesting (board view). isNestedSubtask tells a direct-child-of-top-level
+  // (nested inside the card) from a deeper one (still shown as its own card, so
+  // nothing is ever lost). childrenByParent feeds each card its own direct
+  // children — built from the full task list, not `filtered`, so a parent always
+  // carries its subtasks regardless of active filters.
   const childrenByParent = useMemo(() => {
     const m = new Map<string, Task[]>();
     for (const t of tasks) {
@@ -1187,7 +1229,7 @@ export function TasksPage() {
                       onDragStart={(e) => {
                         e.dataTransfer.setData(
                           'text/plain',
-                          JSON.stringify({ id: t.id, from: t.status }),
+                          JSON.stringify({ id: t.id, from: t.status, kind: 'task' }),
                         );
                         setDraggingId(t.id);
                       }}
@@ -1196,9 +1238,40 @@ export function TasksPage() {
                       // highlight + the source-dim so neither ghosts.
                       onDragEnd={() => {
                         setDragOverColumn(null);
+                        setDragOverCardId(null);
                         setDraggingId(null);
                       }}
-                      className="rounded-card p-3 text-body"
+                      // A card is a re-parent drop target only while a *subtask*
+                      // is being dragged — so normal status-move drags still fall
+                      // through to the column. stopPropagation keeps the column
+                      // from also handling the drop.
+                      onDragOver={(e) => {
+                        const dragT = draggingId ? taskById.get(draggingId) : undefined;
+                        if (!dragT?.parent_task_id || !canNestUnder(draggingId!, t.id)) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (dragOverCardId !== t.id) setDragOverCardId(t.id);
+                        if (dragOverColumn) setDragOverColumn(null);
+                      }}
+                      onDragLeave={(e) => {
+                        e.stopPropagation();
+                        setDragOverCardId((cur) => (cur === t.id ? null : cur));
+                      }}
+                      onDrop={(e) => {
+                        const dragT = draggingId ? taskById.get(draggingId) : undefined;
+                        if (!dragT?.parent_task_id || !canNestUnder(draggingId!, t.id)) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const raw = e.dataTransfer.getData('text/plain');
+                        setDragOverCardId(null);
+                        setDraggingId(null);
+                        let payload: { id?: string };
+                        try { payload = JSON.parse(raw); } catch { return; }
+                        if (payload?.id && payload.id !== t.id) {
+                          reparent.mutate({ id: payload.id, parentId: t.id });
+                        }
+                      }}
+                      className={`board-card rounded-card p-3 text-body${dragOverCardId === t.id ? ' is-drop-target' : ''}`}
                       style={{
                         background: isToday ? 'var(--card-dark-bg)' : 'var(--surface)',
                         border: `1px solid ${
@@ -1458,47 +1531,78 @@ export function TasksPage() {
                                 />
                               </span>
                             </button>
-                            {expanded ? (
-                              <div className="mt-1.5 space-y-1">
-                                {kids.map((k) => {
-                                  const kDone = k.status === 'done' || k.status === 'cancelled';
-                                  return (
-                                    <div
-                                      key={k.id}
-                                      className="flex items-center gap-1.5 rounded-btn px-1 py-0.5"
-                                      style={{ fontSize: 12, transition: 'background 120ms ease' }}
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        checked={kDone}
-                                        onClick={(e) => e.stopPropagation()}
-                                        onChange={(e) => {
+                            {/* grid-rows 0fr→1fr animates the height open/closed */}
+                            <div
+                              style={{
+                                display: 'grid',
+                                gridTemplateRows: expanded ? '1fr' : '0fr',
+                                transition: 'grid-template-rows 200ms ease',
+                              }}
+                            >
+                              <div style={{ overflow: 'hidden', minHeight: 0 }}>
+                                <div className="mt-1.5 space-y-1">
+                                  {kids.map((k) => {
+                                    const kDone = k.status === 'done' || k.status === 'cancelled';
+                                    return (
+                                      <div
+                                        key={k.id}
+                                        // Drag a subtask onto another card to move it
+                                        // under that parent. stopPropagation so the
+                                        // parent card's own drag doesn't also fire.
+                                        draggable
+                                        onDragStart={(e) => {
                                           e.stopPropagation();
-                                          moveTask(k.id, kDone ? 'queued' : 'done', k.status);
+                                          e.dataTransfer.setData(
+                                            'text/plain',
+                                            JSON.stringify({ id: k.id, from: k.status, kind: 'subtask' }),
+                                          );
+                                          setDraggingId(k.id);
                                         }}
-                                        aria-label={`${k.title} tamamla`}
-                                        style={{ accentColor: 'var(--brand-action)' }}
-                                      />
-                                      <span
-                                        className="flex-1 cursor-pointer truncate"
-                                        onClick={(e) => { e.stopPropagation(); setEditing(k); }}
-                                        title={k.title}
+                                        onDragEnd={() => {
+                                          setDragOverColumn(null);
+                                          setDragOverCardId(null);
+                                          setDraggingId(null);
+                                        }}
+                                        className="flex items-center gap-1.5 rounded-btn px-1 py-0.5"
                                         style={{
-                                          textDecoration: kDone ? 'line-through' : 'none',
-                                          opacity: kDone ? 0.55 : 1,
-                                          color: isToday ? 'var(--canvas)' : 'var(--text)',
+                                          fontSize: 12,
+                                          transition: 'background 120ms ease, opacity 120ms ease',
+                                          cursor: draggingId === k.id ? 'grabbing' : 'grab',
+                                          opacity: draggingId === k.id ? 0.4 : 1,
                                         }}
                                       >
-                                        {k.title}
-                                      </span>
-                                      {k.assignee_ids.length > 0 ? (
-                                        <AvatarGroup people={assigneePeople(k.assignee_ids)} size={16} />
-                                      ) : null}
-                                    </div>
-                                  );
-                                })}
+                                        <input
+                                          type="checkbox"
+                                          checked={kDone}
+                                          onClick={(e) => e.stopPropagation()}
+                                          onChange={(e) => {
+                                            e.stopPropagation();
+                                            moveTask(k.id, kDone ? 'queued' : 'done', k.status);
+                                          }}
+                                          aria-label={`${k.title} tamamla`}
+                                          style={{ accentColor: 'var(--brand-action)' }}
+                                        />
+                                        <span
+                                          className="flex-1 cursor-pointer truncate"
+                                          onClick={(e) => { e.stopPropagation(); setEditing(k); }}
+                                          title={k.title}
+                                          style={{
+                                            textDecoration: kDone ? 'line-through' : 'none',
+                                            opacity: kDone ? 0.55 : 1,
+                                            color: isToday ? 'var(--canvas)' : 'var(--text)',
+                                          }}
+                                        >
+                                          {k.title}
+                                        </span>
+                                        {k.assignee_ids.length > 0 ? (
+                                          <AvatarGroup people={assigneePeople(k.assignee_ids)} size={16} />
+                                        ) : null}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                               </div>
-                            ) : null}
+                            </div>
                           </div>
                         );
                       })()}
