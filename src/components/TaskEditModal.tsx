@@ -330,6 +330,20 @@ export function TaskEditModal({ task, onClose }: Props) {
             </Field>
           </div>
 
+          {/* Auto-computed duration readout: days + equivalent hours (24h/day) */}
+          {(() => {
+            const d = daysBetween(startDate, deadline);
+            if (d == null || d < 0) return null;
+            return (
+              <div
+                className="text-meta px-3 py-2 rounded-btn"
+                style={{ background: 'var(--brand-mist)', color: 'var(--brand-text)', fontVariantNumeric: 'tabular-nums' }}
+              >
+                ⏱ Müddət: <strong>{d} gün</strong> · <strong>{d * 24} saat</strong>
+              </div>
+            );
+          })()}
+
           <div className="grid grid-cols-2 gap-3">
             <Field label="Müddət">
               <input
