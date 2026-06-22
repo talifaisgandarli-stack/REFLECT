@@ -147,8 +147,8 @@ export function DashboardPage() {
     const id = window.setInterval(() => setTick((n) => n + 1), 60_000);
     return () => window.clearInterval(id);
   }, []);
-  const { data: tasks = [], isLoading: tasksLoading } = useTasks(profile?.id ? { assigneeId: profile.id } : undefined);
-  const { data: presence = [], isLoading: presenceLoading } = useTeamPresence();
+  const { data: tasks = [], isLoading: tasksLoading, isError: tasksError } = useTasks(profile?.id ? { assigneeId: profile.id } : undefined);
+  const { data: presence = [], isLoading: presenceLoading, isError: presenceError } = useTeamPresence();
   // REQ-DASH-02 / PRD §9.1 — admin sees firm-wide; users see only their own
   // (the activity_log RLS policy is permissive, so the gating must happen here).
   // PRD §6.1 — paginated activity feed; user can "Daha çox" if the page is full
@@ -159,13 +159,13 @@ export function DashboardPage() {
   // firm-wide activity for a user whose role isn't known yet.
   const activityReady = isAdmin || !!profile?.id;
   const activityScope = isAdmin ? 'firm' : profile?.id ?? 'firm';
-  const { data: activity = [], isLoading: activityLoading } = useActivityFeed(
+  const { data: activity = [], isLoading: activityLoading, isError: activityError } = useActivityFeed(
     activityLimit,
     activityScope,
     { enabled: activityReady },
   );
-  const { data: announcements = [], isLoading: announcementsLoading } = useRecentAnnouncements(3);
-  const { data: meetings = [], isLoading: meetingsLoading } = useUpcomingMeetings(7);
+  const { data: announcements = [], isLoading: announcementsLoading, isError: announcementsError } = useRecentAnnouncements(3);
+  const { data: meetings = [], isLoading: meetingsLoading, isError: meetingsError } = useUpcomingMeetings(7);
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all');
   // US-DASH-02 — "Bu gün" / "Bu həftə" tab toggle (user dashboard only)
   const [taskTab, setTaskTab] = useState<'today' | 'week'>('today');
@@ -229,7 +229,7 @@ export function DashboardPage() {
   });
 
   // REQ-DASH-02 — personal OKR progress (non-admin only)
-  const { data: personalOkrs = [], isLoading: personalOkrsLoading } = useQuery({
+  const { data: personalOkrs = [], isLoading: personalOkrsLoading, isError: personalOkrsError } = useQuery({
     queryKey: ['okrs', 'personal', profile?.id],
     queryFn: async () => {
       const { data } = await supabase
@@ -261,7 +261,7 @@ export function DashboardPage() {
 
   // US-DASH-05 — workload roster derives from the team profile list, not from
   // presence: a member with open tasks but no presence row must still appear.
-  const { data: teamProfiles = [], isLoading: teamProfilesLoading } = useQuery({
+  const { data: teamProfiles = [], isLoading: teamProfilesLoading, isError: teamProfilesError } = useQuery({
     // Distinct key from ['profiles','list'] (Archive/Outsource) — that one is
     // unfiltered; sharing it would let an unfiltered cache hit bypass is_active.
     queryKey: ['profiles', 'active'],
@@ -277,7 +277,7 @@ export function DashboardPage() {
   });
 
   // REQ-DASH-01 — admin active project health widget
-  const { data: activeProjects = [], isLoading: activeProjectsLoading } = useQuery({
+  const { data: activeProjects = [], isLoading: activeProjectsLoading, isError: activeProjectsError } = useQuery({
     queryKey: ['projects-active-health'],
     enabled: isAdmin,
     queryFn: async () => {
@@ -405,9 +405,19 @@ export function DashboardPage() {
             BU GÜN
           </span>
           <h2 className="text-h2 mt-3" style={{ color: 'var(--ink)' }}>
-            {today[0]?.title ?? 'Bu gün üçün aktiv tapşırıq yoxdur'}
+            {/* N7 — show a skeleton while tasks load so the empty-state headline +
+                CTA don't flash for ~1s before the real task arrives. */}
+            {tasksLoading ? (
+              <span
+                className="inline-block h-7 w-3/4 max-w-xs rounded-card animate-pulse align-middle"
+                style={{ background: 'rgba(14,22,17,0.10)' }}
+                aria-hidden="true"
+              />
+            ) : (
+              today[0]?.title ?? 'Bu gün üçün aktiv tapşırıq yoxdur'
+            )}
           </h2>
-          {today[0]?.deadline ? (
+          {!tasksLoading && today[0]?.deadline ? (
             <div className="mt-2">
               <HealthLabel deadline={today[0].deadline} />
             </div>
@@ -415,8 +425,9 @@ export function DashboardPage() {
           <p className="text-body mt-2 max-w-md" style={{ color: 'var(--ink)' }}>
             Fokuslan. Bir tapşırıq, 40 dəqiqə.
           </p>
-          {/* PRD §6.7 — empty state CTA (Empty: AZ message + primary CTA per page) */}
-          {!today[0] ? (
+          {/* PRD §6.7 — empty state CTA (Empty: AZ message + primary CTA per page);
+              suppressed while loading (N7) so it doesn't flash before tasks arrive. */}
+          {!tasksLoading && !today[0] ? (
             <button
               type="button"
               className="btn-primary mt-4"
@@ -525,6 +536,8 @@ export function DashboardPage() {
             {tabTasks.length === 0 ? (
               tasksLoading ? (
                 <li><LoadingRows rows={3} dark /></li>
+              ) : tasksError ? (
+                <li className="py-4 text-center"><WidgetError dark /></li>
               ) : (
                 <li className="opacity-70 text-meta py-4 text-center">
                   {taskTab === 'today' ? 'Bu gün üçün tapşırıq yoxdur.' : 'Bu həftə üçün tapşırıq yoxdur.'}
@@ -572,6 +585,8 @@ export function DashboardPage() {
             {activeProjects.length === 0 ? (
               activeProjectsLoading ? (
                 <LoadingRows rows={2} />
+              ) : activeProjectsError ? (
+                <WidgetError />
               ) : (
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
@@ -632,7 +647,12 @@ export function DashboardPage() {
                   `activity-${new Date().toISOString().slice(0, 10)}`,
                   ['Vaxt', 'Kim', 'Action', 'Entity'],
                   filteredActivity.map((a) => ({
-                    Vaxt: new Date(a.created_at).toISOString(),
+                    // N12 — export in Asia/Baku (§6.5 / REQ-FIN-09), not UTC.
+                    Vaxt: new Intl.DateTimeFormat('en-CA', {
+                      timeZone: 'Asia/Baku',
+                      year: 'numeric', month: '2-digit', day: '2-digit',
+                      hour: '2-digit', minute: '2-digit', hour12: false,
+                    }).format(new Date(a.created_at)),
                     Kim: a.profiles?.full_name ?? 'Sistem',
                     Action: a.action,
                     Entity: a.entity_type,
@@ -665,6 +685,8 @@ export function DashboardPage() {
           {filteredActivity.length === 0 ? (
             activityLoading || !activityReady ? (
               <LoadingRows rows={4} />
+            ) : activityError ? (
+              <WidgetError />
             ) : (
               <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
                 Aktivlik yoxdur.
@@ -686,7 +708,7 @@ export function DashboardPage() {
                 const inner = (
                   <>
                     <span className="shrink-0 mt-0.5">
-                      <Avatar name={name} size={28} />
+                      <Avatar name={name} url={actor?.avatar_url} size={28} />
                     </span>
                     <div className="flex-1 min-w-0">
                       <div className="text-body truncate">
@@ -750,6 +772,8 @@ export function DashboardPage() {
           {presence.length === 0 ? (
             presenceLoading ? (
               <LoadingRows rows={4} />
+            ) : presenceError ? (
+              <WidgetError />
             ) : (
               <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
                 Heç kim onlayn deyil.
@@ -763,7 +787,7 @@ export function DashboardPage() {
                 return (
                   <li key={p.user_id} className="flex items-center gap-2">
                     <span className="relative shrink-0">
-                      <Avatar name={name} size={32} />
+                      <Avatar name={name} url={p.profiles?.avatar_url} size={32} />
                       <span
                         className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2"
                         style={{
@@ -798,6 +822,8 @@ export function DashboardPage() {
             {teamProfiles.length === 0 ? (
               teamProfilesLoading ? (
                 <LoadingRows rows={4} />
+              ) : teamProfilesError ? (
+                <WidgetError />
               ) : (
                 <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
                   Komanda üzvü yoxdur.
@@ -821,7 +847,7 @@ export function DashboardPage() {
                           className="flex items-center gap-2 -mx-2 px-2 py-1 rounded-btn hover:bg-surface-mist transition-colors"
                           title={`${name} — ${count} açıq tapşırıq`}
                         >
-                          <Avatar name={name} size={28} />
+                          <Avatar name={name} url={m.avatar_url} size={28} />
                           <div className="flex-1 min-w-0">
                             <div className="flex justify-between text-meta mb-0.5">
                               <span className="truncate font-medium">{name}</span>
@@ -883,6 +909,8 @@ export function DashboardPage() {
           {meetings.length === 0 ? (
             meetingsLoading ? (
               <LoadingRows rows={3} />
+            ) : meetingsError ? (
+              <WidgetError />
             ) : (
               <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
                 Bu həftə görüş yoxdur.
@@ -926,6 +954,8 @@ export function DashboardPage() {
           {announcements.length === 0 ? (
             announcementsLoading ? (
               <LoadingRows rows={3} />
+            ) : announcementsError ? (
+              <WidgetError />
             ) : (
               <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
                 Hələ elan yoxdur.
@@ -988,6 +1018,8 @@ export function DashboardPage() {
             {personalOkrs.length === 0 ? (
               personalOkrsLoading ? (
                 <LoadingRows rows={2} />
+              ) : personalOkrsError ? (
+                <WidgetError />
               ) : (
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
@@ -1063,6 +1095,20 @@ function LoadingRows({ rows = 3, dark = false }: { rows?: number; dark?: boolean
           style={{ background: dark ? 'var(--card-dark-bg)' : 'var(--surface-mist)' }}
         />
       ))}
+    </div>
+  );
+}
+
+// N10 / PRD §6.7 — inline error state so a failed fetch is distinguishable from
+// a genuinely empty widget (otherwise an error masquerades as "no data").
+function WidgetError({ dark = false }: { dark?: boolean }) {
+  return (
+    <div
+      className="text-meta py-2"
+      role="status"
+      style={{ color: dark ? 'rgba(255,255,255,0.75)' : 'var(--error-deep)' }}
+    >
+      Məlumat yüklənmədi. Bir azdan yenidən cəhd edin.
     </div>
   );
 }

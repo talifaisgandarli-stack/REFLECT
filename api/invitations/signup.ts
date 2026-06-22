@@ -22,6 +22,10 @@ const Body = z.object({
   // symbols / digits) because per NIST 800-63B those hurt usability
   // without measurably improving security.
   password: z.string().min(8, 'Şifrə ən az 8 simvol olmalıdır'),
+  // N8 — display name captured at signup so profiles.full_name is populated
+  // (otherwise greetings/activity fall back to placeholders). Optional: the
+  // DB trigger still derives a name from the email if this is absent.
+  full_name: z.string().trim().min(1).max(80).optional(),
 });
 
 async function handler(req: Request) {
@@ -32,7 +36,7 @@ async function handler(req: Request) {
     if (!parsed.success) {
       throw new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid input');
     }
-    const { token, password } = parsed.data;
+    const { token, password, full_name } = parsed.data;
 
     const sb = admin();
 
@@ -84,7 +88,7 @@ async function handler(req: Request) {
     }
     const { error: roleErr } = await sb
       .from('profiles')
-      .update({ role_id: inv.role_id })
+      .update({ role_id: inv.role_id, ...(full_name ? { full_name } : {}) })
       .eq('id', newUserId);
     if (roleErr) {
       throw new HttpError(500, `Rol təyini uğursuz: ${roleErr.message}`);

@@ -22,6 +22,9 @@ export function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
+  // N8 — capture the invitee's name at signup so profiles.full_name is set
+  // (otherwise greetings/activity fall back to "arxitekt" / "Sistem").
+  const [fullName, setFullName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   // PRD §UX — warn user when Caps Lock is on while typing password; common
   // source of "wrong password" frustration that drives lockouts.
@@ -129,7 +132,7 @@ export function LoginPage() {
       const res = await fetch('/api/invitations/signup', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ token: inviteToken, password }),
+        body: JSON.stringify({ token: inviteToken, password, full_name: fullName.trim() || undefined }),
       });
       const body = (await res.json().catch(() => ({}))) as { ok?: boolean; email?: string; error?: string };
       if (!res.ok) {
@@ -298,6 +301,20 @@ export function LoginPage() {
 
               <form onSubmit={onInviteSubmit} className="space-y-3">
                 <label className="block">
+                  <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Ad Soyad</span>
+                  <input
+                    required
+                    type="text"
+                    autoComplete="name"
+                    autoFocus
+                    maxLength={80}
+                    placeholder="Talifa İsgəndərli"
+                    className="input w-full mt-1"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                  />
+                </label>
+                <label className="block">
                   <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Şifrə (ən az 8 simvol)</span>
                   <div className="relative mt-1">
                     <input
@@ -305,7 +322,6 @@ export function LoginPage() {
                       minLength={8}
                       type={showPassword ? 'text' : 'password'}
                       autoComplete="new-password"
-                      autoFocus
                       className="input w-full pr-10"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}

@@ -1,8 +1,12 @@
 # Reflect Architects OS — Product Requirements Document
-**Version:** 3.12 (§6.9 UX Conventions — canonical home for the `§UX` tag)
+**Version:** 3.13 (Dashboard fixes — loading/error states, avatars, name capture)
 **Date:** 2026-06-22
 **Product Owner:** Talifa İsgəndərli
 **Status:** Pre-PMF / Active Development
+
+**v3.13 changes (2026-06-22):**
+- Dashboard hardening: featured "BU GÜN" card no longer flashes its empty state before tasks load (N7); every widget now renders an inline error state on fetch failure instead of a false "empty" (N10, §6.7); uploaded avatars now render in presence/activity/workload (N11); activity CSV export timestamps are Asia/Baku, not UTC (N12, §6.5).
+- §5 — `profiles.full_name` is now populated at user creation (N8): the invite signup captures a name, and `handle_new_auth_user` derives one from auth metadata or the email local-part; existing rows backfilled. Fixes the "arxitekt"/"Sistem" placeholder fallbacks.
 
 **v3.12 changes (2026-06-22):**
 - Added §6.9 UX Conventions — documents the `§UX` tag used ~134× across the codebase (URL state, draft safety, keyboard affordances, empty-state CTAs, live relative time, deep links, reversible-first). Makes those references valid instead of pointing at a non-existent section. No code change.
