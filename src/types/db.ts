@@ -588,7 +588,7 @@ export interface ActivityLogEntry {
   new_value: unknown;
   created_at: string;
   /** Joined from profiles when using useActivityFeed (PRD §6.1 avatar requirement). */
-  profiles?: { id: string; full_name: string | null; avatar_url: string | null } | null;
+  profiles?: { id: string; full_name: string | null; avatar_url: string | null; email: string | null } | null;
 }
 
 // ── Minimal Database surface for supabase-js generic typing ──────────────────

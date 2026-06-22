@@ -211,7 +211,7 @@ export function useActivityFeed(
     queryFn: async (): Promise<ActivityLogEntry[]> => {
       let q = supabase
         .from('activity_log')
-        .select('*, profiles!activity_log_user_id_fkey(id, full_name, avatar_url)')
+        .select('*, profiles!activity_log_user_id_fkey(id, full_name, avatar_url, email)')
         .order('created_at', { ascending: false })
         .limit(limit);
       if (scope !== 'firm') q = q.eq('user_id', scope);

@@ -57,6 +57,19 @@ function activityLabel(action: string, entityType: string): string {
   return `${ACTION_LABELS[action] ?? action} — ${ENTITY_LABELS[entityType] ?? entityType}`;
 }
 
+// N9 — "Sistem" should only appear when there is genuinely no actor (null
+// user_id, e.g. trigger/seed rows). When an actor exists but is unnamed (e.g.
+// full_name not yet backfilled), derive a readable name from their email
+// instead of mislabeling a real person as the system.
+function humanizeEmail(email: string | null | undefined): string {
+  const local = (email ?? '').split('@')[0]?.replace(/[._]+/g, ' ').trim() ?? '';
+  return local ? local.replace(/\b\w/g, (c) => c.toUpperCase()) : 'İstifadəçi';
+}
+function actorName(actor: { full_name: string | null; email?: string | null } | null | undefined): string {
+  if (!actor) return 'Sistem';
+  return actor.full_name?.trim() || humanizeEmail(actor.email);
+}
+
 // REQ-DASH-03 filter types — pills mirror the PRD taxonomy exactly:
 // All / Tasks / Projects / Finance / Clients. "Finance" is one pill that
 // matches both income and expense activity entities (FINANCE_ENTITIES).
@@ -679,7 +692,7 @@ export function DashboardPage() {
                       year: 'numeric', month: '2-digit', day: '2-digit',
                       hour: '2-digit', minute: '2-digit', hour12: false,
                     }).format(new Date(a.created_at)),
-                    Kim: a.profiles?.full_name ?? 'Sistem',
+                    Kim: actorName(a.profiles),
                     Action: a.action,
                     Entity: a.entity_type,
                   })),
@@ -732,10 +745,13 @@ export function DashboardPage() {
               </div>
             )
           ) : (
-            <ul className="space-y-3 max-h-[400px] overflow-y-auto">
+            // N16 — overflow-x-hidden: overflow-y-auto promotes overflow-x to
+            // auto, and the rows' -mx-2 full-bleed hover overflowed by 8px,
+            // producing a spurious horizontal scrollbar.
+            <ul className="space-y-3 max-h-[400px] overflow-y-auto overflow-x-hidden">
               {filteredActivity.map((a) => {
                 const actor = a.profiles;
-                const name = actor?.full_name ?? 'Sistem';
+                const name = actorName(actor);
                 // US-DASH-04 — wrap row in a Link (entity link) when we know the destination
                 const href = (() => {
                   if (a.entity_type === 'task') return '/tapşırıqlar';
@@ -1187,18 +1203,21 @@ function ActivityHeatmap({
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
 
-  // Build 12-week × 7-day grid ending today (right column = current week)
+  // Build 12-week × 7-day grid ending today. N13 — both the grid days AND the
+  // counts must be in Asia/Baku; previously the grid stepped local-tz days
+  // (getDate/getDay) while buckets keyed by Baku, so non-Baku users saw cells
+  // misaligned by a day. Anchor at noon UTC of Baku's "today" (DST-safe: noon
+  // UTC is always the same Baku calendar day) and step by UTC days.
   const WEEKS = 12;
-  const today = new Date();
-  // Align to last Sunday so columns are weeks
-  const cells: Array<{ key: string; date: Date; count: number; dim: boolean }> = [];
-  // Start from (WEEKS-1) weeks back at Monday-of-that-week
   const totalDays = WEEKS * 7;
+  const bakuToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baku' }).format(new Date());
+  const anchor = new Date(`${bakuToday}T12:00:00Z`);
+  const cells: Array<{ key: string; dow: number; count: number }> = [];
   for (let i = totalDays - 1; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
+    const d = new Date(anchor);
+    d.setUTCDate(anchor.getUTCDate() - i);
     const key = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baku' }).format(d);
-    cells.push({ key, date: d, count: counts.get(key) ?? 0, dim: false });
+    cells.push({ key, dow: d.getUTCDay(), count: counts.get(key) ?? 0 });
   }
 
   // Determine intensity buckets relative to max count
@@ -1213,7 +1232,7 @@ function ActivityHeatmap({
   }
 
   // Render as 7 rows × WEEKS columns. Day-of-week of cells[0] dictates row 0.
-  const firstDow = cells[0].date.getDay(); // 0=Sun..6=Sat
+  const firstDow = cells[0].dow; // 0=Sun..6=Sat, computed in Baku
   // Shift so Monday is row 0
   const dowToRow = (dow: number) => (dow + 6) % 7;
   const rows: Array<Array<{ key: string; count: number } | null>> = Array.from({ length: 7 }, () => Array(WEEKS).fill(null));
