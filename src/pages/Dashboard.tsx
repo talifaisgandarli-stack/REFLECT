@@ -160,7 +160,13 @@ export function DashboardPage() {
     const id = window.setInterval(() => setTick((n) => n + 1), 60_000);
     return () => window.clearInterval(id);
   }, []);
-  const { data: tasks = [], isLoading: tasksLoading, isError: tasksError } = useTasks(profile?.id ? { assigneeId: profile.id } : undefined);
+  const { data: tasks = [], isLoading: tasksLoading, isError: tasksError } = useTasks(
+    profile?.id ? { assigneeId: profile.id } : undefined,
+    { enabled: !!profile?.id },
+  );
+  // B5 — treat "profile not yet loaded" as pending too, so the featured card +
+  // ribbon show a skeleton (not a premature empty state) during that window.
+  const tasksPending = tasksLoading || !profile?.id;
   const { data: presence = [], isLoading: presenceLoading, isError: presenceError } = useTeamPresence();
   // REQ-DASH-02 / PRD §9.1 — admin sees firm-wide; users see only their own
   // (the activity_log RLS policy is permissive, so the gating must happen here).
@@ -387,13 +393,14 @@ export function DashboardPage() {
     ? [...overdueTasks, ...todayTasks]
     : [...overdueTasks, ...todayTasks, ...weekTasks];
 
-  // Legacy sort for admin "BU GÜN" feature card (active/review)
-  const today = tasks
-    .filter((t) => t.status === 'active' || t.status === 'review')
-    .sort((a, b) => {
-      const order = { red: 0, amber: 1, green: 2, none: 3 } as const;
-      return order[taskHealth(a.deadline)] - order[taskHealth(b.deadline)];
-    });
+  // "BU GÜN" feature card — the single most urgent open task. B6: pick from all
+  // open statuses (idea/queued/active/review/expert), not just active/review, so
+  // a user whose work is queued/expert isn't told "no active task". Sorted by
+  // health (most urgent first), matching the ribbon's dataset.
+  const today = [...openTasks].sort((a, b) => {
+    const order = { red: 0, amber: 1, green: 2, none: 3 } as const;
+    return order[taskHealth(a.deadline)] - order[taskHealth(b.deadline)];
+  });
   // B1 — "Gecikmiş" = genuinely overdue (open + past due in Baku tz). Reuse
   // overdueTasks; the old taskHealth==='red' set wrongly counted done/cancelled
   // tasks and tasks merely due within 3 days.
@@ -446,7 +453,7 @@ export function DashboardPage() {
           <h2 className="text-h2 mt-3" style={{ color: 'var(--ink)' }}>
             {/* N7 — show a skeleton while tasks load so the empty-state headline +
                 CTA don't flash for ~1s before the real task arrives. */}
-            {tasksLoading ? (
+            {tasksPending ? (
               <span
                 className="inline-block h-7 w-3/4 max-w-xs rounded-card animate-pulse align-middle"
                 style={{ background: 'rgba(14,22,17,0.10)' }}
@@ -456,7 +463,7 @@ export function DashboardPage() {
               today[0]?.title ?? 'Bu gün üçün aktiv tapşırıq yoxdur'
             )}
           </h2>
-          {!tasksLoading && today[0]?.deadline ? (
+          {!tasksPending && today[0]?.deadline ? (
             <div className="mt-2">
               <HealthLabel deadline={today[0].deadline} />
             </div>
@@ -466,7 +473,7 @@ export function DashboardPage() {
           </p>
           {/* PRD §6.7 — empty state CTA (Empty: AZ message + primary CTA per page);
               suppressed while loading (N7) so it doesn't flash before tasks arrive. */}
-          {!tasksLoading && !today[0] ? (
+          {!tasksPending && !today[0] ? (
             <button
               type="button"
               className="btn-primary mt-4"
@@ -573,7 +580,7 @@ export function DashboardPage() {
               );
             })}
             {tabTasks.length === 0 ? (
-              tasksLoading ? (
+              tasksPending ? (
                 <li><LoadingRows rows={3} dark /></li>
               ) : tasksError ? (
                 <li className="py-4 text-center"><WidgetError dark /></li>

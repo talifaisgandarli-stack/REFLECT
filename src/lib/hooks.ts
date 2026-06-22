@@ -43,9 +43,15 @@ export function useProject(id: string | undefined) {
 }
 
 // ---------------- Tasks ----------------
-export function useTasks(filter?: { projectId?: string; assigneeId?: string }) {
+export function useTasks(
+  filter?: { projectId?: string; assigneeId?: string },
+  options?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: ['tasks', filter],
+    // B5 — caller can gate until a filter is known so we never run the
+    // unfiltered (firm-wide) query while e.g. the profile is still loading.
+    enabled: options?.enabled ?? true,
     queryFn: async (): Promise<Task[]> => {
       let q = supabase.from('tasks').select('*').is('archived_at', null);
       if (filter?.projectId) q = q.eq('project_id', filter.projectId);
@@ -402,13 +408,35 @@ export function useTeamPresence() {
     // REQ-PRESENCE-01 — no polling; realtime.ts subscribes to `user_presence`
     // and invalidates ['presence'] on every change (§10.5.1: updates ≤2s).
     queryFn: async (): Promise<UserPresence[]> => {
-      const { data, error } = await supabase
-        .from('user_presence')
-        .select('*, profiles!user_presence_user_id_fkey(id, full_name, avatar_url)');
-      if (error) throw error;
+      const [presenceRes, profilesRes] = await Promise.all([
+        supabase
+          .from('user_presence')
+          .select('*, profiles!user_presence_user_id_fkey(id, full_name, avatar_url)'),
+        supabase.from('profiles').select('id, full_name, avatar_url').eq('is_active', true),
+      ]);
+      if (presenceRes.error) throw presenceRes.error;
+
+      const byId = new Map<string, UserPresence>();
+      for (const r of (presenceRes.data ?? []) as UserPresence[]) byId.set(r.user_id, r);
+      // REQ-DASH-06 — the panel must show ALL team members. Synthesize an
+      // offline entry for active members who have never sent a heartbeat (no
+      // user_presence row); empty last_heartbeat_at → UI shows "Oflayn" with
+      // no fake "last seen".
+      for (const p of (profilesRes.data ?? []) as Array<{ id: string; full_name: string | null; avatar_url: string | null }>) {
+        if (byId.has(p.id)) continue;
+        byId.set(p.id, {
+          user_id: p.id,
+          status: 'offline',
+          last_heartbeat_at: '',
+          current_page: null,
+          session_type: 'desktop',
+          profiles: { id: p.id, full_name: p.full_name, avatar_url: p.avatar_url },
+        });
+      }
+
       // REQ-PRESENCE — panel ordering: online → away → offline, then by name.
       const PRIORITY: Record<string, number> = { online: 0, away: 1, offline: 2 };
-      return ((data ?? []) as UserPresence[]).sort((a, b) => {
+      return [...byId.values()].sort((a, b) => {
         const d = (PRIORITY[a.status] ?? 3) - (PRIORITY[b.status] ?? 3);
         if (d !== 0) return d;
         return (a.profiles?.full_name ?? '').localeCompare(b.profiles?.full_name ?? '', 'az');
