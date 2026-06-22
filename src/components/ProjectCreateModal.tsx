@@ -67,6 +67,10 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
       const trimmedName = name.trim();
       if (!trimmedName) throw new Error('Layihə adı tələb olunur');
       if (phases.length === 0) throw new Error('Ən azı bir faza seçin');
+      // US-PROJ-01 — deadline is a required submit field (the expertise/timeline
+      // planning in REQ-PROJ-02 depends on it). Client stays optional per the
+      // PRD's "— müştərisiz —" affordance.
+      if (!deadline) throw new Error('Bitmə tarixi tələb olunur');
 
       let resolvedClientId: string | null = clientId || null;
 
@@ -265,7 +269,7 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
             </label>
             <label className="block">
               <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-                Bitmə tarixi
+                Bitmə tarixi <span style={{ color: 'var(--error-deep)' }}>*</span>
               </span>
               <input
                 type="date"
@@ -273,6 +277,7 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
                 value={deadline}
                 onChange={(e) => setDeadline(e.target.value)}
                 min={startDate || undefined}
+                required
               />
             </label>
           </div>
@@ -351,7 +356,7 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
           <button
             type="submit"
             className="btn-primary"
-            disabled={create.isPending || !name.trim() || phases.length === 0}
+            disabled={create.isPending || !name.trim() || phases.length === 0 || !deadline}
           >
             {create.isPending ? 'Yaradılır…' : 'Yarat'}
           </button>

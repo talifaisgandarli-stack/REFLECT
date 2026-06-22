@@ -125,11 +125,22 @@ export function ProjectsPage() {
     mutationFn: async () => {
       const ids = Array.from(selectedIds);
       if (ids.length === 0) return;
+      // Archive == closed in this app (the Archive page lists status='closed'),
+      // so keep that. Bulk archive skips the closeout checklist by design (quick
+      // action), but it must still uphold the invariant that every closed
+      // project has a portfolio_workflows row — otherwise the Awards UI silently
+      // no-ops. Mirror closeProject's upsert (idempotent via unique project_id).
       const { error } = await supabase
         .from('projects')
         .update({ status: 'closed', archived_at: new Date().toISOString() })
         .in('id', ids);
       if (error) throw error;
+      await supabase
+        .from('portfolio_workflows')
+        .upsert(ids.map((id) => ({ project_id: id })), {
+          onConflict: 'project_id',
+          ignoreDuplicates: true,
+        });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['projects'] });
@@ -386,11 +397,13 @@ export function ProjectsPage() {
             const tone = FOLDER_TONE[i % FOLDER_TONE.length];
             const dark = tone === 'bg-grad-folder-forest';
 
-            // Progress bar — tasks for this project
+            // Progress bar — tasks for this project. REQ-DASH-15: completion % =
+            // done ÷ (total − cancelled); cancelled tasks are excluded from the
+            // denominator so they don't drag the percentage down.
             const projectTasks = taskStats.filter((t) => t.project_id === p.id);
-            const total = projectTasks.length;
+            const denom = projectTasks.filter((t) => t.status !== 'cancelled').length;
             const done  = projectTasks.filter((t) => t.status === 'done').length;
-            const pct   = total > 0 ? Math.round((done / total) * 100) : null;
+            const pct   = denom > 0 ? Math.round((done / denom) * 100) : null;
 
             // Team avatars — unique assignees across all project tasks
             const assigneeIds = [
@@ -633,7 +646,15 @@ export function ProjectsPage() {
             className="chip"
             style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--canvas)' }}
             disabled={bulkArchive.isPending}
-            onClick={() => bulkArchive.mutate()}
+            onClick={() => {
+              if (
+                window.confirm(
+                  `${selectedIds.size} layihə bağlanıb arxivlənəcək. Closeout yoxlama siyahısı atlanacaq. Davam edilsin?`,
+                )
+              ) {
+                bulkArchive.mutate();
+              }
+            }}
           >
             {bulkArchive.isPending ? 'Arxivlənir…' : 'Arxivlə (Bağla)'}
           </button>

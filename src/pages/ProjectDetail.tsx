@@ -582,6 +582,21 @@ export function ProjectDetailPage() {
               </div>
             ) : (
               <>
+                {/* REQ-PROJ §351 — closeout is allowed with zero tasks, but the
+                    emptiness is surfaced so it isn't an accidental closure. */}
+                {tasks.length === 0 ? (
+                  <div
+                    className="rounded-card px-4 py-3 mb-4 text-body"
+                    style={{
+                      background: 'var(--warning-bg)',
+                      border: '1px solid var(--warning-border)',
+                      color: 'var(--warning)',
+                    }}
+                  >
+                    ⚠ Bu layihədə heç bir tapşırıq yoxdur. Bağlamaq olar, amma
+                    təsdiqdən əvvəl bir daha yoxlayın.
+                  </div>
+                ) : null}
                 {/* Closeout progress % — visible at-a-glance signal */}
                 {(() => {
                   const totalItems = allItems.length;
@@ -1272,17 +1287,19 @@ function AwardsSection({ projectId }: { projectId: string }) {
     },
   });
 
+  // Upsert by project_id (not update-by-id) so a closed project that has no
+  // workflow row yet — bulk-archived or closed before the insert existed — gets
+  // one created on first interaction instead of silently no-oping. Each mutation
+  // sends only its own column, so PostgREST merge leaves the other intact.
   const updateAwards = useMutation({
     mutationFn: async ({ awardId, selected }: { awardId: string; selected: boolean }) => {
-      if (!workflow) return;
-      const current = workflow.selected_awards ?? [];
+      const current = workflow?.selected_awards ?? [];
       const next = selected
         ? [...current, awardId]
         : current.filter((id) => id !== awardId);
       const { error } = await supabase
         .from('portfolio_workflows')
-        .update({ selected_awards: next })
-        .eq('id', workflow.id);
+        .upsert({ project_id: projectId, selected_awards: next }, { onConflict: 'project_id' });
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['portfolio_workflow', projectId] }),
@@ -1292,13 +1309,11 @@ function AwardsSection({ projectId }: { projectId: string }) {
     mutationFn: async ({
       awardId, key, val,
     }: { awardId: string; key: string; val: boolean }) => {
-      if (!workflow) return;
-      const apps = { ...(workflow.applications ?? {}) };
+      const apps = { ...(workflow?.applications ?? {}) };
       apps[awardId] = { ...(apps[awardId] ?? {}), [key]: val };
       const { error } = await supabase
         .from('portfolio_workflows')
-        .update({ applications: apps })
-        .eq('id', workflow.id);
+        .upsert({ project_id: projectId, applications: apps }, { onConflict: 'project_id' });
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['portfolio_workflow', projectId] }),
