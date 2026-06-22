@@ -406,7 +406,13 @@ export function useTeamPresence() {
         .from('user_presence')
         .select('*, profiles!user_presence_user_id_fkey(id, full_name, avatar_url)');
       if (error) throw error;
-      return (data ?? []) as UserPresence[];
+      // REQ-PRESENCE — panel ordering: online → away → offline, then by name.
+      const PRIORITY: Record<string, number> = { online: 0, away: 1, offline: 2 };
+      return ((data ?? []) as UserPresence[]).sort((a, b) => {
+        const d = (PRIORITY[a.status] ?? 3) - (PRIORITY[b.status] ?? 3);
+        if (d !== 0) return d;
+        return (a.profiles?.full_name ?? '').localeCompare(b.profiles?.full_name ?? '', 'az');
+      });
     },
   });
 }
