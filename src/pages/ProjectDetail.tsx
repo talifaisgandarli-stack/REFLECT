@@ -543,6 +543,7 @@ export function ProjectDetailPage() {
             {isAdmin ? (
               <AddDocumentButton projectId={id!} onAdded={() => qc.invalidateQueries({ queryKey: ['project-documents', id] })} />
             ) : null}
+          </div>
           {documents.length === 0 ? (
             <div className="text-meta text-center py-8" style={{ color: 'var(--text-muted)' }}>
               Hələ sənəd yoxdur. İlk sənədi əlavə edin.
