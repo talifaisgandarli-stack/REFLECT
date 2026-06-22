@@ -94,6 +94,18 @@ export function TasksPage() {
   const [ganttStart, setGanttStart] = useState<string>(() => daysFromTodayInBaku(-7));
   // Design spec §8.3: "Empty Tamamlandı stub: '+ N daha' — clicks expand archived".
   const [expandedArchive, setExpandedArchive] = useState(false);
+  // Board view nests subtasks inside their parent card (Trello-style checklist)
+  // instead of showing them as standalone cards. Parents are expanded by default;
+  // this set tracks the ones the user has collapsed.
+  const [collapsedSubtasks, setCollapsedSubtasks] = useState<Set<string>>(new Set());
+  const toggleSubtaskExpand = useCallback((id: string) => {
+    setCollapsedSubtasks((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
   // PRD §6.6 — screen reader announcement after status moves so DnD users
   // who can't see the column highlight still hear what happened.
   const [statusAnnouncement, setStatusAnnouncement] = useState('');
@@ -648,14 +660,46 @@ export function TasksPage() {
     [sortBy],
   );
 
+  // Subtask nesting (board view). taskById resolves a task's parent so we can
+  // tell a direct-child-of-top-level (nested inside the card) from a deeper one
+  // (still shown as its own card, so nothing is ever lost). childrenByParent
+  // feeds each card its own direct children. Built from the full task list, not
+  // `filtered`, so a parent always carries its subtasks regardless of filters.
+  const taskById = useMemo(() => {
+    const m = new Map<string, Task>();
+    for (const t of tasks) m.set(t.id, t);
+    return m;
+  }, [tasks]);
+  const childrenByParent = useMemo(() => {
+    const m = new Map<string, Task[]>();
+    for (const t of tasks) {
+      if (!t.parent_task_id) continue;
+      const arr = m.get(t.parent_task_id);
+      if (arr) arr.push(t);
+      else m.set(t.parent_task_id, [t]);
+    }
+    for (const [, arr] of m) sortTasks(arr);
+    return m;
+  }, [tasks, sortTasks]);
+  // A task nests inside its parent card iff its parent is a top-level task.
+  const isNestedSubtask = useCallback(
+    (t: Task) => {
+      if (!t.parent_task_id) return false;
+      const parent = taskById.get(t.parent_task_id);
+      return parent != null && parent.parent_task_id == null;
+    },
+    [taskById],
+  );
+
   const grouped = useMemo(() => {
     const map: Record<TaskStatus, Task[]> = {
       idea: [], queued: [], active: [], review: [], expert: [], done: [], cancelled: [],
     };
-    for (const t of filtered) map[t.status].push(t);
+    // Nested subtasks render inside their parent card, not as standalone cards.
+    for (const t of filtered) if (!isNestedSubtask(t)) map[t.status].push(t);
     for (const k of Object.keys(map) as TaskStatus[]) map[k] = sortTasks(map[k]);
     return map;
-  }, [filtered, sortTasks]);
+  }, [filtered, sortTasks, isNestedSubtask]);
 
   // Table view obeys the same sort dropdown as the board (was raw insertion
   // order from useTasks before, ignoring user's sort preference).
@@ -1172,7 +1216,8 @@ export function TasksPage() {
                           ? '3px solid var(--success-deep, #16794a)'
                           : undefined,
                         opacity: draggingId === t.id ? 0.4 : 1,
-                        transition: 'opacity 120ms ease',
+                        cursor: draggingId === t.id ? 'grabbing' : 'grab',
+                        transition: 'opacity 120ms ease, box-shadow 120ms ease, transform 120ms ease',
                       }}
                     >
                       {/* Priority is conveyed by the left border (3px coloured
@@ -1378,6 +1423,85 @@ export function TasksPage() {
                           )}
                         </div>
                       </div>
+                      {/* Trello-style nested subtask checklist — direct children
+                          live inside the parent card, never as separate cards. */}
+                      {(() => {
+                        const kids = childrenByParent.get(t.id);
+                        if (!kids || kids.length === 0) return null;
+                        const doneCount = kids.filter((k) => k.status === 'done' || k.status === 'cancelled').length;
+                        const expanded = !collapsedSubtasks.has(t.id);
+                        const pct = Math.round((doneCount / kids.length) * 100);
+                        const subtle = isToday ? 'var(--text-faint)' : 'var(--text-muted)';
+                        return (
+                          <div
+                            className="mt-2 pt-2"
+                            style={{ borderTop: `1px dashed ${isToday ? 'var(--card-dark-border)' : 'var(--line)'}` }}
+                          >
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); toggleSubtaskExpand(t.id); }}
+                              className="flex items-center gap-1.5 w-full"
+                              style={{ color: subtle, fontSize: 11 }}
+                              aria-expanded={expanded}
+                            >
+                              <span style={{ width: 10 }}>{expanded ? '▾' : '▸'}</span>
+                              <span style={{ fontVariantNumeric: 'tabular-nums' }}>☑ {doneCount}/{kids.length}</span>
+                              <span
+                                className="flex-1 rounded-full overflow-hidden"
+                                style={{ height: 4, background: isToday ? 'var(--card-dark-border)' : 'var(--surface-mist)' }}
+                              >
+                                <span
+                                  style={{
+                                    display: 'block', height: '100%', width: `${pct}%`,
+                                    background: 'var(--brand-action)', transition: 'width 200ms ease',
+                                  }}
+                                />
+                              </span>
+                            </button>
+                            {expanded ? (
+                              <div className="mt-1.5 space-y-1">
+                                {kids.map((k) => {
+                                  const kDone = k.status === 'done' || k.status === 'cancelled';
+                                  return (
+                                    <div
+                                      key={k.id}
+                                      className="flex items-center gap-1.5 rounded-btn px-1 py-0.5"
+                                      style={{ fontSize: 12, transition: 'background 120ms ease' }}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={kDone}
+                                        onClick={(e) => e.stopPropagation()}
+                                        onChange={(e) => {
+                                          e.stopPropagation();
+                                          moveTask(k.id, kDone ? 'queued' : 'done', k.status);
+                                        }}
+                                        aria-label={`${k.title} tamamla`}
+                                        style={{ accentColor: 'var(--brand-action)' }}
+                                      />
+                                      <span
+                                        className="flex-1 cursor-pointer truncate"
+                                        onClick={(e) => { e.stopPropagation(); setEditing(k); }}
+                                        title={k.title}
+                                        style={{
+                                          textDecoration: kDone ? 'line-through' : 'none',
+                                          opacity: kDone ? 0.55 : 1,
+                                          color: isToday ? 'var(--canvas)' : 'var(--text)',
+                                        }}
+                                      >
+                                        {k.title}
+                                      </span>
+                                      {k.assignee_ids.length > 0 ? (
+                                        <AvatarGroup people={assigneePeople(k.assignee_ids)} size={16} />
+                                      ) : null}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })()}
                     </article>
                     );
                   })}

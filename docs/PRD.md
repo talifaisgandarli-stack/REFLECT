@@ -407,6 +407,7 @@ workload = estimated_duration × (1 + risk_buffer_pct/100)
 **Edge cases:**
 - Reassign last assignee → must replace, not empty
 - Bakı timezone: all `*_at` stored UTC; UI renders Asia/Baku
+- **Board subtask nesting:** on the kanban board a subtask is never a standalone card — direct children of a top-level task render as a Trello-style checklist inside the parent card (progress bar, per-row complete toggle, assignee avatars, click-to-edit), collapsible and expanded by default. Column counts/hours reflect top-level cards only. Deeper levels (a child of a subtask) still surface as their own card so nothing is hidden. Table/Gantt/Calendar/CSV views are unchanged (subtasks still listed there).
 - **Hard delete (admin only, danger zone):** the edit-task modal exposes an admin "Sil" action (inline confirm) that permanently removes the task. Per the 0001 FKs this cascades to subtasks (`parent_task_id`), `task_comments`, `task_status_history` and `time_entries`. Enforced by RLS policy `tasks_admin_delete` (migration 0067 — the original 0002 RLS had no delete policy). Irreversible; archive (`archived_at`) remains the default non-destructive path.
 
 ---
