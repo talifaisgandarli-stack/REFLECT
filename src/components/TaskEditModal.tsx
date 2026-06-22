@@ -1,9 +1,10 @@
 /**
  * REQ-TASK-EDIT — edit an existing task's core fields (title, description,
- * project, deadline, status, assignees, duration). Mirrors TaskCreateModal
- * but without the expertise-subtask scaffolding (that only seeds on create).
+ * project, deadline, status, assignees, duration). Also lets you add new
+ * subtasks (shared SubtaskBuilder) to a top-level task; each subtask needs its
+ * own deadline + assignee(s). Existing subtasks are listed for context.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
@@ -15,6 +16,12 @@ import {
   DURATION_UNIT_LABEL,
   type DurationUnit,
 } from '@/lib/labels';
+import {
+  SubtaskBuilder,
+  cleanSubtasks,
+  subtaskError,
+  type DraftSubtask,
+} from '@/components/SubtaskBuilder';
 import type { Task, TaskStatus } from '@/types/db';
 
 type Props = { task: Task; onClose: () => void };
@@ -22,7 +29,7 @@ type Props = { task: Task; onClose: () => void };
 const STATUS_OPTIONS: TaskStatus[] = ['idea', 'queued', 'active', 'review', 'expert', 'done'];
 
 export function TaskEditModal({ task, onClose }: Props) {
-  const { isAdmin } = useAuth();
+  const { isAdmin, profile } = useAuth();
   const projects = useProjects();
   const qc = useQueryClient();
 
@@ -37,6 +44,10 @@ export function TaskEditModal({ task, onClose }: Props) {
   );
   const [unit, setUnit] = useState<DurationUnit>((task.duration_unit as DurationUnit) ?? 'hours');
   const [assignees, setAssignees] = useState<string[]>(task.assignee_ids ?? []);
+  // New subtasks to create on save. Only top-level tasks get a builder (one level).
+  const [newSubtasks, setNewSubtasks] = useState<DraftSubtask[]>([]);
+  const showSubtasks = !task.parent_task_id;
+  const subtaskErr = subtaskError(newSubtasks);
 
   const teamMembers = useQuery({
     queryKey: ['profiles', 'team-list'],
@@ -51,6 +62,31 @@ export function TaskEditModal({ task, onClose }: Props) {
     },
   });
 
+  // People a subtask can be assigned to: admins pick the whole team, others self.
+  const assignable = useMemo(
+    () =>
+      isAdmin
+        ? (teamMembers.data ?? [])
+        : profile
+          ? [{ id: profile.id, full_name: profile.full_name, email: profile.email }]
+          : [],
+    [isAdmin, teamMembers.data, profile],
+  );
+
+  // Existing subtasks — shown read-only for context while editing the parent.
+  const existingSubtasks = useQuery({
+    queryKey: ['tasks', 'children', task.id],
+    enabled: showSubtasks,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('tasks')
+        .select('id, title, deadline, status, assignee_ids')
+        .eq('parent_task_id', task.id)
+        .order('created_at');
+      return (data ?? []) as Array<Pick<Task, 'id' | 'title' | 'deadline' | 'status' | 'assignee_ids'>>;
+    },
+  });
+
   const save = useMutation({
     mutationFn: async () => {
       const trimmed = title.trim();
@@ -58,6 +94,10 @@ export function TaskEditModal({ task, onClose }: Props) {
       if (startDate && deadline && deadline < startDate) {
         throw new Error('Bitmə tarixi başlama tarixindən əvvəl ola bilməz.');
       }
+      // Validate new subtasks before touching the DB (deadline + assignee req.).
+      const err = subtaskError(newSubtasks);
+      if (err) throw new Error(err);
+
       const { error } = await supabase
         .from('tasks')
         .update({
@@ -73,6 +113,22 @@ export function TaskEditModal({ task, onClose }: Props) {
         })
         .eq('id', task.id);
       if (error) throw error;
+
+      const children = cleanSubtasks(newSubtasks);
+      if (children.length > 0) {
+        const rows = children.map((s) => ({
+          title: s.title,
+          status: 'queued' as TaskStatus,
+          project_id: projectId || null,
+          parent_task_id: task.id,
+          task_level: task.task_level + 1,
+          is_expertise_subtask: s.isExpertise,
+          assignee_ids: s.assigneeIds,
+          deadline: s.deadline,
+        }));
+        const { error: childErr } = await supabase.from('tasks').insert(rows);
+        if (childErr) throw childErr;
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] });
@@ -117,13 +173,13 @@ export function TaskEditModal({ task, onClose }: Props) {
       role="dialog"
       aria-modal="true"
       aria-label="Tapşırığı düzəlt"
-      className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8 overflow-y-auto"
+      className="modal-fade-in fixed inset-0 z-50 flex items-center justify-center px-4 py-8 overflow-y-auto"
       style={{ background: 'rgba(14,22,17,0.4)' }}
       onClick={onClose}
     >
       <form
         ref={trapRef}
-        className="card w-full max-w-lg"
+        className="modal-pop card w-full max-w-lg"
         onClick={(e) => e.stopPropagation()}
         onSubmit={(e) => {
           e.preventDefault();
@@ -243,6 +299,41 @@ export function TaskEditModal({ task, onClose }: Props) {
             </Field>
           ) : null}
 
+          {/* Existing subtasks (read-only) + builder to add new ones */}
+          {showSubtasks ? (
+            <>
+              {(existingSubtasks.data ?? []).length > 0 ? (
+                <div className="rounded-btn p-2" style={{ background: 'var(--surface-mist)' }}>
+                  <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
+                    Mövcud alt-tapşırıqlar
+                  </span>
+                  <ul className="space-y-1">
+                    {(existingSubtasks.data ?? []).map((k) => {
+                      const kDone = k.status === 'done' || k.status === 'cancelled';
+                      return (
+                        <li key={k.id} className="flex items-center justify-between gap-2 text-meta">
+                          <span style={{ textDecoration: kDone ? 'line-through' : 'none', opacity: kDone ? 0.6 : 1 }}>
+                            {k.title}
+                          </span>
+                          <span style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                            {k.deadline ?? '— son tarix yoxdur'}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ) : null}
+              <SubtaskBuilder
+                subtasks={newSubtasks}
+                onChange={setNewSubtasks}
+                assignable={assignable}
+                minDate={startDate || undefined}
+                legend="Yeni alt-tapşırıq əlavə et"
+              />
+            </>
+          ) : null}
+
           {save.error ? (
             <p className="text-meta" style={{ color: 'var(--error-deep)' }}>{(save.error as Error).message}</p>
           ) : null}
@@ -290,7 +381,7 @@ export function TaskEditModal({ task, onClose }: Props) {
           </div>
           <div className="flex gap-3">
             <button type="button" className="btn-outline" onClick={onClose}>Ləğv et</button>
-            <button type="submit" className="btn-primary" disabled={save.isPending}>
+            <button type="submit" className="btn-primary" disabled={save.isPending || !!subtaskErr}>
               {save.isPending ? 'Saxlanılır…' : 'Saxla'}
             </button>
           </div>

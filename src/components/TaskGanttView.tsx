@@ -11,6 +11,8 @@ interface Props {
   onToday: () => void;
   onOpen: (t: Task) => void;
   projectById: Record<string, { name: string }>;
+  /** child task id → parent task title, to show subtask lineage */
+  parentTitleById?: Record<string, string>;
 }
 
 const WINDOW_DAYS = 42;
@@ -24,6 +26,7 @@ export function TaskGanttView({
   onToday,
   onOpen,
   projectById,
+  parentTitleById,
 }: Props) {
   // PRD §FIN-09 — "today" anchored to Asia/Baku, not the browser's UTC.
   const todayIso = todayInBaku();
@@ -223,6 +226,14 @@ export function TaskGanttView({
                     }}
                     title={projName ? `${t.title} · ${projName}` : t.title}
                   >
+                    {parentTitleById?.[t.id] ? (
+                      <span
+                        style={{ color: 'var(--text-muted)', fontSize: 10, marginRight: 4 }}
+                        title={`Ana tapşırıq: ${parentTitleById[t.id]}`}
+                      >
+                        ↳
+                      </span>
+                    ) : null}
                     <span className="text-body" style={{ fontSize: 12 }}>{t.title}</span>
                     {projName ? (
                       <span

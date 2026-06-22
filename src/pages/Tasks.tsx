@@ -381,6 +381,17 @@ export function TasksPage() {
     for (const t of tasks) m.set(t.id, t);
     return m;
   }, [tasks]);
+  // child id → parent task title, so every view (table/gantt/calendar) can show
+  // which parent a subtask belongs to even if the parent is filtered out.
+  const parentTitleById = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const t of tasks) {
+      if (!t.parent_task_id) continue;
+      const p = taskById.get(t.parent_task_id);
+      if (p) m[t.id] = p.title;
+    }
+    return m;
+  }, [tasks, taskById]);
 
   // Re-parent (or detach) a card via drag-drop. parentId=null detaches to a
   // top-level card; otherwise the task becomes a child of `parentId`. task_level
@@ -1225,6 +1236,10 @@ export function TasksPage() {
                       // semantics. Explicit listitem keeps the row count
                       // exposed to AT.
                       role="listitem"
+                      // Click anywhere on the card body opens the editor. Inner
+                      // interactive controls (select, buttons, checkboxes, subtask
+                      // rows) all stopPropagation, so they keep their own actions.
+                      onClick={() => setEditing(t)}
                       draggable
                       onDragStart={(e) => {
                         e.dataTransfer.setData(
@@ -1299,7 +1314,7 @@ export function TasksPage() {
                           which made the visual treatment asymmetric. */}
                       <div
                         className="font-medium cursor-pointer"
-                        onClick={(e) => { e.stopPropagation(); setCommenting({ id: t.id, title: t.title }); }}
+                        onClick={(e) => { e.stopPropagation(); setEditing(t); }}
                         title={(() => {
                           // PRD §UX — tooltip combines description (if any) + created age
                           const parts: string[] = [];
@@ -1725,6 +1740,7 @@ export function TasksPage() {
           }
           onToday={() => setCalMonth(currentMonthInBaku())}
           onOpen={(t) => setCommenting({ id: t.id, title: t.title })}
+          parentTitleById={parentTitleById}
         />
       ) : view === 'gantt' ? (
         <TaskGanttView
@@ -1734,6 +1750,7 @@ export function TasksPage() {
           onToday={() => setGanttStart(daysFromTodayInBaku(-7))}
           onOpen={(t) => setCommenting({ id: t.id, title: t.title })}
           projectById={projectById}
+          parentTitleById={parentTitleById}
         />
       ) : (
         // Design spec §8.3 — Cədvəl columns: Tapşırıq · Layihə · İcraçı · Phase · Vaxt · Status
@@ -1817,7 +1834,19 @@ export function TasksPage() {
                       />
                     </td>
                   ) : null}
-                  <td className="py-3 px-3">{t.title}</td>
+                  <td className="py-3 px-3">
+                    {t.title}
+                    {/* Show which parent a subtask belongs to */}
+                    {t.parent_task_id && taskById.get(t.parent_task_id) ? (
+                      <span
+                        className="text-meta block"
+                        style={{ color: 'var(--text-muted)', fontSize: 11 }}
+                        title={`Ana tapşırıq: ${taskById.get(t.parent_task_id)!.title}`}
+                      >
+                        ↳ {taskById.get(t.parent_task_id)!.title}
+                      </span>
+                    ) : null}
+                  </td>
                   <td className="py-3 px-3" style={{ color: proj ? undefined : 'var(--text-muted)' }}>
                     {proj?.name ?? '—'}
                   </td>

@@ -336,6 +336,18 @@
   animation: modal-fade-in 0.15s ease-out;
 }
 
+/* Seamless (Trello-style) panel entrance — fade + subtle rise/scale. */
+@keyframes modal-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.modal-pop {
+  animation: modal-pop 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal-pop { animation: none; }
+}
+
 /* PRD §UX — print-friendly stylesheet (invoices, reports, single-page views).
    Hide chrome (sidebar, toasts, modals) and force white background. */
 @media print {

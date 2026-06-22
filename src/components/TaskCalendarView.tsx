@@ -11,6 +11,8 @@ interface Props {
   onNext: () => void;
   onToday: () => void;
   onOpen: (t: Task) => void;
+  /** child task id → parent task title, to show subtask lineage */
+  parentTitleById?: Record<string, string>;
 }
 
 const MONTH_LABEL_AZ = [
@@ -27,6 +29,7 @@ export function TaskCalendarView({
   onNext,
   onToday,
   onOpen,
+  parentTitleById,
 }: Props) {
   // PRD §FIN-09 — "today" anchored to Asia/Baku, not the browser's UTC.
   const todayIso = todayInBaku();
@@ -175,9 +178,9 @@ export function TaskCalendarView({
                             border: 'none',
                             cursor: 'pointer',
                           }}
-                          title={t.title}
+                          title={parentTitleById?.[t.id] ? `${t.title} (↳ ${parentTitleById[t.id]})` : t.title}
                         >
-                          {t.title}
+                          {parentTitleById?.[t.id] ? '↳ ' : ''}{t.title}
                         </button>
                       );
                     })}
