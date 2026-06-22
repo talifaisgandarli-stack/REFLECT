@@ -1,8 +1,11 @@
 # Reflect Architects OS — Product Requirements Document
-**Version:** 3.9 (Dashboard UX enhancements documented — REQ-DASH-09..14)
+**Version:** 3.10 (Project completion % defined — REQ-DASH-15)
 **Date:** 2026-06-22
 **Product Owner:** Talifa İsgəndərli
 **Status:** Pre-PMF / Active Development
+
+**v3.10 changes (2026-06-22):**
+- Added REQ-DASH-15 — defines "completion %" for the active-projects widget (US-DASH-01) as the project's done ÷ (total − cancelled) task ratio; "—" when no countable tasks. No schema change.
 
 **v3.9 changes (2026-06-22):**
 - Added REQ-DASH-09..14 — documents shipped dashboard UX additions (time-of-day greeting, scroll-to-top, minutes-to-next-meeting chip, activity CSV export, favorite-projects widget, recently-viewed widget). No behavior change; retroactive traceability only.
@@ -296,6 +299,11 @@ MIRAI
 **REQ-DASH-12** Activity feed CSV export: the current client-side filter (REQ-DASH-03) is exportable to CSV (Vaxt / Kim / Action / Entity).
 **REQ-DASH-13** Favorite projects widget — surfaces the user's starred projects (`project_favorites`, migration 0049); hidden when the user has none.
 **REQ-DASH-14** Recently-viewed widget — last visited projects/tasks/clients, stored local-only (no server query); hidden when empty.
+
+**REQ-DASH-15** **Project completion %** (active-projects health widget, US-DASH-01). Defined as `round( done ÷ (total − cancelled) × 100 )` over the project's tasks, where `total` is all non-archived tasks for the project, `cancelled` tasks are excluded from the denominator, and `done` tasks are the numerator.
+- A project with no countable tasks (`total − cancelled = 0`) displays "—", not `0%` — avoids implying zero progress on a project that simply has no tasks logged yet.
+- Rendered next to the phase badge and deadline colour; the % carries no health colour of its own (deadline colour already signals risk).
+- Computed client-side from a per-project task-status aggregate over the ≤8 projects shown — no schema change, no new column.
 
 **RLS:** widget aggregates check `is_admin()` server-side where applicable; non-admins receive `0` masked values rather than NULL to keep the API contract uniform. Presence + Focus widgets bypass admin gating (visible to all roles per REQ-PRESENCE-01 and REQ-FOCUS-01).
 
@@ -1001,7 +1009,7 @@ SO THAT I catch risks early
 
 Given I am admin and 5 projects are active
   When Dashboard loads
-  Then I see each project with phase badge, completion %, deadline color (green ≥14d / amber <14d / red <3d or overdue)
+  Then I see each project with phase badge, completion % (see REQ-DASH-15 for definition), deadline color (green ≥14d / amber <14d / red <3d or overdue)
   And clicking a project opens its detail page
   And empty state shows "Aktiv layihə yoxdur — Yeni layihə yarat" CTA when none exist
 ```

@@ -2,6 +2,7 @@
  * REQ-DASH-01..08 — admin + user dashboard variants.
  * REQ-DASH-09..14 — documented dashboard UX enhancements (greeting, scroll-to-top,
  *   meeting-countdown chip, activity CSV export, favorites + recently-viewed).
+ * REQ-DASH-15 — active-project completion % (done ÷ (total − cancelled) tasks).
  * REQ-DASH-03: activity feed filter pills (client-side).
  * REQ-DASH-04: health colors.
  * REQ-DASH-06: presence panel with real names + current page + last seen (REQ-PRESENCE-03..04).
@@ -100,6 +101,13 @@ const PRESENCE_LABEL: Record<string, string> = {
   away: 'Uzaqda',
   offline: 'Oflayn',
 };
+
+// ---------- Project completion (REQ-DASH-15) ----------
+// null → render "—" (no countable tasks); else done ÷ (total − cancelled) %.
+function completionPct(agg: { done: number; countable: number } | undefined): number | null {
+  if (!agg || agg.countable === 0) return null;
+  return Math.round((agg.done / agg.countable) * 100);
+}
 
 // ---------- Workload (US-DASH-05) ----------
 function workloadColor(count: number): string {
@@ -287,6 +295,31 @@ export function DashboardPage() {
         deadline: string | null;
         status: string;
       }>;
+    },
+  });
+
+  // REQ-DASH-15 — completion % for each active project: done ÷ (total −
+  // cancelled) tasks. One aggregate query over the ≤8 projects shown; the
+  // map holds { done, countable } so the render can show "—" when countable=0.
+  const activeProjectIds = useMemo(() => activeProjects.map((p) => p.id), [activeProjects]);
+  const { data: projectProgress = {} } = useQuery({
+    queryKey: ['projects-active-progress', activeProjectIds],
+    enabled: isAdmin && activeProjectIds.length > 0,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('tasks')
+        .select('project_id, status')
+        .in('project_id', activeProjectIds)
+        .is('archived_at', null);
+      const map: Record<string, { done: number; countable: number }> = {};
+      for (const t of (data ?? []) as Array<{ project_id: string | null; status: string }>) {
+        if (!t.project_id) continue;
+        const e = (map[t.project_id] ??= { done: 0, countable: 0 });
+        if (t.status === 'cancelled') continue; // excluded from denominator
+        e.countable += 1;
+        if (t.status === 'done') e.done += 1;
+      }
+      return map;
     },
   });
 
@@ -553,12 +586,20 @@ export function DashboardPage() {
               <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                 {activeProjects.map((p) => {
                   const h = taskHealth(p.deadline);
+                  // REQ-DASH-15 — completion %; null shows "—" (no countable tasks).
+                  const pct = completionPct((projectProgress as Record<string, { done: number; countable: number }>)[p.id]);
                   return (
                     <li key={p.id} className="rounded-card p-3" style={{ background: 'var(--surface-mist)', borderLeft: `3px solid ${HEALTH_COLOR[h]}` }}>
                       <a href={`/layihelər/${p.id}`} className="block" style={{ textDecoration: 'none', color: 'inherit' }}>
                         <div className="text-body font-medium truncate">{p.name}</div>
-                        <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                          {(p.phases && p.phases.length > 0) ? p.phases[p.phases.length - 1] : 'Faza yoxdur'}
+                        <div className="text-meta flex items-center justify-between gap-2" style={{ color: 'var(--text-muted)' }}>
+                          <span className="truncate">
+                            {(p.phases && p.phases.length > 0) ? p.phases[p.phases.length - 1] : 'Faza yoxdur'}
+                          </span>
+                          {/* REQ-DASH-15 — completion %, no health colour of its own */}
+                          <span style={{ fontVariantNumeric: 'tabular-nums' }} title="Tamamlanma">
+                            {pct === null ? '—' : `${pct}%`}
+                          </span>
                         </div>
                         <div className="text-meta mt-1" style={{ color: HEALTH_COLOR[h] }}>
                           {p.deadline ? `Son: ${formatDate(p.deadline)}` : 'Müddət yoxdur'}
