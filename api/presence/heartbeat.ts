@@ -27,9 +27,14 @@ async function handler(req: Request) {
     if ((status ?? 'online') === 'offline') {
       // Drop this session; the trigger recomputes user_presence (offline iff no
       // other live session remains).
-      await sb.from('presence_sessions').delete().eq('user_id', user.id).eq('session_id', sid);
+      const { error } = await sb
+        .from('presence_sessions')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('session_id', sid);
+      if (error) throw new HttpError(500, `presence delete failed: ${error.message}`);
     } else {
-      await sb.from('presence_sessions').upsert(
+      const { error } = await sb.from('presence_sessions').upsert(
         {
           user_id: user.id,
           session_id: sid,
@@ -40,6 +45,9 @@ async function handler(req: Request) {
         },
         { onConflict: 'user_id,session_id' },
       );
+      // Surface write failures (e.g. missing migration, RLS, service-role gap)
+      // instead of silently returning ok — otherwise presence just stays stale.
+      if (error) throw new HttpError(500, `presence upsert failed: ${error.message}`);
     }
     return jsonResponse({ ok: true });
   } catch (e) {
