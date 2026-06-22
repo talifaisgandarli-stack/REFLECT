@@ -53,14 +53,16 @@ const ARCHIVE_PEEK_LIMIT = 50;
 // deadline reads at a glance: red = overdue, amber = today, green = this week,
 // neutral = later. Falls back to literal hex so it renders even if a token is
 // missing.
-const DEADLINE_BADGE: Record<TimeGroup, { bg: string; fg: string }> = {
-  // designstyle4 §2.4/§4.2 — status chips are a light-tint bg + dark text pair
-  // (solid tokens, so they read on both light columns and the dark BU GÜN column).
-  overdue: { bg: 'var(--chip-cancelled-bg)', fg: 'var(--error-deep)' },
-  today: { bg: 'var(--chip-review-bg)', fg: 'var(--chip-review-text)' },
-  week: { bg: 'var(--chip-done-bg)', fg: 'var(--chip-done-text)' },
-  later: { bg: 'var(--surface-mist)', fg: 'var(--text-soft)' },
-  none: { bg: 'var(--surface-mist)', fg: 'var(--text-muted)' },
+// designstyle4 §4.2 — chips inside a card carry no background: just a leading
+// coloured dot + text. `dot` is the saturated status colour; text uses the dark
+// status token on light columns and the saturated colour on the dark BU GÜN
+// column (where dark text would vanish).
+const DEADLINE_TONE: Record<TimeGroup, { dot: string; light: string; dark: string }> = {
+  overdue: { dot: 'var(--error)', light: 'var(--error-deep)', dark: 'var(--error)' },
+  today: { dot: 'var(--warning)', light: 'var(--chip-review-text)', dark: 'var(--warning)' },
+  week: { dot: 'var(--success)', light: 'var(--chip-done-text)', dark: 'var(--success)' },
+  later: { dot: 'var(--text-muted)', light: 'var(--text-soft)', dark: 'var(--text-faint)' },
+  none: { dot: 'var(--text-muted)', light: 'var(--text-muted)', dark: 'var(--text-faint)' },
 };
 
 // Relative Azerbaijani deadline hint from a day delta (today = 0).
@@ -1426,17 +1428,25 @@ export function TasksPage() {
                           // Done/cancelled tasks never read as "overdue" — show neutral.
                           const settled = t.status === 'done' || t.status === 'cancelled';
                           const group = settled ? 'none' : taskTimeGroup(t, todayStr, endOfWeekStr);
-                          const badge = DEADLINE_BADGE[group];
+                          const tone = DEADLINE_TONE[group];
                           const delta = Math.round(
                             (Date.parse(t.deadline) - Date.parse(todayStr)) / 86400000,
                           );
                           return (
                             <span
-                              className="chip"
-                              style={{ background: badge.bg, color: badge.fg, fontVariantNumeric: 'tabular-nums' }}
+                              className="inline-flex items-center gap-1.5"
+                              style={{
+                                color: isToday ? tone.dark : tone.light,
+                                fontSize: 11,
+                                fontWeight: group === 'overdue' || group === 'today' ? 600 : 500,
+                                fontVariantNumeric: 'tabular-nums',
+                              }}
                               title={settled ? t.deadline : `${t.deadline} · ${deadlineRelative(delta)}`}
                             >
-                              <span aria-hidden>🕑</span>
+                              <span
+                                aria-hidden
+                                style={{ width: 7, height: 7, borderRadius: 999, background: tone.dot, flexShrink: 0 }}
+                              />
                               {settled ? t.deadline : deadlineRelative(delta)}
                             </span>
                           );
@@ -1643,20 +1653,27 @@ export function TasksPage() {
                                         >
                                           {k.title}
                                         </span>
-                                        {/* Subtask deadline — short date, coloured by urgency */}
+                                        {/* Subtask deadline — leading dot + short date, coloured by urgency */}
                                         {k.deadline ? (() => {
                                           const kGroup = kDone ? 'none' : taskTimeGroup(k, todayStr, endOfWeekStr);
+                                          const kTone = DEADLINE_TONE[kGroup];
                                           return (
                                             <span
+                                              className="inline-flex items-center gap-1"
                                               style={{
                                                 fontSize: 10,
-                                                color: TIME_GROUP_COLOR[kGroup],
+                                                fontWeight: 500,
+                                                color: isToday ? kTone.dark : kTone.light,
                                                 fontVariantNumeric: 'tabular-nums',
                                                 whiteSpace: 'nowrap',
                                               }}
                                               title={k.deadline}
                                             >
-                                              🕑 {k.deadline.slice(5)}
+                                              <span
+                                                aria-hidden
+                                                style={{ width: 6, height: 6, borderRadius: 999, background: kTone.dot, flexShrink: 0 }}
+                                              />
+                                              {k.deadline.slice(5)}
                                             </span>
                                           );
                                         })() : null}
