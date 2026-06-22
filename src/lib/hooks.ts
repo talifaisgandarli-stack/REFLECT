@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from './supabase';
+import { useAuth } from './store';
 import type {
   Client,
   ClientInteraction,
@@ -15,29 +16,39 @@ import type {
 } from '@/types/db';
 
 // ---------------- Projects ----------------
+// PRD §348 — admins read the base table (financial columns incl. budget_amount);
+// non-admins read projects_user_view, which omits amount columns so budget never
+// reaches them over the wire. Role is part of the query key so the two payloads
+// don't share a cache entry.
 export function useProjects() {
+  const { isAdmin } = useAuth();
   return useQuery({
-    queryKey: ['projects'],
+    queryKey: ['projects', isAdmin ? 'admin' : 'user'],
     queryFn: async (): Promise<Project[]> => {
       const { data, error } = await supabase
-        .from('projects')
+        .from(isAdmin ? 'projects' : 'projects_user_view')
         .select('*')
         .is('archived_at', null)
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as Project[];
     },
   });
 }
 
 export function useProject(id: string | undefined) {
+  const { isAdmin } = useAuth();
   return useQuery({
-    queryKey: ['project', id],
+    queryKey: ['project', id, isAdmin ? 'admin' : 'user'],
     enabled: !!id,
     queryFn: async (): Promise<Project | null> => {
-      const { data, error } = await supabase.from('projects').select('*').eq('id', id!).maybeSingle();
+      const { data, error } = await supabase
+        .from(isAdmin ? 'projects' : 'projects_user_view')
+        .select('*')
+        .eq('id', id!)
+        .maybeSingle();
       if (error) throw error;
-      return data ?? null;
+      return (data ?? null) as Project | null;
     },
   });
 }

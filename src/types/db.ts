@@ -652,10 +652,10 @@ export interface Database {
       };
       /** PRD §3 — all project columns for admins (incl. future financial fields). */
       projects_admin_view: { Row: Project };
-      /** PRD §3 — project columns excluding financial fields for non-admins. */
-      projects_user_view: {
-        Row: Pick<Project, 'id' | 'name' | 'client_id' | 'phases' | 'requires_expertise' | 'expertise_deadline' | 'deadline' | 'start_date' | 'status' | 'created_by' | 'created_at' | 'archived_at'>;
-      };
+      /** PRD §3 — all non-financial project columns for non-admins (no
+       *  budget_amount). Mirrors the full Project shape, which omits amount
+       *  fields; tags/description are read via cast where needed. */
+      projects_user_view: { Row: Project };
     };
     Functions: {
       is_admin: { Args: Record<string, never>; Returns: boolean };

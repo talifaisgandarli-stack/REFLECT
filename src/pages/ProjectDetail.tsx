@@ -237,8 +237,12 @@ export function ProjectDetailPage() {
           { project_id: id, items: Array.from(checked), completed_at: new Date().toISOString() },
           { onConflict: 'project_id' },
         );
-      // Create portfolio_workflows row (REQ-PROJ-04)
-      await supabase.from('portfolio_workflows').insert({ project_id: id });
+      // Create portfolio_workflows row (REQ-PROJ-04). Upsert + ignoreDuplicates
+      // so a reopen → re-close cycle never inserts a second row (the table now
+      // has unique(project_id); a duplicate would break AwardsSection.maybeSingle).
+      await supabase
+        .from('portfolio_workflows')
+        .upsert({ project_id: id }, { onConflict: 'project_id', ignoreDuplicates: true });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['project', id] });
