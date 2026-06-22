@@ -54,10 +54,11 @@ const ARCHIVE_PEEK_LIMIT = 50;
 // neutral = later. Falls back to literal hex so it renders even if a token is
 // missing.
 const DEADLINE_BADGE: Record<TimeGroup, { bg: string; fg: string }> = {
-  // Solid pills so they read on both light columns and the dark BU GÜN column.
-  overdue: { bg: 'var(--error-deep, #B91C1C)', fg: '#fff' },
-  today: { bg: 'var(--warning, #D97706)', fg: '#fff' },
-  week: { bg: 'var(--success-deep, #16A34A)', fg: '#fff' },
+  // designstyle4 §2.4/§4.2 — status chips are a light-tint bg + dark text pair
+  // (solid tokens, so they read on both light columns and the dark BU GÜN column).
+  overdue: { bg: 'var(--chip-cancelled-bg)', fg: 'var(--error-deep)' },
+  today: { bg: 'var(--chip-review-bg)', fg: 'var(--chip-review-text)' },
+  week: { bg: 'var(--chip-done-bg)', fg: 'var(--chip-done-text)' },
   later: { bg: 'var(--surface-mist)', fg: 'var(--text-soft)' },
   none: { bg: 'var(--surface-mist)', fg: 'var(--text-muted)' },
 };
@@ -1428,15 +1429,8 @@ export function TasksPage() {
                           );
                           return (
                             <span
-                              className="inline-flex items-center gap-1 rounded-btn"
-                              style={{
-                                background: badge.bg,
-                                color: badge.fg,
-                                fontSize: 11,
-                                padding: '1px 7px',
-                                fontWeight: 600,
-                                fontVariantNumeric: 'tabular-nums',
-                              }}
+                              className="chip"
+                              style={{ background: badge.bg, color: badge.fg, fontVariantNumeric: 'tabular-nums' }}
                               title={settled ? t.deadline : `${t.deadline} · ${deadlineRelative(delta)}`}
                             >
                               <span aria-hidden>🕑</span>
