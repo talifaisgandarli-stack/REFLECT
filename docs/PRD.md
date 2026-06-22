@@ -406,7 +406,9 @@ workload = estimated_duration × (1 + risk_buffer_pct/100)
 
 **REQ-TASK-09** Expertise subtasks (`is_expertise_subtask = true`), titles: Çertyoj hazırlığı / Spesifikasiya / Möhür+imza / Çap+ciltləmə / Ekspertizaya təhvil. These are **not** auto-created. The create modal offers an "Ekspertiza dəsti" shortcut that pre-fills the five titles as editable rows in the manual subtask builder (REQ-TASK-01); each still requires an assignee before it can be created, and the rows keep the purple "E" badge / `is_expertise_subtask` flag.
 
-**RLS:** `tasks` SELECT: project members + admin. Comments visible to anyone with task SELECT.
+**REQ-TASK-10** Admin-only tasks (`admin_only`, migration 0068): an admin can mark a task visible to admins only; it is hidden from non-admin members/assignees at the DB layer (RLS), so it never reaches the board/table/Gantt/calendar/CSV for them. Toggled via a checkbox in the create/edit modals (admin-gated); shown with a 🔒 on the board card. Subtask deadlines render inline on the board checklist (short date, urgency-coloured).
+
+**RLS:** `tasks` SELECT: admin sees all; non-admin sees a task only when `admin_only = false` AND (they are an assignee OR a project member). Comments visible to anyone with task SELECT.
 
 **Edge cases:**
 - Reassign last assignee → must replace, not empty

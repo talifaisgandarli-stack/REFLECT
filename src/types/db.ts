@@ -188,6 +188,8 @@ export interface Task {
   duration_unit: string | null;
   risk_buffer_pct: number;
   is_expertise_subtask: boolean;
+  /** migration 0068 — visible to admins only (hidden from members/assignees) */
+  admin_only?: boolean;
   workload: number | null;
   workload_calculated_at: string | null;
   cancel_reason: string | null;

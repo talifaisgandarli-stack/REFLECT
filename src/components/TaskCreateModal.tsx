@@ -88,6 +88,8 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
   const [unit, setUnit] = useState<DurationUnit>('hours');
   const [riskBuffer, setRiskBuffer] = useState<number>(0);
   const [assignSelf, setAssignSelf] = useState(true);
+  // migration 0068 — admin-only task (visible to admins only). Admins set it.
+  const [adminOnly, setAdminOnly] = useState(false);
 
   // Auto-fill Müddət as the day span when both dates are set (still editable).
   const applyAutoDuration = (s: string, d: string) => {
@@ -168,6 +170,7 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
         duration_unit: unit,
         risk_buffer_pct: Math.max(0, Math.min(100, Math.round(riskBuffer))),
         is_expertise_subtask: false,
+        admin_only: isAdmin ? adminOnly : false,
         // PRD §REQ-TASK-01 — propagate parent context when creating a subtask
         ...(parentTaskId
           ? { parent_task_id: parentTaskId, task_level: (parentTaskLevel ?? 0) + 1 }
@@ -416,6 +419,18 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
             />
             Mənə təyin et
           </label>
+
+          {/* migration 0068 — admin-only visibility (admins only) */}
+          {isAdmin ? (
+            <label className="flex items-center gap-2 text-body cursor-pointer">
+              <input
+                type="checkbox"
+                checked={adminOnly}
+                onChange={(e) => setAdminOnly(e.target.checked)}
+              />
+              🔒 Yalnız adminlər üçün (digər istifadəçilərə görünməz)
+            </label>
+          ) : null}
 
           {isAdmin ? (
             <Field label="Əlavə icraçılar (admin)">

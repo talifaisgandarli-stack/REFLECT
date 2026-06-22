@@ -54,6 +54,8 @@ export function TaskEditModal({ task, onClose }: Props) {
   );
   const [unit, setUnit] = useState<DurationUnit>((task.duration_unit as DurationUnit) ?? 'hours');
   const [assignees, setAssignees] = useState<string[]>(task.assignee_ids ?? []);
+  // migration 0068 — admin-only visibility (admins only)
+  const [adminOnly, setAdminOnly] = useState<boolean>(task.admin_only ?? false);
 
   // When the user sets both dates, auto-fill Müddət as the day span (editable).
   // Wired to the date onChange handlers (not a mount effect) so opening the
@@ -170,6 +172,7 @@ export function TaskEditModal({ task, onClose }: Props) {
           estimated_duration: estimated ? Number(estimated) : null,
           duration_unit: unit,
           assignee_ids: assignees,
+          ...(isAdmin ? { admin_only: adminOnly } : {}),
         })
         .eq('id', task.id);
       if (error) throw error;
@@ -389,6 +392,18 @@ export function TaskEditModal({ task, onClose }: Props) {
                 })}
               </div>
             </Field>
+          ) : null}
+
+          {/* migration 0068 — admin-only visibility (admins only) */}
+          {isAdmin ? (
+            <label className="flex items-center gap-2 text-body cursor-pointer">
+              <input
+                type="checkbox"
+                checked={adminOnly}
+                onChange={(e) => setAdminOnly(e.target.checked)}
+              />
+              🔒 Yalnız adminlər üçün (digər istifadəçilərə görünməz)
+            </label>
           ) : null}
 
           {/* Existing subtasks — editable + deletable — and a builder for new ones */}

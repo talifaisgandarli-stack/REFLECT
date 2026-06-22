@@ -1346,6 +1346,9 @@ export function TasksPage() {
                           return parts.length ? parts.join('\n\n') : undefined;
                         })()}
                       >
+                        {t.admin_only ? (
+                          <span title="Yalnız adminlər üçün" aria-label="Yalnız adminlər üçün" style={{ marginRight: 4 }}>🔒</span>
+                        ) : null}
                         {t.title}
                       </div>
                       {/* Design spec §8.3 — project context on each card */}
@@ -1640,6 +1643,23 @@ export function TasksPage() {
                                         >
                                           {k.title}
                                         </span>
+                                        {/* Subtask deadline — short date, coloured by urgency */}
+                                        {k.deadline ? (() => {
+                                          const kGroup = kDone ? 'none' : taskTimeGroup(k, todayStr, endOfWeekStr);
+                                          return (
+                                            <span
+                                              style={{
+                                                fontSize: 10,
+                                                color: TIME_GROUP_COLOR[kGroup],
+                                                fontVariantNumeric: 'tabular-nums',
+                                                whiteSpace: 'nowrap',
+                                              }}
+                                              title={k.deadline}
+                                            >
+                                              🕑 {k.deadline.slice(5)}
+                                            </span>
+                                          );
+                                        })() : null}
                                         {k.assignee_ids.length > 0 ? (
                                           <AvatarGroup people={assigneePeople(k.assignee_ids)} size={16} />
                                         ) : null}
