@@ -4,7 +4,7 @@
  * REQ-PROJ-04 — closeout checklist; "Layihəni Tamamla" sets status='closed'.
  * REQ-PROJ-05 — award/portfolio submission (referenced from Closeout tab).
  */
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useEffect, useState, useMemo } from 'react';
 import { trackRecentEntry } from '@/lib/useRecentlyViewed';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -352,6 +352,7 @@ export function ProjectDetailPage() {
 
       {/* OVERVIEW */}
       {tab === 'Overview' ? (
+        <>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="card lg:col-span-2">
             <div className="flex items-center justify-between mb-3">
@@ -488,6 +489,8 @@ export function ProjectDetailPage() {
             </dl>
           </div>
         </div>
+        {isAdmin ? <ProjectDangerZone projectId={id!} projectName={project.name} /> : null}
+        </>
       ) : null}
 
       {/* TASKS */}
@@ -2259,6 +2262,70 @@ function ProjectBudgetEditor({ projectId, initialBudget }: { projectId: string; 
           </button>
         ) : null}
       </dd>
+    </div>
+  );
+}
+
+// Hard delete (danger zone, admin-only). Permanently removes the project and
+// cascades to tasks/documents/closeout/portfolio (per 0001 FKs); financial rows
+// survive with project_id = null. Storage objects have no DB cascade, so we
+// remove them first. Guarded by a typed-name confirmation.
+function ProjectDangerZone({ projectId, projectName }: { projectId: string; projectName: string }) {
+  const navigate = useNavigate();
+  const [confirmText, setConfirmText] = useState('');
+  const del = useMutation({
+    mutationFn: async () => {
+      // Storage files aren't FK-cascaded — remove them before deleting the rows.
+      const { data: docs } = await supabase
+        .from('project_documents')
+        .select('storage_path')
+        .eq('project_id', projectId)
+        .not('storage_path', 'is', null);
+      const paths = (docs ?? [])
+        .map((d) => (d as { storage_path: string | null }).storage_path)
+        .filter((p): p is string => !!p);
+      if (paths.length) await supabase.storage.from('project-documents').remove(paths);
+
+      const { error } = await supabase.from('projects').delete().eq('id', projectId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Layihə silindi');
+      navigate('/layihelər');
+    },
+    onError: (e) => toast.error(`Silinmədi: ${(e as Error).message}`),
+  });
+
+  const armed = confirmText.trim() === projectName;
+  return (
+    <div className="card mt-4" style={{ border: '1px solid var(--error-border)' }}>
+      <h3 className="text-h3 mb-2" style={{ color: 'var(--error-deep)' }}>Təhlükəli zona</h3>
+      <p className="text-meta mb-3" style={{ color: 'var(--text-muted)' }}>
+        Layihəni həmişəlik sil. Bütün tapşırıqlar, sənədlər (yüklənmiş fayllar daxil),
+        closeout və portfolio silinəcək. Maliyyə qeydləri qalır, amma layihə əlaqəsi
+        itir. Bu əməliyyat geri qaytarıla bilməz.
+      </p>
+      <label className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
+        Təsdiq üçün layihə adını yazın: <strong style={{ color: 'var(--text)' }}>{projectName}</strong>
+      </label>
+      <div className="flex gap-2">
+        <input
+          className="input flex-1"
+          value={confirmText}
+          onChange={(e) => setConfirmText(e.target.value)}
+          placeholder={projectName}
+          aria-label="Layihə adı təsdiqi"
+        />
+        <button
+          type="button"
+          className="btn-primary"
+          style={{ background: 'var(--error-deep)', borderColor: 'var(--error-deep)', whiteSpace: 'nowrap' }}
+          disabled={!armed || del.isPending}
+          onClick={() => del.mutate()}
+        >
+          {del.isPending ? 'Silinir…' : 'Layihəni sil'}
+        </button>
+      </div>
     </div>
   );
 }

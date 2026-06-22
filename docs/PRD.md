@@ -363,6 +363,7 @@ Working-days mode is a v2 toggle; v1 = calendar days.
 **Edge cases:**
 - Project with no tasks → closeout still allowed (warning surfaced)
 - Reopen closed project: admin only; appends `reopened_at`
+- **Hard delete (admin only, danger zone):** permanently removes the project. Per the 0001 FKs this cascades to `tasks`, `project_documents`, `closeout_checklists`, `portfolio_workflows`; financial rows (`incomes`/`expenses`/`outsource_items`/`receivables`) survive with `project_id = null`. Storage objects are not FK-cascaded, so the UI removes the project's `project-documents` files first. Irreversible; gated by typing the exact project name to confirm. (Soft archive remains the default — this is the explicit destructive path.)
 
 ---
 
