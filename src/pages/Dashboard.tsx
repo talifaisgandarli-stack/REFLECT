@@ -164,6 +164,31 @@ export function DashboardPage() {
     activityScope,
     { enabled: activityReady },
   );
+  // B2 — the heatmap needs its own 12-week window, independent of the feed's
+  // 50-row pagination (otherwise "Son 12 həftə" only reflects the latest 50
+  // rows). Fetch lightweight (created_at, user_id) rows for the last 84 days,
+  // scoped like the feed. Keyed under ['activity', …] so the activity_log
+  // realtime invalidation refreshes it too.
+  const heatmapSince = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 84);
+    return d.toISOString();
+  }, []);
+  const { data: heatmapRows = [] } = useQuery({
+    queryKey: ['activity', 'heatmap', activityScope],
+    enabled: activityReady,
+    queryFn: async () => {
+      let q = supabase
+        .from('activity_log')
+        .select('created_at, user_id')
+        .gte('created_at', heatmapSince)
+        .order('created_at', { ascending: false })
+        .limit(5000);
+      if (!isAdmin && profile?.id) q = q.eq('user_id', profile.id);
+      const { data } = await q;
+      return (data ?? []) as Array<{ created_at: string; user_id: string | null }>;
+    },
+  });
   const { data: announcements = [], isLoading: announcementsLoading, isError: announcementsError } = useRecentAnnouncements(3);
   const { data: meetings = [], isLoading: meetingsLoading, isError: meetingsError } = useUpcomingMeetings(7);
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all');
@@ -356,9 +381,10 @@ export function DashboardPage() {
       const order = { red: 0, amber: 1, green: 2, none: 3 } as const;
       return order[taskHealth(a.deadline)] - order[taskHealth(b.deadline)];
     });
-  const overdue = tasks.filter((t) => taskHealth(t.deadline) === 'red');
+  // B1 — "Gecikmiş" = genuinely overdue (open + past due in Baku tz). Reuse
+  // overdueTasks; the old taskHealth==='red' set wrongly counted done/cancelled
+  // tasks and tasks merely due within 3 days.
   const onlineCount = presence.filter((p) => p.status === 'online').length;
-  // REQ-PRESENCE — show breakdown (online/away/offline) so admin sees full picture
   const awayCount = presence.filter((p) => p.status === 'away').length;
   const offlineCount = presence.filter((p) => p.status === 'offline').length;
 
@@ -551,7 +577,7 @@ export function DashboardPage() {
         <section className="lg:col-span-4 grid grid-cols-1 gap-3">
           <div className="grid grid-cols-3 gap-3">
             <Kpi label="Açıq" value={tasks.filter((t) => !['done', 'cancelled'].includes(t.status)).length} />
-            <Kpi label="Gecikmiş" value={overdue.length} red />
+            <Kpi label="Gecikmiş" value={overdueTasks.length} red />
             <Kpi label="Tamamlandı" value={tasks.filter((t) => t.status === 'done').length} />
           </div>
 
@@ -663,8 +689,8 @@ export function DashboardPage() {
               ↓ CSV
             </button>
           </div>
-          {/* Activity heatmap — last 12 weeks of personal activity, GitHub-style */}
-          <ActivityHeatmap activity={activity} userId={isAdmin ? null : profile?.id ?? null} />
+          {/* Activity heatmap — last 12 weeks, own dedicated query (B2) */}
+          <ActivityHeatmap activity={heatmapRows} userId={null} />
           <div className="flex flex-wrap gap-1.5 mb-3">
             {ACTIVITY_FILTERS.map((f) => (
               <button
@@ -688,8 +714,21 @@ export function DashboardPage() {
             ) : activityError ? (
               <WidgetError />
             ) : (
-              <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                Aktivlik yoxdur.
+              // B3 — a client-side filter over a server-paginated window can hide
+              // matches behind later pages; offer load-more here instead of
+              // dead-ending on a false "nothing".
+              <div className="text-meta space-y-2" style={{ color: 'var(--text-muted)' }}>
+                <div>{activityFilter === 'all' ? 'Aktivlik yoxdur.' : 'Bu filtrə uyğun nəticə yoxdur.'}</div>
+                {activity.length >= activityLimit ? (
+                  <button
+                    type="button"
+                    className="chip"
+                    style={{ fontSize: 11, color: 'var(--text-muted)' }}
+                    onClick={() => setActivityLimit((n) => n + 50)}
+                  >
+                    Daha çox yüklə
+                  </button>
+                ) : null}
               </div>
             )
           ) : (
