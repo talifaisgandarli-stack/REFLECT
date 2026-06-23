@@ -88,6 +88,12 @@ export function FinancePage() {
     queryKey: ['fin', 'expenses'],
     queryFn: async () => (await supabase.from('expenses').select('*').limit(200)).data ?? [],
   });
+  // REQ-FIN-06 — paid outsource costs feed the P&L (bucketed by paid_at month).
+  const outsourcePaid = useQuery({
+    queryKey: ['fin', 'outsource_paid'],
+    queryFn: async () =>
+      (await supabase.from('outsource_items').select('amount, paid_at').eq('status', 'paid').limit(500)).data ?? [],
+  });
   const receivables = useQuery({
     queryKey: ['fin', 'receivables'],
     queryFn: async () =>
@@ -387,7 +393,16 @@ export function FinancePage() {
       {tab === 'Xərclər' ? <ExpensesTable /> : null}
       {tab === 'Sabit' ? <RecurringExpensesPanel /> : null}
 
-      {tab === 'P&L' ? <PnLTable incomes={incomes.data ?? []} expenses={expenses.data ?? []} /> : null}
+      {tab === 'P&L' ? (
+        <PnLTable
+          incomes={incomes.data ?? []}
+          expenses={expenses.data ?? []}
+          outsource={(outsourcePaid.data ?? []).map((r: { amount: number | null; paid_at: string | null }) => ({
+            amount: Number(r.amount ?? 0),
+            occurred_at: r.paid_at,
+          }))}
+        />
+      ) : null}
       {tab === 'Outsource' ? <OutsourceSummary /> : null}
 
       {modal ? <IncomeExpenseModal kind={modal} onClose={() => setModal(null)} /> : null}
@@ -882,35 +897,41 @@ function RecurringExpensesPanel() {
 function PnLTable({
   incomes,
   expenses,
+  outsource = [],
 }: {
   incomes: Array<{ amount: number; occurred_at: string | null }>;
   expenses: Array<{ amount: number; occurred_at: string | null }>;
+  // REQ-FIN-06 — paid outsource costs, bucketed by paid_at (passed from parent).
+  outsource?: Array<{ amount: number; occurred_at: string | null }>;
 }) {
-  const rows = byMonth(incomes, expenses);
+  const rows = byMonth(incomes, expenses, outsource);
   if (rows.length === 0) {
     return <div className="card text-meta" style={{ color: 'var(--text-muted)' }}>Məlumat yoxdur.</div>;
   }
   const totIn = rows.reduce((s, r) => s + r.in, 0);
   const totOut = rows.reduce((s, r) => s + r.out, 0);
+  const totOus = rows.reduce((s, r) => s + r.outsource, 0);
+  const totNet = totIn - totOut - totOus;
   return (
     <div className="card overflow-x-auto">
-      <h3 className="text-h3 mb-3">Gəlir / Xərc / Xalis (aylıq)</h3>
+      <h3 className="text-h3 mb-3">Gəlir / Xərc / Outsource / Xalis (aylıq)</h3>
       <table className="w-full text-body">
         <thead>
           <tr style={{ borderBottom: '1px solid var(--line)' }}>
-            {['Ay', 'Gəlir', 'Xərc', 'Xalis'].map((h) => (
+            {['Ay', 'Gəlir', 'Xərc', 'Outsource', 'Xalis'].map((h) => (
               <th key={h} className="text-left py-2 px-3 text-meta" style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {rows.map((r) => {
-            const net = r.in - r.out;
+            const net = r.in - r.out - r.outsource;
             return (
               <tr key={r.m} style={{ borderBottom: '1px solid var(--line-soft)' }}>
                 <td className="py-2 px-3">{r.m}</td>
                 <td className="py-2 px-3" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--success-deep)' }}>{formatAZN(r.in)}</td>
                 <td className="py-2 px-3" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--error-deep)' }}>{formatAZN(r.out)}</td>
+                <td className="py-2 px-3" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--error-deep)' }}>{formatAZN(r.outsource)}</td>
                 <td className="py-2 px-3 font-medium" style={{ fontVariantNumeric: 'tabular-nums', color: net >= 0 ? 'var(--success-deep)' : 'var(--error-deep)' }}>{formatAZN(net)}</td>
               </tr>
             );
@@ -919,7 +940,8 @@ function PnLTable({
             <td className="py-2 px-3 font-medium">Cəmi</td>
             <td className="py-2 px-3 font-medium" style={{ color: 'var(--success-deep)' }}>{formatAZN(totIn)}</td>
             <td className="py-2 px-3 font-medium" style={{ color: 'var(--error-deep)' }}>{formatAZN(totOut)}</td>
-            <td className="py-2 px-3 font-medium" style={{ color: totIn - totOut >= 0 ? 'var(--success-deep)' : 'var(--error-deep)' }}>{formatAZN(totIn - totOut)}</td>
+            <td className="py-2 px-3 font-medium" style={{ color: 'var(--error-deep)' }}>{formatAZN(totOus)}</td>
+            <td className="py-2 px-3 font-medium" style={{ color: totNet >= 0 ? 'var(--success-deep)' : 'var(--error-deep)' }}>{formatAZN(totNet)}</td>
           </tr>
         </tbody>
       </table>
@@ -1000,20 +1022,28 @@ function OutsourceSummary() {
 function byMonth(
   ins: Array<{ amount: number; occurred_at: string | null }>,
   outs: Array<{ amount: number; occurred_at: string | null }>,
+  // REQ-FIN-06: outsource costs are a distinct P&L line (bucketed by paid_at).
+  outsource: Array<{ amount: number; occurred_at: string | null }> = [],
 ) {
   // REQ-FIN-09: bucket by Asia/Baku month, not UTC slice.
-  const m: Record<string, { m: string; in: number; out: number }> = {};
+  const m: Record<string, { m: string; in: number; out: number; outsource: number }> = {};
   for (const r of ins) {
     const k = bakuMonthKey(r.occurred_at);
     if (!k) continue;
-    m[k] ??= { m: k, in: 0, out: 0 };
+    m[k] ??= { m: k, in: 0, out: 0, outsource: 0 };
     m[k].in += Number(r.amount);
   }
   for (const r of outs) {
     const k = bakuMonthKey(r.occurred_at);
     if (!k) continue;
-    m[k] ??= { m: k, in: 0, out: 0 };
+    m[k] ??= { m: k, in: 0, out: 0, outsource: 0 };
     m[k].out += Number(r.amount);
+  }
+  for (const r of outsource) {
+    const k = bakuMonthKey(r.occurred_at);
+    if (!k) continue;
+    m[k] ??= { m: k, in: 0, out: 0, outsource: 0 };
+    m[k].outsource += Number(r.amount);
   }
   return Object.values(m).sort((a, b) => a.m.localeCompare(b.m));
 }

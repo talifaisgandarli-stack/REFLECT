@@ -17,11 +17,27 @@ const STATUS_NEXT: Partial<Record<Status, Status>> = {
   delivered: 'paid',
 };
 
+type OutsourceRow = {
+  id: string;
+  work_title: string;
+  project_id: string | null;
+  contact_company: string | null;
+  contact_person: string | null;
+  amount: number | null;
+  deadline: string | null;
+  status: Status;
+  responsible_user_id: string | null;
+  payment_method: string | null;
+};
+
 export function OutsourcePage() {
   const { isAdmin } = useAuth();
   const qc = useQueryClient();
   const view = isAdmin ? 'outsource_items' : 'outsource_user_view';
   const [createOpen, setCreateOpen] = useState(false);
+  // PRD §REQ-FIN-07 (audit #7) — admin can edit an existing item (amount, deadline,
+  // contact, responsible, status) instead of delete + recreate. null = create mode.
+  const [editItem, setEditItem] = useState<OutsourceRow | null>(null);
   // PRD §UX — free-text search across work_title (consistency with other list pages)
   const [search, setSearch] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
@@ -54,6 +70,19 @@ export function OutsourcePage() {
   });
   const projectName = (id: string | null | undefined) =>
     (id && projects.data?.get(id)) || '—';
+
+  // PRD §REQ-FIN-07 (audit #5) — resolve responsible_user_id → full_name so the
+  // spend breakdown shows people, not raw UUID fragments. Cached for 5 min.
+  const profilesMap = useQuery({
+    queryKey: ['outsource-profiles-map'],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data } = await supabase.from('profiles').select('id, full_name');
+      return new Map((data ?? []).map((p) => [p.id, p.full_name as string | null]));
+    },
+  });
+  const responsibleName = (id: string | null | undefined) =>
+    (id && profilesMap.data?.get(id)) || null;
 
   const advanceStatus = useMutation({
     mutationFn: async ({ id, nextStatus }: { id: string; nextStatus: Status }) => {
@@ -163,8 +192,8 @@ export function OutsourcePage() {
               <ul className="space-y-1.5">
                 {rows.slice(0, 8).map(([id, v]) => (
                   <li key={id} className="flex items-center gap-3 text-meta">
-                    <span className="w-32 shrink-0 truncate" style={{ color: 'var(--text-muted)' }}>
-                      {id === 'unassigned' ? '— təyin edilməyib —' : id.slice(0, 8)}
+                    <span className="w-32 shrink-0 truncate" style={{ color: 'var(--text-muted)' }} title={id === 'unassigned' ? undefined : (responsibleName(id) ?? id)}>
+                      {id === 'unassigned' ? '— təyin edilməyib —' : (responsibleName(id) ?? id.slice(0, 8))}
                     </span>
                     <div className="flex-1 h-4 rounded-full" style={{ background: 'var(--line-soft)' }}>
                       <div
@@ -457,16 +486,28 @@ export function OutsourcePage() {
                           </button>
                         </span>
                       ) : (
-                        <button
-                          type="button"
-                          className="chip opacity-50 hover:opacity-100"
-                          style={{ color: 'var(--error-deep)', fontSize: 13 }}
-                          onClick={() => setConfirmDeleteId(row.id)}
-                          title="Sil"
-                          aria-label={`Sifarişi sil: ${row.work_title}`}
-                        >
-                          🗑
-                        </button>
+                        <span className="inline-flex gap-1">
+                          <button
+                            type="button"
+                            className="chip opacity-50 hover:opacity-100"
+                            style={{ color: 'var(--brand-text)', fontSize: 13 }}
+                            onClick={() => setEditItem(row as OutsourceRow)}
+                            title="Düzəlt"
+                            aria-label={`Sifarişi düzəlt: ${row.work_title}`}
+                          >
+                            ✎
+                          </button>
+                          <button
+                            type="button"
+                            className="chip opacity-50 hover:opacity-100"
+                            style={{ color: 'var(--error-deep)', fontSize: 13 }}
+                            onClick={() => setConfirmDeleteId(row.id)}
+                            title="Sil"
+                            aria-label={`Sifarişi sil: ${row.work_title}`}
+                          >
+                            🗑
+                          </button>
+                        </span>
                       )}
                     </td>
                   ) : null}
@@ -497,23 +538,29 @@ export function OutsourcePage() {
           </table>
         </div>
       )}
-      {createOpen && isAdmin ? <CreateOutsourceModal onClose={() => setCreateOpen(false)} /> : null}
+      {(createOpen || editItem) && isAdmin ? (
+        <OutsourceModal
+          item={editItem}
+          onClose={() => { setCreateOpen(false); setEditItem(null); }}
+        />
+      ) : null}
     </>
   );
 }
 
-function CreateOutsourceModal({ onClose }: { onClose: () => void }) {
+function OutsourceModal({ item, onClose }: { item: OutsourceRow | null; onClose: () => void }) {
   const { isAdmin } = useAuth();
   const qc = useQueryClient();
-  const [workTitle, setWorkTitle] = useState('');
-  const [contactCompany, setContactCompany] = useState('');
-  const [contactPerson, setContactPerson] = useState('');
-  const [amount, setAmount] = useState('');
-  const [deadline, setDeadline] = useState('');
-  const [status, setStatus] = useState<Status>('order');
-  const [projectId, setProjectId] = useState<string>('');
-  const [responsibleUserId, setResponsibleUserId] = useState<string>('');
-  const [paymentMethod, setPaymentMethod] = useState<string>('');
+  const isEdit = !!item;
+  const [workTitle, setWorkTitle] = useState(item?.work_title ?? '');
+  const [contactCompany, setContactCompany] = useState(item?.contact_company ?? '');
+  const [contactPerson, setContactPerson] = useState(item?.contact_person ?? '');
+  const [amount, setAmount] = useState(item?.amount != null ? String(item.amount) : '');
+  const [deadline, setDeadline] = useState(item?.deadline ?? '');
+  const [status, setStatus] = useState<Status>(item?.status ?? 'order');
+  const [projectId, setProjectId] = useState<string>(item?.project_id ?? '');
+  const [responsibleUserId, setResponsibleUserId] = useState<string>(item?.responsible_user_id ?? '');
+  const [paymentMethod, setPaymentMethod] = useState<string>(item?.payment_method ?? '');
 
   const projects = useQuery({
     queryKey: ['projects', 'active-list'],
@@ -533,20 +580,28 @@ function CreateOutsourceModal({ onClose }: { onClose: () => void }) {
     },
   });
 
-  const create = useMutation({
+  const save = useMutation({
     mutationFn: async () => {
       if (!workTitle.trim()) throw new Error('İş adı tələb olunur');
-      const { error } = await supabase.from('outsource_items').insert({
+      // PRD §REQ-FIN-04 (audit #3) — amount > 0 at the form layer (DB also checks).
+      const amt = amount.trim() ? Number(amount) : null;
+      if (amt !== null && (!Number.isFinite(amt) || amt <= 0)) {
+        throw new Error('Məbləğ 0-dan böyük olmalıdır');
+      }
+      const payload = {
         work_title: workTitle.trim(),
         contact_company: contactCompany.trim() || null,
         contact_person: contactPerson.trim() || null,
-        amount: amount ? Number(amount) : null,
+        amount: amt,
         deadline: deadline || null,
         status,
         project_id: projectId || null,
         responsible_user_id: responsibleUserId || null,
         payment_method: isAdmin ? paymentMethod || null : null,
-      });
+      };
+      const { error } = isEdit
+        ? await supabase.from('outsource_items').update(payload).eq('id', item!.id)
+        : await supabase.from('outsource_items').insert(payload);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -559,13 +614,13 @@ function CreateOutsourceModal({ onClose }: { onClose: () => void }) {
   return (
     <div
       role="dialog"
-      aria-label="Yeni podrat işi"
+      aria-label={isEdit ? 'Podrat işini düzəlt' : 'Yeni podrat işi'}
       className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8 overflow-y-auto"
       style={{ background: 'rgba(14,22,17,0.4)' }}
       onClick={onClose}
     >
       <div className="card w-full max-w-lg" style={{ padding: 24 }} onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-h3 mb-4">Yeni podrat işi</h3>
+        <h3 className="text-h3 mb-4">{isEdit ? 'Podrat işini düzəlt' : 'Yeni podrat işi'}</h3>
         <div className="space-y-3">
           <label className="block">
             <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>İş adı *</span>
@@ -593,7 +648,7 @@ function CreateOutsourceModal({ onClose }: { onClose: () => void }) {
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
               <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Məbləğ (AZN)</span>
-              <input type="number" className="input w-full" value={amount} onChange={(e) => setAmount(e.target.value)} />
+              <input type="number" min="0.01" step="0.01" className="input w-full" value={amount} onChange={(e) => setAmount(e.target.value)} />
             </label>
             <label className="block">
               <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Müddət</span>
@@ -628,14 +683,14 @@ function CreateOutsourceModal({ onClose }: { onClose: () => void }) {
               </select>
             </label>
           ) : null}
-          {create.error ? (
-            <p className="text-meta" style={{ color: 'var(--error-deep)' }}>{(create.error as Error).message}</p>
+          {save.error ? (
+            <p className="text-meta" style={{ color: 'var(--error-deep)' }}>{(save.error as Error).message}</p>
           ) : null}
         </div>
         <div className="flex gap-3 justify-end mt-5">
           <button className="btn-ghost" onClick={onClose}>Ləğv et</button>
-          <button className="btn-primary" disabled={create.isPending} onClick={() => create.mutate()}>
-            {create.isPending ? 'Yaradılır…' : 'Yarat'}
+          <button className="btn-primary" disabled={save.isPending} onClick={() => save.mutate()}>
+            {save.isPending ? (isEdit ? 'Saxlanılır…' : 'Yaradılır…') : (isEdit ? 'Yadda saxla' : 'Yarat')}
           </button>
         </div>
       </div>
