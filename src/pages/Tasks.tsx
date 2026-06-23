@@ -125,7 +125,7 @@ function TaskCardMenu({
   }, [open]);
 
   const settled = status === 'done' || status === 'cancelled';
-  const itemCls = 'flex items-center gap-2 w-full text-left px-3 py-2 text-meta hover:bg-surface-mist rounded-btn';
+  const itemCls = 'flex items-center gap-2 w-full text-left px-3 py-2.5 min-h-[40px] text-meta hover:bg-surface-mist rounded-btn';
 
   return (
     <div ref={ref} className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
@@ -136,7 +136,7 @@ function TaskCardMenu({
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         className="inline-flex items-center justify-center rounded-btn hover:bg-surface-mist"
-        style={{ width: 32, height: 32, color: 'var(--text-muted)' }}
+        style={{ width: 36, height: 36, color: 'var(--text-muted)' }}
       >
         <IconMore size={18} />
       </button>
@@ -951,7 +951,7 @@ export function TasksPage() {
     [filtered],
   );
   const meta = `${filtered.length} cəmi · ${grouped.active.length} icrada · ${grouped.review.length} yoxlamada${
-    totalEstimateH > 0 ? ` · ~${Math.round(totalEstimateH)}s` : ''
+    totalEstimateH > 0 ? ` · ~${Math.round(totalEstimateH)} saat` : ''
   }${
     overdueCount > 0 ? ` · ⚠ ${overdueCount} gecikmiş` : ''
   }`;
@@ -1308,6 +1308,17 @@ export function TasksPage() {
           onCancel={(t) => setCancelling({ id: t.id, title: t.title })}
         />
       ) : view === 'board' ? (
+        <>
+        {/* Legend so the deadline dot colours are learnable at a glance */}
+        <div className="flex items-center gap-3 flex-wrap mb-3" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+          <span style={{ fontWeight: 500 }}>Son tarix:</span>
+          {([['overdue', 'gecikmiş'], ['today', 'bu gün'], ['week', 'bu həftə'], ['later', 'sonra']] as Array<[TimeGroup, string]>).map(([g, label]) => (
+            <span key={g} className="inline-flex items-center gap-1">
+              <span aria-hidden style={{ width: 7, height: 7, borderRadius: 999, background: DEADLINE_TONE[g].dot, display: 'inline-block' }} />
+              {label}
+            </span>
+          ))}
+        </div>
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
           {TASK_STATUS_ORDER.filter((s) => !compactBoard || (s !== 'done' && s !== 'cancelled')).map((s) => {
             // Design spec §8.3 — column order is İdeyalar · BU GÜN · İcrada · …
@@ -1367,12 +1378,23 @@ export function TasksPage() {
                 >
                   {isToday ? 'BU GÜN' : TASK_STATUS_LABEL[s]} · {grouped[s].length}
                   {totalHours > 0 ? (
-                    <span style={{ marginLeft: 6, opacity: 0.6, fontVariantNumeric: 'tabular-nums' }}>
-                      · {Math.round(totalHours)}s
+                    <span
+                      style={{ marginLeft: 6, opacity: 0.6, fontVariantNumeric: 'tabular-nums' }}
+                      title="Bu sütundakı planlaşdırılmış saatların cəmi"
+                    >
+                      · {Math.round(totalHours)} saat
                     </span>
                   ) : null}
                 </h3>
                 <div className="space-y-2" role="list" aria-label={TASK_STATUS_LABEL[s]}>
+                  {grouped[s].length === 0 ? (
+                    <p
+                      className="text-meta"
+                      style={{ color: 'var(--text-muted)', fontSize: 11, textAlign: 'center', padding: '16px 8px', opacity: 0.7 }}
+                    >
+                      Tapşırıq yoxdur
+                    </p>
+                  ) : null}
                   {grouped[s].map((t) => {
                     // PRD §UX — surface overdue tasks visually on the board so they
                     // can't be missed when scrolling through a column. Skip done/cancelled.
@@ -1454,7 +1476,9 @@ export function TasksPage() {
                           ? '3px solid var(--success-deep, #16794a)'
                           : undefined,
                         opacity: draggingId === t.id ? 0.4 : 1,
-                        cursor: draggingId === t.id ? 'grabbing' : 'grab',
+                        // pointer (not grab) signals the card is clickable → edit;
+                        // dragging still works and switches to grabbing mid-drag.
+                        cursor: draggingId === t.id ? 'grabbing' : 'pointer',
                         transition: 'opacity 120ms ease, box-shadow 120ms ease, transform 120ms ease',
                       }}
                     >
@@ -1829,6 +1853,7 @@ export function TasksPage() {
             );
           })}
         </div>
+        </>
       ) : view === 'calendar' ? (
         <TaskCalendarView
           tasks={filtered}
