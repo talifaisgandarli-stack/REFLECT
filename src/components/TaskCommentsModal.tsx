@@ -164,8 +164,12 @@ export function TaskCommentsModal({
       // Convert estimate to seconds (assume hours unit by default)
       const est = task?.estimated_duration ?? task?.workload ?? null;
       const unit = task?.duration_unit ?? 'hours';
-      const estSec = est == null ? null : Math.round(est * (unit === 'days' ? 86400 : unit === 'minutes' ? 60 : 3600));
-      return { trackedSec, estSec };
+      const toSec = (v: number) => Math.round(v * (unit === 'days' ? 86400 : unit === 'minutes' ? 60 : 3600));
+      const estSec = est == null ? null : toSec(est);
+      // workload = estimated_duration × (1 + risk_buffer_pct/100), computed by the
+      // DB trigger (REQ-TASK-06). Surfaced so the Risk % effect is visible.
+      const workloadSec = task?.workload == null ? null : toSec(task.workload);
+      return { trackedSec, estSec, workloadSec };
     },
   });
 
@@ -1209,7 +1213,7 @@ function TaskEstimateBar({
   data,
 }: {
   taskId: string;
-  data?: { trackedSec: number; estSec: number | null };
+  data?: { trackedSec: number; estSec: number | null; workloadSec?: number | null };
 }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -1219,6 +1223,7 @@ function TaskEstimateBar({
 
   const trackedSec = data?.trackedSec ?? 0;
   const estSec = data?.estSec ?? null;
+  const workloadSec = data?.workloadSec ?? null;
   const overrun = estSec != null && trackedSec > estSec;
 
   // Hide row entirely when there's nothing to show
@@ -1250,6 +1255,10 @@ function TaskEstimateBar({
       <span>
         ⏱ İzlənmiş: <strong style={{ color: 'var(--text)' }}>{formatDuration(trackedSec)}</strong>
         {estSec != null && !editing ? <> / Plan: {formatDuration(estSec)}</> : null}
+        {/* İş yükü = Plan + Risk % buferi (REQ-TASK-06); göstərilir ki, riskin təsiri görünsün */}
+        {workloadSec != null && !editing ? (
+          <> · İş yükü: <strong style={{ color: 'var(--brand-text)' }} title="Plan müddəti × (1 + Risk %/100)">{formatDuration(workloadSec)}</strong></>
+        ) : null}
       </span>
       {editing ? (
         <span className="flex items-center gap-1">
