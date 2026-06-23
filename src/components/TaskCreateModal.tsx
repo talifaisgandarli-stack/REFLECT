@@ -345,6 +345,20 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
             </Field>
           </div>
 
+          {/* Working-day duration readout (Mon–Fri) + equivalent work hours */}
+          {(() => {
+            const wd = workingDaysBetween(startDate, deadline);
+            if (wd == null) return null;
+            return (
+              <div
+                className="text-meta px-3 py-2 rounded-btn"
+                style={{ background: 'var(--brand-mist)', color: 'var(--brand-text)', fontVariantNumeric: 'tabular-nums' }}
+              >
+                ⏱ Müddət: <strong>{wd} iş günü</strong> · <strong>{wd * WORK_HOURS_PER_DAY} saat</strong>
+              </div>
+            );
+          })()}
+
           {/* PRD §REQ-TASK — warn (don't block) if task deadline exceeds project deadline */}
           {(() => {
             if (!deadline || !projectId) return null;

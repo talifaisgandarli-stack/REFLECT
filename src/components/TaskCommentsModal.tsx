@@ -15,6 +15,21 @@ import { formatDuration } from '@/lib/useTimeTracking';
 import { renderCommentMarkdown } from '@/lib/sanitize';
 import { dispatchOpenTask } from '@/lib/events';
 
+const WORK_HOURS_PER_DAY = 8;
+// Working days (Mon–Fri, inclusive of both endpoints) between two ISO dates.
+function workingDaysBetween(start: string | null | undefined, end: string | null | undefined): number | null {
+  if (!start || !end) return null;
+  const s = new Date(`${start}T00:00:00`);
+  const e = new Date(`${end}T00:00:00`);
+  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime()) || e < s) return null;
+  let count = 0;
+  for (const cur = new Date(s); cur <= e; cur.setDate(cur.getDate() + 1)) {
+    const d = cur.getDay();
+    if (d !== 0 && d !== 6) count++;
+  }
+  return count;
+}
+
 type Comment = {
   id: string;
   task_id: string;
@@ -126,34 +141,6 @@ export function TaskCommentsModal({
     });
   }, [taskId, taskTitle]);
 
-  // PRD §REQ-TASK — show child subtasks at a glance
-  const subtasks = useQuery({
-    queryKey: ['task_subtasks', taskId],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('tasks')
-        .select('id, title, status')
-        .eq('parent_task_id', taskId)
-        .is('archived_at', null)
-        .order('created_at', { ascending: true });
-      return (data ?? []) as Array<{ id: string; title: string; status: string }>;
-    },
-  });
-
-  // PRD §REQ-TASK — toggle subtask status done ↔ active inline
-  const toggleSubtaskStatus = useMutation({
-    mutationFn: async (input: { id: string; nextStatus: 'done' | 'active' }) => {
-      const { error } = await supabase
-        .from('tasks')
-        .update({ status: input.nextStatus })
-        .eq('id', input.id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['task_subtasks', taskId] });
-      qc.invalidateQueries({ queryKey: ['tasks'] });
-    },
-  });
 
   // PRD §REQ-TASK-06 — estimated (planned) vs actual tracked time
   const estimateVsActual = useQuery({
@@ -351,8 +338,6 @@ export function TaskCommentsModal({
             </div>
             <TaskTitleInlineEditor taskId={taskId} initial={taskTitle} />
           </div>
-          {/* PRD §REQ-TASK — quick subtask creation under this task */}
-          <SubtaskInlineCreate parentTaskId={taskId} />
           <button className="text-meta" style={{ fontSize: 20 }} onClick={onClose}>✕</button>
         </div>
 
@@ -381,59 +366,8 @@ export function TaskCommentsModal({
             </button>
           ) : null}
 
-          {/* PRD §REQ-TASK-05 — subtask list (when this task has children) */}
-          {(subtasks.data ?? []).length > 0 ? (
-            <div
-              className="rounded-card p-2 mb-2"
-              style={{ background: 'var(--surface-mist)', fontSize: 12 }}
-            >
-              <div className="text-meta mb-1" style={{ color: 'var(--text-muted)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Yarımtapşırıqlar ({(subtasks.data ?? []).length})
-              </div>
-              <ul className="space-y-0.5">
-                {(subtasks.data ?? []).map((s) => (
-                  <li key={s.id} className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => toggleSubtaskStatus.mutate({
-                        id: s.id,
-                        nextStatus: s.status === 'done' ? 'active' : 'done',
-                      })}
-                      disabled={toggleSubtaskStatus.isPending}
-                      style={{
-                        color: s.status === 'done' ? 'var(--success-deep, #16794a)' : 'var(--text-muted)',
-                        fontSize: 13,
-                        cursor: 'pointer',
-                        background: 'transparent',
-                        border: 'none',
-                        padding: 0,
-                      }}
-                      title={s.status === 'done' ? 'Bərpa et' : 'Tamamla'}
-                      aria-label={s.status === 'done' ? `Bərpa et: ${s.title}` : `Tamamla: ${s.title}`}
-                    >
-                      {s.status === 'done' ? '✓' : '○'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => dispatchOpenTask({ id: s.id, title: s.title })}
-                      className="text-left hover:underline"
-                      style={{
-                        color: s.status === 'done' ? 'var(--text-muted)' : 'var(--text)',
-                        textDecoration: s.status === 'done' ? 'line-through' : 'none',
-                        background: 'transparent',
-                        border: 'none',
-                        padding: 0,
-                        flex: 1,
-                      }}
-                      title="Yarımtapşırığı aç"
-                    >
-                      {s.title}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
+          {/* PRD §REQ-TASK-05 — subtask checklist: inline expand + inline add */}
+          <SubtaskSection parentTaskId={taskId} />
           {/* PRD §REQ-TASK-06 — estimate vs tracked summary chip + inline edit */}
           <TaskEstimateBar taskId={taskId} data={estimateVsActual.data} />
 
@@ -647,71 +581,159 @@ function TaskTitleInlineEditor({ taskId, initial }: { taskId: string; initial: s
 
 // PRD §REQ-TASK — inline subtask creation from a parent task's comments modal.
 // Click-to-expand input; Enter submits; sets parent_task_id + inherits project.
-function SubtaskInlineCreate({ parentTaskId }: { parentTaskId: string }) {
+// Subtask checklist: lists children, expands each inline (reusing the same
+// date/assignee inline editors as the parent — no separate popup), and adds new
+// subtasks via an inline field at the bottom of the list (not a top button).
+function SubtaskSection({ parentTaskId }: { parentTaskId: string }) {
   const qc = useQueryClient();
   const { profile } = useAuth();
-  const [open, setOpen] = useState(false);
-  const [title, setTitle] = useState('');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+
+  // Includes archived (= completed) children so a ticked subtask stays visible
+  // (struck-through) and the count stays correct.
+  const subtasks = useQuery({
+    queryKey: ['task_subtasks', parentTaskId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('tasks')
+        .select('id, title, status, deadline')
+        .eq('parent_task_id', parentTaskId)
+        .order('created_at', { ascending: true });
+      return (data ?? []) as Array<{ id: string; title: string; status: string; deadline: string | null }>;
+    },
+  });
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['task_subtasks', parentTaskId] });
+    qc.invalidateQueries({ queryKey: ['tasks'] });
+  };
+  const toggle = useMutation({
+    mutationFn: async (input: { id: string; next: 'done' | 'active' }) => {
+      const { error } = await supabase.from('tasks').update({ status: input.next }).eq('id', input.id);
+      if (error) throw error;
+    },
+    onSuccess: invalidate,
+  });
   const create = useMutation({
     mutationFn: async () => {
-      if (!title.trim()) throw new Error('Başlıq tələb olunur');
-      // Inherit project_id + labels from parent so subtask shares context
+      const title = newTitle.trim();
+      if (!title) return;
       const { data: parent } = await supabase
         .from('tasks')
         .select('project_id, task_level, labels')
         .eq('id', parentTaskId)
         .maybeSingle();
       const { error } = await supabase.from('tasks').insert({
-        title: title.trim(),
+        title,
         status: 'queued',
         parent_task_id: parentTaskId,
         project_id: parent?.project_id ?? null,
         task_level: (parent?.task_level ?? 0) + 1,
-        // PRD §REQ-TASK — inherit labels so subtask shows in same filter views
         labels: (parent as { labels?: string[] } | null)?.labels ?? [],
         assignee_ids: profile?.id ? [profile.id] : [],
       });
       if (error) throw error;
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['tasks'] });
-      setTitle('');
-      setOpen(false);
+    onSuccess: () => { setNewTitle(''); setAdding(false); invalidate(); },
+  });
+  const del = useMutation({
+    mutationFn: async (id: string) => {
+      const { data, error } = await supabase.from('tasks').delete().eq('id', id).select('id');
+      if (error) throw error;
+      if (!data || data.length === 0) throw new Error('Silinmədi — admin icazəsi tələb olunur.');
     },
+    onSuccess: () => { setExpandedId(null); invalidate(); },
   });
 
-  if (!open) {
-    return (
-      <button
-        type="button"
-        className="chip"
-        style={{ color: 'var(--brand-text)', fontSize: 11 }}
-        onClick={() => setOpen(true)}
-        title="Yarımtapşırıq əlavə et"
-      >
-        + Alt
-      </button>
-    );
-  }
+  const rows = subtasks.data ?? [];
   return (
-    <form
-      className="flex items-center gap-1"
-      onSubmit={(e) => { e.preventDefault(); create.mutate(); }}
-    >
-      <input
-        autoFocus
-        className="input"
-        style={{ width: 160, height: 28, fontSize: 12 }}
-        placeholder="Yarımtapşırıq başlığı"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Escape') { setOpen(false); setTitle(''); } }}
-      />
-      <button type="submit" className="chip" disabled={create.isPending || !title.trim()} style={{ color: 'var(--brand-text)', fontSize: 11 }}>
-        {create.isPending ? '…' : '✓'}
-      </button>
-      <button type="button" className="chip" onClick={() => { setOpen(false); setTitle(''); }} style={{ fontSize: 11 }}>×</button>
-    </form>
+    <div className="rounded-card p-2 mb-2" style={{ background: 'var(--surface-mist)', fontSize: 12 }}>
+      <div className="text-meta mb-1.5" style={{ color: 'var(--text-muted)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+        Yarımtapşırıqlar{rows.length ? ` (${rows.length})` : ''}
+      </div>
+      <ul className="space-y-0.5">
+        {rows.map((s) => {
+          const done = s.status === 'done' || s.status === 'cancelled';
+          const expanded = expandedId === s.id;
+          return (
+            <li key={s.id}>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={done}
+                  onChange={() => toggle.mutate({ id: s.id, next: done ? 'active' : 'done' })}
+                  disabled={toggle.isPending}
+                  aria-label={done ? `Bərpa et: ${s.title}` : `Tamamla: ${s.title}`}
+                  style={{ accentColor: 'var(--brand-action)' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setExpandedId(expanded ? null : s.id)}
+                  className="text-left flex-1"
+                  style={{
+                    color: done ? 'var(--text-muted)' : 'var(--text)',
+                    textDecoration: done ? 'line-through' : 'none',
+                    background: 'transparent', border: 'none', padding: 0,
+                  }}
+                  title="Detalları aç/bağla"
+                >
+                  {s.title}
+                </button>
+                {s.deadline ? (
+                  <span style={{ color: 'var(--text-muted)', fontSize: 10, fontVariantNumeric: 'tabular-nums' }}>{s.deadline.slice(5)}</span>
+                ) : null}
+                <span aria-hidden style={{ color: 'var(--text-muted)', fontSize: 10 }}>{expanded ? '▾' : '▸'}</span>
+              </div>
+              {expanded ? (
+                <div className="mt-1.5 mb-2 pl-6">
+                  <TaskDateFields taskId={s.id} />
+                  <TaskAssigneesChip taskId={s.id} />
+                  <button
+                    type="button"
+                    className="text-meta"
+                    style={{ color: 'var(--error-deep)', fontSize: 11 }}
+                    onClick={() => del.mutate(s.id)}
+                    disabled={del.isPending}
+                  >
+                    {del.isPending ? 'Silinir…' : 'Yarımtapşırığı sil'}
+                  </button>
+                  {del.error ? (
+                    <span className="text-meta ml-2" style={{ color: 'var(--error-deep)' }}>{(del.error as Error).message}</span>
+                  ) : null}
+                </div>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+      {adding ? (
+        <form className="flex items-center gap-1 mt-2" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
+          <input
+            autoFocus
+            className="input flex-1"
+            style={{ height: 28, fontSize: 12 }}
+            placeholder="Yarımtapşırıq başlığı"
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Escape') { setAdding(false); setNewTitle(''); } }}
+          />
+          <button type="submit" className="btn-primary" style={{ height: 28, padding: '0 10px', fontSize: 11 }} disabled={create.isPending || !newTitle.trim()}>
+            {create.isPending ? '…' : 'Əlavə et'}
+          </button>
+          <button type="button" className="chip" style={{ fontSize: 11 }} onClick={() => { setAdding(false); setNewTitle(''); }}>×</button>
+        </form>
+      ) : (
+        <button
+          type="button"
+          className="text-meta mt-2"
+          style={{ color: 'var(--brand-text)', fontSize: 12, fontWeight: 500 }}
+          onClick={() => setAdding(true)}
+        >
+          + Yarımtapşırıq əlavə et
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -779,6 +801,16 @@ function TaskDateFields({ taskId }: { taskId: string }) {
         disabled={update.isPending}
         title="Plan müddətinə əlavə risk buferi (workload formula)"
       />
+      {/* Auto duration from the dates: working days (Mon–Fri) + work hours */}
+      {(() => {
+        const wd = workingDaysBetween(dates.data?.start_date, dates.data?.deadline);
+        if (wd == null) return null;
+        return (
+          <span style={{ color: 'var(--brand-text)', fontWeight: 500 }}>
+            · ⏱ {wd} iş günü · {wd * WORK_HOURS_PER_DAY} saat
+          </span>
+        );
+      })()}
     </div>
   );
 }
