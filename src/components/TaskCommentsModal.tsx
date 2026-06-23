@@ -586,10 +586,37 @@ function TaskTitleInlineEditor({ taskId, initial }: { taskId: string; initial: s
 // subtasks via an inline field at the bottom of the list (not a top button).
 function SubtaskSection({ parentTaskId }: { parentTaskId: string }) {
   const qc = useQueryClient();
-  const { profile } = useAuth();
+  const { profile, isAdmin } = useAuth();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState('');
+  const [newDeadline, setNewDeadline] = useState('');
+  const [newAssignees, setNewAssignees] = useState<string[]>(profile?.id ? [profile.id] : []);
+
+  // Team members for the assignee picker (admins assign anyone, others self).
+  const teamMembers = useQuery({
+    queryKey: ['profiles', 'assignee-pick'],
+    enabled: adding && isAdmin,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .eq('is_active', true)
+        .order('full_name');
+      return (data ?? []) as Array<{ id: string; full_name: string | null }>;
+    },
+  });
+  const assignable = isAdmin
+    ? (teamMembers.data ?? [])
+    : profile
+      ? [{ id: profile.id, full_name: profile.full_name }]
+      : [];
+  const resetAdd = () => {
+    setNewTitle('');
+    setNewDeadline('');
+    setNewAssignees(profile?.id ? [profile.id] : []);
+    setAdding(false);
+  };
 
   // Includes archived (= completed) children so a ticked subtask stays visible
   // (struck-through) and the count stays correct.
@@ -618,7 +645,9 @@ function SubtaskSection({ parentTaskId }: { parentTaskId: string }) {
   const create = useMutation({
     mutationFn: async () => {
       const title = newTitle.trim();
-      if (!title) return;
+      if (!title) throw new Error('Başlıq tələb olunur');
+      if (!newDeadline) throw new Error('Son tarix tələb olunur');
+      if (newAssignees.length === 0) throw new Error('Ən azı bir icraçı seçin');
       const { data: parent } = await supabase
         .from('tasks')
         .select('project_id, task_level, labels')
@@ -631,11 +660,12 @@ function SubtaskSection({ parentTaskId }: { parentTaskId: string }) {
         project_id: parent?.project_id ?? null,
         task_level: (parent?.task_level ?? 0) + 1,
         labels: (parent as { labels?: string[] } | null)?.labels ?? [],
-        assignee_ids: profile?.id ? [profile.id] : [],
+        assignee_ids: newAssignees,
+        deadline: newDeadline,
       });
       if (error) throw error;
     },
-    onSuccess: () => { setNewTitle(''); setAdding(false); invalidate(); },
+    onSuccess: () => { resetAdd(); invalidate(); },
   });
   const del = useMutation({
     mutationFn: async (id: string) => {
@@ -708,20 +738,76 @@ function SubtaskSection({ parentTaskId }: { parentTaskId: string }) {
         })}
       </ul>
       {adding ? (
-        <form className="flex items-center gap-1 mt-2" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
+        <form
+          className="mt-2 rounded-btn p-2 space-y-2"
+          style={{ background: 'var(--surface)', border: '1px solid var(--line)' }}
+          onSubmit={(e) => { e.preventDefault(); create.mutate(); }}
+        >
           <input
             autoFocus
-            className="input flex-1"
-            style={{ height: 28, fontSize: 12 }}
+            className="input w-full"
+            style={{ height: 30, fontSize: 12 }}
             placeholder="Yarımtapşırıq başlığı"
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Escape') { setAdding(false); setNewTitle(''); } }}
+            onKeyDown={(e) => { if (e.key === 'Escape') resetAdd(); }}
           />
-          <button type="submit" className="btn-primary" style={{ height: 28, padding: '0 10px', fontSize: 11 }} disabled={create.isPending || !newTitle.trim()}>
-            {create.isPending ? '…' : 'Əlavə et'}
-          </button>
-          <button type="button" className="chip" style={{ fontSize: 11 }} onClick={() => { setAdding(false); setNewTitle(''); }}>×</button>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block">
+              <span className="text-meta block mb-0.5" style={{ color: 'var(--text-muted)', fontSize: 10 }}>
+                Son tarix <span style={{ color: 'var(--error-deep)' }}>*</span>
+              </span>
+              <input
+                type="date"
+                className="input w-full"
+                style={{ height: 30, fontSize: 12 }}
+                value={newDeadline}
+                onChange={(e) => setNewDeadline(e.target.value)}
+              />
+            </label>
+            <div>
+              <span className="text-meta block mb-0.5" style={{ color: 'var(--text-muted)', fontSize: 10 }}>
+                İcraçı(lar) <span style={{ color: 'var(--error-deep)' }}>*</span>
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {assignable.map((m) => {
+                  const checked = newAssignees.includes(m.id);
+                  return (
+                    <label
+                      key={m.id}
+                      className="flex items-center gap-1 text-meta cursor-pointer chip"
+                      style={{ fontSize: 10, background: checked ? 'var(--brand-action)' : 'var(--surface-mist)', color: checked ? 'var(--ink)' : 'var(--text)' }}
+                    >
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        checked={checked}
+                        onChange={() => setNewAssignees((a) => a.includes(m.id) ? a.filter((x) => x !== m.id) : [...a, m.id])}
+                      />
+                      {m.full_name ?? m.id.slice(0, 6)}
+                    </label>
+                  );
+                })}
+                {assignable.length === 0 ? (
+                  <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 10 }}>İcraçı yoxdur.</span>
+                ) : null}
+              </div>
+            </div>
+          </div>
+          {create.error ? (
+            <p className="text-meta" style={{ color: 'var(--error-deep)', fontSize: 11 }}>{(create.error as Error).message}</p>
+          ) : null}
+          <div className="flex items-center gap-2 justify-end">
+            <button type="button" className="chip" style={{ fontSize: 11 }} onClick={resetAdd}>Ləğv</button>
+            <button
+              type="submit"
+              className="btn-primary"
+              style={{ height: 28, padding: '0 12px', fontSize: 11 }}
+              disabled={create.isPending || !newTitle.trim() || !newDeadline || newAssignees.length === 0}
+            >
+              {create.isPending ? '…' : 'Əlavə et'}
+            </button>
+          </div>
         </form>
       ) : (
         <button
