@@ -408,7 +408,7 @@ workload = estimated_duration × (1 + risk_buffer_pct/100)
 
 **REQ-TASK-10** Admin-only tasks (`admin_only`, migration 0068): an admin can mark a task visible to admins only; it is hidden from non-admin members/assignees at the DB layer (RLS), so it never reaches the board/table/Gantt/calendar/CSV for them. Toggled via a checkbox in the create/edit modals (admin-gated); shown with a 🔒 on the board card. Subtask deadlines render inline on the board checklist (short date, urgency-coloured).
 
-**RLS:** `tasks` SELECT (migration 0070): admin sees all; **every other authenticated user sees all tasks except `admin_only` ones** (assignee/project-member is no longer required for SELECT — that earlier restriction is superseded). Comments + status-history SELECT follow the same rule (visible unless the parent task is `admin_only`). INSERT/UPDATE/DELETE remain restricted (admin or assignee/project member).
+**RLS:** `tasks` SELECT (migration 0070): admin sees all; **every other authenticated user sees all tasks except `admin_only` ones** (assignee/project-member is no longer required for SELECT — that earlier restriction is superseded). Comments + status-history SELECT follow the same rule (visible unless the parent task is `admin_only`). INSERT/UPDATE/DELETE (migration 0071): every authenticated user may also create/edit/delete tasks, EXCEPT `admin_only` tasks (admin-only); non-admins also cannot flip a task to `admin_only`. (Supersedes the 0002 assignee/project-member write rule and the 0067 admin-only delete.)
 
 **Edge cases:**
 - Reassign last assignee → must replace, not empty
