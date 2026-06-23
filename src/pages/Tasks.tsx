@@ -4,6 +4,9 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import { AvatarGroup } from '@/components/AvatarGroup';
+import {
+  IconMore, IconEdit, IconComment, IconPlay, IconStop, IconCopy, IconBan, IconLock,
+} from '@/components/icons';
 import { isOpenChildrenError, useTasks, useUpdateTaskStatus } from '@/lib/hooks';
 import { useSlashFocus } from '@/lib/useSlashFocus';
 import { TASK_STATUS_LABEL, TASK_STATUS_ORDER, TASK_STATUS_TONE } from '@/lib/labels';
@@ -79,6 +82,123 @@ function deadlineRelative(deltaDays: number): string {
   if (deltaDays === 0) return 'bu gün';
   if (deltaDays === 1) return 'sabah';
   return `${deltaDays} gün qalıb`;
+}
+
+// Overflow (⋯) menu for a board card — keeps the card face clean while keeping
+// every action reachable (and keyboard/SR-accessible). Replaces the old row of
+// emoji buttons + the redundant status <select>.
+function TaskCardMenu({
+  status,
+  timerActive,
+  onStatus,
+  onEdit,
+  onComments,
+  onCancel,
+  onClone,
+  onTimerStart,
+  onTimerStop,
+}: {
+  status: TaskStatus;
+  timerActive: boolean;
+  onStatus: (next: TaskStatus) => void;
+  onEdit: () => void;
+  onComments: () => void;
+  onCancel: () => void;
+  onClone: () => void;
+  onTimerStart: () => void;
+  onTimerStop: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const settled = status === 'done' || status === 'cancelled';
+  const itemCls = 'flex items-center gap-2 w-full text-left px-3 py-2 text-meta hover:bg-surface-mist rounded-btn';
+
+  return (
+    <div ref={ref} className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        aria-label="Əməliyyatlar"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex items-center justify-center rounded-btn hover:bg-surface-mist"
+        style={{ width: 32, height: 32, color: 'var(--text-muted)' }}
+      >
+        <IconMore size={18} />
+      </button>
+      {open ? (
+        <div
+          role="menu"
+          className="rounded-card"
+          style={{
+            position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 30,
+            minWidth: 188, background: 'var(--surface)', border: '1px solid var(--line)',
+            boxShadow: '0 8px 24px rgba(14,22,17,0.12)', padding: 6,
+          }}
+        >
+          <div className="px-3 pt-1 pb-2">
+            <span className="text-tiny block mb-1" style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Status
+            </span>
+            <select
+              aria-label="Statusu dəyiş"
+              value={status}
+              onChange={(e) => { onStatus(e.target.value as TaskStatus); setOpen(false); }}
+              className="input"
+              style={{ height: 34 }}
+            >
+              {TASK_STATUS_ORDER.filter((s) => s !== 'cancelled').map((s) => (
+                <option key={s} value={s}>{TASK_STATUS_LABEL[s]}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ height: 1, background: 'var(--line-soft)', margin: '2px 0 4px' }} />
+          <button type="button" role="menuitem" className={itemCls} onClick={() => { onEdit(); setOpen(false); }}>
+            <IconEdit /> Düzəlt
+          </button>
+          <button type="button" role="menuitem" className={itemCls} onClick={() => { onComments(); setOpen(false); }}>
+            <IconComment /> Şərhlər
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className={itemCls}
+            onClick={() => { if (timerActive) onTimerStop(); else onTimerStart(); setOpen(false); }}
+          >
+            {timerActive ? <><IconStop /> Timeri dayandır</> : <><IconPlay /> Timer başlat</>}
+          </button>
+          <button type="button" role="menuitem" className={itemCls} onClick={() => { onClone(); setOpen(false); }}>
+            <IconCopy /> Klonla
+          </button>
+          {!settled ? (
+            <button
+              type="button"
+              role="menuitem"
+              className={itemCls}
+              style={{ color: 'var(--error-deep)' }}
+              onClick={() => { onCancel(); setOpen(false); }}
+            >
+              <IconBan /> Ləğv et
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export function TasksPage() {
@@ -1355,7 +1475,10 @@ export function TasksPage() {
                         })()}
                       >
                         {t.admin_only ? (
-                          <span title="Yalnız adminlər üçün" aria-label="Yalnız adminlər üçün" style={{ marginRight: 4 }}>🔒</span>
+                          <IconLock
+                            size={13}
+                            style={{ display: 'inline', verticalAlign: '-2px', marginRight: 4, color: 'var(--text-muted)' }}
+                          />
                         ) : null}
                         {t.title}
                       </div>
@@ -1459,107 +1582,17 @@ export function TasksPage() {
                         })() : (
                           <span />
                         )}
-                        <div className="flex flex-wrap items-center gap-1.5 justify-end min-w-0">
-                          {/* Keyboard alternative to drag-drop: status select. */}
-                          <select
-                            aria-label="Status dəyiş"
-                            value={t.status}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => {
-                              const next = e.target.value as TaskStatus;
-                              if (next === t.status) return;
-                              moveTask(t.id, next, t.status);
-                            }}
-                            className="text-meta rounded-btn"
-                            style={{
-                              background: 'var(--surface-mist)',
-                              color: 'var(--text-soft)',
-                              fontSize: 11,
-                              padding: '2px 4px',
-                              border: 'none',
-                              maxWidth: '100%',
-                            }}
-                          >
-                            {TASK_STATUS_ORDER.map((s) => (
-                              <option key={s} value={s}>{TASK_STATUS_LABEL[s]}</option>
-                            ))}
-                          </select>
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); setEditing(t); }}
-                            className="text-meta opacity-60 hover:opacity-100"
-                            style={{ color: 'var(--text-muted)', fontSize: 13 }}
-                            aria-label="Düzəlt"
-                          >
-                            ✎
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); setCommenting({ id: t.id, title: t.title }); }}
-                            className="text-meta opacity-60 hover:opacity-100"
-                            style={{ color: 'var(--text-muted)', fontSize: 13 }}
-                            aria-label="Şərhlər"
-                          >
-                            💬
-                          </button>
-                          {t.status !== 'done' && t.status !== 'cancelled' ? (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setCancelling({ id: t.id, title: t.title });
-                              }}
-                              className="text-meta opacity-60 hover:opacity-100"
-                              style={{
-                                color: 'var(--text-muted)',
-                              }}
-                              aria-label={`Tapşırığı ləğv et: ${t.title}`}
-                            >
-                              Ləğv et
-                            </button>
-                          ) : null}
-                          {/* PRD §6.x — clone task chip (board view) */}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              cloneTask.mutate(t.id);
-                            }}
-                            className="text-meta opacity-60 hover:opacity-100"
-                            style={{ color: 'var(--text-muted)' }}
-                            aria-label={`Tapşırığı klonla: ${t.title}`}
-                            title="Tapşırığı klonla"
-                            disabled={cloneTask.isPending}
-                          >
-                            ⎘
-                          </button>
-                          {/* Time tracking — start/stop timer for this task */}
-                          {activeTimer?.task_id === t.id ? (
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); stopTimer.mutate(); }}
-                              disabled={stopTimer.isPending}
-                              className="text-meta opacity-100"
-                              style={{ color: 'var(--brand-action)' }}
-                              aria-label="Timer-i dayandır"
-                              title="Timer-i dayandır"
-                            >
-                              ⏹
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); startTimer.mutate(t.id); }}
-                              disabled={startTimer.isPending}
-                              className="text-meta opacity-60 hover:opacity-100"
-                              style={{ color: 'var(--text-muted)' }}
-                              aria-label="Timer başlat"
-                              title="Timer başlat"
-                            >
-                              ▶
-                            </button>
-                          )}
-                        </div>
+                        <TaskCardMenu
+                          status={t.status}
+                          timerActive={activeTimer?.task_id === t.id}
+                          onStatus={(next) => moveTask(t.id, next, t.status)}
+                          onEdit={() => setEditing(t)}
+                          onComments={() => setCommenting({ id: t.id, title: t.title })}
+                          onCancel={() => setCancelling({ id: t.id, title: t.title })}
+                          onClone={() => cloneTask.mutate(t.id)}
+                          onTimerStart={() => startTimer.mutate(t.id)}
+                          onTimerStop={() => stopTimer.mutate()}
+                        />
                       </div>
                       {/* Trello-style nested subtask checklist — direct children
                           live inside the parent card, never as separate cards. */}
