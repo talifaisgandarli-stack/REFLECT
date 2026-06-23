@@ -368,9 +368,20 @@ export function ClientsPage() {
               ) : null}
               <div className="space-y-2">
                 {grouped[s].map((c) => (
-                  <button
+                  // role=button (not <button>) so the card can host the inline
+                  // value editor's nested controls — a <button> may not legally
+                  // contain interactive children. Click/Enter/Space opens the panel.
+                  <div
                     key={c.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setActive(c)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setActive(c);
+                      }
+                    }}
                     draggable={isAdmin}
                     onDragStart={(e) =>
                       e.dataTransfer.setData(
@@ -386,8 +397,11 @@ export function ClientsPage() {
                       {c.tier !== 'none' ? <TierBadge tier={c.tier} /> : null}
                     </div>
                     <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                      {c.company ?? '—'}{isAdmin && (c.expected_value ?? 0) > 0 ? ` · ${formatAZN(c.expected_value)}` : ''}
+                      {c.company ?? '—'}
                     </div>
+                    {/* Inline expected_value edit on the card (admin only, mask-aware
+                        via clients_view §464). Trello-style: click → edit → Enter. */}
+                    {isAdmin ? <CardValueEditor clientId={c.id} value={c.expected_value} /> : null}
                     {/* PRD §REQ-CRM — industry chip on kanban card (migration 0050) */}
                     {c.industry ? (
                       <span
@@ -402,7 +416,7 @@ export function ClientsPage() {
                         {c.industry}
                       </span>
                     ) : null}
-                  </button>
+                  </div>
                 ))}
               </div>
             </div>
@@ -1628,6 +1642,75 @@ function ClientNameEditor({ clientId, initial }: { clientId: string; initial: st
     >
       {initial}
     </h2>
+  );
+}
+
+// Inline expected_value edit directly on a kanban card (REQ-CRM-09 inline-edit
+// pattern, admin only). Mirrors ClientFieldEditor's AZN save (roundAzn → clients
+// update → invalidate ['clients']); value is masked to null for non-admins by
+// clients_view (§464) so this only ever renders for admins. Click → input,
+// Enter saves, Esc cancels. stopPropagation keeps editing from opening the
+// slide-in panel (REQ-CRM-05) or starting a card drag (REQ-CRM-01).
+function CardValueEditor({ clientId, value }: { clientId: string; value: number | null }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(value == null ? '' : String(value));
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { if (!editing) setVal(value == null ? '' : String(value)); }, [value, editing]);
+
+  const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
+
+  async function save() {
+    setErr(null);
+    const trimmed = val.trim();
+    const payload = trimmed === '' ? null : roundAzn(trimmed);
+    if (trimmed !== '' && payload == null) { setErr('Rəqəm daxil edin'); return; }
+    if ((payload ?? null) === (value ?? null)) { setEditing(false); return; }
+    setSaving(true);
+    const { error } = await supabase.from('clients').update({ expected_value: payload }).eq('id', clientId);
+    setSaving(false);
+    if (error) { setErr(error.message); return; }
+    qc.invalidateQueries({ queryKey: ['clients'] });
+    setEditing(false);
+  }
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        draggable={false}
+        onMouseDown={stop}
+        onClick={(e) => { stop(e); setEditing(true); }}
+        className="chip mt-1.5 inline-block"
+        style={{ background: 'var(--surface-mist)', color: 'var(--text-muted)', fontSize: 10, padding: '0 6px' }}
+        title="Dəyəri dəyiş"
+        aria-label="Dəyəri dəyiş"
+      >
+        {value != null && value > 0 ? formatAZN(value) : '+ Dəyər'}
+      </button>
+    );
+  }
+  return (
+    <div className="mt-1.5 flex items-center gap-1 flex-wrap" onMouseDown={stop} onClick={stop} draggable={false}>
+      <input
+        autoFocus
+        type="number"
+        className="input"
+        style={{ height: 24, fontSize: 11, maxWidth: 110 }}
+        value={val}
+        onChange={(e) => { setVal(e.target.value); setErr(null); }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') save();
+          if (e.key === 'Escape') { setVal(value == null ? '' : String(value)); setErr(null); setEditing(false); }
+        }}
+        step="0.01"
+        min={0}
+      />
+      <button type="button" className="chip" disabled={saving} onClick={save} style={{ fontSize: 11, color: 'var(--brand-text)' }}>{saving ? '…' : '✓'}</button>
+      <button type="button" className="chip" onClick={() => { setVal(value == null ? '' : String(value)); setErr(null); setEditing(false); }} style={{ fontSize: 11 }}>×</button>
+      {err ? <span className="text-meta block w-full" style={{ color: 'var(--error-deep)', fontSize: 10 }}>{err}</span> : null}
+    </div>
   );
 }
 
