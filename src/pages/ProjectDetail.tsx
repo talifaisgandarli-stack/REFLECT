@@ -1740,7 +1740,7 @@ function ProjectClientLink({
     queryKey: ['project-client', clientId],
     enabled: !!clientId,
     queryFn: async () => {
-      const { data } = await supabase.from('clients').select('id, name, company').eq('id', clientId!).maybeSingle();
+      const { data } = await supabase.from('clients_view' as 'clients').select('id, name, company').eq('id', clientId!).maybeSingle();
       return data as { id: string; name: string; company: string | null } | null;
     },
   });
@@ -1749,7 +1749,7 @@ function ProjectClientLink({
     enabled: editing,
     queryFn: async () => {
       const { data } = await supabase
-        .from('clients')
+        .from('clients_view' as 'clients')
         .select('id, name, company')
         .neq('pipeline_stage', 'archived')
         .order('name');

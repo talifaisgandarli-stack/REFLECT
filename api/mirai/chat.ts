@@ -312,8 +312,11 @@ async function runTool(
         if (!ctx.user.isAdmin) return { content: 'Bu vasitə yalnız adminlər üçündür.', isError: true };
         const id = String(input.client_id ?? '');
         if (!id) return { content: 'client_id tələb olunur', isError: true };
+        // Read via clients_view: expected_value is column-revoked on the base
+        // table for the authenticated role (migration 0073); the view re-exposes
+        // it to admins (this tool is already admin-gated above).
         const { data, error } = await sbUser
-          .from('clients')
+          .from('clients_view' as 'clients')
           .select('id, name, company, pipeline_stage, expected_value, last_interaction_at, ai_icp_fit')
           .eq('id', id)
           .maybeSingle();

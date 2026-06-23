@@ -107,8 +107,9 @@ export function useClients() {
   return useQuery({
     queryKey: ['clients'],
     queryFn: async (): Promise<Client[]> => {
+      // PRD §462 — read via clients_view so expected_value is masked for non-admins.
       const { data, error } = await supabase
-        .from('clients')
+        .from('clients_view' as 'clients')
         .select('*')
         .order('created_at', { ascending: false });
       if (error) throw error;

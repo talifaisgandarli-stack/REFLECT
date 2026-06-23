@@ -42,7 +42,7 @@ export function IncomeExpenseModal({ kind, onClose }: Props) {
   const clients = useQuery({
     queryKey: ['fin-modal', 'clients'],
     queryFn: async () =>
-      (await supabase.from('clients').select('id, name').order('name')).data ?? [],
+      (await supabase.from('clients_view' as 'clients').select('id, name').order('name')).data ?? [],
     enabled: kind === 'income',
   });
 

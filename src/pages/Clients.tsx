@@ -53,8 +53,9 @@ export function ClientsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
-  // BD Lead may also drag (PRD §8 RLS allows insert/update). Admin retains
-  // full control; non-admin/non-BD-Lead is read-only.
+  // PRD §462 — BD Lead may create clients (INSERT), but stage drag is an UPDATE
+  // and stays admin-only (drop zones + card draggable are gated on isAdmin). This
+  // `canDrag` now gates only the "+ Yeni müştəri" button (create = INSERT).
   const canDrag = isAdmin || role?.key === 'bd_lead';
 
   // PRD §REQ-CRM — industry filter chip (column from migration 0050)
@@ -126,7 +127,7 @@ export function ClientsPage() {
   return (
     <>
       <PageHead
-        meta={`${clients.length} müştəri · pipeline ${formatAZN(totalPipeline)}`}
+        meta={isAdmin ? `${clients.length} müştəri · pipeline ${formatAZN(totalPipeline)}` : `${clients.length} müştəri`}
         title="Müştərilər"
         actions={
           <>
@@ -182,7 +183,8 @@ export function ClientsPage() {
           aria-label="Sıralama"
         >
           <option value="name">A → Z</option>
-          <option value="value">Dəyər (böyük əvvəl)</option>
+          {/* PRD §462 — value sort is finance; admin only */}
+          {isAdmin ? <option value="value">Dəyər (böyük əvvəl)</option> : null}
           <option value="last_interaction">Son əlaqə (yeni əvvəl)</option>
         </select>
       </div>
@@ -258,8 +260,9 @@ export function ClientsPage() {
         </div>
       ) : null}
 
-      {/* PRD §REQ-CRM-02 — visual pipeline value per stage (bar chart) */}
-      {!isLoading && clients.length > 0 ? (
+      {/* PRD §REQ-CRM-02 — visual pipeline value per stage (bar chart). PRD §462 —
+          finance, so hidden from non-admins (expected_value is masked for them). */}
+      {isAdmin && !isLoading && clients.length > 0 ? (
         <div className="card mb-4">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-h3">Pipeline dəyəri (mərhələ üzrə)</h3>
@@ -334,9 +337,9 @@ export function ClientsPage() {
               key={s}
               className="rounded-card p-3"
               style={{ border: '1px dashed var(--line)', minHeight: 280 }}
-              onDragOver={canDrag ? (e) => e.preventDefault() : undefined}
+              onDragOver={isAdmin ? (e) => e.preventDefault() : undefined}
               onDrop={
-                canDrag
+                isAdmin
                   ? (e) => {
                       const raw = e.dataTransfer.getData('text/plain');
                       if (!raw) return;
@@ -354,9 +357,12 @@ export function ClientsPage() {
               >
                 {CLIENT_STAGE_LABEL[s]} · {grouped[s].length}
               </h3>
-              <div className="text-meta mb-3" style={{ color: 'var(--text-muted)' }}>
-                {formatAZN(stageValue(s))}
-              </div>
+              {/* PRD §462 — per-stage value is finance; admin only */}
+              {isAdmin ? (
+                <div className="text-meta mb-3" style={{ color: 'var(--text-muted)' }}>
+                  {formatAZN(stageValue(s))}
+                </div>
+              ) : null}
               <div className="space-y-2">
                 {grouped[s].map((c) => (
                   <button
@@ -374,7 +380,7 @@ export function ClientsPage() {
                   >
                     <div className="font-medium text-body">{c.name}</div>
                     <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                      {c.company ?? '—'} · {formatAZN(c.expected_value)}
+                      {c.company ?? '—'}{isAdmin ? ` · ${formatAZN(c.expected_value)}` : ''}
                     </div>
                     {/* PRD §REQ-CRM — industry chip on kanban card (migration 0050) */}
                     {(c as { industry?: string | null }).industry ? (
@@ -1137,9 +1143,10 @@ function OverviewTab({ client }: { client: Client }) {
           <ClientFieldEditor clientId={client.id} field="email" label="Email" initial={client.email} type="email" />
         ) : <Row label="Email" value={client.email ?? '—'} />}
         <Row label="Telefon" value={client.phone ?? '—'} />
+        {/* PRD §462 — expected_value is finance: admin edits it, non-admins don't see it */}
         {isAdmin ? (
           <ClientFieldEditor clientId={client.id} field="expected_value" label="Dəyər" initial={client.expected_value != null ? String(client.expected_value) : null} type="number" displayFormat="azn" />
-        ) : <Row label="Dəyər" value={formatAZN(client.expected_value)} />}
+        ) : null}
         {isAdmin ? (
           <ClientIndustryEditor clientId={client.id} initial={(client as { industry?: string | null }).industry ?? null} />
         ) : ((client as { industry?: string | null }).industry ? <Row label="Sahə" value={(client as { industry?: string | null }).industry ?? ''} /> : null)}

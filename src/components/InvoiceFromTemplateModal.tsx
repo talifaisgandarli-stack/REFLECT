@@ -79,7 +79,7 @@ export function InvoiceFromTemplateModal({ onClose }: { onClose: () => void }) {
   const clients = useQuery<Client[]>({
     queryKey: ['clients-slim'],
     queryFn: async () =>
-      ((await supabase.from('clients').select('id, name').limit(200)).data ?? []) as Client[],
+      ((await supabase.from('clients_view' as 'clients').select('id, name').limit(200)).data ?? []) as Client[],
   });
 
   const generate = useMutation({
