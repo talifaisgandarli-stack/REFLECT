@@ -120,8 +120,9 @@ export function useTodayTotal() {
 export function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
-  if (h > 0) return `${h}s ${m}d`;
-  return `${m}d`;
+  // Always surface hours, and label minutes "dəq" so the unit isn't misread as
+  // "gün" (the old "d" suffix looked like days). e.g. 0 → "0s 0dəq".
+  return `${h}s ${m}dəq`;
 }
 
 /**
