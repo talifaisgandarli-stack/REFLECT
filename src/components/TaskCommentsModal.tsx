@@ -118,7 +118,7 @@ export function TaskCommentsModal({
       const { data, error } = await supabase.from('tasks').delete().eq('id', taskId).select('id');
       if (error) throw error;
       if (!data || data.length === 0) {
-        throw new Error('Silinmədi — admin icazəsi tələb olunur (DB migration 0067).');
+        throw new Error('Silinmədi — bu tapşırıq yalnız adminlər üçündür.');
       }
     },
     onSuccess: () => {
@@ -387,9 +387,10 @@ export function TaskCommentsModal({
           {/* PRD §REQ-TASK — inline task description editor */}
           <TaskDescriptionEditor taskId={taskId} />
 
-          {/* Admin-only visibility + delete (migration 0068 / 0067) */}
-          {isAdmin ? (
-            <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
+          {/* Admin-only visibility toggle stays admin-only; delete is open to
+              everyone for non-admin_only tasks (RLS migrations 0068 / 0071). */}
+          <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
+            {isAdmin ? (
               <label className="flex items-center gap-2 text-meta cursor-pointer" style={{ color: 'var(--text-soft)' }}>
                 <input
                   type="checkbox"
@@ -399,7 +400,10 @@ export function TaskCommentsModal({
                 />
                 🔒 Yalnız adminlər üçün
               </label>
-              {!confirmDelete ? (
+            ) : (
+              <span />
+            )}
+            {!confirmDelete ? (
                 <button
                   type="button"
                   className="text-meta"
@@ -417,8 +421,7 @@ export function TaskCommentsModal({
                   </button>
                 </span>
               )}
-            </div>
-          ) : null}
+          </div>
           {del.error ? (
             <p className="text-meta" style={{ color: 'var(--error-deep)' }}>{(del.error as Error).message}</p>
           ) : null}
@@ -675,7 +678,7 @@ function SubtaskSection({ parentTaskId }: { parentTaskId: string }) {
     mutationFn: async (id: string) => {
       const { data, error } = await supabase.from('tasks').delete().eq('id', id).select('id');
       if (error) throw error;
-      if (!data || data.length === 0) throw new Error('Silinmədi — admin icazəsi tələb olunur.');
+      if (!data || data.length === 0) throw new Error('Silinmədi — bu tapşırıq yalnız adminlər üçündür.');
     },
     onSuccess: () => { setExpandedId(null); invalidate(); },
   });
