@@ -402,7 +402,7 @@ workload = estimated_duration × (1 + risk_buffer_pct/100)
 
 **REQ-TASK-07** Mention `@userId` format inside `task_comments.body`; `mentions[]` populated server-side via parser; mentioned users notified (in-app + Telegram if linked).
 
-**REQ-TASK-08** Archive: tasks `Tamamlandı`/`Cancelled` → `archived_at = now()`. Hidden from board, surfaced in Arxiv module (see Module 5).
+**REQ-TASK-08** Archive: tasks `Tamamlandı`/`Cancelled` → `archived_at = now()` (DB trigger `tasks_auto_archive`, 0006). Hidden from the live board, surfaced in the Arxiv module (Module 5) and behind the Tamamlandı column's "+ N daha" expander (design §8.3). **Subtask exception (display):** a completed subtask is still archived, but the board re-fetches archived direct children of visible parents so it stays visible (struck-through) inside its parent's checklist and the X/Y progress stays correct — otherwise ticking a subtask would make it vanish. Unticking it (status → queued) clears `archived_at` and restores it to the live board.
 
 **REQ-TASK-09** Expertise subtasks (`is_expertise_subtask = true`), titles: Çertyoj hazırlığı / Spesifikasiya / Möhür+imza / Çap+ciltləmə / Ekspertizaya təhvil. These are **not** auto-created. The create modal offers an "Ekspertiza dəsti" shortcut that pre-fills the five titles as editable rows in the manual subtask builder (REQ-TASK-01); each still requires an assignee before it can be created, and the rows keep the purple "E" badge / `is_expertise_subtask` flag.
 

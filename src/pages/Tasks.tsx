@@ -875,17 +875,39 @@ export function TasksPage() {
   // nothing is ever lost). childrenByParent feeds each card its own direct
   // children — built from the full task list, not `filtered`, so a parent always
   // carries its subtasks regardless of active filters.
+  // Completed subtasks are archived (REQ-TASK-08) → excluded from useTasks, which
+  // would make them vanish from a parent's checklist and break the progress
+  // count. Re-fetch archived direct children of the loaded top-level tasks so the
+  // checklist still shows them (struck-through) and X/Y stays correct.
+  const topLevelIds = useMemo(
+    () => tasks.filter((t) => !t.parent_task_id).map((t) => t.id),
+    [tasks],
+  );
+  const archivedChildren = useQuery({
+    queryKey: ['tasks', 'archived-children', [...topLevelIds].sort().join(',')],
+    enabled: topLevelIds.length > 0,
+    queryFn: async (): Promise<Task[]> => {
+      const { data } = await supabase
+        .from('tasks')
+        .select('*')
+        .in('parent_task_id', topLevelIds)
+        .not('archived_at', 'is', null);
+      return (data ?? []) as Task[];
+    },
+  });
   const childrenByParent = useMemo(() => {
     const m = new Map<string, Task[]>();
-    for (const t of tasks) {
-      if (!t.parent_task_id) continue;
+    const add = (t: Task) => {
+      if (!t.parent_task_id) return;
       const arr = m.get(t.parent_task_id);
       if (arr) arr.push(t);
       else m.set(t.parent_task_id, [t]);
-    }
+    };
+    for (const t of tasks) if (t.parent_task_id) add(t);
+    for (const t of archivedChildren.data ?? []) add(t);
     for (const [, arr] of m) sortTasks(arr);
     return m;
-  }, [tasks, sortTasks]);
+  }, [tasks, archivedChildren.data, sortTasks]);
   // A task nests inside its parent card iff its parent is a top-level task.
   const isNestedSubtask = useCallback(
     (t: Task) => {
@@ -1387,7 +1409,7 @@ export function TasksPage() {
                   ) : null}
                 </h3>
                 <div className="space-y-2" role="list" aria-label={TASK_STATUS_LABEL[s]}>
-                  {grouped[s].length === 0 ? (
+                  {grouped[s].length === 0 && s !== 'done' ? (
                     <p
                       className="text-meta"
                       style={{ color: 'var(--text-muted)', fontSize: 11, textAlign: 'center', padding: '16px 8px', opacity: 0.7 }}
@@ -1756,6 +1778,17 @@ export function TasksPage() {
                     );
                   })}
                 </div>
+                {/* Tamamlandı is archive-backed: done tasks are hidden here and
+                    surfaced via the expander below. When nothing is archived yet,
+                    show a clear empty hint instead of a blank column. */}
+                {s === 'done' && grouped[s].length === 0 && (archivedDoneCount.data ?? 0) === 0 ? (
+                  <p
+                    className="text-meta"
+                    style={{ color: 'var(--text-muted)', fontSize: 11, textAlign: 'center', padding: '16px 8px', opacity: 0.7 }}
+                  >
+                    Hələ tamamlanmış tapşırıq yoxdur
+                  </p>
+                ) : null}
                 {/* Design spec §8.3 — "+ N daha" expand archived (Tamamlandı only) */}
                 {s === 'done' && (archivedDoneCount.data ?? 0) > 0 ? (
                   <button
