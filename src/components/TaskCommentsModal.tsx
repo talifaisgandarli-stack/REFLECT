@@ -297,13 +297,13 @@ export function TaskCommentsModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-end"
+      className="modal-fade-in fixed inset-0 z-50 flex items-center justify-center px-4 py-6 overflow-y-auto"
       style={{ background: 'rgba(14,22,17,0.45)' }}
       onClick={onClose}
     >
       <div
-        className="bg-surface rounded-tl-card rounded-bl-card flex flex-col"
-        style={{ width: 400, height: '100vh', maxHeight: '100vh' }}
+        className="modal-pop bg-surface rounded-card flex flex-col w-full max-w-lg"
+        style={{ maxHeight: 'calc(100vh - 3rem)', boxShadow: '0 24px 64px rgba(14,22,17,0.18)' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 gap-2" style={{ borderBottom: '1px solid var(--line)' }}>
