@@ -33,7 +33,25 @@ import { useSlashFocus } from '@/lib/useSlashFocus';
 // Audit #5 — 'archived' is the merge soft-archive sink, not an active pipeline
 // stage, so it is excluded from the board / funnel / value chart (merged clients
 // stop reappearing as a draggable column). Data is still grouped for all stages.
+// BOARD_STAGES (7) still drives the panel's stage <select>, so every stage stays
+// reachable without drag.
 const BOARD_STAGES: ClientPipelineStage[] = CLIENT_STAGE_ORDER.filter((s) => s !== 'archived');
+
+// Board display override (PRD §Module 6, owner-approved 2026-06-23): the kanban
+// renders the 5 active spec stages as columns. The 8-value enum is untouched
+// (display-only) — 'signed' folds into the 'in_progress' (İcrada) column, 'lost'
+// is a separate drop-to-lose strip, 'archived' is the off-board merge sink.
+const SPEC_BOARD_STAGES: ClientPipelineStage[] = [
+  'lead',
+  'proposal',
+  'negotiation',
+  'in_progress',
+  'portfolio',
+];
+// Which stored enum stages roll up into each visible column.
+const COLUMN_STAGES: Partial<Record<ClientPipelineStage, ClientPipelineStage[]>> = {
+  in_progress: ['signed', 'in_progress'],
+};
 
 type DragPayload = { id: string; from: ClientPipelineStage };
 type LostPrompt = { id: string; from: ClientPipelineStage };
@@ -121,7 +139,14 @@ export function ClientsPage() {
       (sub, c) => sub + (c.expected_value ?? 0) * ((c.confidence_pct ?? CLIENT_STAGE_CONFIDENCE[s]) / 100),
       0,
     );
-  const totalPipeline = BOARD_STAGES.reduce((sum, s) => sum + stageValue(s), 0);
+  // Display-override helpers: a visible column rolls up its folded enum stages
+  // (e.g. İcrada = signed + in_progress). Falls back to the column's own stage.
+  const columnStages = (col: ClientPipelineStage) => COLUMN_STAGES[col] ?? [col];
+  const columnClients = (col: ClientPipelineStage) =>
+    columnStages(col).flatMap((st) => grouped[st]);
+  const columnValue = (col: ClientPipelineStage) =>
+    columnStages(col).reduce((sum, st) => sum + stageValue(st), 0);
+  const totalPipeline = SPEC_BOARD_STAGES.reduce((sum, s) => sum + columnValue(s), 0);
 
   // View toggle — Accounts table (default; the primary job here) vs. pipeline
   // kanban (REQ-CRM-01, opt-in). Persisted in the URL across refresh / share.
@@ -333,8 +358,8 @@ export function ClientsPage() {
           groupBy={groupBy}
         />
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-          {BOARD_STAGES.map((s) => (
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+          {SPEC_BOARD_STAGES.map((s) => (
             <div
               key={s}
               className="rounded-card p-3"
@@ -357,20 +382,31 @@ export function ClientsPage() {
                   textTransform: 'uppercase',
                 }}
               >
-                {CLIENT_STAGE_LABEL[s]} · {grouped[s].length}
+                {CLIENT_STAGE_LABEL[s]} · {columnClients(s).length}
               </h3>
               {/* PRD §462 — per-stage value is finance; admin only, and only when
                   there's actually a value (no "AZN 0" noise). */}
-              {isAdmin && stageValue(s) > 0 ? (
+              {isAdmin && columnValue(s) > 0 ? (
                 <div className="text-meta mb-3" style={{ color: 'var(--text-muted)' }}>
-                  {formatAZN(stageValue(s))}
+                  {formatAZN(columnValue(s))}
                 </div>
               ) : null}
               <div className="space-y-2">
-                {grouped[s].map((c) => (
-                  <button
+                {columnClients(s).map((c) => (
+                  // role=button (not <button>) so the card can host the inline
+                  // value editor's nested controls — a <button> may not legally
+                  // contain interactive children. Click/Enter/Space opens the panel.
+                  <div
                     key={c.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setActive(c)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setActive(c);
+                      }
+                    }}
                     draggable={isAdmin}
                     onDragStart={(e) =>
                       e.dataTransfer.setData(
@@ -386,8 +422,11 @@ export function ClientsPage() {
                       {c.tier !== 'none' ? <TierBadge tier={c.tier} /> : null}
                     </div>
                     <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                      {c.company ?? '—'}{isAdmin && (c.expected_value ?? 0) > 0 ? ` · ${formatAZN(c.expected_value)}` : ''}
+                      {c.company ?? '—'}
                     </div>
+                    {/* Inline expected_value edit on the card (admin only, mask-aware
+                        via clients_view §464). Trello-style: click → edit → Enter. */}
+                    {isAdmin ? <CardValueEditor clientId={c.id} value={c.expected_value} /> : null}
                     {/* PRD §REQ-CRM — industry chip on kanban card (migration 0050) */}
                     {c.industry ? (
                       <span
@@ -402,13 +441,62 @@ export function ClientsPage() {
                         {c.industry}
                       </span>
                     ) : null}
-                  </button>
+                  </div>
                 ))}
               </div>
             </div>
           ))}
         </div>
       )}
+
+      {/* Board override: 'Udulan' is kept off the 5-stage grid as a slim
+          drop-to-lose strip (drag a card here → lost-reason prompt, REQ-CRM-01).
+          Also lists any already-lost clients so they stay reachable. Only shown
+          when there's something to drop onto or lost clients exist. */}
+      {view === 'pipeline' && (isAdmin || grouped.lost.length > 0) ? (
+        <div
+          className="rounded-card p-3 mt-3"
+          style={{ border: '1px dashed var(--line)' }}
+          onDragOver={isAdmin ? (e) => e.preventDefault() : undefined}
+          onDrop={
+            isAdmin
+              ? (e) => {
+                  const raw = e.dataTransfer.getData('text/plain');
+                  if (!raw) return;
+                  handleDrop('lost', JSON.parse(raw) as DragPayload);
+                }
+              : undefined
+          }
+        >
+          <h3
+            className="text-tiny mb-2 tracking-wider"
+            style={{ color: 'var(--text-muted)', textTransform: 'uppercase' }}
+          >
+            {CLIENT_STAGE_LABEL.lost} · {grouped.lost.length}
+            {isAdmin ? (
+              <span className="ml-2" style={{ textTransform: 'none' }}>
+                — itirilmiş kimi qeyd etmək üçün kartı bura sürüşdürün
+              </span>
+            ) : null}
+          </h3>
+          {grouped.lost.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {grouped.lost.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setActive(c)}
+                  className="chip"
+                  style={{ background: 'var(--surface-mist)', color: 'var(--text-soft)' }}
+                >
+                  {c.name}
+                  {c.company ? ` · ${c.company}` : ''}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {active ? (
         <ClientPanel client={active} onClose={() => setActive(null)} />
@@ -1628,6 +1716,75 @@ function ClientNameEditor({ clientId, initial }: { clientId: string; initial: st
     >
       {initial}
     </h2>
+  );
+}
+
+// Inline expected_value edit directly on a kanban card (REQ-CRM-09 inline-edit
+// pattern, admin only). Mirrors ClientFieldEditor's AZN save (roundAzn → clients
+// update → invalidate ['clients']); value is masked to null for non-admins by
+// clients_view (§464) so this only ever renders for admins. Click → input,
+// Enter saves, Esc cancels. stopPropagation keeps editing from opening the
+// slide-in panel (REQ-CRM-05) or starting a card drag (REQ-CRM-01).
+function CardValueEditor({ clientId, value }: { clientId: string; value: number | null }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(value == null ? '' : String(value));
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { if (!editing) setVal(value == null ? '' : String(value)); }, [value, editing]);
+
+  const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
+
+  async function save() {
+    setErr(null);
+    const trimmed = val.trim();
+    const payload = trimmed === '' ? null : roundAzn(trimmed);
+    if (trimmed !== '' && payload == null) { setErr('Rəqəm daxil edin'); return; }
+    if ((payload ?? null) === (value ?? null)) { setEditing(false); return; }
+    setSaving(true);
+    const { error } = await supabase.from('clients').update({ expected_value: payload }).eq('id', clientId);
+    setSaving(false);
+    if (error) { setErr(error.message); return; }
+    qc.invalidateQueries({ queryKey: ['clients'] });
+    setEditing(false);
+  }
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        draggable={false}
+        onMouseDown={stop}
+        onClick={(e) => { stop(e); setEditing(true); }}
+        className="chip mt-1.5 inline-block"
+        style={{ background: 'var(--surface-mist)', color: 'var(--text-muted)', fontSize: 10, padding: '0 6px' }}
+        title="Dəyəri dəyiş"
+        aria-label="Dəyəri dəyiş"
+      >
+        {value != null && value > 0 ? formatAZN(value) : '+ Dəyər'}
+      </button>
+    );
+  }
+  return (
+    <div className="mt-1.5 flex items-center gap-1 flex-wrap" onMouseDown={stop} onClick={stop} draggable={false}>
+      <input
+        autoFocus
+        type="number"
+        className="input"
+        style={{ height: 24, fontSize: 11, maxWidth: 110 }}
+        value={val}
+        onChange={(e) => { setVal(e.target.value); setErr(null); }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') save();
+          if (e.key === 'Escape') { setVal(value == null ? '' : String(value)); setErr(null); setEditing(false); }
+        }}
+        step="0.01"
+        min={0}
+      />
+      <button type="button" className="chip" disabled={saving} onClick={save} style={{ fontSize: 11, color: 'var(--brand-text)' }}>{saving ? '…' : '✓'}</button>
+      <button type="button" className="chip" onClick={() => { setVal(value == null ? '' : String(value)); setErr(null); setEditing(false); }} style={{ fontSize: 11 }}>×</button>
+      {err ? <span className="text-meta block w-full" style={{ color: 'var(--error-deep)', fontSize: 10 }}>{err}</span> : null}
+    </div>
   );
 }
 

@@ -450,6 +450,16 @@ Udulan         0%
 Arxiv          —
 ```
 
+> **Board display override (2026-06-23, owner-approved):** the `pipeline_stage`
+> enum keeps all **8** stored values (no migration — data integrity, RLS, and the
+> lost/merge flows are unchanged), but the **kanban renders the 5 active spec
+> stages** as columns: `Lead → Təklif → Müzakirə → İcrada → Portfolio`.
+> `İmzalanıb` (signed) folds into the **İcrada** column for display; `Udulan` is a
+> separate drop-to-lose target (still requires `lost_reason`); `Arxiv` stays the
+> off-board merge sink. The slide-in panel's stage `<select>` still exposes all 8
+> values, so any stage remains reachable. Display-only — see
+> `docs/clients-crm-spec-adapted.md` §0.
+
 **REQ-CRM-01** Pipeline kanban with drag → `client_stage_history` entry; "Udulan" requires `lost_reason`.
 **REQ-CRM-02** Pipeline value per stage: `Σ(expected_value × confidence_pct/100)`.
 **REQ-CRM-03** Quick interaction log (≤30s): type (Zəng/Email/Görüş/WhatsApp), free text, date.
