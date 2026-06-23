@@ -29,6 +29,11 @@ import { isValidEmail, isValidPhone, roundAzn } from '@/lib/validation';
 import { trackRecentEntry } from '@/lib/useRecentlyViewed';
 import { useSlashFocus } from '@/lib/useSlashFocus';
 
+// Audit #5 — 'archived' is the merge soft-archive sink, not an active pipeline
+// stage, so it is excluded from the board / funnel / value chart (merged clients
+// stop reappearing as a draggable column). Data is still grouped for all stages.
+const BOARD_STAGES: ClientPipelineStage[] = CLIENT_STAGE_ORDER.filter((s) => s !== 'archived');
+
 type DragPayload = { id: string; from: ClientPipelineStage };
 type LostPrompt = { id: string; from: ClientPipelineStage };
 type ClientPanelTab = 'overview' | 'interactions' | 'proposals' | 'projects' | 'documents' | 'history';
@@ -63,7 +68,7 @@ export function ClientsPage() {
   const availableIndustries = useMemo(() => {
     const set = new Set<string>();
     for (const c of clients) {
-      const ind = (c as { industry?: string | null }).industry;
+      const ind = c.industry;
       if (ind) set.add(ind);
     }
     return Array.from(set).sort();
@@ -72,7 +77,7 @@ export function ClientsPage() {
   const filteredClients = useMemo(() => {
     let out = clients;
     if (industryFilter) {
-      out = out.filter((c) => (c as { industry?: string | null }).industry === industryFilter);
+      out = out.filter((c) => c.industry === industryFilter);
     }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
@@ -113,7 +118,7 @@ export function ClientsPage() {
       (sub, c) => sub + (c.expected_value ?? 0) * ((c.confidence_pct ?? CLIENT_STAGE_CONFIDENCE[s]) / 100),
       0,
     );
-  const totalPipeline = CLIENT_STAGE_ORDER.reduce((sum, s) => sum + stageValue(s), 0);
+  const totalPipeline = BOARD_STAGES.reduce((sum, s) => sum + stageValue(s), 0);
 
   function handleDrop(s: ClientPipelineStage, payload: DragPayload) {
     if (payload.from === s) return;
@@ -155,7 +160,7 @@ export function ClientsPage() {
                       'Mərhələ': CLIENT_STAGE_LABEL[c.pipeline_stage] ?? c.pipeline_stage,
                       'Etibar %': c.confidence_pct,
                       'Dəyər (AZN)': c.expected_value ?? '',
-                      'Sahə': (c as { industry?: string | null }).industry ?? '',
+                      'Sahə': c.industry ?? '',
                       'ICP %': c.ai_icp_fit != null ? Math.round(c.ai_icp_fit) : '',
                       'Son əlaqə': c.last_interaction_at ?? '',
                     })),
@@ -226,7 +231,7 @@ export function ClientsPage() {
           <h3 className="text-h3 mb-2">Konversiya funel</h3>
           <div className="space-y-1.5">
             {(() => {
-              const counts = CLIENT_STAGE_ORDER.map((s) => ({ s, n: grouped[s].length }));
+              const counts = BOARD_STAGES.map((s) => ({ s, n: grouped[s].length }));
               const max = Math.max(1, ...counts.map((c) => c.n));
               return counts.map(({ s, n }) => {
                 const pct = max > 0 ? (n / max) * 100 : 0;
@@ -273,7 +278,7 @@ export function ClientsPage() {
           <div style={{ width: '100%', height: 200 }}>
             <ResponsiveContainer>
               <BarChart
-                data={CLIENT_STAGE_ORDER.map((s) => ({
+                data={BOARD_STAGES.map((s) => ({
                   stage: CLIENT_STAGE_LABEL[s],
                   value: stageValue(s),
                   count: grouped[s].length,
@@ -309,7 +314,7 @@ export function ClientsPage() {
                   }}
                 />
                 <Bar dataKey="value" radius={[4, 4, 0, 0]} isAnimationActive={false}>
-                  {CLIENT_STAGE_ORDER.map((s) => (
+                  {BOARD_STAGES.map((s) => (
                     <Cell
                       key={s}
                       fill={s === 'lost' ? 'var(--error)' : s === 'portfolio' ? 'var(--success)' : 'var(--brand-action)'}
@@ -331,8 +336,8 @@ export function ClientsPage() {
           cta={isAdmin ? <button className="btn-primary">+ Yeni müştəri</button> : null}
         />
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-3">
-          {CLIENT_STAGE_ORDER.map((s) => (
+        <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+          {BOARD_STAGES.map((s) => (
             <div
               key={s}
               className="rounded-card p-3"
@@ -383,7 +388,7 @@ export function ClientsPage() {
                       {c.company ?? '—'}{isAdmin ? ` · ${formatAZN(c.expected_value)}` : ''}
                     </div>
                     {/* PRD §REQ-CRM — industry chip on kanban card (migration 0050) */}
-                    {(c as { industry?: string | null }).industry ? (
+                    {c.industry ? (
                       <span
                         className="chip mt-1.5 inline-block"
                         style={{
@@ -393,7 +398,7 @@ export function ClientsPage() {
                           padding: '0 6px',
                         }}
                       >
-                        {(c as { industry?: string | null }).industry}
+                        {c.industry}
                       </span>
                     ) : null}
                   </button>
@@ -1133,8 +1138,15 @@ function OverviewTab({ client }: { client: Client }) {
   return (
     <div>
       <dl className="text-body space-y-2">
-        <Row label="Mərhələ" value={CLIENT_STAGE_LABEL[client.pipeline_stage]} />
-        <Row label="Etibar %" value={`${client.confidence_pct}%`} />
+        {/* Audit #8 — admin can change stage here too (keyboard/touch accessible,
+            not only drag); 'lost' asks for a reason inline. */}
+        {isAdmin ? (
+          <ClientStageChanger client={client} />
+        ) : <Row label="Mərhələ" value={CLIENT_STAGE_LABEL[client.pipeline_stage]} />}
+        {/* Audit #7 — confidence_pct now editable (REQ-CRM-02 pipeline value uses it) */}
+        {isAdmin ? (
+          <ClientFieldEditor clientId={client.id} field="confidence_pct" label="Etibar %" initial={String(client.confidence_pct)} type="number" suffix="%" />
+        ) : <Row label="Etibar %" value={`${client.confidence_pct}%`} />}
         {/* PRD §REQ-CRM — inline editable fields (admin) */}
         {isAdmin ? (
           <ClientFieldEditor clientId={client.id} field="company" label="Şirkət" initial={client.company} type="text" />
@@ -1142,14 +1154,17 @@ function OverviewTab({ client }: { client: Client }) {
         {isAdmin ? (
           <ClientFieldEditor clientId={client.id} field="email" label="Email" initial={client.email} type="email" />
         ) : <Row label="Email" value={client.email ?? '—'} />}
-        <Row label="Telefon" value={client.phone ?? '—'} />
+        {/* Audit #6 — phone now inline-editable for admins */}
+        {isAdmin ? (
+          <ClientFieldEditor clientId={client.id} field="phone" label="Telefon" initial={client.phone} type="text" />
+        ) : <Row label="Telefon" value={client.phone ?? '—'} />}
         {/* PRD §462 — expected_value is finance: admin edits it, non-admins don't see it */}
         {isAdmin ? (
           <ClientFieldEditor clientId={client.id} field="expected_value" label="Dəyər" initial={client.expected_value != null ? String(client.expected_value) : null} type="number" displayFormat="azn" />
         ) : null}
         {isAdmin ? (
-          <ClientIndustryEditor clientId={client.id} initial={(client as { industry?: string | null }).industry ?? null} />
-        ) : ((client as { industry?: string | null }).industry ? <Row label="Sahə" value={(client as { industry?: string | null }).industry ?? ''} /> : null)}
+          <ClientIndustryEditor clientId={client.id} initial={client.industry ?? null} />
+        ) : (client.industry ? <Row label="Sahə" value={client.industry ?? ''} /> : null)}
         <Row label="Son əlaqə" value={relativeTime(client.last_interaction_at)} />
         {/* REQ-CRM-04 — surface staleness so users see when ICP was last calculated */}
         <Row
@@ -1533,36 +1548,46 @@ function ClientDeleteModal({
 // PRD §REQ-CRM — inline edit client name (admin, in ClientPanel header)
 function ClientNameEditor({ clientId, initial }: { clientId: string; initial: string }) {
   const qc = useQueryClient();
+  const { data: clients = [] } = useClients();
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(initial);
   const [saving, setSaving] = useState(false);
-  useEffect(() => { if (!editing) setVal(initial); }, [initial, editing]);
+  const [err, setErr] = useState<string | null>(null); // audit #9 — surface failures
+  useEffect(() => { if (!editing) { setVal(initial); setErr(null); } }, [initial, editing]);
   async function save() {
     const trimmed = val.trim();
     if (!trimmed || trimmed === initial) { setEditing(false); setVal(initial); return; }
+    // audit #10 — block renaming onto an existing (non-archived) client's name
+    const clash = clients.some(
+      (c) => c.id !== clientId && c.pipeline_stage !== 'archived' &&
+        c.name.trim().toLowerCase() === trimmed.toLowerCase(),
+    );
+    if (clash) { setErr('Bu adda müştəri artıq var'); return; }
     setSaving(true);
-    await supabase.from('clients').update({ name: trimmed }).eq('id', clientId);
+    const { error } = await supabase.from('clients').update({ name: trimmed }).eq('id', clientId);
     setSaving(false);
+    if (error) { setErr(error.message); return; } // audit #9 — don't close as if saved
     qc.invalidateQueries({ queryKey: ['clients'] });
     setEditing(false);
   }
   if (editing) {
     return (
-      <div className="flex-1 min-w-0 flex items-center gap-1">
+      <div className="flex-1 min-w-0 flex items-center gap-1 flex-wrap">
         <input
           autoFocus
           className="input"
           style={{ height: 32, fontSize: 20, fontWeight: 700 }}
           value={val}
-          onChange={(e) => setVal(e.target.value)}
+          onChange={(e) => { setVal(e.target.value); setErr(null); }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') save();
-            if (e.key === 'Escape') { setVal(initial); setEditing(false); }
+            if (e.key === 'Escape') { setVal(initial); setErr(null); setEditing(false); }
           }}
           disabled={saving}
         />
         <button type="button" className="chip" disabled={saving} onClick={save} style={{ fontSize: 11, color: 'var(--brand-text)' }}>{saving ? '…' : '✓'}</button>
-        <button type="button" className="chip" onClick={() => { setVal(initial); setEditing(false); }} style={{ fontSize: 11 }}>×</button>
+        <button type="button" className="chip" onClick={() => { setVal(initial); setErr(null); setEditing(false); }} style={{ fontSize: 11 }}>×</button>
+        {err ? <span className="text-meta w-full" style={{ color: 'var(--error-deep)', fontSize: 11 }}>{err}</span> : null}
       </div>
     );
   }
@@ -1585,13 +1610,15 @@ function ClientFieldEditor({
   initial,
   type,
   displayFormat,
+  suffix,
 }: {
   clientId: string;
-  field: 'company' | 'email' | 'phone' | 'expected_value';
+  field: 'company' | 'email' | 'phone' | 'expected_value' | 'confidence_pct';
   label: string;
   initial: string | null;
   type: 'text' | 'email' | 'number';
   displayFormat?: 'azn';
+  suffix?: string;
 }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -1608,10 +1635,19 @@ function ClientFieldEditor({
       setErr('Etibarsız email');
       return;
     }
+    if (field === 'phone' && trimmed && !isValidPhone(trimmed)) {
+      setErr('Etibarsız telefon');
+      return;
+    }
     let payload: string | number | null = trimmed || null;
     if (type === 'number') {
       if (trimmed === '') payload = null;
-      else {
+      else if (field === 'confidence_pct') {
+        // integer percent, clamped 0–100 (REQ-CRM-02)
+        const n = Number(trimmed);
+        if (!Number.isFinite(n)) { setErr('Rəqəm daxil edin'); return; }
+        payload = Math.min(100, Math.max(0, Math.round(n)));
+      } else {
         const n = roundAzn(trimmed);
         if (n == null) { setErr('Rəqəm daxil edin'); return; }
         payload = n;
@@ -1629,7 +1665,7 @@ function ClientFieldEditor({
   const displayValue = (() => {
     if (initial == null || initial === '') return '—';
     if (displayFormat === 'azn') return formatAZN(Number(initial));
-    return initial;
+    return `${initial}${suffix ?? ''}`;
   })();
 
   if (!editing) {
@@ -1667,8 +1703,9 @@ function ClientFieldEditor({
             if (e.key === 'Enter') save();
             if (e.key === 'Escape') { setVal(initial ?? ''); setErr(null); setEditing(false); }
           }}
-          step={type === 'number' ? '0.01' : undefined}
+          step={type === 'number' ? (field === 'confidence_pct' ? '1' : '0.01') : undefined}
           min={type === 'number' ? 0 : undefined}
+          max={field === 'confidence_pct' ? 100 : undefined}
         />
         <button type="button" className="chip" disabled={saving} onClick={save} style={{ fontSize: 11, color: 'var(--brand-text)' }}>{saving ? '…' : '✓'}</button>
         <button type="button" className="chip" onClick={() => { setVal(initial ?? ''); setErr(null); setEditing(false); }} style={{ fontSize: 11 }}>×</button>
@@ -1704,6 +1741,83 @@ function ClientIndustryEditor({ clientId, initial }: { clientId: string; initial
             <option key={o} value={o}>{o}</option>
           ))}
         </select>
+      </dd>
+    </div>
+  );
+}
+
+// Audit #8 — accessible stage change from the panel (keyboard/touch), not only
+// drag. Picking "Udulan" asks for a reason inline (REQ-CRM-01 invariant).
+function ClientStageChanger({ client }: { client: Client }) {
+  const updateStage = useUpdateClientStage();
+  const [pendingLost, setPendingLost] = useState(false);
+  const [picked, setPicked] = useState<string>(LOST_REASONS[0]);
+  const [other, setOther] = useState('');
+  const lostReason = picked === 'Digər' ? other.trim() : picked;
+  // keep the client's current stage selectable even if it's the archived sink
+  const options = BOARD_STAGES.includes(client.pipeline_stage)
+    ? BOARD_STAGES
+    : [client.pipeline_stage, ...BOARD_STAGES];
+
+  function onPick(to: ClientPipelineStage) {
+    if (to === client.pipeline_stage) return;
+    if (to === 'lost') { setPendingLost(true); return; }
+    updateStage.mutate({ id: client.id, to });
+  }
+
+  return (
+    <div className="flex justify-between gap-2 items-start">
+      <dt style={{ color: 'var(--text-muted)' }}>Mərhələ</dt>
+      <dd className="flex flex-col items-end gap-1">
+        <select
+          className="input"
+          style={{ height: 28, fontSize: 12, padding: '0 6px' }}
+          value={client.pipeline_stage}
+          onChange={(e) => onPick(e.target.value as ClientPipelineStage)}
+          disabled={updateStage.isPending}
+          aria-label="Mərhələ dəyiş"
+        >
+          {options.map((s) => (
+            <option key={s} value={s}>{CLIENT_STAGE_LABEL[s]}</option>
+          ))}
+        </select>
+        {pendingLost ? (
+          <div className="flex flex-col items-end gap-1 mt-1">
+            <select
+              className="input"
+              style={{ height: 26, fontSize: 11, padding: '0 6px' }}
+              value={picked}
+              onChange={(e) => setPicked(e.target.value)}
+              aria-label="İtirilmə səbəbi"
+            >
+              {LOST_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+            {picked === 'Digər' ? (
+              <input
+                className="input"
+                style={{ height: 26, fontSize: 11 }}
+                placeholder="Səbəbi yaz…"
+                value={other}
+                onChange={(e) => setOther(e.target.value)}
+              />
+            ) : null}
+            <div className="flex gap-1">
+              <button
+                type="button"
+                className="chip"
+                style={{ fontSize: 11, color: 'var(--error-deep)' }}
+                disabled={!lostReason || updateStage.isPending}
+                onClick={() => updateStage.mutate(
+                  { id: client.id, to: 'lost', lostReason },
+                  { onSuccess: () => setPendingLost(false) },
+                )}
+              >
+                Təsdiq
+              </button>
+              <button type="button" className="chip" style={{ fontSize: 11 }} onClick={() => setPendingLost(false)}>Ləğv</button>
+            </div>
+          </div>
+        ) : null}
       </dd>
     </div>
   );

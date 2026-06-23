@@ -236,6 +236,7 @@ export interface Client {
   ai_icp_calculated_at: string | null;
   created_by: string | null;
   created_at: string;
+  industry: string | null;
 }
 
 export interface ClientInteraction {
