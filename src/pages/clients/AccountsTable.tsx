@@ -168,8 +168,8 @@ function ProjectsCell({ client, total, active }: { client: Client; total: number
   );
 }
 
-function ClientRow({ c, isAdmin, onOpen, total, active }: {
-  c: Client; isAdmin: boolean; onOpen: (c: Client) => void; total: number; active: number;
+function ClientRow({ c, isAdmin, onOpen, onDelete, total, active }: {
+  c: Client; isAdmin: boolean; onOpen: (c: Client) => void; onDelete?: (c: Client) => void; total: number; active: number;
 }) {
   return (
     <tr
@@ -201,6 +201,31 @@ function ClientRow({ c, isAdmin, onOpen, total, active }: {
       <td className="py-3 px-3 text-meta" style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
         {c.ai_icp_fit != null ? `${Math.round(c.ai_icp_fit)}%` : '—'}
       </td>
+      {/* Row actions (admin): edit = open the detail panel; delete = confirm modal */}
+      {onDelete ? (
+        <td className="py-3 px-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            className="chip opacity-50 hover:opacity-100"
+            style={{ color: 'var(--brand-text)', fontSize: 13 }}
+            onClick={() => onOpen(c)}
+            title="Düzəlt (detal paneli)"
+            aria-label={`Düzəlt: ${c.name}`}
+          >
+            ✎
+          </button>
+          <button
+            type="button"
+            className="chip opacity-50 hover:opacity-100 ml-1"
+            style={{ color: 'var(--error-deep)', fontSize: 13 }}
+            onClick={() => onDelete(c)}
+            title="Sil"
+            aria-label={`Sil: ${c.name}`}
+          >
+            🗑
+          </button>
+        </td>
+      ) : null}
     </tr>
   );
 }
@@ -210,12 +235,14 @@ export function ClientsTable({
   stats,
   isAdmin,
   onOpen,
+  onDelete,
   groupBy,
 }: {
   clients: Client[];
   stats: Stats;
   isAdmin: boolean;
   onOpen: (c: Client) => void;
+  onDelete?: (c: Client) => void;
   groupBy: GroupBy;
 }) {
   const [sort, setSort] = useState<TableSort>('projects');
@@ -295,6 +322,7 @@ export function ClientsTable({
                 {c.label}{sort === c.key ? <span style={{ color: 'var(--brand-text)' }}> {dir === 'asc' ? '↑' : '↓'}</span> : null}
               </th>
             ))}
+            {onDelete ? <th className="py-3 px-3" aria-label="Əməliyyatlar" /> : null}
           </tr>
         </thead>
         <tbody>
@@ -302,7 +330,7 @@ export function ClientsTable({
             <Fragment key={g.key}>
               {groupBy !== 'none' ? (
                 <tr style={{ background: 'var(--surface-mist)' }}>
-                  <td colSpan={visibleCols.length} className="py-2 px-3 text-meta" style={{ color: 'var(--text-soft)', fontWeight: 600 }}>
+                  <td colSpan={visibleCols.length + (onDelete ? 1 : 0)} className="py-2 px-3 text-meta" style={{ color: 'var(--text-soft)', fontWeight: 600 }}>
                     <span className="inline-flex items-center gap-2">
                       {g.badge && g.badge !== 'none' ? <TierBadge tier={g.badge} /> : null}
                       {g.label} · {g.rows.length}
@@ -311,7 +339,7 @@ export function ClientsTable({
                 </tr>
               ) : null}
               {g.rows.map((c) => (
-                <ClientRow key={c.id} c={c} isAdmin={isAdmin} onOpen={onOpen} total={totalOf(c)} active={activeOf(c)} />
+                <ClientRow key={c.id} c={c} isAdmin={isAdmin} onOpen={onOpen} onDelete={onDelete} total={totalOf(c)} active={activeOf(c)} />
               ))}
             </Fragment>
           ))}

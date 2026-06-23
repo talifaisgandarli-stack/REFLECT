@@ -41,11 +41,13 @@ type ClientPanelTab = 'overview' | 'interactions' | 'proposals' | 'projects' | '
 
 export function ClientsPage() {
   const { isAdmin, role } = useAuth();
+  const qc = useQueryClient();
   const { data: clients = [], isLoading } = useClients();
   const updateStage = useUpdateClientStage();
   const [active, setActive] = useState<Client | null>(null);
   const [creating, setCreating] = useState(false);
   const [lostPrompt, setLostPrompt] = useState<LostPrompt | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
   // PRD §UX — search persisted in URL (refresh / share-link preserves it)
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get('q') ?? '');
@@ -327,6 +329,7 @@ export function ClientsPage() {
           stats={projectStats.data}
           isAdmin={isAdmin}
           onOpen={setActive}
+          onDelete={isAdmin ? setDeleteTarget : undefined}
           groupBy={groupBy}
         />
       ) : (
@@ -415,6 +418,19 @@ export function ClientsPage() {
         <CreateClientModal
           onClose={() => setCreating(false)}
           onCreated={() => setCreating(false)}
+        />
+      ) : null}
+
+      {/* Delete from the table (admin) — same typed-name confirm as the panel */}
+      {deleteTarget ? (
+        <ClientDeleteModal
+          client={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={() => {
+            qc.invalidateQueries({ queryKey: ['clients'] });
+            if (active?.id === deleteTarget.id) setActive(null);
+            setDeleteTarget(null);
+          }}
         />
       ) : null}
 
