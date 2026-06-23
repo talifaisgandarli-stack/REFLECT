@@ -22,6 +22,7 @@ import {
 import { SkeletonList } from '@/components/Skeleton';
 import type { Client, ClientPipelineStage, InteractionType } from '@/types/db';
 import { ClientsKpiStrip, ClientsTable, TierBadge, TierControl, type GroupBy } from '@/pages/clients/AccountsTable';
+import { ClientKanbanCard, type DragPayload } from '@/pages/clients/KanbanCard';
 import { formatAZN, relativeTime } from '@/lib/format';
 import { downloadCsv } from '@/lib/csv';
 import { useAuth } from '@/lib/store';
@@ -35,7 +36,6 @@ import { useSlashFocus } from '@/lib/useSlashFocus';
 // stop reappearing as a draggable column). Data is still grouped for all stages.
 const BOARD_STAGES: ClientPipelineStage[] = CLIENT_STAGE_ORDER.filter((s) => s !== 'archived');
 
-type DragPayload = { id: string; from: ClientPipelineStage };
 type LostPrompt = { id: string; from: ClientPipelineStage };
 type ClientPanelTab = 'overview' | 'interactions' | 'proposals' | 'projects' | 'documents' | 'history';
 
@@ -368,41 +368,14 @@ export function ClientsPage() {
               ) : null}
               <div className="space-y-2">
                 {grouped[s].map((c) => (
-                  <button
+                  <ClientKanbanCard
                     key={c.id}
-                    onClick={() => setActive(c)}
-                    draggable={isAdmin}
-                    onDragStart={(e) =>
-                      e.dataTransfer.setData(
-                        'text/plain',
-                        JSON.stringify({ id: c.id, from: c.pipeline_stage } satisfies DragPayload),
-                      )
-                    }
-                    className="card text-left w-full"
-                    style={{ padding: 12, cursor: isAdmin ? 'grab' : 'pointer' }}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="font-medium text-body truncate">{c.name}</div>
-                      {c.tier !== 'none' ? <TierBadge tier={c.tier} /> : null}
-                    </div>
-                    <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                      {c.company ?? '—'}{isAdmin && (c.expected_value ?? 0) > 0 ? ` · ${formatAZN(c.expected_value)}` : ''}
-                    </div>
-                    {/* PRD §REQ-CRM — industry chip on kanban card (migration 0050) */}
-                    {c.industry ? (
-                      <span
-                        className="chip mt-1.5 inline-block"
-                        style={{
-                          background: 'var(--surface-mist)',
-                          color: 'var(--text-muted)',
-                          fontSize: 10,
-                          padding: '0 6px',
-                        }}
-                      >
-                        {c.industry}
-                      </span>
-                    ) : null}
-                  </button>
+                    c={c}
+                    stats={projectStats.data}
+                    isAdmin={isAdmin}
+                    onOpen={setActive}
+                    onDelete={isAdmin ? setDeleteTarget : undefined}
+                  />
                 ))}
               </div>
             </div>
