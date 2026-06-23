@@ -52,7 +52,11 @@ export function OutsourcePage() {
   const q = useQuery({
     queryKey: ['outsource', view],
     queryFn: async () => {
-      const { data, error } = await supabase.from(view as 'outsource_items').select('*').order('deadline', { ascending: true });
+      let query = supabase.from(view as 'outsource_items').select('*');
+      // Non-admins get an operational view only — 'paid' (Ödənildi) is a finance
+      // state, so paid rows are hidden from them entirely.
+      if (!isAdmin) query = query.neq('status', 'paid');
+      const { data, error } = await query.order('deadline', { ascending: true });
       if (error) throw error;
       return data ?? [];
     },
@@ -219,7 +223,9 @@ export function OutsourcePage() {
       {/* PRD §UX — quick status filter chips */}
       {(q.data ?? []).length > 0 ? (
         <div className="flex gap-2 mb-3 flex-wrap">
-          {(['all', 'order', 'in_progress', 'delivered', 'paid'] as const).map((s) => {
+          {(['all', 'order', 'in_progress', 'delivered', 'paid'] as const)
+            .filter((s) => isAdmin || s !== 'paid')
+            .map((s) => {
             const count = s === 'all'
               ? (q.data ?? []).length
               : (q.data as Array<{ status?: string }>).filter((r) => r.status === s).length;
