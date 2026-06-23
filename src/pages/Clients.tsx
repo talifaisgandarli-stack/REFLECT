@@ -16,11 +16,15 @@ import {
   CLIENT_STAGE_CONFIDENCE,
   CLIENT_STAGE_LABEL,
   CLIENT_STAGE_ORDER,
+  CLIENT_TIER_LABEL,
+  CLIENT_TIER_ORDER,
+  CLIENT_TIER_RANK,
+  CLIENT_TIER_STYLE,
   INTERACTION_LABEL,
   LOST_REASONS,
 } from '@/lib/labels';
 import { SkeletonList } from '@/components/Skeleton';
-import type { Client, ClientPipelineStage, InteractionType } from '@/types/db';
+import type { Client, ClientPipelineStage, ClientTier, InteractionType } from '@/types/db';
 import { formatAZN, relativeTime } from '@/lib/format';
 import { downloadCsv } from '@/lib/csv';
 import { useAuth } from '@/lib/store';
@@ -120,6 +124,34 @@ export function ClientsPage() {
     );
   const totalPipeline = BOARD_STAGES.reduce((sum, s) => sum + stageValue(s), 0);
 
+  // View toggle — pipeline kanban (REQ-CRM-01) vs. the account table (this change).
+  // Persisted in the URL so a refresh / shared link keeps the chosen view.
+  const [view, setView] = useState<'pipeline' | 'table'>(
+    searchParams.get('view') === 'table' ? 'table' : 'pipeline',
+  );
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (view === 'table') next.set('view', 'table'); else next.delete('view');
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
+
+  // Per-client project counts (total / active) for the table view — one aggregate
+  // (client_project_stats view), not an N+1 over projects.
+  const projectStats = useQuery({
+    queryKey: ['client-project-stats'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('client_project_stats' as 'projects')
+        .select('client_id, total_projects, active_projects');
+      const m = new Map<string, { total: number; active: number }>();
+      for (const r of (data ?? []) as unknown as Array<{ client_id: string; total_projects: number; active_projects: number }>) {
+        m.set(r.client_id, { total: Number(r.total_projects), active: Number(r.active_projects) });
+      }
+      return m;
+    },
+  });
+
   function handleDrop(s: ClientPipelineStage, payload: DragPayload) {
     if (payload.from === s) return;
     if (s === 'lost') {
@@ -151,13 +183,16 @@ export function ClientsPage() {
                 onClick={() => {
                   downloadCsv(
                     `musteriler-${new Date().toISOString().slice(0, 10)}.csv`,
-                    ['Ad', 'Şirkət', 'Email', 'Telefon', 'Mərhələ', 'Etibar %', 'Dəyər (AZN)', 'Sahə', 'ICP %', 'Son əlaqə'],
+                    ['Ad', 'Şirkət', 'Tier', 'Mərhələ', 'Aktiv layihə', 'Cəmi layihə', 'Email', 'Telefon', 'Etibar %', 'Dəyər (AZN)', 'Sahə', 'ICP %', 'Son əlaqə'],
                     clients.map((c) => ({
                       'Ad': c.name,
                       'Şirkət': c.company ?? '',
+                      'Tier': c.tier !== 'none' ? CLIENT_TIER_LABEL[c.tier] : '',
+                      'Mərhələ': CLIENT_STAGE_LABEL[c.pipeline_stage] ?? c.pipeline_stage,
+                      'Aktiv layihə': projectStats.data?.get(c.id)?.active ?? 0,
+                      'Cəmi layihə': projectStats.data?.get(c.id)?.total ?? 0,
                       'Email': c.email ?? '',
                       'Telefon': c.phone ?? '',
-                      'Mərhələ': CLIENT_STAGE_LABEL[c.pipeline_stage] ?? c.pipeline_stage,
                       'Etibar %': c.confidence_pct,
                       'Dəyər (AZN)': c.expected_value ?? '',
                       'Sahə': c.industry ?? '',
@@ -175,23 +210,47 @@ export function ClientsPage() {
         }
       />
 
-      {/* PRD §UX — sort dropdown for cards within each stage */}
-      <div className="flex gap-2 mb-3 items-center">
-        <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
-          Sıralama:
-        </span>
-        <select
-          className="input"
-          style={{ maxWidth: 200, height: 32, fontSize: 12 }}
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-          aria-label="Sıralama"
-        >
-          <option value="name">A → Z</option>
-          {/* PRD §462 — value sort is finance; admin only */}
-          {isAdmin ? <option value="value">Dəyər (böyük əvvəl)</option> : null}
-          <option value="last_interaction">Son əlaqə (yeni əvvəl)</option>
-        </select>
+      {/* View toggle — Pipeline kanban vs. account Table (seamless, same page) */}
+      <div className="flex gap-2 mb-3 items-center flex-wrap">
+        <div className="flex gap-1" role="tablist" aria-label="Görünüş">
+          {([['pipeline', 'Pipeline'], ['table', 'Cədvəl']] as const).map(([v, label]) => (
+            <button
+              key={v}
+              type="button"
+              role="tab"
+              aria-selected={view === v}
+              className="chip"
+              style={{
+                background: view === v ? 'var(--brand-action)' : 'var(--surface-mist)',
+                color: view === v ? 'var(--ink)' : 'var(--text-muted)',
+                fontWeight: view === v ? 600 : 400,
+              }}
+              onClick={() => setView(v)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {/* Sort dropdown only applies to the pipeline cards (table sorts by header) */}
+        {view === 'pipeline' ? (
+          <>
+            <span className="text-meta ml-2" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+              Sıralama:
+            </span>
+            <select
+              className="input"
+              style={{ maxWidth: 200, height: 32, fontSize: 12 }}
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+              aria-label="Sıralama"
+            >
+              <option value="name">A → Z</option>
+              {/* PRD §462 — value sort is finance; admin only */}
+              {isAdmin ? <option value="value">Dəyər (böyük əvvəl)</option> : null}
+              <option value="last_interaction">Son əlaqə (yeni əvvəl)</option>
+            </select>
+          </>
+        ) : null}
       </div>
 
       {/* PRD §REQ-CRM — industry filter (migration 0050) */}
@@ -226,7 +285,7 @@ export function ClientsPage() {
       ) : null}
 
       {/* PRD §REQ-CRM — funnel: client count per stage (drop-off visual) */}
-      {!isLoading && clients.length > 0 ? (
+      {view === 'pipeline' && !isLoading && clients.length > 0 ? (
         <div className="card mb-4">
           <h3 className="text-h3 mb-2">Konversiya funel</h3>
           <div className="space-y-1.5">
@@ -267,7 +326,7 @@ export function ClientsPage() {
 
       {/* PRD §REQ-CRM-02 — visual pipeline value per stage (bar chart). PRD §462 —
           finance, so hidden from non-admins (expected_value is masked for them). */}
-      {isAdmin && !isLoading && clients.length > 0 ? (
+      {view === 'pipeline' && isAdmin && !isLoading && clients.length > 0 ? (
         <div className="card mb-4">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-h3">Pipeline dəyəri (mərhələ üzrə)</h3>
@@ -335,6 +394,13 @@ export function ClientsPage() {
           body="İlk müştərini əlavə et — Lead → Müzakirə → İmzalanıb axını avtomatlaşdırılmışdır."
           cta={isAdmin ? <button className="btn-primary">+ Yeni müştəri</button> : null}
         />
+      ) : view === 'table' ? (
+        <ClientsTable
+          clients={filteredClients}
+          stats={projectStats.data}
+          isAdmin={isAdmin}
+          onOpen={setActive}
+        />
       ) : (
         <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
           {BOARD_STAGES.map((s) => (
@@ -383,7 +449,10 @@ export function ClientsPage() {
                     className="card text-left w-full"
                     style={{ padding: 12, cursor: isAdmin ? 'grab' : 'pointer' }}
                   >
-                    <div className="font-medium text-body">{c.name}</div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-medium text-body truncate">{c.name}</div>
+                      {c.tier !== 'none' ? <TierBadge tier={c.tier} /> : null}
+                    </div>
                     <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
                       {c.company ?? '—'}{isAdmin ? ` · ${formatAZN(c.expected_value)}` : ''}
                     </div>
@@ -438,6 +507,169 @@ export function ClientsPage() {
         />
       ) : null}
     </>
+  );
+}
+
+// ── Tier badge + editor (account segmentation) ──
+function TierBadge({ tier, muted }: { tier: ClientTier; muted?: boolean }) {
+  if (tier === 'none') {
+    return <span className="text-meta" style={{ color: 'var(--text-muted)' }}>—</span>;
+  }
+  const st = CLIENT_TIER_STYLE[tier];
+  return (
+    <span
+      className="chip inline-flex items-center gap-1"
+      style={{ background: muted ? 'transparent' : st.bg, color: st.color, fontSize: 11, fontWeight: 600, padding: '0 8px' }}
+    >
+      <span aria-hidden style={{ width: 6, height: 6, borderRadius: 999, background: st.color, display: 'inline-block' }} />
+      {CLIENT_TIER_LABEL[tier]}
+    </span>
+  );
+}
+
+// Admin-only inline tier change (product decision 2026-06). Non-admins see the
+// badge read-only.
+function TierControl({ client, editable }: { client: Client; editable: boolean }) {
+  const qc = useQueryClient();
+  const update = useMutation({
+    mutationFn: async (next: ClientTier) => {
+      const { error } = await supabase.from('clients').update({ tier: next }).eq('id', client.id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['clients'] }),
+  });
+  if (!editable) return <TierBadge tier={client.tier} />;
+  return (
+    <select
+      className="input"
+      style={{ height: 26, fontSize: 11, padding: '0 6px', maxWidth: 130, color: CLIENT_TIER_STYLE[client.tier].color, fontWeight: client.tier === 'none' ? 400 : 600 }}
+      value={client.tier}
+      disabled={update.isPending}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => update.mutate(e.target.value as ClientTier)}
+      aria-label="Müştəri tier"
+    >
+      {CLIENT_TIER_ORDER.map((t) => (
+        <option key={t} value={t}>{CLIENT_TIER_LABEL[t]}</option>
+      ))}
+    </select>
+  );
+}
+
+// ── Account table view (all clients, all details, project activity, tier) ──
+type TableSort = 'name' | 'tier' | 'stage' | 'projects' | 'value' | 'last_interaction' | 'icp';
+
+function ClientsTable({
+  clients,
+  stats,
+  isAdmin,
+  onOpen,
+}: {
+  clients: Client[];
+  stats: Map<string, { total: number; active: number }> | undefined;
+  isAdmin: boolean;
+  onOpen: (c: Client) => void;
+}) {
+  const [sort, setSort] = useState<TableSort>('projects');
+  const [dir, setDir] = useState<'asc' | 'desc'>('desc');
+
+  function toggleSort(key: TableSort) {
+    if (sort === key) { setDir((d) => (d === 'asc' ? 'desc' : 'asc')); return; }
+    setSort(key);
+    setDir(key === 'name' ? 'asc' : 'desc');
+  }
+
+  const totalOf = (c: Client) => stats?.get(c.id)?.total ?? 0;
+  const activeOf = (c: Client) => stats?.get(c.id)?.active ?? 0;
+
+  const rows = [...clients].sort((a, b) => {
+    let cmp = 0;
+    switch (sort) {
+      case 'name': cmp = a.name.localeCompare(b.name, 'az'); break;
+      case 'tier': cmp = CLIENT_TIER_RANK[a.tier] - CLIENT_TIER_RANK[b.tier]; break;
+      case 'stage': cmp = CLIENT_STAGE_ORDER.indexOf(a.pipeline_stage) - CLIENT_STAGE_ORDER.indexOf(b.pipeline_stage); break;
+      case 'projects': cmp = totalOf(a) - totalOf(b) || activeOf(a) - activeOf(b); break;
+      case 'value': cmp = (a.expected_value ?? 0) - (b.expected_value ?? 0); break;
+      case 'last_interaction': cmp = (a.last_interaction_at ?? '').localeCompare(b.last_interaction_at ?? ''); break;
+      case 'icp': cmp = (a.ai_icp_fit ?? -1) - (b.ai_icp_fit ?? -1); break;
+    }
+    return dir === 'asc' ? cmp : -cmp;
+  });
+
+  const cols: { key: TableSort; label: string; admin?: boolean; align?: 'right' }[] = [
+    { key: 'name', label: 'Müştəri' },
+    { key: 'tier', label: 'Tier' },
+    { key: 'stage', label: 'Mərhələ' },
+    { key: 'projects', label: 'Layihələr (aktiv/cəmi)' },
+    { key: 'value', label: 'Dəyər', admin: true, align: 'right' },
+    { key: 'last_interaction', label: 'Son əlaqə' },
+    { key: 'icp', label: 'ICP' },
+  ];
+  const visibleCols = cols.filter((c) => !c.admin || isAdmin);
+
+  return (
+    <div className="card overflow-x-auto">
+      <table className="w-full text-body">
+        <thead>
+          <tr style={{ borderBottom: '1px solid var(--line)' }}>
+            {visibleCols.map((c) => (
+              <th
+                key={c.key}
+                className="py-3 px-3 text-meta select-none"
+                style={{
+                  color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em',
+                  textAlign: c.align === 'right' ? 'right' : 'left', cursor: 'pointer', whiteSpace: 'nowrap',
+                }}
+                onClick={() => toggleSort(c.key)}
+                title={`${c.label} — sırala`}
+              >
+                {c.label}{sort === c.key ? <span style={{ color: 'var(--brand-text)' }}> {dir === 'asc' ? '↑' : '↓'}</span> : null}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((c) => (
+            <tr
+              key={c.id}
+              className="hover:bg-surface-mist transition-colors cursor-pointer"
+              style={{ borderBottom: '1px solid var(--line-soft)' }}
+              onClick={() => onOpen(c)}
+            >
+              <td className="py-3 px-3">
+                <div className="font-medium">{c.name}</div>
+                <div className="text-meta" style={{ color: 'var(--text-muted)' }}>{c.company ?? '—'}{c.industry ? ` · ${c.industry}` : ''}</div>
+              </td>
+              <td className="py-3 px-3" onClick={(e) => e.stopPropagation()}>
+                <TierControl client={c} editable={isAdmin} />
+              </td>
+              <td className="py-3 px-3">
+                <span className="chip" style={{ background: 'var(--surface-mist)', color: 'var(--text)', fontSize: 12 }}>
+                  {CLIENT_STAGE_LABEL[c.pipeline_stage]}
+                </span>
+              </td>
+              <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                {totalOf(c) === 0 ? (
+                  <span style={{ color: 'var(--text-muted)' }}>—</span>
+                ) : (
+                  <span>
+                    <strong style={{ color: 'var(--success-deep, #16794a)' }}>{activeOf(c)} aktiv</strong>
+                    <span style={{ color: 'var(--text-muted)' }}> / {totalOf(c)}</span>
+                  </span>
+                )}
+              </td>
+              {isAdmin ? (
+                <td className="py-3 px-3 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAZN(c.expected_value)}</td>
+              ) : null}
+              <td className="py-3 px-3 text-meta" style={{ color: 'var(--text-muted)' }}>{relativeTime(c.last_interaction_at)}</td>
+              <td className="py-3 px-3 text-meta" style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                {c.ai_icp_fit != null ? `${Math.round(c.ai_icp_fit)}%` : '—'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -1165,6 +1397,18 @@ function OverviewTab({ client }: { client: Client }) {
         {isAdmin ? (
           <ClientIndustryEditor clientId={client.id} initial={client.industry ?? null} />
         ) : (client.industry ? <Row label="Sahə" value={client.industry ?? ''} /> : null)}
+        {/* Account tier (admin sets; others see read-only when assigned) */}
+        {isAdmin ? (
+          <div className="flex justify-between gap-2 items-center">
+            <dt style={{ color: 'var(--text-muted)' }}>Tier</dt>
+            <dd><TierControl client={client} editable /></dd>
+          </div>
+        ) : (client.tier !== 'none' ? (
+          <div className="flex justify-between gap-2 items-center">
+            <dt style={{ color: 'var(--text-muted)' }}>Tier</dt>
+            <dd><TierBadge tier={client.tier} /></dd>
+          </div>
+        ) : null)}
         <Row label="Son əlaqə" value={relativeTime(client.last_interaction_at)} />
         {/* REQ-CRM-04 — surface staleness so users see when ICP was last calculated */}
         <Row

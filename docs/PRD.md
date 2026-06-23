@@ -136,7 +136,8 @@ Telegram:   Bot API (one Reflect bot, per-user chat_id linking)
 - `task_comments` (id, task_id, user_id, body, mentions uuid[], created_at)
 
 **Clients / CRM**
-- `clients` (id, name, company, email, phone, pipeline_stage, confidence_pct, expected_value, last_interaction_at, ai_icp_fit, ai_icp_calculated_at, created_by)
+- `clients` (id, name, company, email, phone, pipeline_stage, confidence_pct, expected_value, last_interaction_at, ai_icp_fit, ai_icp_calculated_at, created_by, industry, tier) — `tier` = account segment enum `vip|gold|silver|bronze|none` (migration 0074), admin-set
+- `clients_view` (masked read: `expected_value` admin-only, migration 0073) · `client_project_stats` (per-client total/active project counts for the table view, migration 0074)
 - `client_stage_history` (id, client_id, from_stage, to_stage, changed_by, changed_at, lost_reason)
 - `client_interactions` (id, client_id, type, note, occurred_at, logged_by)
 
@@ -454,6 +455,7 @@ Arxiv          —
 **REQ-CRM-03** Quick interaction log (≤30s): type (Zəng/Email/Görüş/WhatsApp), free text, date.
 **REQ-CRM-04** AI ICP enrichment via MIRAI (cached `ai_icp_fit` until inputs change; refresh max 1×/24h/client).
 **REQ-CRM-05** Slide-in detail panel (no full-page nav); sections: overview, interactions, proposals, projects, documents.
+**REQ-CRM-09** Account table view: a `Pipeline | Cədvəl` toggle on the same Müştərilər page (no separate route). The table lists every client with tier, stage, project activity (active/total from `client_project_stats`), value (admin only), last interaction and ICP — sortable by each column (incl. project count). Rows open the same slide-in panel. `tier` (VIP/Gold/Silver/Bronze) is inline-editable by admins only; tier badges map to existing designstyle4 tokens (no new palette).
 **REQ-CRM-06** Proposals = `project_documents` rows with `category='price_protocol'`, optional `project_id`. Share token enables public read-only access.
 **REQ-CRM-07** Retrospective survey: triggered from closeout, public form, NPS 0–10 + per-category 1–5 stars + free text.
 

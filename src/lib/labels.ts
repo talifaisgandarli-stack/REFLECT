@@ -1,5 +1,6 @@
 import type {
   ClientPipelineStage,
+  ClientTier,
   InteractionType,
   PresenceStatus,
   ProjectStatus,
@@ -121,6 +122,32 @@ export const CLIENT_STAGE_ORDER: ClientPipelineStage[] = [
   'lost',
   'archived',
 ];
+
+// Client relationship tier (account segmentation). Order = best → unassigned.
+// Colours map to existing designstyle4 tokens — no new palette entries.
+export const CLIENT_TIER_LABEL: Record<ClientTier, string> = {
+  vip: 'VIP',
+  gold: 'Gold',
+  silver: 'Silver',
+  bronze: 'Bronze',
+  none: 'Təyin edilməyib',
+};
+
+export const CLIENT_TIER_ORDER: ClientTier[] = ['vip', 'gold', 'silver', 'bronze', 'none'];
+
+// Rank for sorting (lower = higher tier).
+export const CLIENT_TIER_RANK: Record<ClientTier, number> = {
+  vip: 0, gold: 1, silver: 2, bronze: 3, none: 4,
+};
+
+// Token-only badge styling: { text/dot colour, background }.
+export const CLIENT_TIER_STYLE: Record<ClientTier, { color: string; bg: string }> = {
+  vip: { color: 'var(--brand-text)', bg: 'var(--brand-soft)' },
+  gold: { color: 'var(--warning, #c47d00)', bg: 'var(--warning-bg, #fff3d6)' },
+  silver: { color: 'var(--text-muted)', bg: 'var(--surface-mist)' },
+  bronze: { color: 'var(--text-soft)', bg: 'var(--surface-mist)' },
+  none: { color: 'var(--text-muted)', bg: 'transparent' },
+};
 
 export const INTERACTION_LABEL: Record<InteractionType, string> = {
   call: 'Zəng',

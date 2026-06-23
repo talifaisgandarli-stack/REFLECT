@@ -237,7 +237,10 @@ export interface Client {
   created_by: string | null;
   created_at: string;
   industry: string | null;
+  tier: ClientTier;
 }
+
+export type ClientTier = 'vip' | 'gold' | 'silver' | 'bronze' | 'none';
 
 export interface ClientInteraction {
   id: string;
