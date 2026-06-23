@@ -73,9 +73,44 @@ export function TaskCommentsModal({
   taskTitle: string;
   onClose: () => void;
 }) {
-  const { profile } = useAuth();
+  const { profile, isAdmin } = useAuth();
   const qc = useQueryClient();
   const [body, setBody] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Admin-only visibility flag + hard delete — folded in from the old separate
+  // edit modal so this is the single card-detail surface.
+  const adminOnlyQ = useQuery({
+    queryKey: ['task_admin_only', taskId],
+    enabled: isAdmin,
+    queryFn: async () => {
+      const { data } = await supabase.from('tasks').select('admin_only').eq('id', taskId).single();
+      return !!(data as { admin_only?: boolean } | null)?.admin_only;
+    },
+  });
+  const toggleAdminOnly = useMutation({
+    mutationFn: async (next: boolean) => {
+      const { error } = await supabase.from('tasks').update({ admin_only: next }).eq('id', taskId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task_admin_only', taskId] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+    },
+  });
+  const del = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.from('tasks').delete().eq('id', taskId).select('id');
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error('Silinmədi — admin icazəsi tələb olunur (DB migration 0067).');
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      onClose();
+    },
+  });
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -413,6 +448,42 @@ export function TaskCommentsModal({
 
           {/* PRD §REQ-TASK — inline task description editor */}
           <TaskDescriptionEditor taskId={taskId} />
+
+          {/* Admin-only visibility + delete (migration 0068 / 0067) */}
+          {isAdmin ? (
+            <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
+              <label className="flex items-center gap-2 text-meta cursor-pointer" style={{ color: 'var(--text-soft)' }}>
+                <input
+                  type="checkbox"
+                  checked={adminOnlyQ.data ?? false}
+                  disabled={adminOnlyQ.isLoading || toggleAdminOnly.isPending}
+                  onChange={(e) => toggleAdminOnly.mutate(e.target.checked)}
+                />
+                🔒 Yalnız adminlər üçün
+              </label>
+              {!confirmDelete ? (
+                <button
+                  type="button"
+                  className="text-meta"
+                  style={{ color: 'var(--error-deep)', fontSize: 12 }}
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  Tapşırığı sil
+                </button>
+              ) : (
+                <span className="inline-flex items-center gap-2 text-meta" style={{ fontSize: 12 }}>
+                  <span style={{ color: 'var(--error-deep)' }}>Əminsiniz?</span>
+                  <button type="button" className="text-meta" style={{ color: 'var(--text-muted)' }} onClick={() => setConfirmDelete(false)} disabled={del.isPending}>Geri</button>
+                  <button type="button" className="text-meta" style={{ color: 'var(--error-deep)', fontWeight: 600 }} onClick={() => del.mutate()} disabled={del.isPending}>
+                    {del.isPending ? 'Silinir…' : 'Sil'}
+                  </button>
+                </span>
+              )}
+            </div>
+          ) : null}
+          {del.error ? (
+            <p className="text-meta" style={{ color: 'var(--error-deep)' }}>{(del.error as Error).message}</p>
+          ) : null}
 
           {comments.isLoading ? <p className="text-meta">Yüklənir…</p> : null}
           {!comments.isLoading && (comments.data ?? []).length === 0 ? (

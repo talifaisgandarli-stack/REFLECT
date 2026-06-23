@@ -5,7 +5,7 @@ import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import { AvatarGroup } from '@/components/AvatarGroup';
 import {
-  IconMore, IconEdit, IconComment, IconPlay, IconStop, IconCopy, IconBan, IconLock,
+  IconMore, IconEdit, IconPlay, IconStop, IconCopy, IconBan, IconLock,
 } from '@/components/icons';
 import { isOpenChildrenError, useTasks, useUpdateTaskStatus } from '@/lib/hooks';
 import { useSlashFocus } from '@/lib/useSlashFocus';
@@ -17,7 +17,6 @@ import { SubtaskBlockingModal } from '@/components/SubtaskBlockingModal';
 import { TaskCreateModal } from '@/components/TaskCreateModal';
 import { CancelTaskModal } from '@/components/CancelTaskModal';
 import { TaskCommentsModal } from '@/components/TaskCommentsModal';
-import { TaskEditModal } from '@/components/TaskEditModal';
 import { TaskCalendarView } from '@/components/TaskCalendarView';
 import { TaskGanttView } from '@/components/TaskGanttView';
 import { SkeletonList } from '@/components/Skeleton';
@@ -91,8 +90,7 @@ function TaskCardMenu({
   status,
   timerActive,
   onStatus,
-  onEdit,
-  onComments,
+  onOpen,
   onCancel,
   onClone,
   onTimerStart,
@@ -101,8 +99,7 @@ function TaskCardMenu({
   status: TaskStatus;
   timerActive: boolean;
   onStatus: (next: TaskStatus) => void;
-  onEdit: () => void;
-  onComments: () => void;
+  onOpen: () => void;
   onCancel: () => void;
   onClone: () => void;
   onTimerStart: () => void;
@@ -167,11 +164,8 @@ function TaskCardMenu({
             </select>
           </div>
           <div style={{ height: 1, background: 'var(--line-soft)', margin: '2px 0 4px' }} />
-          <button type="button" role="menuitem" className={itemCls} onClick={() => { onEdit(); setOpen(false); }}>
-            <IconEdit /> Düzəlt
-          </button>
-          <button type="button" role="menuitem" className={itemCls} onClick={() => { onComments(); setOpen(false); }}>
-            <IconComment /> Şərhlər
+          <button type="button" role="menuitem" className={itemCls} onClick={() => { onOpen(); setOpen(false); }}>
+            <IconEdit /> Aç
           </button>
           <button
             type="button"
@@ -335,7 +329,6 @@ export function TasksPage() {
     next.delete('focus');
     setSearchParams(next, { replace: true });
   }, [tasks, searchParams, setSearchParams]);
-  const [editing, setEditing] = useState<Task | null>(null);
   // PRD §6.x — bulk action mode for the table/list view. The reassign
   // popover / target-id state lives inside BulkActionBar; resetting bulk
   // mode unmounts the bar which discards that local state automatically.
@@ -1435,7 +1428,7 @@ export function TasksPage() {
                       // Click anywhere on the card body opens the editor. Inner
                       // interactive controls (select, buttons, checkboxes, subtask
                       // rows) all stopPropagation, so they keep their own actions.
-                      onClick={() => setEditing(t)}
+                      onClick={() => setCommenting({ id: t.id, title: t.title })}
                       draggable
                       onDragStart={(e) => {
                         e.dataTransfer.setData(
@@ -1510,7 +1503,7 @@ export function TasksPage() {
                           which made the visual treatment asymmetric. */}
                       <div
                         className="font-medium cursor-pointer"
-                        onClick={(e) => { e.stopPropagation(); setEditing(t); }}
+                        onClick={(e) => { e.stopPropagation(); setCommenting({ id: t.id, title: t.title }); }}
                         title={(() => {
                           // PRD §UX — tooltip combines description (if any) + created age
                           const parts: string[] = [];
@@ -1632,8 +1625,7 @@ export function TasksPage() {
                           status={t.status}
                           timerActive={activeTimer?.task_id === t.id}
                           onStatus={(next) => moveTask(t.id, next, t.status)}
-                          onEdit={() => setEditing(t)}
-                          onComments={() => setCommenting({ id: t.id, title: t.title })}
+                          onOpen={() => setCommenting({ id: t.id, title: t.title })}
                           onCancel={() => setCancelling({ id: t.id, title: t.title })}
                           onClone={() => cloneTask.mutate(t.id)}
                           onTimerStart={() => startTimer.mutate(t.id)}
@@ -1728,7 +1720,7 @@ export function TasksPage() {
                                         />
                                         <span
                                           className="flex-1 cursor-pointer truncate"
-                                          onClick={(e) => { e.stopPropagation(); setEditing(k); }}
+                                          onClick={(e) => { e.stopPropagation(); setCommenting({ id: k.id, title: k.title }); }}
                                           title={k.title}
                                           style={{
                                             textDecoration: kDone ? 'line-through' : 'none',
@@ -2096,10 +2088,6 @@ export function TasksPage() {
           taskTitle={commenting.title}
           onClose={() => setCommenting(null)}
         />
-      ) : null}
-
-      {editing ? (
-        <TaskEditModal task={editing} onClose={() => setEditing(null)} />
       ) : null}
 
       {bulkMode && selectedIds.size > 0 ? (

@@ -1,5 +1,5 @@
 /**
- * `tasks.duration_unit` is loose text — TaskCreateModal / TaskEditModal
+ * `tasks.duration_unit` is loose text — TaskCreateModal / TaskCommentsModal
  * write plural ('hours' / 'days'), the DB default is 'hours', and some
  * legacy rows may be singular. These helpers normalise once so every
  * column-total / row-label site agrees, regardless of which form the row

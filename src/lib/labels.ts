@@ -36,7 +36,7 @@ export const TASK_STATUS_TONE: Record<TaskStatus, { dot: string; bg: string; tex
 };
 
 /**
- * Duration unit options used by TaskCreateModal / TaskEditModal. Schema
+ * Duration unit options used by TaskCreateModal / TaskCommentsModal. Schema
  * stores `duration_unit` loosely as text; canonical values are plural
  * ('hours', 'days') to match what those modals write. Tasks.tsx
  * normalises via normalizeDurationUnit() for legacy / singular rows.
