@@ -52,15 +52,16 @@ export function OutsourcePage() {
   const q = useQuery({
     queryKey: ['outsource', view],
     queryFn: async () => {
-      let query = supabase.from(view as 'outsource_items').select('*');
-      // Non-admins get an operational view only — 'paid' (Ödənildi) is a finance
-      // state, so paid rows are hidden from them entirely.
-      if (!isAdmin) query = query.neq('status', 'paid');
-      const { data, error } = await query.order('deadline', { ascending: true });
+      const { data, error } = await supabase.from(view as 'outsource_items').select('*').order('deadline', { ascending: true });
       if (error) throw error;
       return data ?? [];
     },
   });
+
+  // Non-admins see paid items (they don't vanish from the list), but the finance
+  // word "Ödənildi" is masked to a neutral operational label.
+  const statusLabel = (s: Status | string | undefined) =>
+    (!isAdmin && s === 'paid') ? 'Tamamlandı' : (STATUS_LABEL[s as Status] ?? s ?? '');
 
   // PRD §UX — resolve project_id → project name so the table doesn't show UUIDs.
   // Separate query (kept simple) instead of an embed; cached for 5 min.
@@ -416,15 +417,15 @@ export function OutsourcePage() {
                         style={{ background: 'var(--surface-mist)', color: 'var(--text)', fontSize: 12 }}
                         title={(() => {
                           // PRD §REQ-FIN-07 — explain next workflow step on hover,
-                          // OR show paid_at date when row is fully paid.
-                          if (row.status === 'paid' && (row as { paid_at?: string | null }).paid_at) {
+                          // OR show paid_at date when fully paid (admin only — finance).
+                          if (isAdmin && row.status === 'paid' && (row as { paid_at?: string | null }).paid_at) {
                             return `Ödənilib: ${new Date((row as { paid_at: string }).paid_at).toLocaleDateString('az-AZ')}`;
                           }
                           const next = STATUS_NEXT[row.status as Status];
                           return next ? `Növbəti: ${STATUS_LABEL[next]}` : 'Workflow tamamlanıb';
                         })()}
                       >
-                        {STATUS_LABEL[row.status as Status] ?? row.status}
+                        {statusLabel(row.status)}
                       </span>
                       {/* PRD §REQ-FIN-07 — only admins advance status; non-admins
                           get a read-only operational view (no finance, no controls). */}
