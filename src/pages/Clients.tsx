@@ -174,7 +174,7 @@ export function ClientsPage() {
             <input
               ref={searchInputRef}
               className="input max-w-[240px]"
-              placeholder="Axtar (ad, şirkət, email)… (/)"
+              placeholder="Axtar (ad, təşkilat, email)… (/)"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -186,10 +186,10 @@ export function ClientsPage() {
                 onClick={() => {
                   downloadCsv(
                     `musteriler-${new Date().toISOString().slice(0, 10)}.csv`,
-                    ['Ad', 'Şirkət', 'Tier', 'Mərhələ', 'Aktiv layihə', 'Cəmi layihə', 'Email', 'Telefon', 'Etibar %', 'Dəyər (AZN)', 'Sahə', 'ICP %', 'Son əlaqə'],
+                    ['Ad', 'Təşkilat', 'Tier', 'Mərhələ', 'Aktiv layihə', 'Cəmi layihə', 'Email', 'Telefon', 'Etibar %', 'Dəyər (AZN)', 'Sahə', 'ICP %', 'Son əlaqə'],
                     clients.map((c) => ({
                       'Ad': c.name,
-                      'Şirkət': c.company ?? '',
+                      'Təşkilat': c.company ?? '',
                       'Tier': c.tier !== 'none' ? CLIENT_TIER_LABEL[c.tier] : '',
                       'Mərhələ': CLIENT_STAGE_LABEL[c.pipeline_stage] ?? c.pipeline_stage,
                       'Aktiv layihə': projectStats.data?.get(c.id)?.active ?? 0,
@@ -862,8 +862,11 @@ function CreateClientModal({ onClose, onCreated }: { onClose: () => void; onCrea
           <CField label="Ad *">
             <input className="input" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
           </CField>
-          <CField label="Şirkət">
-            <input className="input" value={company} onChange={(e) => setCompany(e.target.value)} />
+          <CField label="Təşkilat">
+            <input className="input" value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Məs. Dövlət Gömrük Komitəsi" />
+            <span className="text-meta block mt-1" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+              Təşkilatın adı — iş/müqavilə təsviri deyil (onu layihəyə yazın).
+            </span>
           </CField>
           <div className="grid grid-cols-2 gap-3">
             <CField label="Email">
@@ -1455,8 +1458,8 @@ function OverviewTab({ client }: { client: Client }) {
         ) : <Row label="Etibar %" value={`${client.confidence_pct}%`} />}
         {/* PRD §REQ-CRM — inline editable fields (admin) */}
         {isAdmin ? (
-          <ClientFieldEditor clientId={client.id} field="company" label="Şirkət" initial={client.company} type="text" />
-        ) : <Row label="Şirkət" value={client.company ?? '—'} />}
+          <ClientFieldEditor clientId={client.id} field="company" label="Təşkilat" initial={client.company} type="text" />
+        ) : <Row label="Təşkilat" value={client.company ?? '—'} />}
         {isAdmin ? (
           <ClientFieldEditor clientId={client.id} field="email" label="Email" initial={client.email} type="email" />
         ) : <Row label="Email" value={client.email ?? '—'} />}
