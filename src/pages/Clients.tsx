@@ -33,7 +33,25 @@ import { useSlashFocus } from '@/lib/useSlashFocus';
 // Audit #5 — 'archived' is the merge soft-archive sink, not an active pipeline
 // stage, so it is excluded from the board / funnel / value chart (merged clients
 // stop reappearing as a draggable column). Data is still grouped for all stages.
+// BOARD_STAGES (7) still drives the panel's stage <select>, so every stage stays
+// reachable without drag.
 const BOARD_STAGES: ClientPipelineStage[] = CLIENT_STAGE_ORDER.filter((s) => s !== 'archived');
+
+// Board display override (PRD §Module 6, owner-approved 2026-06-23): the kanban
+// renders the 5 active spec stages as columns. The 8-value enum is untouched
+// (display-only) — 'signed' folds into the 'in_progress' (İcrada) column, 'lost'
+// is a separate drop-to-lose strip, 'archived' is the off-board merge sink.
+const SPEC_BOARD_STAGES: ClientPipelineStage[] = [
+  'lead',
+  'proposal',
+  'negotiation',
+  'in_progress',
+  'portfolio',
+];
+// Which stored enum stages roll up into each visible column.
+const COLUMN_STAGES: Partial<Record<ClientPipelineStage, ClientPipelineStage[]>> = {
+  in_progress: ['signed', 'in_progress'],
+};
 
 type DragPayload = { id: string; from: ClientPipelineStage };
 type LostPrompt = { id: string; from: ClientPipelineStage };
@@ -121,7 +139,14 @@ export function ClientsPage() {
       (sub, c) => sub + (c.expected_value ?? 0) * ((c.confidence_pct ?? CLIENT_STAGE_CONFIDENCE[s]) / 100),
       0,
     );
-  const totalPipeline = BOARD_STAGES.reduce((sum, s) => sum + stageValue(s), 0);
+  // Display-override helpers: a visible column rolls up its folded enum stages
+  // (e.g. İcrada = signed + in_progress). Falls back to the column's own stage.
+  const columnStages = (col: ClientPipelineStage) => COLUMN_STAGES[col] ?? [col];
+  const columnClients = (col: ClientPipelineStage) =>
+    columnStages(col).flatMap((st) => grouped[st]);
+  const columnValue = (col: ClientPipelineStage) =>
+    columnStages(col).reduce((sum, st) => sum + stageValue(st), 0);
+  const totalPipeline = SPEC_BOARD_STAGES.reduce((sum, s) => sum + columnValue(s), 0);
 
   // View toggle — Accounts table (default; the primary job here) vs. pipeline
   // kanban (REQ-CRM-01, opt-in). Persisted in the URL across refresh / share.
@@ -333,8 +358,8 @@ export function ClientsPage() {
           groupBy={groupBy}
         />
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-          {BOARD_STAGES.map((s) => (
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+          {SPEC_BOARD_STAGES.map((s) => (
             <div
               key={s}
               className="rounded-card p-3"
@@ -357,17 +382,17 @@ export function ClientsPage() {
                   textTransform: 'uppercase',
                 }}
               >
-                {CLIENT_STAGE_LABEL[s]} · {grouped[s].length}
+                {CLIENT_STAGE_LABEL[s]} · {columnClients(s).length}
               </h3>
               {/* PRD §462 — per-stage value is finance; admin only, and only when
                   there's actually a value (no "AZN 0" noise). */}
-              {isAdmin && stageValue(s) > 0 ? (
+              {isAdmin && columnValue(s) > 0 ? (
                 <div className="text-meta mb-3" style={{ color: 'var(--text-muted)' }}>
-                  {formatAZN(stageValue(s))}
+                  {formatAZN(columnValue(s))}
                 </div>
               ) : null}
               <div className="space-y-2">
-                {grouped[s].map((c) => (
+                {columnClients(s).map((c) => (
                   // role=button (not <button>) so the card can host the inline
                   // value editor's nested controls — a <button> may not legally
                   // contain interactive children. Click/Enter/Space opens the panel.
@@ -423,6 +448,55 @@ export function ClientsPage() {
           ))}
         </div>
       )}
+
+      {/* Board override: 'Udulan' is kept off the 5-stage grid as a slim
+          drop-to-lose strip (drag a card here → lost-reason prompt, REQ-CRM-01).
+          Also lists any already-lost clients so they stay reachable. Only shown
+          when there's something to drop onto or lost clients exist. */}
+      {view === 'pipeline' && (isAdmin || grouped.lost.length > 0) ? (
+        <div
+          className="rounded-card p-3 mt-3"
+          style={{ border: '1px dashed var(--line)' }}
+          onDragOver={isAdmin ? (e) => e.preventDefault() : undefined}
+          onDrop={
+            isAdmin
+              ? (e) => {
+                  const raw = e.dataTransfer.getData('text/plain');
+                  if (!raw) return;
+                  handleDrop('lost', JSON.parse(raw) as DragPayload);
+                }
+              : undefined
+          }
+        >
+          <h3
+            className="text-tiny mb-2 tracking-wider"
+            style={{ color: 'var(--text-muted)', textTransform: 'uppercase' }}
+          >
+            {CLIENT_STAGE_LABEL.lost} · {grouped.lost.length}
+            {isAdmin ? (
+              <span className="ml-2" style={{ textTransform: 'none' }}>
+                — itirilmiş kimi qeyd etmək üçün kartı bura sürüşdürün
+              </span>
+            ) : null}
+          </h3>
+          {grouped.lost.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {grouped.lost.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setActive(c)}
+                  className="chip"
+                  style={{ background: 'var(--surface-mist)', color: 'var(--text-soft)' }}
+                >
+                  {c.name}
+                  {c.company ? ` · ${c.company}` : ''}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {active ? (
         <ClientPanel client={active} onClose={() => setActive(null)} />

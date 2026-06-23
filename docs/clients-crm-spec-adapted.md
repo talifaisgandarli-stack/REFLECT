@@ -15,7 +15,7 @@ with the PRD. Nothing here changes "main logic", schema, or tokens.
 
 | # | Spec proposed | Adapted to (PRD) | Authority |
 |---|---|---|---|
-| 1 | 5 stages (Lead→Proposal→Discussion→Active→Portfolio) | **8 stages**, AZ labels (board shows 7, `archived` is the merge sink) | PRD §441, REQ-CRM-01 |
+| 1 | 5 stages (Lead→Proposal→Discussion→Active→Portfolio) | **Board shows the 5 spec stages** (Lead→Təklif→Müzakirə→İcrada→Portfolio); enum keeps all **8** stored values (display-only override). `İmzalanıb` folds into İcrada, `Udulan` = drop strip, `Arxiv` = merge sink | PRD §441 override (2026-06-23), REQ-CRM-01 |
 | 2 | Tier **A / B / C** | **VIP / Gold / Silver / Bronze / none** enum | PRD §3.2:139, REQ-CRM-09 |
 | 3 | New `organization` column | existing **`company`**, displayed as **"Təşkilat"** | PRD §3.2:139 (no schema change) |
 | 4 | `status` **computed** from projects | **stored `pipeline_stage`**, changed by drag | REQ-CRM-01 (main logic kept) |
@@ -78,22 +78,27 @@ list shows **name + status dot + phase chip** — never a money figure or % bar
 
 ---
 
-## 2. Pipeline stages (8, AZ) — replaces the spec's 5
+## 2. Pipeline stages — 8 stored, **5 shown** (owner override 2026-06-23)
 
-| Stage (enum) | Label | Confidence | On board? |
+The `pipeline_stage` enum keeps all 8 values (no migration); the **board renders
+the 5 active spec stages** as columns. Display-only.
+
+| Stage (enum) | Label | Confidence | On the board? |
 |---|---|---|---|
-| `lead` | Lead | 10% | ✅ |
-| `proposal` | Təklif | 30% | ✅ |
-| `negotiation` | Müzakirə | 50% | ✅ |
-| `signed` | İmzalanıb | 75% | ✅ |
-| `in_progress` | İcrada | 95% | ✅ |
-| `portfolio` | Portfolio | 100% | ✅ |
-| `lost` | Udulan | 0% | ✅ (drop target; requires `lost_reason`) |
-| `archived` | Arxiv | — | ❌ merge soft-archive sink, excluded from the board |
+| `lead` | Lead | 10% | ✅ column |
+| `proposal` | Təklif | 30% | ✅ column |
+| `negotiation` | Müzakirə | 50% | ✅ column |
+| `in_progress` | İcrada | 95% | ✅ column (also hosts folded `signed`) |
+| `portfolio` | Portfolio | 100% | ✅ column |
+| `signed` | İmzalanıb | 75% | ▸ folds into the **İcrada** column |
+| `lost` | Udulan | 0% | ▸ separate **drop-to-lose strip** (requires `lost_reason`) |
+| `archived` | Arxiv | — | ❌ off-board merge soft-archive sink |
 
-Board renders the 7 non-archived stages (`BOARD_STAGES`). Dragging to **Udulan**
-opens an inline reason picker (`LOST_REASONS`) before the `client_stage_history`
-row is written (REQ-CRM-01).
+Board columns = `SPEC_BOARD_STAGES` (5); `COLUMN_STAGES` rolls `signed` into
+İcrada. Dragging a card onto the **Udulan** strip opens the inline reason picker
+(`LOST_REASONS`) before the `client_stage_history` row is written (REQ-CRM-01).
+The slide-in panel's stage `<select>` still lists all 7 non-archived stages
+(`BOARD_STAGES`), so `signed`/`lost` remain reachable without drag.
 
 ---
 
@@ -214,7 +219,8 @@ Currency is **AZN** (`formatAZN`), Asia/Baku timezone — unchanged vocabulary
 
 | Capability | State |
 |---|---|
-| 8-stage drag kanban + stage history + lost-reason | ✅ shipped (REQ-CRM-01) |
+| Drag kanban + stage history + lost-reason | ✅ shipped (REQ-CRM-01) |
+| **5-column board** (spec stages; signed folds into İcrada; Udulan drop strip) | ✅ shipped (owner override 2026-06-23) |
 | Slide-in panel (overview/interactions/proposals/projects/documents) | ✅ shipped (REQ-CRM-05) |
 | `Pipeline | Cədvəl` toggle, sortable table, group-by, projects popover | ✅ shipped (REQ-CRM-09) |
 | Tiers (VIP/Gold/Silver/Bronze) inline-editable by admin | ✅ shipped |
@@ -223,7 +229,8 @@ Currency is **AZN** (`formatAZN`), Asia/Baku timezone — unchanged vocabulary
 | **Expandable project list on the card** (status dot + phase) | ⬜ spec idea, PRD-safe, not built |
 | **Last-contact + active/total meta on card** | ⬜ spec idea, PRD-safe, not built |
 | Overdue alert | ❌ not in PRD — intentionally skipped |
-| 5 stages / A-B-C tiers / organization col / modal / @dnd-kit / ₼ | ❌ rejected (conflict with PRD) |
+| A-B-C tiers / organization col / modal / @dnd-kit / ₼ | ❌ rejected (conflict with PRD) |
+| Enum reduced to 5 / lost-reason+merge removed | ❌ rejected — board is display-only, enum stays 8 |
 
 The only **net-new, PRD-compatible** work the spec implies is the two ⬜ rows
 (richer card face). Everything else is either shipped or rejected as a PRD conflict.
