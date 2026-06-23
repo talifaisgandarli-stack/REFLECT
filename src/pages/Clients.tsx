@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from 'recharts';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import {
@@ -22,9 +21,10 @@ import {
   CLIENT_TIER_STYLE,
   INTERACTION_LABEL,
   LOST_REASONS,
+  PROJECT_STATUS_LABEL,
 } from '@/lib/labels';
 import { SkeletonList } from '@/components/Skeleton';
-import type { Client, ClientPipelineStage, ClientTier, InteractionType } from '@/types/db';
+import type { Client, ClientPipelineStage, ClientTier, InteractionType, ProjectStatus } from '@/types/db';
 import { formatAZN, relativeTime } from '@/lib/format';
 import { downloadCsv } from '@/lib/csv';
 import { useAuth } from '@/lib/store';
@@ -124,17 +124,20 @@ export function ClientsPage() {
     );
   const totalPipeline = BOARD_STAGES.reduce((sum, s) => sum + stageValue(s), 0);
 
-  // View toggle — pipeline kanban (REQ-CRM-01) vs. the account table (this change).
-  // Persisted in the URL so a refresh / shared link keeps the chosen view.
+  // View toggle — Accounts table (default; the primary job here) vs. pipeline
+  // kanban (REQ-CRM-01, opt-in). Persisted in the URL across refresh / share.
   const [view, setView] = useState<'pipeline' | 'table'>(
-    searchParams.get('view') === 'table' ? 'table' : 'pipeline',
+    searchParams.get('view') === 'pipeline' ? 'pipeline' : 'table',
   );
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
-    if (view === 'table') next.set('view', 'table'); else next.delete('view');
+    if (view === 'pipeline') next.set('view', 'pipeline'); else next.delete('view');
     if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
+
+  // Group-by for the account table (Linear-style): None / Tier / Stage / Industry.
+  const [groupBy, setGroupBy] = useState<GroupBy>('none');
 
   // Per-client project counts (total / active) for the table view — one aggregate
   // (client_project_stats view), not an N+1 over projects.
@@ -164,7 +167,7 @@ export function ClientsPage() {
   return (
     <>
       <PageHead
-        meta={isAdmin ? `${clients.length} müştəri · pipeline ${formatAZN(totalPipeline)}` : `${clients.length} müştəri`}
+        meta={isAdmin && totalPipeline > 0 ? `${clients.length} müştəri · pipeline ${formatAZN(totalPipeline)}` : `${clients.length} müştəri`}
         title="Müştərilər"
         actions={
           <>
@@ -231,7 +234,7 @@ export function ClientsPage() {
             </button>
           ))}
         </div>
-        {/* Sort dropdown only applies to the pipeline cards (table sorts by header) */}
+        {/* Pipeline: card sort. Table: group-by (sort is per-column header). */}
         {view === 'pipeline' ? (
           <>
             <span className="text-meta ml-2" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
@@ -250,7 +253,25 @@ export function ClientsPage() {
               <option value="last_interaction">Son əlaqə (yeni əvvəl)</option>
             </select>
           </>
-        ) : null}
+        ) : (
+          <>
+            <span className="text-meta ml-2" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+              Qrupla:
+            </span>
+            <select
+              className="input"
+              style={{ maxWidth: 160, height: 32, fontSize: 12 }}
+              value={groupBy}
+              onChange={(e) => setGroupBy(e.target.value as GroupBy)}
+              aria-label="Qruplaşdırma"
+            >
+              <option value="none">Qruplaşma yox</option>
+              <option value="tier">Tier üzrə</option>
+              <option value="stage">Mərhələ üzrə</option>
+              <option value="industry">Sahə üzrə</option>
+            </select>
+          </>
+        )}
       </div>
 
       {/* PRD §REQ-CRM — industry filter (migration 0050) */}
@@ -284,106 +305,15 @@ export function ClientsPage() {
         </div>
       ) : null}
 
-      {/* PRD §REQ-CRM — funnel: client count per stage (drop-off visual) */}
-      {view === 'pipeline' && !isLoading && clients.length > 0 ? (
-        <div className="card mb-4">
-          <h3 className="text-h3 mb-2">Konversiya funel</h3>
-          <div className="space-y-1.5">
-            {(() => {
-              const counts = BOARD_STAGES.map((s) => ({ s, n: grouped[s].length }));
-              const max = Math.max(1, ...counts.map((c) => c.n));
-              return counts.map(({ s, n }) => {
-                const pct = max > 0 ? (n / max) * 100 : 0;
-                const color =
-                  s === 'lost' ? 'var(--error, #c83b3b)'
-                  : s === 'portfolio' ? 'var(--success-deep, #16794a)'
-                  : 'var(--brand-action)';
-                return (
-                  <div key={s} className="flex items-center gap-3 text-meta">
-                    <span className="w-24 shrink-0" style={{ color: 'var(--text-muted)' }}>
-                      {CLIENT_STAGE_LABEL[s]}
-                    </span>
-                    <div className="flex-1 h-5 rounded-full overflow-hidden" style={{ background: 'var(--line-soft)' }}>
-                      <div
-                        style={{
-                          width: `${pct}%`,
-                          height: '100%',
-                          background: color,
-                          transition: 'width 0.3s',
-                        }}
-                      />
-                    </div>
-                    <span className="w-10 text-right" style={{ color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
-                      {n}
-                    </span>
-                  </div>
-                );
-              });
-            })()}
-          </div>
-        </div>
-      ) : null}
-
-      {/* PRD §REQ-CRM-02 — visual pipeline value per stage (bar chart). PRD §462 —
-          finance, so hidden from non-admins (expected_value is masked for them). */}
-      {view === 'pipeline' && isAdmin && !isLoading && clients.length > 0 ? (
-        <div className="card mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-h3">Pipeline dəyəri (mərhələ üzrə)</h3>
-            <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
-              Σ (gözlənilən × confidence%)
-            </span>
-          </div>
-          <div style={{ width: '100%', height: 200 }}>
-            <ResponsiveContainer>
-              <BarChart
-                data={BOARD_STAGES.map((s) => ({
-                  stage: CLIENT_STAGE_LABEL[s],
-                  value: stageValue(s),
-                  count: grouped[s].length,
-                  key: s,
-                }))}
-                margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
-              >
-                <XAxis
-                  dataKey="stage"
-                  stroke="var(--text-muted)"
-                  fontSize={11}
-                  interval={0}
-                  angle={-15}
-                  textAnchor="end"
-                  height={50}
-                />
-                <YAxis
-                  stroke="var(--text-muted)"
-                  fontSize={11}
-                  tickFormatter={(v) => `${(Number(v) / 1000).toFixed(0)}k`}
-                />
-                <Tooltip
-                  cursor={{ fill: 'var(--brand-glow-sm)' }}
-                  contentStyle={{
-                    background: 'var(--ink)',
-                    border: '1px solid var(--line)',
-                    borderRadius: 8,
-                    color: 'var(--canvas)',
-                  }}
-                  formatter={(value, _name, item) => {
-                    const count = (item?.payload as { count?: number } | undefined)?.count ?? 0;
-                    return [`${formatAZN(Number(value))} · ${count} müştəri`, 'Dəyər'];
-                  }}
-                />
-                <Bar dataKey="value" radius={[4, 4, 0, 0]} isAnimationActive={false}>
-                  {BOARD_STAGES.map((s) => (
-                    <Cell
-                      key={s}
-                      fill={s === 'lost' ? 'var(--error)' : s === 'portfolio' ? 'var(--success)' : 'var(--brand-action)'}
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+      {/* One compact KPI strip replaces the empty funnel + value chart (the firm
+          tracks accounts, not a sales funnel; expected_value is mostly empty). */}
+      {!isLoading && clients.length > 0 ? (
+        <ClientsKpiStrip
+          clients={clients}
+          stats={projectStats.data}
+          isAdmin={isAdmin}
+          totalPipeline={totalPipeline}
+        />
       ) : null}
 
       {isLoading ? (
@@ -400,6 +330,7 @@ export function ClientsPage() {
           stats={projectStats.data}
           isAdmin={isAdmin}
           onOpen={setActive}
+          groupBy={groupBy}
         />
       ) : (
         <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
@@ -428,8 +359,9 @@ export function ClientsPage() {
               >
                 {CLIENT_STAGE_LABEL[s]} · {grouped[s].length}
               </h3>
-              {/* PRD §462 — per-stage value is finance; admin only */}
-              {isAdmin ? (
+              {/* PRD §462 — per-stage value is finance; admin only, and only when
+                  there's actually a value (no "AZN 0" noise). */}
+              {isAdmin && stageValue(s) > 0 ? (
                 <div className="text-meta mb-3" style={{ color: 'var(--text-muted)' }}>
                   {formatAZN(stageValue(s))}
                 </div>
@@ -454,7 +386,7 @@ export function ClientsPage() {
                       {c.tier !== 'none' ? <TierBadge tier={c.tier} /> : null}
                     </div>
                     <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                      {c.company ?? '—'}{isAdmin ? ` · ${formatAZN(c.expected_value)}` : ''}
+                      {c.company ?? '—'}{isAdmin && (c.expected_value ?? 0) > 0 ? ` · ${formatAZN(c.expected_value)}` : ''}
                     </div>
                     {/* PRD §REQ-CRM — industry chip on kanban card (migration 0050) */}
                     {c.industry ? (
@@ -558,17 +490,159 @@ function TierControl({ client, editable }: { client: Client; editable: boolean }
 
 // ── Account table view (all clients, all details, project activity, tier) ──
 type TableSort = 'name' | 'tier' | 'stage' | 'projects' | 'value' | 'last_interaction' | 'icp';
+type GroupBy = 'none' | 'tier' | 'stage' | 'industry';
+
+// Compact KPI strip — replaces the empty funnel + value chart with one row of
+// the numbers that actually matter for account management.
+function ClientsKpiStrip({
+  clients, stats, isAdmin, totalPipeline,
+}: {
+  clients: Client[];
+  stats: Map<string, { total: number; active: number }> | undefined;
+  isAdmin: boolean;
+  totalPipeline: number;
+}) {
+  const activeAccounts = clients.filter((c) => (stats?.get(c.id)?.active ?? 0) > 0).length;
+  const vip = clients.filter((c) => c.tier === 'vip').length;
+  const gold = clients.filter((c) => c.tier === 'gold').length;
+  let top: { name: string; total: number } | null = null;
+  for (const c of clients) {
+    const t = stats?.get(c.id)?.total ?? 0;
+    if (t > 0 && (!top || t > top.total)) top = { name: c.name, total: t };
+  }
+  const Stat = ({ big, label }: { big: string; label: string }) => (
+    <span className="flex items-baseline gap-1">
+      <strong style={{ fontSize: 18, fontVariantNumeric: 'tabular-nums' }}>{big}</strong>
+      <span className="text-meta" style={{ color: 'var(--text-muted)' }}>{label}</span>
+    </span>
+  );
+  return (
+    <div className="card mb-4 flex flex-wrap items-center gap-x-6 gap-y-2" style={{ padding: '12px 16px' }}>
+      <Stat big={String(clients.length)} label="müştəri" />
+      <Stat big={String(activeAccounts)} label="aktiv layihəli" />
+      {vip > 0 ? <span className="flex items-center gap-1"><TierBadge tier="vip" /><strong style={{ fontVariantNumeric: 'tabular-nums' }}>{vip}</strong></span> : null}
+      {gold > 0 ? <span className="flex items-center gap-1"><TierBadge tier="gold" /><strong style={{ fontVariantNumeric: 'tabular-nums' }}>{gold}</strong></span> : null}
+      {isAdmin && totalPipeline > 0 ? <Stat big={formatAZN(totalPipeline)} label="pipeline" /> : null}
+      {top ? (
+        <span className="text-meta ml-auto" style={{ color: 'var(--text-muted)' }}>
+          Ən çox layihə: <strong style={{ color: 'var(--text)' }}>{top.name}</strong> ({top.total})
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+// Projects cell — count + click-through popover listing the client's projects.
+// The project list is fetched lazily, only when the popover opens (no N+1).
+function ProjectsCell({ client, total, active }: { client: Client; total: number; active: number }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+  const q = useQuery({
+    queryKey: ['client-projects-pop', client.id],
+    enabled: open,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('projects')
+        .select('id, name, status')
+        .eq('client_id', client.id)
+        .order('created_at', { ascending: false });
+      return (data ?? []) as Array<{ id: string; name: string; status: ProjectStatus }>;
+    },
+  });
+  if (total === 0) return <span style={{ color: 'var(--text-muted)' }}>—</span>;
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-block' }} onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontVariantNumeric: 'tabular-nums' }}
+        title="Layihələri göstər"
+      >
+        <strong style={{ color: 'var(--success-deep, #16794a)' }}>{active} aktiv</strong>
+        <span style={{ color: 'var(--text-muted)' }}> / {total}</span>
+      </button>
+      {open ? (
+        <div
+          className="card"
+          style={{ position: 'absolute', zIndex: 30, top: '100%', left: 0, marginTop: 4, minWidth: 260, padding: 8, boxShadow: '0 8px 24px rgba(14,22,17,0.18)' }}
+        >
+          {q.isLoading ? (
+            <div className="text-meta" style={{ color: 'var(--text-muted)' }}>Yüklənir…</div>
+          ) : (q.data ?? []).length === 0 ? (
+            <div className="text-meta" style={{ color: 'var(--text-muted)' }}>Layihə yoxdur</div>
+          ) : (
+            <ul className="space-y-1">
+              {(q.data ?? []).map((p) => (
+                <li key={p.id} className="flex items-center justify-between gap-3 text-meta">
+                  <a href={`/layihelər/${p.id}`} className="hover:underline truncate" style={{ color: 'var(--brand-text)' }}>{p.name}</a>
+                  <span style={{ color: p.status === 'active' ? 'var(--success-deep, #16794a)' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                    {PROJECT_STATUS_LABEL[p.status] ?? p.status}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ClientRow({ c, isAdmin, onOpen, total, active }: {
+  c: Client; isAdmin: boolean; onOpen: (c: Client) => void; total: number; active: number;
+}) {
+  return (
+    <tr
+      className="hover:bg-surface-mist transition-colors cursor-pointer"
+      style={{ borderBottom: '1px solid var(--line-soft)' }}
+      onClick={() => onOpen(c)}
+    >
+      <td className="py-3 px-3">
+        <div className="font-medium">{c.name}</div>
+        <div className="text-meta" style={{ color: 'var(--text-muted)' }}>{c.company ?? '—'}{c.industry ? ` · ${c.industry}` : ''}</div>
+      </td>
+      <td className="py-3 px-3" onClick={(e) => e.stopPropagation()}>
+        <TierControl client={c} editable={isAdmin} />
+      </td>
+      <td className="py-3 px-3">
+        <span className="chip" style={{ background: 'var(--surface-mist)', color: 'var(--text)', fontSize: 12 }}>
+          {CLIENT_STAGE_LABEL[c.pipeline_stage]}
+        </span>
+      </td>
+      <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
+        <ProjectsCell client={c} total={total} active={active} />
+      </td>
+      {isAdmin ? (
+        <td className="py-3 px-3 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
+          {(c.expected_value ?? 0) > 0 ? formatAZN(c.expected_value) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+        </td>
+      ) : null}
+      <td className="py-3 px-3 text-meta" style={{ color: 'var(--text-muted)' }}>{relativeTime(c.last_interaction_at)}</td>
+      <td className="py-3 px-3 text-meta" style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+        {c.ai_icp_fit != null ? `${Math.round(c.ai_icp_fit)}%` : '—'}
+      </td>
+    </tr>
+  );
+}
 
 function ClientsTable({
   clients,
   stats,
   isAdmin,
   onOpen,
+  groupBy,
 }: {
   clients: Client[];
   stats: Map<string, { total: number; active: number }> | undefined;
   isAdmin: boolean;
   onOpen: (c: Client) => void;
+  groupBy: GroupBy;
 }) {
   const [sort, setSort] = useState<TableSort>('projects');
   const [dir, setDir] = useState<'asc' | 'desc'>('desc');
@@ -582,7 +656,7 @@ function ClientsTable({
   const totalOf = (c: Client) => stats?.get(c.id)?.total ?? 0;
   const activeOf = (c: Client) => stats?.get(c.id)?.active ?? 0;
 
-  const rows = [...clients].sort((a, b) => {
+  const sorted = [...clients].sort((a, b) => {
     let cmp = 0;
     switch (sort) {
       case 'name': cmp = a.name.localeCompare(b.name, 'az'); break;
@@ -595,6 +669,27 @@ function ClientsTable({
     }
     return dir === 'asc' ? cmp : -cmp;
   });
+
+  // Ordered groups for the chosen grouping (empty groups dropped).
+  const groups: { key: string; label: string; badge?: ClientTier; rows: Client[] }[] = (() => {
+    if (groupBy === 'tier') {
+      return CLIENT_TIER_ORDER
+        .map((t) => ({ key: t, label: CLIENT_TIER_LABEL[t], badge: t, rows: sorted.filter((c) => c.tier === t) }))
+        .filter((g) => g.rows.length > 0);
+    }
+    if (groupBy === 'stage') {
+      return CLIENT_STAGE_ORDER
+        .map((s) => ({ key: s, label: CLIENT_STAGE_LABEL[s], rows: sorted.filter((c) => c.pipeline_stage === s) }))
+        .filter((g) => g.rows.length > 0);
+    }
+    if (groupBy === 'industry') {
+      const inds = Array.from(new Set(sorted.map((c) => c.industry ?? ''))).sort();
+      return inds
+        .map((ind) => ({ key: ind || '__none', label: ind || 'Sahə təyin edilməyib', rows: sorted.filter((c) => (c.industry ?? '') === ind) }))
+        .filter((g) => g.rows.length > 0);
+    }
+    return [{ key: 'all', label: '', rows: sorted }];
+  })();
 
   const cols: { key: TableSort; label: string; admin?: boolean; align?: 'right' }[] = [
     { key: 'name', label: 'Müştəri' },
@@ -629,43 +724,22 @@ function ClientsTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map((c) => (
-            <tr
-              key={c.id}
-              className="hover:bg-surface-mist transition-colors cursor-pointer"
-              style={{ borderBottom: '1px solid var(--line-soft)' }}
-              onClick={() => onOpen(c)}
-            >
-              <td className="py-3 px-3">
-                <div className="font-medium">{c.name}</div>
-                <div className="text-meta" style={{ color: 'var(--text-muted)' }}>{c.company ?? '—'}{c.industry ? ` · ${c.industry}` : ''}</div>
-              </td>
-              <td className="py-3 px-3" onClick={(e) => e.stopPropagation()}>
-                <TierControl client={c} editable={isAdmin} />
-              </td>
-              <td className="py-3 px-3">
-                <span className="chip" style={{ background: 'var(--surface-mist)', color: 'var(--text)', fontSize: 12 }}>
-                  {CLIENT_STAGE_LABEL[c.pipeline_stage]}
-                </span>
-              </td>
-              <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                {totalOf(c) === 0 ? (
-                  <span style={{ color: 'var(--text-muted)' }}>—</span>
-                ) : (
-                  <span>
-                    <strong style={{ color: 'var(--success-deep, #16794a)' }}>{activeOf(c)} aktiv</strong>
-                    <span style={{ color: 'var(--text-muted)' }}> / {totalOf(c)}</span>
-                  </span>
-                )}
-              </td>
-              {isAdmin ? (
-                <td className="py-3 px-3 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAZN(c.expected_value)}</td>
+          {groups.map((g) => (
+            <Fragment key={g.key}>
+              {groupBy !== 'none' ? (
+                <tr style={{ background: 'var(--surface-mist)' }}>
+                  <td colSpan={visibleCols.length} className="py-2 px-3 text-meta" style={{ color: 'var(--text-soft)', fontWeight: 600 }}>
+                    <span className="inline-flex items-center gap-2">
+                      {g.badge && g.badge !== 'none' ? <TierBadge tier={g.badge} /> : null}
+                      {g.label} · {g.rows.length}
+                    </span>
+                  </td>
+                </tr>
               ) : null}
-              <td className="py-3 px-3 text-meta" style={{ color: 'var(--text-muted)' }}>{relativeTime(c.last_interaction_at)}</td>
-              <td className="py-3 px-3 text-meta" style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
-                {c.ai_icp_fit != null ? `${Math.round(c.ai_icp_fit)}%` : '—'}
-              </td>
-            </tr>
+              {g.rows.map((c) => (
+                <ClientRow key={c.id} c={c} isAdmin={isAdmin} onOpen={onOpen} total={totalOf(c)} active={activeOf(c)} />
+              ))}
+            </Fragment>
           ))}
         </tbody>
       </table>
