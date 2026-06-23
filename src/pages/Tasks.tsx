@@ -23,8 +23,6 @@ import { SkeletonList } from '@/components/Skeleton';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { BulkActionBar } from '@/components/BulkActionBar';
 import {
-  TaskPersonalList,
-  TIME_GROUP_ORDER,
   TIME_GROUP_COLOR,
   type TimeGroup,
   taskTimeGroup,
@@ -349,26 +347,6 @@ export function TasksPage() {
     setBulkMode(false);
     setSelectedIds(new Set());
   }, []);
-
-  // Personal-view: checking the box on a task triggers moveTask → done.
-  // The DB round-trip + refetch isn't instant, so React would un-check the
-  // controlled checkbox before the row disappears, producing a tick → un-tick
-  // → vanish flicker. Tracking "I just checked this" locally keeps the tick
-  // visible until the row falls out of groupedByTime entirely.
-  const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    const visible = new Set(tasks.map((t) => t.id));
-    setCompletingIds((s) => {
-      if (s.size === 0) return s;
-      let changed = false;
-      const next = new Set<string>();
-      for (const id of s) {
-        if (visible.has(id)) next.add(id);
-        else changed = true;
-      }
-      return changed ? next : s;
-    });
-  }, [tasks]);
 
   const bulkArchiveSelected = useMutation({
     mutationFn: async () => {
@@ -928,19 +906,6 @@ export function TasksPage() {
     [filtered, sortTasks],
   );
 
-  // US-TASK-06 — time-grouped personal view computed data.
-  // todayStr/endOfWeekStr are recomputed per render but are stable by value
-  // within a day, so the memo still hits when only their identity changes.
-  const groupedByTime = useMemo(() => {
-    const map = {} as Record<TimeGroup, Task[]>;
-    for (const g of TIME_GROUP_ORDER) map[g] = [];
-    for (const t of filtered) {
-      if (t.status === 'done' || t.status === 'cancelled') continue;
-      map[taskTimeGroup(t, todayStr, endOfWeekStr)].push(t);
-    }
-    return map;
-  }, [filtered, todayStr, endOfWeekStr]);
-
   // PRD §UX — bubble overdue count to the page meta so it's visible from the header
   // even when the board is scrolled. Matches the red border treatment on cards.
   const overdueCount = useMemo(
@@ -1308,19 +1273,6 @@ export function TasksPage() {
               ✕ Filtrləri təmizlə
             </button>
           }
-        />
-      ) : mineOnly ? (
-        <TaskPersonalList
-          groupedByTime={groupedByTime}
-          projectById={projectById}
-          bulkMode={bulkMode}
-          selectedIds={selectedIds}
-          completingIds={completingIds}
-          onToggleSelected={toggleSelected}
-          onMarkCompleting={(id) => setCompletingIds((s) => new Set(s).add(id))}
-          onMove={moveTask}
-          onOpenComments={(t) => setCommenting({ id: t.id, title: t.title })}
-          onCancel={(t) => setCancelling({ id: t.id, title: t.title })}
         />
       ) : view === 'board' ? (
         <>
