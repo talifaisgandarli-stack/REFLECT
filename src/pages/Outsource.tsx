@@ -79,7 +79,7 @@ export function OutsourcePage() {
     },
   });
 
-  const headers = ['İş', 'Layihə', 'Deadline', 'Status / İrəlilə', ...(isAdmin ? ['Məbləğ', 'Ödəniş tarixi', ''] : [])];
+  const headers = ['İş', 'Layihə', 'Deadline', isAdmin ? 'Status / İrəlilə' : 'Status', ...(isAdmin ? ['Məbləğ', 'Ödəniş tarixi', ''] : [])];
 
   return (
     <>
@@ -250,7 +250,7 @@ export function OutsourcePage() {
                   // PRD §UX — header click cycles sort key for sortable columns
                   const sortableKey: typeof sortBy | null =
                     h === 'Deadline' ? 'deadline'
-                    : h === 'Status / İrəlilə' ? 'status'
+                    : (h === 'Status / İrəlilə' || h === 'Status') ? 'status'
                     : h === 'Məbləğ' ? 'amount'
                     : null;
                   const isActive = sortableKey === sortBy;
@@ -391,7 +391,9 @@ export function OutsourcePage() {
                       >
                         {STATUS_LABEL[row.status as Status] ?? row.status}
                       </span>
-                      {STATUS_NEXT[row.status as Status] ? (
+                      {/* PRD §REQ-FIN-07 — only admins advance status; non-admins
+                          get a read-only operational view (no finance, no controls). */}
+                      {isAdmin && STATUS_NEXT[row.status as Status] ? (
                         <button
                           className="text-meta hover:underline"
                           style={{ color: 'var(--brand-text)', fontSize: 12 }}

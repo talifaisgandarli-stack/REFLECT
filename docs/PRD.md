@@ -479,7 +479,7 @@ Arxiv          —
 **REQ-FIN-04** Negative-amount validation across `incomes`, `expenses`, `outsource_items`: `amount > 0` check at DB and form layers.
 **REQ-FIN-05** Sabit (recurring) xərclər: format normalized — `recurring_expenses` table, period enum (`weekly|monthly|quarterly|yearly`), `pg_cron` materializes monthly entries into `expenses`.
 **REQ-FIN-06** Project P&L view: per-project income, direct expenses, outsource costs, net.
-**REQ-FIN-07** Outsource hybrid workflow: status transitions Sifariş → İcra → Təhvil → Ödənildi. Users can update operational status without seeing amounts.
+**REQ-FIN-07** Outsource hybrid workflow: status transitions Sifariş → İcra → Təhvil → Ödənildi. **Only admins change status** (admin-only per product decision, 2026-06). Non-admins get a **read-only operational view** — they see work, project, deadline, status, responsible person; they do **not** see any finance fields (amount, paid_at, payment_method) and have no status controls.
 **REQ-FIN-08** Forecast: MIRAI persona "Maliyyə Analitiki" computes `cash_forecasts` row daily (cron) for horizons 30/60/90; UI displays latest with confidence range and disclaimer.
 **REQ-FIN-09** Bakı timezone fix: all date math (month boundaries, due dates) computed in `Asia/Baku` not UTC.
 
@@ -1494,13 +1494,14 @@ Given a receivable with amount=10000 paid_amount=4000 status='partial'
 ```
 US-FIN-04  Outsource amounts hidden from non-admins
 AS A non-admin team member
-I WANT to see outsource items I'm responsible for, without the amount
+I WANT a read-only operational view of outsource items, without the amount
 SO THAT operational coordination works without exposing money
 
-Given I am responsible_user_id on an outsource_items row
+Given I am a non-admin
   When I open Outsource via the user route
-  Then outsource_user_view returns project, work_title, contact_person, deadline, status only
+  Then outsource_user_view returns project, work_title, contact_person, deadline, status, responsible_user_id only
   And money columns (amount, paid_at, payment_method) are absent from the API payload
+  And I have no status-change controls (status is admin-only per REQ-FIN-07)
 ```
 
 ```
