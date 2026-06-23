@@ -1212,11 +1212,11 @@ export function TasksPage() {
                 style={{
                   background: dragOverColumn === s
                     ? 'var(--brand-glow-sm)'
-                    : isToday ? 'var(--ink)' : 'transparent',
-                  color: isToday ? 'var(--canvas)' : 'inherit',
+                    : isToday ? 'var(--brand-mist)' : 'transparent',
+                  color: 'inherit',
                   border: dragOverColumn === s
                     ? '2px dashed var(--brand-action)'
-                    : isToday ? 'none' : '1px dashed var(--line)',
+                    : isToday ? '1px solid var(--brand-soft)' : '1px dashed var(--line)',
                   minHeight: 320,
                 }}
                 onDragOver={(e) => { e.preventDefault(); if (dragOverColumn !== s) setDragOverColumn(s); }}
@@ -1240,7 +1240,7 @@ export function TasksPage() {
                 <h3
                   className="text-tiny mb-3"
                   style={{
-                    color: isToday ? 'var(--brand-action)' : tone.text,
+                    color: isToday ? 'var(--brand-text)' : tone.text,
                     letterSpacing: '0.08em',
                     textTransform: 'uppercase',
                   }}
@@ -1320,8 +1320,8 @@ export function TasksPage() {
                       }}
                       className={`board-card rounded-card p-3 text-body${dragOverCardId === t.id ? ' is-drop-target' : ''}`}
                       style={{
-                        background: isToday ? 'var(--card-dark-bg)' : 'var(--surface)',
-                        border: `1px solid ${isToday ? 'var(--card-dark-border)' : 'var(--line)'}`,
+                        background: 'var(--surface)',
+                        border: '1px solid var(--line)',
                         // Overdue tasks get a bold red left stripe (Trello-style);
                         // otherwise the left edge carries the priority colour.
                         borderLeft: isOverdue
@@ -1364,7 +1364,7 @@ export function TasksPage() {
                         <div
                           className="text-meta mt-0.5"
                           style={{
-                            color: isToday ? 'var(--text-faint)' : 'var(--text-muted)',
+                            color: 'var(--text-muted)',
                             fontSize: 11,
                           }}
                         >
@@ -1418,8 +1418,8 @@ export function TasksPage() {
                               key={l}
                               className="chip"
                               style={{
-                                background: isToday ? 'var(--card-dark-border)' : 'var(--surface-mist)',
-                                color: isToday ? 'var(--canvas)' : 'var(--text-muted)',
+                                background: 'var(--surface-mist)',
+                                color: 'var(--text-muted)',
                                 fontSize: 9,
                                 padding: '0 5px',
                               }}
@@ -1442,7 +1442,7 @@ export function TasksPage() {
                             <span
                               className="inline-flex items-center gap-1.5"
                               style={{
-                                color: isToday ? tone.dark : tone.light,
+                                color: tone.light,
                                 fontSize: 11,
                                 fontWeight: group === 'overdue' || group === 'today' ? 600 : 500,
                                 fontVariantNumeric: 'tabular-nums',
@@ -1472,8 +1472,8 @@ export function TasksPage() {
                             }}
                             className="text-meta rounded-btn"
                             style={{
-                              background: isToday ? 'var(--card-dark-border)' : 'var(--surface-mist)',
-                              color: isToday ? 'var(--canvas)' : 'var(--text-soft)',
+                              background: 'var(--surface-mist)',
+                              color: 'var(--text-soft)',
                               fontSize: 11,
                               padding: '2px 4px',
                               border: 'none',
@@ -1488,7 +1488,7 @@ export function TasksPage() {
                             type="button"
                             onClick={(e) => { e.stopPropagation(); setEditing(t); }}
                             className="text-meta opacity-60 hover:opacity-100"
-                            style={{ color: isToday ? 'var(--text-faint)' : 'var(--text-muted)', fontSize: 13 }}
+                            style={{ color: 'var(--text-muted)', fontSize: 13 }}
                             aria-label="Düzəlt"
                           >
                             ✎
@@ -1497,7 +1497,7 @@ export function TasksPage() {
                             type="button"
                             onClick={(e) => { e.stopPropagation(); setCommenting({ id: t.id, title: t.title }); }}
                             className="text-meta opacity-60 hover:opacity-100"
-                            style={{ color: isToday ? 'var(--text-faint)' : 'var(--text-muted)', fontSize: 13 }}
+                            style={{ color: 'var(--text-muted)', fontSize: 13 }}
                             aria-label="Şərhlər"
                           >
                             💬
@@ -1511,7 +1511,7 @@ export function TasksPage() {
                               }}
                               className="text-meta opacity-60 hover:opacity-100"
                               style={{
-                                color: isToday ? 'var(--text-faint)' : 'var(--text-muted)',
+                                color: 'var(--text-muted)',
                               }}
                               aria-label={`Tapşırığı ləğv et: ${t.title}`}
                             >
@@ -1526,7 +1526,7 @@ export function TasksPage() {
                               cloneTask.mutate(t.id);
                             }}
                             className="text-meta opacity-60 hover:opacity-100"
-                            style={{ color: isToday ? 'var(--text-faint)' : 'var(--text-muted)' }}
+                            style={{ color: 'var(--text-muted)' }}
                             aria-label={`Tapşırığı klonla: ${t.title}`}
                             title="Tapşırığı klonla"
                             disabled={cloneTask.isPending}
@@ -1552,7 +1552,7 @@ export function TasksPage() {
                               onClick={(e) => { e.stopPropagation(); startTimer.mutate(t.id); }}
                               disabled={startTimer.isPending}
                               className="text-meta opacity-60 hover:opacity-100"
-                              style={{ color: isToday ? 'var(--text-faint)' : 'var(--text-muted)' }}
+                              style={{ color: 'var(--text-muted)' }}
                               aria-label="Timer başlat"
                               title="Timer başlat"
                             >
@@ -1569,11 +1569,11 @@ export function TasksPage() {
                         const doneCount = kids.filter((k) => k.status === 'done' || k.status === 'cancelled').length;
                         const expanded = !collapsedSubtasks.has(t.id);
                         const pct = Math.round((doneCount / kids.length) * 100);
-                        const subtle = isToday ? 'var(--text-faint)' : 'var(--text-muted)';
+                        const subtle = 'var(--text-muted)';
                         return (
                           <div
                             className="mt-2 pt-2"
-                            style={{ borderTop: `1px dashed ${isToday ? 'var(--card-dark-border)' : 'var(--line)'}` }}
+                            style={{ borderTop: '1px dashed var(--line)' }}
                           >
                             <button
                               type="button"
@@ -1586,7 +1586,7 @@ export function TasksPage() {
                               <span style={{ fontVariantNumeric: 'tabular-nums' }}>☑ {doneCount}/{kids.length}</span>
                               <span
                                 className="flex-1 rounded-full overflow-hidden"
-                                style={{ height: 4, background: isToday ? 'var(--card-dark-border)' : 'var(--surface-mist)' }}
+                                style={{ height: 4, background: 'var(--surface-mist)' }}
                               >
                                 <span
                                   style={{
@@ -1654,7 +1654,7 @@ export function TasksPage() {
                                           style={{
                                             textDecoration: kDone ? 'line-through' : 'none',
                                             opacity: kDone ? 0.55 : 1,
-                                            color: isToday ? 'var(--canvas)' : 'var(--text)',
+                                            color: 'var(--text)',
                                           }}
                                         >
                                           {k.title}
@@ -1669,7 +1669,7 @@ export function TasksPage() {
                                               style={{
                                                 fontSize: 10,
                                                 fontWeight: 500,
-                                                color: isToday ? kTone.dark : kTone.light,
+                                                color: kTone.light,
                                                 fontVariantNumeric: 'tabular-nums',
                                                 whiteSpace: 'nowrap',
                                               }}
@@ -1786,7 +1786,7 @@ export function TasksPage() {
                 <button
                   type="button"
                   className="mt-2 w-full text-left text-meta opacity-70 hover:opacity-100 py-1 px-2 rounded-btn"
-                  style={{ color: isToday ? 'var(--brand-action)' : 'var(--text-muted)', fontSize: 12 }}
+                  style={{ color: isToday ? 'var(--brand-text)' : 'var(--text-muted)', fontSize: 12 }}
                   onClick={() => setQuickAddCol(s)}
                   aria-label={`${TASK_STATUS_LABEL[s]} sütununa tapşırıq əlavə et`}
                 >
