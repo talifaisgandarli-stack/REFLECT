@@ -19,10 +19,11 @@ import { useAuth } from '@/lib/store';
 import type { Client, ClientPipelineStage } from '@/types/db';
 import { Pipeline } from '@/pages/clients/Pipeline';
 import { ClientBase } from '@/pages/clients/ClientBase';
+import { ClientAnalytics } from '@/pages/clients/ClientAnalytics';
 import { ClientModal } from '@/pages/clients/ClientModal';
 import { ClientFormModal } from '@/pages/clients/ClientFormModal';
 
-type View = 'pipeline' | 'base';
+type View = 'pipeline' | 'base' | 'analytics';
 type FormState =
   | { mode: 'create'; stage?: ClientPipelineStage }
   | { mode: 'edit'; client: Client }
@@ -31,7 +32,8 @@ type FormState =
 export function ClientsPage() {
   const { isAdmin } = useAuth();
   const [params, setParams] = useSearchParams();
-  const view: View = params.get('view') === 'base' ? 'base' : 'pipeline';
+  const viewParam = params.get('view');
+  const view: View = viewParam === 'base' ? 'base' : viewParam === 'analytics' ? 'analytics' : 'pipeline';
   const setView = (v: View) => {
     const next = new URLSearchParams(params);
     next.set('view', v);
@@ -69,7 +71,7 @@ export function ClientsPage() {
       />
 
       <div className="flex gap-1 mb-3" role="tablist" aria-label="Görünüş">
-        {([['pipeline', 'Aktiv pipeline'], ['base', 'Müştəri bazası']] as const).map(([v, label]) => (
+        {([['pipeline', 'Aktiv pipeline'], ['base', 'Müştəri bazası'], ['analytics', 'Analitika']] as const).map(([v, label]) => (
           <button
             key={v}
             type="button"
@@ -110,13 +112,15 @@ export function ClientsPage() {
           onAddClient={(stage) => setForm({ mode: 'create', stage })}
           onEditClient={(c) => setForm({ mode: 'edit', client: c })}
         />
-      ) : (
+      ) : view === 'base' ? (
         <ClientBase
           clients={clients.data ?? []}
           stats={stats}
           projectsByClient={projectsByClient}
           onOpenClient={(id) => setOpenClientId(id)}
         />
+      ) : (
+        <ClientAnalytics clients={clients.data ?? []} projectsByClient={projectsByClient} />
       )}
 
       {openClient ? (
