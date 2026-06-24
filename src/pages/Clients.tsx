@@ -13,7 +13,7 @@ import { useSearchParams } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import { SkeletonList } from '@/components/Skeleton';
-import { useClients, useClientProjectStats } from '@/lib/hooks';
+import { useClients, useClientProjectStats, useProjectsByClient } from '@/lib/hooks';
 import { formatAZN } from '@/lib/format';
 import { useAuth } from '@/lib/store';
 import type { Client, ClientPipelineStage } from '@/types/db';
@@ -40,10 +40,12 @@ export function ClientsPage() {
 
   const clients = useClients();
   const statsQuery = useClientProjectStats();
+  const projectsQuery = useProjectsByClient();
   const [form, setForm] = useState<FormState>(null);
   const [openClientId, setOpenClientId] = useState<string | null>(null);
 
   const stats = statsQuery.data ?? new Map<string, { total: number; active: number }>();
+  const projectsByClient = projectsQuery.data ?? new Map();
   const openClient = useMemo(
     () => clients.data?.find((c) => c.id === openClientId) ?? null,
     [clients.data, openClientId],
@@ -109,7 +111,12 @@ export function ClientsPage() {
           onEditClient={(c) => setForm({ mode: 'edit', client: c })}
         />
       ) : (
-        <ClientBase clients={clients.data ?? []} stats={stats} onOpenClient={(id) => setOpenClientId(id)} />
+        <ClientBase
+          clients={clients.data ?? []}
+          stats={stats}
+          projectsByClient={projectsByClient}
+          onOpenClient={(id) => setOpenClientId(id)}
+        />
       )}
 
       {openClient ? (

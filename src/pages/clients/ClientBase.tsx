@@ -6,8 +6,9 @@
  */
 import { useMemo, useState } from 'react';
 import type { Client } from '@/types/db';
-import { CLIENT_STAGE_LABEL, CLIENT_TIER_ORDER, clientTierRank } from '@/lib/labels';
+import { CLIENT_STAGE_LABEL, CLIENT_TIER_ORDER, clientTierRank, PROJECT_STATUS_DOT } from '@/lib/labels';
 import { formatAZN, relativeTime } from '@/lib/format';
+import type { ClientProjectRow } from '@/lib/hooks';
 import { StageDot, TierBadge, clientColor, initials } from './crmShared';
 
 type SortKey = 'value' | 'contact' | 'az';
@@ -15,10 +16,12 @@ type SortKey = 'value' | 'contact' | 'az';
 export function ClientBase({
   clients,
   stats,
+  projectsByClient,
   onOpenClient,
 }: {
   clients: Client[];
   stats: Map<string, { total: number; active: number }>;
+  projectsByClient: Map<string, ClientProjectRow[]>;
   onOpenClient: (clientId: string) => void;
 }) {
   const [search, setSearch] = useState('');
@@ -94,7 +97,13 @@ export function ClientBase({
           ) : null}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
             {g.rows.map((c) => (
-              <ClientCard key={c.id} client={c} stat={stats.get(c.id)} onOpen={() => onOpenClient(c.id)} />
+              <ClientCard
+                key={c.id}
+                client={c}
+                stat={stats.get(c.id)}
+                projects={projectsByClient.get(c.id) ?? []}
+                onOpen={() => onOpenClient(c.id)}
+              />
             ))}
           </div>
         </div>
@@ -106,16 +115,20 @@ export function ClientBase({
 function ClientCard({
   client,
   stat,
+  projects,
   onOpen,
 }: {
   client: Client;
   stat?: { total: number; active: number };
+  projects: ClientProjectRow[];
   onOpen: () => void;
 }) {
-  const total = stat?.total ?? 0;
-  const active = stat?.active ?? 0;
+  const total = stat?.total ?? projects.length;
+  const active = stat?.active ?? projects.filter((p) => p.status === 'active').length;
   const portfolioOnly = client.pipeline_stage === 'portfolio';
   const noData = !client.expected_value && total === 0;
+  const shown = projects.slice(0, 2);
+  const rest = projects.length - shown.length;
 
   return (
     <button
@@ -147,10 +160,28 @@ function ClientCard({
           ⚠ data əksikdir
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-          <Mini label="Gözlənilən dəyər" value={formatAZN(client.expected_value)} />
-          <Mini label="Layihə (aktiv/cəmi)" value={`${active}/${total}`} />
-        </div>
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+            <Mini label="Gözlənilən dəyər" value={formatAZN(client.expected_value)} />
+            <Mini label="Layihə (aktiv/cəmi)" value={`${active}/${total}`} />
+          </div>
+          {/* Mini project list — names + status dot, first 2 then "+N" overflow */}
+          {projects.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {shown.map((p) => (
+                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                  <span aria-hidden style={{ width: 7, height: 7, borderRadius: '50%', background: PROJECT_STATUS_DOT[p.status], flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, color: 'var(--text-soft)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {p.name}
+                  </span>
+                </div>
+              ))}
+              {rest > 0 ? (
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>+{rest} layihə</span>
+              ) : null}
+            </div>
+          ) : null}
+        </>
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

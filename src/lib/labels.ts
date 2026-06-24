@@ -56,6 +56,14 @@ export const PROJECT_STATUS_LABEL: Record<ProjectStatus, string> = {
   cancelled: 'Ləğv edilib',
 };
 
+// Status dot colour for the client-base mini project list (designstyle tokens).
+export const PROJECT_STATUS_DOT: Record<ProjectStatus, string> = {
+  active: 'var(--success)',
+  on_hold: 'var(--warning)',
+  closed: 'var(--text-muted)',
+  cancelled: 'var(--error)',
+};
+
 export const CLIENT_STAGE_LABEL: Record<ClientPipelineStage, string> = {
   lead: 'Lead',
   proposal: 'Təklif',
