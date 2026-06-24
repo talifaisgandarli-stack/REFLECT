@@ -626,7 +626,14 @@ export function usePipelineProjects() {
         .is('archived_at', null)
         .order('updated_at', { ascending: false });
       if (error) throw error;
-      return (data ?? []) as unknown as ProjectWithClient[];
+      // PostgREST returns a to-one embed as an object, but normalise defensively
+      // (some relationship shapes come back as a 1-element array) so card render
+      // never dereferences an array as an object.
+      return (data ?? []).map((row) => {
+        const r = row as unknown as Project & { clients: unknown };
+        const c = Array.isArray(r.clients) ? r.clients[0] ?? null : r.clients ?? null;
+        return { ...r, clients: c } as ProjectWithClient;
+      });
     },
   });
 }
