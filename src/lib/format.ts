@@ -12,6 +12,24 @@ export function formatAZN(n: number | null | undefined): string {
   return azn.format(n);
 }
 
+/**
+ * Compact ₼ for dense surfaces (pipeline column headers, summary chips):
+ * 225000 → "₼225K", 1_400_000 → "₼1.4M", 980 → "₼980". CRM redesign §4.
+ */
+export function formatAZNCompact(n: number | null | undefined): string {
+  if (n == null) return '—';
+  const abs = Math.abs(n);
+  const sign = n < 0 ? '-' : '';
+  if (abs >= 1_000_000) return `${sign}₼${trimZero(abs / 1_000_000)}M`;
+  if (abs >= 1_000) return `${sign}₼${trimZero(abs / 1_000)}K`;
+  return `${sign}₼${Math.round(abs)}`;
+}
+
+function trimZero(v: number): string {
+  // one decimal, but drop a trailing ".0" (1.0 → "1", 1.4 → "1.4")
+  return v.toFixed(1).replace(/\.0$/, '');
+}
+
 export function formatDate(iso: string | null | undefined, opts?: Intl.DateTimeFormatOptions): string {
   if (!iso) return '—';
   return new Intl.DateTimeFormat('az-AZ', {
@@ -107,6 +125,21 @@ export function bakuEndOfWeek(now: Date = new Date()): string {
   const diff = 7 - (dow === 0 ? 7 : dow); // days until Sunday
   d.setUTCDate(d.getUTCDate() + diff);
   return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Contact-staleness health (CRM redesign §10): days since last contact →
+ * 7–13 days = amber, 14+ days = red, otherwise none. `null` last-contact on a
+ * lead is treated as stale (red) so it surfaces.
+ */
+export function contactHealth(
+  lastContactISO: string | null | undefined,
+): { level: 'red' | 'amber' | 'none'; days: number | null } {
+  if (!lastContactISO) return { level: 'red', days: null };
+  const days = Math.floor((Date.now() - new Date(lastContactISO).getTime()) / 86_400_000);
+  if (days >= 14) return { level: 'red', days };
+  if (days >= 7) return { level: 'amber', days };
+  return { level: 'none', days };
 }
 
 /** Task health color per REQ-DASH-04. */

@@ -130,14 +130,14 @@ Telegram:   Bot API (one Reflect bot, per-user chat_id linking)
 - `invitations` (id, email, role_id, invited_by, token, expires_at, accepted_at)
 
 **Work**
-- `projects` (id, name, client_id, phases[] text[], requires_expertise, expertise_deadline, payment_buffer_days, deadline, start_date, status, created_by, created_at, archived_at)
+- `projects` (id, name, client_id, phases[] text[], requires_expertise, expertise_deadline, payment_buffer_days, deadline, start_date, status, created_by, created_at, archived_at) — **CRM redesign (migration 0075):** also `stage` enum `lead|teklif|muzakire|icrada|portfolio|udulan`, `service_type` enum `tikinti|dizayn|konsultasiya|renovasiya`, `value numeric`, `progress smallint 0–100`, `owner_id → profiles`, `region`, `expected_close_at`, `updated_at`. The active-pipeline kanban moves **projects** between the 4 active stages.
 - `tasks` (id, project_id, title, description, status, parent_task_id, task_level, assignee_ids uuid[], start_date, deadline, estimated_duration, duration_unit, risk_buffer_pct, is_expertise_subtask, workload, workload_calculated_at, cancel_reason, archived_at, created_by)
 - `task_status_history` (id, task_id, from_status, to_status, changed_by, changed_at)
 - `task_comments` (id, task_id, user_id, body, mentions uuid[], created_at)
 
 **Clients / CRM**
-- `clients` (id, name, company, email, phone, pipeline_stage, confidence_pct, expected_value, last_interaction_at, ai_icp_fit, ai_icp_calculated_at, created_by, industry, tier) — `tier` = account segment enum `vip|gold|silver|bronze|none` (migration 0074), admin-set
-- `clients_view` (masked read: `expected_value` admin-only, migration 0073) · `client_project_stats` (per-client total/active project counts for the table view, migration 0074)
+- `clients` (id, name, company, email, phone, pipeline_stage, confidence_pct, expected_value, last_interaction_at, ai_icp_fit, ai_icp_calculated_at, created_by, industry, tier) — **CRM redesign (migration 0075):** `tier` is now relationship segment enum `A|B|C` (nullable), admin-set. Legacy `pipeline_stage`/`confidence_pct` are RETAINED (Finance/Dashboard/ICP compat) but the pipeline now lives on `projects.stage`.
+- `clients_view` (masked read: `expected_value` admin-only, migration 0073) · `client_project_stats` (legacy table-view counts, migration 0074) · `client_summary` (CRM redesign, migration 0075 — per-client total/active project counts + masked total_value, feeds the client-base card grid)
 - `client_stage_history` (id, client_id, from_stage, to_stage, changed_by, changed_at, lost_reason)
 - `client_interactions` (id, client_id, type, note, occurred_at, logged_by)
 
@@ -437,6 +437,42 @@ workload = estimated_duration × (1 + risk_buffer_pct/100)
 ---
 
 ### MODULE 6 — Müştərilər (Clients / CRM)
+
+> **CRM redesign override (2026-06-24, owner-approved — talifa.isgandarli@gmail.com).**
+> The owner adopted the original "Reflect CRM redesign" spec **verbatim**,
+> overriding the earlier PRD-adaptation (`docs/clients-crm-spec-adapted.md`,
+> 2026-06-23) which had rejected these points. The CRM is now a **two-surface**
+> model (migration 0075):
+> 1. **Aktiv pipeline** — a 4-column kanban (`Lead · Təklif · Müzakirə · İcrada`)
+>    where **projects** drag between stages. `stage` now lives on `projects`, not
+>    `clients`. `portfolio`/`udulan` are terminal (not board columns).
+> 2. **Müştəri bazası** — a searchable **card grid** of all clients fed by the
+>    `client_summary` aggregate view (replaces the `Pipeline | Cədvəl` table toggle).
+>
+> Reversed-from-adaptation decisions: tier is **A/B/C** (was VIP/Gold/Silver/Bronze);
+> projects gained **value/progress/service_type/region** columns; the detail view is
+> a **modal** (was slide-in panel); **@dnd-kit** is used for drag; the **₼** glyph and
+> the spec's stage/tier/service palette are registered as tokens (tokens.css).
+> Implemented surfaces live in `src/pages/Clients.tsx` + `src/pages/clients/{Pipeline,ClientBase,ClientModal,crmShared}.tsx`.
+> Legacy `clients.pipeline_stage` is RETAINED (not dropped) so Finance/Dashboard/ICP
+> keep working; existing client stage+value was auto-migrated into one starter
+> project per non-archived client. App-wide dark mode (spec §7) is deferred — the
+> app is light-only; only the light token scale is defined.
+>
+> **REQ-CRM-10** Active pipeline: 4-column project kanban (@dnd-kit); drag → `projects.stage`
+> update (optimistic). İcrada card "Tamamlandı" → `stage='portfolio'`, leaves the board.
+> **REQ-CRM-11** Project card: client badge (deterministic colour per client), service +
+> tier pills, inline-editable `value`, İcrada progress bar, stale-contact alert
+> (7–13d amber / 14+d red, §10).
+> **REQ-CRM-12** Client base: card grid from `client_summary`; search (name/company/email),
+> Tier A/B/C + service filter, sort (value↓ / last-contact / A→Z), optional group-by-tier.
+> Card shows aggregate value, active/total, mini project list, empty/portfolio states.
+> **REQ-CRM-13** Client modal: header + 3 metrics, tabs Layihələr / Əlaqə / Tarixçə,
+> "+ Yeni layihə" creates a Lead-stage project that appears on the pipeline.
+>
+> The legacy stage definitions and REQ-CRM-01..09 below describe the SUPERSEDED
+> client-stage model; they remain for the retained `pipeline_stage` column + the
+> interaction/ICP/proposal/hard-delete flows, which are unchanged.
 
 **Pipeline (8 stages):**
 ```

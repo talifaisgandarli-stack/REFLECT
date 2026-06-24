@@ -1,643 +1,165 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+/**
+ * Müştərilər — CRM redesign (owner override 2026-06-24, migration 0075).
+ *
+ * Two surfaces on one admin-gated page:
+ *   • Aktiv pipeline  — a 4-column kanban of PROJECTS (Pipeline.tsx)
+ *   • Müştəri bazası  — a searchable card grid of all clients (ClientBase.tsx)
+ *
+ * Pipeline lives on the project; the client base never splits into stage
+ * columns, so it stays clean. Both read usePipelineProjects() / useClientSummary().
+ * See docs/clients-crm-spec-adapted.md §0 for the spec→build decisions.
+ */
+import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
-import {
-  isLostReasonRequired,
-  useClientInteractions,
-  useClients,
-  useClientStageHistory,
-  useLogInteraction,
-  useUpdateClientStage,
-} from '@/lib/hooks';
-import {
-  CLIENT_STAGE_CONFIDENCE,
-  CLIENT_STAGE_LABEL,
-  CLIENT_STAGE_ORDER,
-  CLIENT_TIER_LABEL,
-  INTERACTION_LABEL,
-  LOST_REASONS,
-} from '@/lib/labels';
 import { SkeletonList } from '@/components/Skeleton';
-import type { Client, ClientPipelineStage, InteractionType } from '@/types/db';
-import { ClientsKpiStrip, ClientsTable, TierBadge, TierControl, type GroupBy } from '@/pages/clients/AccountsTable';
-import { formatAZN, relativeTime } from '@/lib/format';
-import { downloadCsv } from '@/lib/csv';
-import { useAuth } from '@/lib/store';
+import { usePipelineProjects, useClientSummary } from '@/lib/hooks';
+import { CLIENT_TIER_ORDER, CLIENT_TIER_DESC } from '@/lib/labels';
 import { supabase } from '@/lib/supabase';
-import { isValidEmail, isValidPhone, roundAzn } from '@/lib/validation';
-import { trackRecentEntry } from '@/lib/useRecentlyViewed';
-import { useSlashFocus } from '@/lib/useSlashFocus';
+import { useAuth } from '@/lib/store';
+import { isValidEmail, isValidPhone } from '@/lib/validation';
+import type { ClientTier } from '@/types/db';
+import { Pipeline } from '@/pages/clients/Pipeline';
+import { ClientBase } from '@/pages/clients/ClientBase';
+import { ClientModal } from '@/pages/clients/ClientModal';
 
-// Audit #5 — 'archived' is the merge soft-archive sink, not an active pipeline
-// stage, so it is excluded from the board / funnel / value chart (merged clients
-// stop reappearing as a draggable column). Data is still grouped for all stages.
-// BOARD_STAGES (7) still drives the panel's stage <select>, so every stage stays
-// reachable without drag.
-const BOARD_STAGES: ClientPipelineStage[] = CLIENT_STAGE_ORDER.filter((s) => s !== 'archived');
-
-// Board display override (PRD §Module 6, owner-approved 2026-06-23): the kanban
-// renders the 5 active spec stages as columns. The 8-value enum is untouched
-// (display-only) — 'signed' folds into the 'in_progress' (İcrada) column, 'lost'
-// is a separate drop-to-lose strip, 'archived' is the off-board merge sink.
-const SPEC_BOARD_STAGES: ClientPipelineStage[] = [
-  'lead',
-  'proposal',
-  'negotiation',
-  'in_progress',
-  'portfolio',
-];
-// Which stored enum stages roll up into each visible column.
-const COLUMN_STAGES: Partial<Record<ClientPipelineStage, ClientPipelineStage[]>> = {
-  in_progress: ['signed', 'in_progress'],
-};
-
-type DragPayload = { id: string; from: ClientPipelineStage };
-type LostPrompt = { id: string; from: ClientPipelineStage };
-type ClientPanelTab = 'overview' | 'interactions' | 'proposals' | 'projects' | 'documents' | 'history';
+type View = 'pipeline' | 'base';
 
 export function ClientsPage() {
-  const { isAdmin, role } = useAuth();
-  const qc = useQueryClient();
-  const { data: clients = [], isLoading } = useClients();
-  const updateStage = useUpdateClientStage();
-  const [active, setActive] = useState<Client | null>(null);
+  const { isAdmin } = useAuth();
+  const [params, setParams] = useSearchParams();
+  const view: View = params.get('view') === 'base' ? 'base' : 'pipeline';
+  const setView = (v: View) => {
+    const next = new URLSearchParams(params);
+    next.set('view', v);
+    setParams(next, { replace: true });
+  };
+
+  const projects = usePipelineProjects();
+  const clients = useClientSummary();
   const [creating, setCreating] = useState(false);
-  const [lostPrompt, setLostPrompt] = useState<LostPrompt | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
-  // PRD §UX — search persisted in URL (refresh / share-link preserves it)
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [search, setSearch] = useState(searchParams.get('q') ?? '');
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  useSlashFocus(searchInputRef);
-  useEffect(() => {
-    const next = new URLSearchParams(searchParams);
-    if (search) next.set('q', search);
-    else next.delete('q');
-    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  const [openClientId, setOpenClientId] = useState<string | null>(null);
 
-  // PRD §462 — BD Lead may create clients (INSERT), but stage drag is an UPDATE
-  // and stays admin-only (drop zones + card draggable are gated on isAdmin). This
-  // `canDrag` now gates only the "+ Yeni müştəri" button (create = INSERT).
-  const canDrag = isAdmin || role?.key === 'bd_lead';
-
-  // PRD §REQ-CRM — industry filter chip (column from migration 0050)
-  const [industryFilter, setIndustryFilter] = useState<string>('');
-  const availableIndustries = useMemo(() => {
-    const set = new Set<string>();
-    for (const c of clients) {
-      const ind = c.industry;
-      if (ind) set.add(ind);
-    }
-    return Array.from(set).sort();
-  }, [clients]);
-
-  const filteredClients = useMemo(() => {
-    let out = clients;
-    if (industryFilter) {
-      out = out.filter((c) => c.industry === industryFilter);
-    }
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      out = out.filter(
-        (c) =>
-          c.name.toLowerCase().includes(q) ||
-          (c.company ?? '').toLowerCase().includes(q) ||
-          (c.email ?? '').toLowerCase().includes(q),
-      );
-    }
-    return out;
-  }, [clients, search, industryFilter]);
-
-  // PRD §UX — sort within stages (default = name asc)
-  const [sortBy, setSortBy] = useState<'name' | 'value' | 'last_interaction'>('name');
-  const grouped = useMemo(() => {
-    const map: Record<ClientPipelineStage, Client[]> = CLIENT_STAGE_ORDER.reduce(
-      (acc, s) => ({ ...acc, [s]: [] }),
-      {} as Record<ClientPipelineStage, Client[]>,
-    );
-    for (const c of filteredClients) map[c.pipeline_stage]?.push(c);
-    for (const k of CLIENT_STAGE_ORDER) {
-      map[k] = [...map[k]].sort((a, b) => {
-        if (sortBy === 'value') return (b.expected_value ?? 0) - (a.expected_value ?? 0);
-        if (sortBy === 'last_interaction') {
-          return (b.last_interaction_at ?? '').localeCompare(a.last_interaction_at ?? '');
-        }
-        return a.name.localeCompare(b.name, 'az');
-      });
-    }
-    return map;
-  }, [filteredClients, sortBy]);
-
-  // REQ-CRM-02 — pipeline value uses each client's own confidence_pct, not the
-  // stage default (which the kanban already implies).
-  const stageValue = (s: ClientPipelineStage) =>
-    grouped[s].reduce(
-      (sub, c) => sub + (c.expected_value ?? 0) * ((c.confidence_pct ?? CLIENT_STAGE_CONFIDENCE[s]) / 100),
-      0,
-    );
-  // Display-override helpers: a visible column rolls up its folded enum stages
-  // (e.g. İcrada = signed + in_progress). Falls back to the column's own stage.
-  const columnStages = (col: ClientPipelineStage) => COLUMN_STAGES[col] ?? [col];
-  const columnClients = (col: ClientPipelineStage) =>
-    columnStages(col).flatMap((st) => grouped[st]);
-  const columnValue = (col: ClientPipelineStage) =>
-    columnStages(col).reduce((sum, st) => sum + stageValue(st), 0);
-  const totalPipeline = SPEC_BOARD_STAGES.reduce((sum, s) => sum + columnValue(s), 0);
-
-  // View toggle — Accounts table (default; the primary job here) vs. pipeline
-  // kanban (REQ-CRM-01, opt-in). Persisted in the URL across refresh / share.
-  const [view, setView] = useState<'pipeline' | 'table'>(
-    searchParams.get('view') === 'pipeline' ? 'pipeline' : 'table',
+  const openClient = useMemo(
+    () => clients.data?.find((c) => c.id === openClientId) ?? null,
+    [clients.data, openClientId],
   );
-  useEffect(() => {
-    const next = new URLSearchParams(searchParams);
-    if (view === 'pipeline') next.set('view', 'pipeline'); else next.delete('view');
-    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view]);
 
-  // Group-by for the account table (Linear-style): None / Tier / Stage / Industry.
-  const [groupBy, setGroupBy] = useState<GroupBy>('none');
-
-  // Per-client project counts (total / active) for the table view — one aggregate
-  // (client_project_stats view), not an N+1 over projects.
-  const projectStats = useQuery({
-    queryKey: ['client-project-stats'],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('client_project_stats' as 'projects')
-        .select('client_id, total_projects, active_projects');
-      const m = new Map<string, { total: number; active: number }>();
-      for (const r of (data ?? []) as unknown as Array<{ client_id: string; total_projects: number; active_projects: number }>) {
-        m.set(r.client_id, { total: Number(r.total_projects), active: Number(r.active_projects) });
-      }
-      return m;
-    },
-  });
-
-  function handleDrop(s: ClientPipelineStage, payload: DragPayload) {
-    if (payload.from === s) return;
-    if (s === 'lost') {
-      setLostPrompt({ id: payload.id, from: payload.from });
-      return;
-    }
-    updateStage.mutate({ id: payload.id, to: s });
-  }
+  const loading = projects.isLoading || clients.isLoading;
+  const totalValue = (clients.data ?? []).reduce((s, c) => s + (c.total_value ?? 0), 0);
 
   return (
     <>
       <PageHead
-        meta={isAdmin && totalPipeline > 0 ? `${clients.length} müştəri · pipeline ${formatAZN(totalPipeline)}` : `${clients.length} müştəri`}
+        meta={`${clients.data?.length ?? 0} müştəri · ${projects.data?.length ?? 0} layihə`}
         title="Müştərilər"
         actions={
-          <>
-            <input
-              ref={searchInputRef}
-              className="input max-w-[240px]"
-              placeholder="Axtar (ad, təşkilat, email)… (/)"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            {/* PRD §REQ-CRM — pipeline export for BD review/forecasting */}
-            {isAdmin && clients.length > 0 ? (
-              <button
-                type="button"
-                className="btn-outline"
-                onClick={() => {
-                  downloadCsv(
-                    `musteriler-${new Date().toISOString().slice(0, 10)}.csv`,
-                    ['Ad', 'Təşkilat', 'Tier', 'Mərhələ', 'Aktiv layihə', 'Cəmi layihə', 'Email', 'Telefon', 'Etibar %', 'Dəyər (AZN)', 'Sahə', 'ICP %', 'Son əlaqə'],
-                    clients.map((c) => ({
-                      'Ad': c.name,
-                      'Təşkilat': c.company ?? '',
-                      'Tier': c.tier !== 'none' ? CLIENT_TIER_LABEL[c.tier] : '',
-                      'Mərhələ': CLIENT_STAGE_LABEL[c.pipeline_stage] ?? c.pipeline_stage,
-                      'Aktiv layihə': projectStats.data?.get(c.id)?.active ?? 0,
-                      'Cəmi layihə': projectStats.data?.get(c.id)?.total ?? 0,
-                      'Email': c.email ?? '',
-                      'Telefon': c.phone ?? '',
-                      'Etibar %': c.confidence_pct,
-                      'Dəyər (AZN)': c.expected_value ?? '',
-                      'Sahə': c.industry ?? '',
-                      'ICP %': c.ai_icp_fit != null ? Math.round(c.ai_icp_fit) : '',
-                      'Son əlaqə': c.last_interaction_at ?? '',
-                    })),
-                  );
-                }}
-              >
-                ↓ CSV
-              </button>
-            ) : null}
-            {canDrag ? <button className="btn-primary" onClick={() => setCreating(true)}>+ Yeni müştəri</button> : null}
-          </>
+          isAdmin ? (
+            <button className="btn-primary" onClick={() => setCreating(true)}>
+              + Yeni müştəri
+            </button>
+          ) : null
         }
       />
 
-      {/* View toggle — Pipeline kanban vs. account Table (seamless, same page) */}
-      <div className="flex gap-2 mb-3 items-center flex-wrap">
-        <div className="flex gap-1" role="tablist" aria-label="Görünüş">
-          {([['pipeline', 'Pipeline'], ['table', 'Cədvəl']] as const).map(([v, label]) => (
-            <button
-              key={v}
-              type="button"
-              role="tab"
-              aria-selected={view === v}
-              className="chip"
-              style={{
-                background: view === v ? 'var(--brand-action)' : 'var(--surface-mist)',
-                color: view === v ? 'var(--ink)' : 'var(--text-muted)',
-                fontWeight: view === v ? 600 : 400,
-              }}
-              onClick={() => setView(v)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        {/* Pipeline: card sort. Table: group-by (sort is per-column header). */}
-        {view === 'pipeline' ? (
-          <>
-            <span className="text-meta ml-2" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
-              Sıralama:
-            </span>
-            <select
-              className="input"
-              style={{ maxWidth: 200, height: 32, fontSize: 12 }}
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-              aria-label="Sıralama"
-            >
-              <option value="name">A → Z</option>
-              {/* PRD §462 — value sort is finance; admin only */}
-              {isAdmin ? <option value="value">Dəyər (böyük əvvəl)</option> : null}
-              <option value="last_interaction">Son əlaqə (yeni əvvəl)</option>
-            </select>
-          </>
-        ) : (
-          <>
-            <span className="text-meta ml-2" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
-              Qrupla:
-            </span>
-            <select
-              className="input"
-              style={{ maxWidth: 160, height: 32, fontSize: 12 }}
-              value={groupBy}
-              onChange={(e) => setGroupBy(e.target.value as GroupBy)}
-              aria-label="Qruplaşdırma"
-            >
-              <option value="none">Qruplaşma yox</option>
-              <option value="tier">Tier üzrə</option>
-              <option value="stage">Mərhələ üzrə</option>
-              <option value="industry">Sahə üzrə</option>
-            </select>
-          </>
-        )}
+      {/* Surface toggle (§2 — two surfaces) */}
+      <div className="flex gap-1 mb-3" role="tablist" aria-label="Görünüş">
+        {(
+          [
+            ['pipeline', 'Aktiv pipeline'],
+            ['base', 'Müştəri bazası'],
+          ] as const
+        ).map(([v, label]) => (
+          <button
+            key={v}
+            type="button"
+            role="tab"
+            aria-selected={view === v}
+            className="chip"
+            style={
+              view === v
+                ? { background: 'var(--brand-action)', color: 'var(--brand-text)' }
+                : undefined
+            }
+            onClick={() => setView(v)}
+          >
+            {label}
+          </button>
+        ))}
+        {isAdmin && totalValue > 0 ? (
+          <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-muted)', alignSelf: 'center' }}>
+            Portfel dəyəri: {new Intl.NumberFormat('az-AZ', { style: 'currency', currency: 'AZN', maximumFractionDigits: 0 }).format(totalValue)}
+          </span>
+        ) : null}
       </div>
 
-      {/* PRD §REQ-CRM — industry filter (migration 0050) */}
-      {availableIndustries.length > 0 ? (
-        <div className="flex flex-wrap gap-2 mb-3">
-          <button
-            type="button"
-            className="chip"
-            style={{
-              background: industryFilter === '' ? 'var(--brand-action)' : 'var(--surface-mist)',
-              color: industryFilter === '' ? 'var(--ink)' : 'var(--text-muted)',
-            }}
-            onClick={() => setIndustryFilter('')}
-          >
-            Bütün sahələr
-          </button>
-          {availableIndustries.map((ind) => (
-            <button
-              key={ind}
-              type="button"
-              className="chip"
-              style={{
-                background: industryFilter === ind ? 'var(--brand-action)' : 'var(--surface-mist)',
-                color: industryFilter === ind ? 'var(--ink)' : 'var(--text-muted)',
-              }}
-              onClick={() => setIndustryFilter(industryFilter === ind ? '' : ind)}
-            >
-              {ind}
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      {/* One compact KPI strip replaces the empty funnel + value chart (the firm
-          tracks accounts, not a sales funnel; expected_value is mostly empty). */}
-      {!isLoading && clients.length > 0 ? (
-        <ClientsKpiStrip
-          clients={clients}
-          stats={projectStats.data}
-          isAdmin={isAdmin}
-          totalPipeline={totalPipeline}
-        />
-      ) : null}
-
-      {isLoading ? (
-        <SkeletonList rows={6} />
-      ) : clients.length === 0 ? (
+      {loading ? (
+        <SkeletonList />
+      ) : (projects.data ?? []).length === 0 && (clients.data ?? []).length === 0 ? (
         <EmptyState
-          title="Müştəri yoxdur"
-          body="İlk müştərini əlavə et — Lead → Müzakirə → İmzalanıb axını avtomatlaşdırılmışdır."
-          cta={isAdmin ? <button className="btn-primary">+ Yeni müştəri</button> : null}
+          title="Hələ müştəri yoxdur"
+          body="İlk müştərini əlavə et, sonra ona layihə yarat — layihə pipeline-da görünəcək."
+          cta={
+            isAdmin ? (
+              <button className="btn-primary" onClick={() => setCreating(true)}>
+                + Yeni müştəri
+              </button>
+            ) : undefined
+          }
         />
-      ) : view === 'table' ? (
-        <ClientsTable
-          clients={filteredClients}
-          stats={projectStats.data}
-          isAdmin={isAdmin}
-          onOpen={setActive}
-          onDelete={isAdmin ? setDeleteTarget : undefined}
-          groupBy={groupBy}
+      ) : view === 'pipeline' ? (
+        <Pipeline
+          projects={projects.data ?? []}
+          onOpenClient={(id) => setOpenClientId(id)}
         />
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
-          {SPEC_BOARD_STAGES.map((s) => (
-            <div
-              key={s}
-              className="rounded-card p-3"
-              style={{ border: '1px dashed var(--line)', minHeight: 280 }}
-              onDragOver={isAdmin ? (e) => e.preventDefault() : undefined}
-              onDrop={
-                isAdmin
-                  ? (e) => {
-                      const raw = e.dataTransfer.getData('text/plain');
-                      if (!raw) return;
-                      handleDrop(s, JSON.parse(raw) as DragPayload);
-                    }
-                  : undefined
-              }
-            >
-              <h3
-                className="text-tiny mb-1 tracking-wider"
-                style={{
-                  color: 'var(--text-muted)',
-                  textTransform: 'uppercase',
-                }}
-              >
-                {CLIENT_STAGE_LABEL[s]} · {columnClients(s).length}
-              </h3>
-              {/* PRD §462 — per-stage value is finance; admin only, and only when
-                  there's actually a value (no "AZN 0" noise). */}
-              {isAdmin && columnValue(s) > 0 ? (
-                <div className="text-meta mb-3" style={{ color: 'var(--text-muted)' }}>
-                  {formatAZN(columnValue(s))}
-                </div>
-              ) : null}
-              <div className="space-y-2">
-                {columnClients(s).map((c) => (
-                  // role=button (not <button>) so the card can host the inline
-                  // value editor's nested controls — a <button> may not legally
-                  // contain interactive children. Click/Enter/Space opens the panel.
-                  <div
-                    key={c.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setActive(c)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setActive(c);
-                      }
-                    }}
-                    draggable={isAdmin}
-                    onDragStart={(e) =>
-                      e.dataTransfer.setData(
-                        'text/plain',
-                        JSON.stringify({ id: c.id, from: c.pipeline_stage } satisfies DragPayload),
-                      )
-                    }
-                    className="card text-left w-full"
-                    style={{ padding: 12, cursor: isAdmin ? 'grab' : 'pointer' }}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="font-medium text-body truncate">{c.name}</div>
-                      {c.tier !== 'none' ? <TierBadge tier={c.tier} /> : null}
-                    </div>
-                    <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                      {c.company ?? '—'}
-                    </div>
-                    {/* Inline expected_value edit on the card (admin only, mask-aware
-                        via clients_view §464). Trello-style: click → edit → Enter. */}
-                    {isAdmin ? <CardValueEditor clientId={c.id} value={c.expected_value} /> : null}
-                    {/* PRD §REQ-CRM — industry chip on kanban card (migration 0050) */}
-                    {c.industry ? (
-                      <span
-                        className="chip mt-1.5 inline-block"
-                        style={{
-                          background: 'var(--surface-mist)',
-                          color: 'var(--text-muted)',
-                          fontSize: 10,
-                          padding: '0 6px',
-                        }}
-                      >
-                        {c.industry}
-                      </span>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+        <ClientBase
+          clients={clients.data ?? []}
+          projects={projects.data ?? []}
+          onOpenClient={(id) => setOpenClientId(id)}
+        />
       )}
 
-      {/* Board override: 'Udulan' is kept off the 5-stage grid as a slim
-          drop-to-lose strip (drag a card here → lost-reason prompt, REQ-CRM-01).
-          Also lists any already-lost clients so they stay reachable. Only shown
-          when there's something to drop onto or lost clients exist. */}
-      {view === 'pipeline' && (isAdmin || grouped.lost.length > 0) ? (
-        <div
-          className="rounded-card p-3 mt-3"
-          style={{ border: '1px dashed var(--line)' }}
-          onDragOver={isAdmin ? (e) => e.preventDefault() : undefined}
-          onDrop={
-            isAdmin
-              ? (e) => {
-                  const raw = e.dataTransfer.getData('text/plain');
-                  if (!raw) return;
-                  handleDrop('lost', JSON.parse(raw) as DragPayload);
-                }
-              : undefined
-          }
-        >
-          <h3
-            className="text-tiny mb-2 tracking-wider"
-            style={{ color: 'var(--text-muted)', textTransform: 'uppercase' }}
-          >
-            {CLIENT_STAGE_LABEL.lost} · {grouped.lost.length}
-            {isAdmin ? (
-              <span className="ml-2" style={{ textTransform: 'none' }}>
-                — itirilmiş kimi qeyd etmək üçün kartı bura sürüşdürün
-              </span>
-            ) : null}
-          </h3>
-          {grouped.lost.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {grouped.lost.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setActive(c)}
-                  className="chip"
-                  style={{ background: 'var(--surface-mist)', color: 'var(--text-soft)' }}
-                >
-                  {c.name}
-                  {c.company ? ` · ${c.company}` : ''}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
+      {openClient ? (
+        <ClientModal client={openClient} onClose={() => setOpenClientId(null)} />
       ) : null}
 
-      {active ? (
-        <ClientPanel client={active} onClose={() => setActive(null)} />
-      ) : null}
-
-      {creating ? (
-        <CreateClientModal
-          onClose={() => setCreating(false)}
-          onCreated={() => setCreating(false)}
-        />
-      ) : null}
-
-      {/* Delete from the table (admin) — same typed-name confirm as the panel */}
-      {deleteTarget ? (
-        <ClientDeleteModal
-          client={deleteTarget}
-          onClose={() => setDeleteTarget(null)}
-          onDeleted={() => {
-            qc.invalidateQueries({ queryKey: ['clients'] });
-            if (active?.id === deleteTarget.id) setActive(null);
-            setDeleteTarget(null);
-          }}
-        />
-      ) : null}
-
-      {lostPrompt ? (
-        <LostReasonModal
-          onCancel={() => setLostPrompt(null)}
-          onConfirm={(reason) => {
-            updateStage.mutate(
-              { id: lostPrompt.id, to: 'lost', lostReason: reason },
-              {
-                onSuccess: () => setLostPrompt(null),
-                onError: (e) => {
-                  if (isLostReasonRequired(e)) return;
-                  setLostPrompt(null);
-                },
-              },
-            );
-          }}
-        />
-      ) : null}
+      {creating ? <CreateClientModal onClose={() => setCreating(false)} /> : null}
     </>
   );
 }
 
-// ── Create client modal (REQ-CRM-01) ──
-const INDUSTRY_OPTIONS = ['Tikinti', 'Mağaza', 'Restoran', 'Ofis', 'Mənzil', 'Mehmanxana', 'İctimai obyekt', 'Sənaye', 'Digər'] as const;
-
-function CreateClientModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+function CreateClientModal({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
-  const { data: existing = [] } = useClients();
   const [name, setName] = useState('');
   const [company, setCompany] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [expectedValue, setExpectedValue] = useState('');
-  const [industry, setIndustry] = useState('');
-  const [overrideDuplicate, setOverrideDuplicate] = useState(false);
-
-  // PRD §UX — auto-save draft to localStorage (1h expiry)
-  const CLIENT_DRAFT_KEY = 'reflect.client-draft';
-  useEffect(() => {
-    if (!name.trim() && !company.trim()) return;
-    try {
-      localStorage.setItem(
-        CLIENT_DRAFT_KEY,
-        JSON.stringify({ name, company, email, phone, expectedValue, industry, ts: Date.now() }),
-      );
-    } catch { /* ignore */ }
-  }, [name, company, email, phone, expectedValue, industry]);
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(CLIENT_DRAFT_KEY);
-      if (!raw) return;
-      const d = JSON.parse(raw) as Record<string, string | number | undefined>;
-      if (d.ts && Date.now() - Number(d.ts) > 3600_000) {
-        localStorage.removeItem(CLIENT_DRAFT_KEY);
-        return;
-      }
-      if (typeof d.name === 'string' && !name) setName(d.name);
-      if (typeof d.company === 'string' && !company) setCompany(d.company);
-      if (typeof d.email === 'string' && !email) setEmail(d.email);
-      if (typeof d.phone === 'string' && !phone) setPhone(d.phone);
-      if (typeof d.expectedValue === 'string' && !expectedValue) setExpectedValue(d.expectedValue);
-      if (typeof d.industry === 'string' && !industry) setIndustry(d.industry);
-    } catch { /* ignore */ }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // PRD §REQ-CRM — fuzzy duplicate detection: normalize + token-set overlap
-  // against existing client names/companies. Conservative — only flags very
-  // close matches so we don't annoy users with false positives.
-  const duplicates = useMemo(() => {
-    const q = name.trim().toLowerCase();
-    if (q.length < 3) return [];
-    const tokens = new Set(q.split(/\s+/).filter((t) => t.length >= 3));
-    if (tokens.size === 0) return [];
-    return existing
-      .filter((c) => c.pipeline_stage !== 'archived')
-      .map((c) => {
-        const hay = `${c.name} ${c.company ?? ''}`.toLowerCase();
-        if (hay.includes(q)) return { client: c, score: 1 }; // substring hit
-        const hayTokens = new Set(hay.split(/\s+/).filter((t) => t.length >= 3));
-        let hits = 0;
-        for (const t of tokens) if (hayTokens.has(t)) hits++;
-        return { client: c, score: hits / tokens.size };
-      })
-      .filter((r) => r.score >= 0.6)
-      .slice(0, 5);
-  }, [name, existing]);
+  const [tier, setTier] = useState<'' | ClientTier>('');
 
   const create = useMutation({
     mutationFn: async () => {
       if (!name.trim()) throw new Error('Ad tələb olunur');
-      // PRD §9.1 — client-side format validation (server has its own checks)
-      if (email.trim() && !isValidEmail(email.trim())) {
-        throw new Error('Etibarsız email formatı');
-      }
-      if (phone.trim() && !isValidPhone(phone.trim())) {
-        throw new Error('Etibarsız telefon formatı');
-      }
-      if (duplicates.length > 0 && !overrideDuplicate) {
-        throw new Error('Oxşar müştəri tapıldı — davam etmək üçün təsdiqlə');
-      }
+      if (email.trim() && !isValidEmail(email.trim())) throw new Error('Etibarsız email');
+      if (phone.trim() && !isValidPhone(phone.trim())) throw new Error('Etibarsız telefon');
       const { error } = await supabase.from('clients').insert({
         name: name.trim(),
         company: company.trim() || null,
         email: email.trim() || null,
         phone: phone.trim() || null,
-        industry: industry || null,
-        expected_value: expectedValue ? roundAzn(expectedValue) : null,
+        tier: tier || null,
+        // legacy pipeline columns kept for Finance/Dashboard compat (migration 0075).
         pipeline_stage: 'lead',
         confidence_pct: 10,
       });
       if (error) throw error;
     },
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['client-summary'] });
       qc.invalidateQueries({ queryKey: ['clients'] });
-      try { localStorage.removeItem(CLIENT_DRAFT_KEY); } catch { /* ignore */ }
-      onCreated();
+      onClose();
     },
   });
 
@@ -651,88 +173,52 @@ function CreateClientModal({ onClose, onCreated }: { onClose: () => void; onCrea
         className="card w-full max-w-md"
         style={{ padding: 24 }}
         onClick={(e) => e.stopPropagation()}
-        onSubmit={(e) => { e.preventDefault(); create.mutate(); }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          create.mutate();
+        }}
       >
         <h2 className="text-h2 mb-4">Yeni müştəri</h2>
         <div className="space-y-3">
-          <CField label="Ad *">
+          <Field label="Ad *">
             <input className="input" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
-          </CField>
-          <CField label="Təşkilat">
-            <input className="input" value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Məs. Dövlət Gömrük Komitəsi" />
-            <span className="text-meta block mt-1" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
-              Təşkilatın adı — iş/müqavilə təsviri deyil (onu layihəyə yazın).
-            </span>
-          </CField>
-          <div className="grid grid-cols-2 gap-3">
-            <CField label="Email">
-              <input type="email" className="input" value={email} onChange={(e) => setEmail(e.target.value)} />
-            </CField>
-            <CField label="Telefon">
-              <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} />
-            </CField>
-          </div>
-          {/* PRD §REQ-CRM — industry tag (migration 0050) */}
-          <CField label="Sahə (sənaye)">
-            <select className="input" value={industry} onChange={(e) => setIndustry(e.target.value)}>
-              <option value="">Seçin…</option>
-              {INDUSTRY_OPTIONS.map((o) => (
-                <option key={o} value={o}>{o}</option>
+          </Field>
+          <Field label="Təşkilat">
+            <input
+              className="input"
+              value={company}
+              onChange={(e) => setCompany(e.target.value)}
+              placeholder="Məs. Prezident İşlər İdarəsi"
+            />
+          </Field>
+          <Field label="Email">
+            <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </Field>
+          <Field label="Telefon">
+            <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          </Field>
+          <Field label="Tier">
+            <select className="input" value={tier} onChange={(e) => setTier(e.target.value as ClientTier | '')}>
+              <option value="">Təyin edilməyib</option>
+              {CLIENT_TIER_ORDER.map((t) => (
+                <option key={t} value={t}>
+                  {CLIENT_TIER_DESC[t]}
+                </option>
               ))}
             </select>
-          </CField>
-          <CField label="Gözlənilən dəyər (AZN)">
-            <input
-              type="number"
-              min="0"
-              step="100"
-              className="input"
-              value={expectedValue}
-              onChange={(e) => setExpectedValue(e.target.value)}
-              style={{ fontVariantNumeric: 'tabular-nums' }}
-            />
-          </CField>
+          </Field>
         </div>
-        {/* PRD §REQ-CRM — duplicate detection warning */}
-        {duplicates.length > 0 ? (
-          <div
-            className="rounded-card px-3 py-2 mt-3"
-            style={{
-              background: 'var(--warning-bg, #fff3d6)',
-              border: '1px solid var(--warning, #c47d00)',
-              color: 'var(--ink)',
-            }}
-          >
-            <div className="text-meta font-medium mb-1">⚠ Oxşar müştəri tapıldı:</div>
-            <ul className="text-meta mb-2" style={{ fontSize: 12 }}>
-              {duplicates.map((d) => (
-                <li key={d.client.id}>
-                  • {d.client.name}{d.client.company ? ` · ${d.client.company}` : ''}
-                </li>
-              ))}
-            </ul>
-            <label className="text-meta flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={overrideDuplicate}
-                onChange={(e) => setOverrideDuplicate(e.target.checked)}
-              />
-              Bilirəm — yeni müştəri kimi əlavə et
-            </label>
-          </div>
+        {create.isError ? (
+          <p style={{ color: 'var(--error)', fontSize: 12, marginTop: 8 }}>
+            {(create.error as Error).message}
+          </p>
         ) : null}
-
-        {create.error ? (
-          <p className="text-meta mt-3" style={{ color: 'var(--error-deep)' }}>{(create.error as Error).message}</p>
-        ) : null}
-        <div className="flex justify-end gap-2 mt-6">
-          <button type="button" className="btn-outline" onClick={onClose} disabled={create.isPending}>Ləğv</button>
-          <button
-            type="submit"
-            className="btn-primary"
-            disabled={create.isPending || !name.trim() || (duplicates.length > 0 && !overrideDuplicate)}
-          >
-            {create.isPending ? 'Yaradılır…' : 'Yarat'}
+        <div className="flex gap-2 mt-5 justify-end">
+          <button type="button" className="btn-outline" onClick={onClose}>
+            Ləğv et
+          </button>
+          <button type="submit" className="btn-primary" disabled={create.isPending}>
+            Yarat
           </button>
         </div>
       </form>
@@ -740,1271 +226,13 @@ function CreateClientModal({ onClose, onCreated }: { onClose: () => void; onCrea
   );
 }
 
-function CField({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="block">
-      <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>{label}</span>
+    <label style={{ display: 'block' }}>
+      <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+        {label}
+      </span>
       {children}
     </label>
-  );
-}
-
-// ClientPanelTab defined above
-
-const PANEL_TABS: { key: ClientPanelTab; label: string }[] = [
-  { key: 'overview', label: 'Ümumi' },
-  { key: 'interactions', label: 'Əlaqələr' },
-  { key: 'proposals', label: 'Təkliflər' },
-  { key: 'projects', label: 'Layihələr' },
-  { key: 'documents', label: 'Sənədlər' },
-  { key: 'history', label: 'Tarixçə' },
-];
-
-function ClientPanel({ client, onClose }: { client: Client; onClose: () => void }) {
-  const { isAdmin } = useAuth();
-  const qc = useQueryClient();
-  const [tab, setTab] = useState<ClientPanelTab>('overview');
-  const [mergeOpen, setMergeOpen] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
-
-  // Track recent: opening the panel counts as "viewed"
-  useEffect(() => {
-    trackRecentEntry({
-      type: 'client',
-      id: client.id,
-      title: client.name,
-      href: `/müştərilər?focus=${client.id}`,
-    });
-  }, [client.id, client.name]);
-
-  return (
-    <div
-      className="fixed inset-0 z-40 flex justify-end"
-      style={{ background: 'rgba(14,22,17,0.4)' }}
-      onClick={onClose}
-    >
-      <aside
-        className="w-[520px] h-full bg-surface p-6 overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between mb-1 gap-2">
-          {/* PRD §REQ-CRM — admin inline edit client name */}
-          {isAdmin ? (
-            <ClientNameEditor clientId={client.id} initial={client.name} />
-          ) : (
-            <h2 className="text-h2 flex-1 min-w-0 truncate">{client.name}</h2>
-          )}
-          {/* PRD §REQ-CRM — admin client merge */}
-          {isAdmin ? (
-            <button
-              type="button"
-              onClick={() => setMergeOpen(true)}
-              className="chip shrink-0"
-              style={{ color: 'var(--brand-text)' }}
-              title="Bu müştərini başqası ilə birləşdir"
-            >
-              ⇆ Birləşdir
-            </button>
-          ) : null}
-          {/* Danger zone — admin hard-deletes the client (typed-name confirm) */}
-          {isAdmin ? (
-            <button
-              type="button"
-              onClick={() => setDeleteOpen(true)}
-              className="chip shrink-0"
-              style={{ color: 'var(--error-deep)' }}
-              title="Müştərini həmişəlik sil"
-            >
-              🗑 Sil
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-meta"
-            style={{ color: 'var(--text-muted)', fontSize: 20 }}
-            aria-label="Bağla"
-          >
-            ✕
-          </button>
-        </div>
-        {mergeOpen ? (
-          <ClientMergeModal
-            source={client}
-            onClose={() => setMergeOpen(false)}
-            onMerged={() => {
-              setMergeOpen(false);
-              qc.invalidateQueries({ queryKey: ['clients'] });
-              onClose();
-            }}
-          />
-        ) : null}
-        {deleteOpen ? (
-          <ClientDeleteModal
-            client={client}
-            onClose={() => setDeleteOpen(false)}
-            onDeleted={() => {
-              setDeleteOpen(false);
-              qc.invalidateQueries({ queryKey: ['clients'] });
-              onClose();
-            }}
-          />
-        ) : null}
-        <div className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
-          {client.company ?? '—'}
-        </div>
-
-        <div className="flex gap-1 mb-5 flex-wrap">
-          {PANEL_TABS.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              className="chip"
-              style={{
-                background: tab === t.key ? 'var(--brand-action)' : 'var(--surface)',
-                color: tab === t.key ? 'var(--ink)' : 'var(--text)',
-                fontWeight: tab === t.key ? 600 : 400,
-                padding: '4px 10px',
-                fontSize: 13,
-              }}
-              onClick={() => setTab(t.key)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {tab === 'overview' ? <OverviewTab client={client} /> : null}
-        {tab === 'interactions' ? <InteractionsTab clientId={client.id} /> : null}
-        {tab === 'proposals' ? <ProposalsTab clientId={client.id} /> : null}
-        {tab === 'projects' ? <ProjectsTab clientId={client.id} /> : null}
-        {tab === 'documents' ? <DocumentsTab clientId={client.id} /> : null}
-        {tab === 'history' ? <HistoryTab clientId={client.id} /> : null}
-      </aside>
-    </div>
-  );
-}
-
-// REQ-CRM-05 / US-CRM-05 — Proposals tab: list + create price_protocol documents
-function ProposalsTab({ clientId }: { clientId: string }) {
-  const { profile } = useAuth();
-  const qc = useQueryClient();
-  const [creating, setCreating] = useState(false);
-  const [copied, setCopied] = useState<string | null>(null);
-
-  const { data: proposals = [], isLoading } = useQuery({
-    queryKey: ['client_proposals', clientId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('project_documents')
-        .select('id, title, share_token, created_at, external_link')
-        .eq('client_id', clientId)
-        .eq('category', 'price_protocol')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
-
-  function copyLink(token: string) {
-    navigator.clipboard.writeText(`${window.location.origin}/docs/${token}`);
-    setCopied(token);
-    setTimeout(() => setCopied(null), 2000);
-  }
-
-  return (
-    <div>
-      <div className="flex justify-between items-center mb-3">
-        <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
-          {proposals.length} təklif
-        </span>
-        <button className="btn-primary" style={{ padding: '4px 12px', fontSize: 13 }} onClick={() => setCreating(true)}>
-          + Təklif yarat
-        </button>
-      </div>
-
-      {isLoading ? <div className="text-meta">Yüklənir…</div> : null}
-
-      {!isLoading && proposals.length === 0 ? (
-        <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
-          Hələ qiymət protokolu yoxdur.
-        </p>
-      ) : null}
-
-      <ul className="space-y-2">
-        {proposals.map((p: { id: string; title: string; share_token: string | null; created_at: string; external_link: string | null }) => (
-          <li key={p.id} className="card" style={{ padding: 12 }}>
-            <div className="text-body font-medium">{p.title}</div>
-            <div className="flex items-center gap-3 mt-1 flex-wrap">
-              {p.share_token ? (
-                <button
-                  type="button"
-                  className="text-meta"
-                  style={{ color: copied === p.share_token ? 'var(--brand-action)' : 'var(--brand-text)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-                  onClick={() => copyLink(p.share_token!)}
-                >
-                  {copied === p.share_token ? '✓ Kopyalandı' : 'Linki paylaş'}
-                </button>
-              ) : null}
-              {p.external_link ? (
-                <a
-                  href={p.external_link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-meta"
-                  style={{ color: 'var(--text-muted)' }}
-                >
-                  Drive ↗
-                </a>
-              ) : null}
-              <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                {new Date(p.created_at).toLocaleDateString('az-AZ')}
-              </span>
-            </div>
-          </li>
-        ))}
-      </ul>
-
-      {creating ? (
-        <CreateProposalModal
-          clientId={clientId}
-          authorId={profile?.id ?? null}
-          onClose={() => setCreating(false)}
-          onSaved={() => {
-            qc.invalidateQueries({ queryKey: ['client_proposals', clientId] });
-            setCreating(false);
-          }}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-// US-CRM-05 — create proposal modal
-function CreateProposalModal({
-  clientId,
-  authorId,
-  onClose,
-  onSaved,
-}: {
-  clientId: string;
-  authorId: string | null;
-  onClose: () => void;
-  onSaved: (token: string) => void;
-}) {
-  const [title, setTitle] = useState('');
-  const [externalLink, setExternalLink] = useState('');
-  const [shareToken, setShareToken] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-
-  const save = useMutation({
-    mutationFn: async () => {
-      if (!title.trim()) throw new Error('Başlıq tələb olunur');
-      const token = crypto.randomUUID();
-      const { error } = await supabase.from('project_documents').insert({
-        client_id: clientId,
-        project_id: null,
-        category: 'price_protocol',
-        title: title.trim(),
-        source: 'auto_generated',
-        share_token: token,
-        external_link: externalLink.trim() || null,
-        storage_path: null,
-        shared_with: [],
-        created_by: authorId,
-      });
-      if (error) throw error;
-      return token;
-    },
-    onSuccess: (token) => {
-      setShareToken(token);
-    },
-  });
-
-  const shareUrl = shareToken ? `${window.location.origin}/docs/${shareToken}` : '';
-
-  function copyAndClose() {
-    if (shareToken) navigator.clipboard.writeText(shareUrl);
-    setCopied(true);
-    setTimeout(() => { onSaved(shareToken!); }, 1200);
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(14,22,17,0.6)' }}
-      onClick={shareToken ? undefined : onClose}
-    >
-      <div
-        className="bg-surface p-6 rounded-card w-[460px]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {!shareToken ? (
-          <>
-            <h2 className="text-h2 mb-4">Təklif yarat</h2>
-
-            <label className="block mb-3">
-              <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Başlıq *</span>
-              <input
-                className="input w-full"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Qiymət protokolu — İyun 2026"
-                autoFocus
-              />
-            </label>
-
-            <label className="block mb-5">
-              <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-                Drive / xarici link (ixtiyari)
-              </span>
-              <input
-                className="input w-full"
-                value={externalLink}
-                onChange={(e) => setExternalLink(e.target.value)}
-                placeholder="https://docs.google.com/…"
-              />
-            </label>
-
-            {save.error ? (
-              <p className="text-meta mb-3" style={{ color: 'var(--error-deep)' }}>
-                {(save.error as Error).message}
-              </p>
-            ) : null}
-
-            <div className="flex justify-end gap-2">
-              <button className="btn-outline" onClick={onClose}>Ləğv et</button>
-              <button
-                className="btn-primary"
-                disabled={save.isPending || !title.trim()}
-                onClick={() => save.mutate()}
-              >
-                {save.isPending ? 'Yaradılır…' : 'Yarat'}
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <h2 className="text-h2 mb-2">Təklif yaradıldı</h2>
-            <p className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
-              Bu linki müştəriyə göndərin. Giriş tələb olunmur.
-            </p>
-            <div
-              className="rounded-card p-3 mb-4 flex items-center gap-2"
-              style={{ background: 'var(--surface-raised)', border: '1px solid var(--line)' }}
-            >
-              <span className="flex-1 text-meta truncate" style={{ color: 'var(--text-muted)' }}>
-                {shareUrl}
-              </span>
-            </div>
-            <div className="flex justify-end gap-2">
-              <button className="btn-outline" onClick={onClose}>Bağla</button>
-              <button className="btn-primary" onClick={copyAndClose}>
-                {copied ? '✓ Kopyalandı' : 'Linki paylaş'}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// REQ-CRM-05 — Projects tab: projects linked to this client
-function ProjectsTab({ clientId }: { clientId: string }) {
-  const { data: projects = [], isLoading } = useQuery({
-    queryKey: ['client_projects', clientId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('projects')
-        .select('id, name, status, deadline')
-        .eq('client_id', clientId)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
-
-  if (isLoading) return <div className="text-meta">Yüklənir…</div>;
-  if (projects.length === 0) {
-    return (
-      <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
-        Bu müştəriyə bağlı layihə yoxdur.
-      </p>
-    );
-  }
-  return (
-    <ul className="space-y-2">
-      {projects.map((p: { id: string; name: string; status: string; deadline: string | null }) => (
-        <li key={p.id} className="card" style={{ padding: 12 }}>
-          <div className="text-body font-medium">{p.name}</div>
-          <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-            {p.status} {p.deadline ? `· ${new Date(p.deadline).toLocaleDateString('az-AZ')}` : ''}
-          </div>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-// REQ-CRM-05 — Documents tab: project_documents (non-proposal) for this client
-function DocumentsTab({ clientId }: { clientId: string }) {
-  const { data: docs = [], isLoading } = useQuery({
-    queryKey: ['client_docs', clientId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('project_documents')
-        .select('id, title, category, created_at, external_link, source')
-        .eq('client_id', clientId)
-        .neq('category', 'price_protocol')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
-
-  if (isLoading) return <div className="text-meta">Yüklənir…</div>;
-  if (docs.length === 0) {
-    return (
-      <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
-        Sənəd yoxdur.
-      </p>
-    );
-  }
-  return (
-    <ul className="space-y-2">
-      {docs.map((d: { id: string; title: string; category: string | null; created_at: string; external_link: string | null }) => (
-        <li key={d.id} className="card" style={{ padding: 12 }}>
-          <div className="text-body font-medium">{d.title}</div>
-          <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-            {d.category ?? '—'} · {new Date(d.created_at).toLocaleDateString('az-AZ')}
-          </div>
-          {d.external_link ? (
-            <a
-              href={d.external_link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-meta"
-              style={{ color: 'var(--brand-text)' }}
-            >
-              Aç →
-            </a>
-          ) : null}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function OverviewTab({ client }: { client: Client }) {
-  const qc = useQueryClient();
-  const [icpLoading, setIcpLoading] = useState(false);
-  const [icpErr, setIcpErr] = useState<string | null>(null);
-
-  // REQ-CRM-04 — throttle: max 1 refresh per 24h per client
-  const lastRun = client.ai_icp_calculated_at ? new Date(client.ai_icp_calculated_at) : null;
-  const hoursSince = lastRun ? (Date.now() - lastRun.getTime()) / 3_600_000 : Infinity;
-  const throttled = hoursSince < 24;
-
-  async function runIcp() {
-    if (throttled) return;
-    setIcpLoading(true);
-    setIcpErr(null);
-    try {
-      const { data: sess } = await supabase.auth.getSession();
-      const token = sess.session?.access_token;
-      if (!token) throw new Error('Sessiya yoxdur');
-      const res = await fetch('/api/crm/icp', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({ client_id: client.id }),
-      });
-      const data = await res.json().catch(() => ({})) as { score?: number; throttled?: boolean; error?: string };
-      if (res.status === 429 || data.throttled) {
-        setIcpErr('Son 24 saat ərzində artıq analiz edilib.');
-        return;
-      }
-      if (!res.ok) throw new Error(data.error ?? 'AI analiz uğursuz oldu');
-      qc.invalidateQueries({ queryKey: ['clients'] });
-    } catch (e) {
-      setIcpErr((e as Error).message);
-    } finally {
-      setIcpLoading(false);
-    }
-  }
-
-  const { isAdmin } = useAuth();
-  return (
-    <div>
-      <dl className="text-body space-y-2">
-        {/* Audit #8 — admin can change stage here too (keyboard/touch accessible,
-            not only drag); 'lost' asks for a reason inline. */}
-        {isAdmin ? (
-          <ClientStageChanger client={client} />
-        ) : <Row label="Mərhələ" value={CLIENT_STAGE_LABEL[client.pipeline_stage]} />}
-        {/* Audit #7 — confidence_pct now editable (REQ-CRM-02 pipeline value uses it) */}
-        {isAdmin ? (
-          <ClientFieldEditor clientId={client.id} field="confidence_pct" label="Etibar %" initial={String(client.confidence_pct)} type="number" suffix="%" />
-        ) : <Row label="Etibar %" value={`${client.confidence_pct}%`} />}
-        {/* PRD §REQ-CRM — inline editable fields (admin) */}
-        {isAdmin ? (
-          <ClientFieldEditor clientId={client.id} field="company" label="Təşkilat" initial={client.company} type="text" />
-        ) : <Row label="Təşkilat" value={client.company ?? '—'} />}
-        {isAdmin ? (
-          <ClientFieldEditor clientId={client.id} field="email" label="Email" initial={client.email} type="email" />
-        ) : <Row label="Email" value={client.email ?? '—'} />}
-        {/* Audit #6 — phone now inline-editable for admins */}
-        {isAdmin ? (
-          <ClientFieldEditor clientId={client.id} field="phone" label="Telefon" initial={client.phone} type="text" />
-        ) : <Row label="Telefon" value={client.phone ?? '—'} />}
-        {/* PRD §462 — expected_value is finance: admin edits it, non-admins don't see it */}
-        {isAdmin ? (
-          <ClientFieldEditor clientId={client.id} field="expected_value" label="Dəyər" initial={client.expected_value != null ? String(client.expected_value) : null} type="number" displayFormat="azn" />
-        ) : null}
-        {isAdmin ? (
-          <ClientIndustryEditor clientId={client.id} initial={client.industry ?? null} />
-        ) : (client.industry ? <Row label="Sahə" value={client.industry ?? ''} /> : null)}
-        {/* Account tier (admin sets; others see read-only when assigned) */}
-        {isAdmin ? (
-          <div className="flex justify-between gap-2 items-center">
-            <dt style={{ color: 'var(--text-muted)' }}>Tier</dt>
-            <dd><TierControl client={client} editable /></dd>
-          </div>
-        ) : (client.tier !== 'none' ? (
-          <div className="flex justify-between gap-2 items-center">
-            <dt style={{ color: 'var(--text-muted)' }}>Tier</dt>
-            <dd><TierBadge tier={client.tier} /></dd>
-          </div>
-        ) : null)}
-        <Row label="Son əlaqə" value={relativeTime(client.last_interaction_at)} />
-        {/* REQ-CRM-04 — surface staleness so users see when ICP was last calculated */}
-        <Row
-          label="ICP uyğunluğu"
-          value={
-            client.ai_icp_fit != null
-              ? `${Math.round(client.ai_icp_fit)}%${lastRun ? ` · ${relativeTime(client.ai_icp_calculated_at)}` : ''}`
-              : '—'
-          }
-        />
-      </dl>
-      <div className="mt-4">
-        <button
-          className="btn-outline"
-          disabled={icpLoading || throttled}
-          onClick={runIcp}
-          title={throttled ? `Son yenilənmə: ${lastRun?.toLocaleString('az-AZ')} (24 saatda 1 dəfə)` : undefined}
-        >
-          {icpLoading ? 'AI analiz edir…' : throttled ? `AI analiz — ${Math.ceil(24 - hoursSince)}s sonra` : 'AI analiz (ICP)'}
-        </button>
-        {icpErr ? <p className="text-meta mt-1" style={{ color: 'var(--error-deep)' }}>{icpErr}</p> : null}
-      </div>
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between">
-      <dt style={{ color: 'var(--text-muted)' }}>{label}</dt>
-      <dd>{value}</dd>
-    </div>
-  );
-}
-
-function InteractionsTab({ clientId }: { clientId: string }) {
-  const { data: items = [], isLoading } = useClientInteractions(clientId);
-  const log = useLogInteraction();
-  const [type, setType] = useState<InteractionType>('call');
-  const [note, setNote] = useState('');
-
-  return (
-    <div>
-      <div className="card mb-3" style={{ padding: 12 }}>
-        <div className="flex flex-wrap gap-1 mb-2">
-          {(Object.keys(INTERACTION_LABEL) as InteractionType[]).map((t) => (
-            <button
-              key={t}
-              className={`chip ${type === t ? 'chip-brand' : ''}`}
-              onClick={() => setType(t)}
-            >
-              {INTERACTION_LABEL[t]}
-            </button>
-          ))}
-        </div>
-        <input
-          className="input w-full mb-2"
-          placeholder="Qeyd (opsional)"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-        />
-        <button
-          className="btn-primary w-full"
-          disabled={log.isPending}
-          onClick={() =>
-            log.mutate(
-              { clientId, type, note: note.trim() || undefined },
-              { onSuccess: () => setNote('') },
-            )
-          }
-        >
-          {log.isPending ? 'Yazılır…' : 'Qeydə al'}
-        </button>
-      </div>
-
-      {isLoading ? (
-        <div className="text-meta">Yüklənir…</div>
-      ) : items.length === 0 ? (
-        <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-          Hələ əlaqə qeyd edilməyib.
-        </div>
-      ) : (
-        <ul className="space-y-2">
-          {items.map((it) => (
-            <li key={it.id} className="card" style={{ padding: 12 }}>
-              <div className="flex justify-between text-meta">
-                <span>{INTERACTION_LABEL[it.type]}</span>
-                <span style={{ color: 'var(--text-muted)' }}>{relativeTime(it.occurred_at)}</span>
-              </div>
-              {it.note ? <div className="text-body mt-1">{it.note}</div> : null}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-function HistoryTab({ clientId }: { clientId: string }) {
-  const { data: items = [], isLoading } = useClientStageHistory(clientId);
-  if (isLoading) return <div className="text-meta">Yüklənir…</div>;
-  if (items.length === 0) {
-    return (
-      <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-        Mərhələ tarixçəsi yoxdur.
-      </div>
-    );
-  }
-  return (
-    <ul className="space-y-2">
-      {items.map((h) => (
-        <li key={h.id} className="card" style={{ padding: 12 }}>
-          <div className="text-body">
-            {h.from_stage ? CLIENT_STAGE_LABEL[h.from_stage] : '—'} →{' '}
-            <strong>{CLIENT_STAGE_LABEL[h.to_stage]}</strong>
-          </div>
-          <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-            {relativeTime(h.changed_at)}
-          </div>
-          {h.lost_reason ? (
-            <div className="text-meta mt-1">Səbəb: {h.lost_reason}</div>
-          ) : null}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function LostReasonModal({
-  onCancel,
-  onConfirm,
-}: {
-  onCancel: () => void;
-  onConfirm: (reason: string) => void;
-}) {
-  const [picked, setPicked] = useState<string>(LOST_REASONS[0]);
-  const [other, setOther] = useState('');
-  const isOther = picked === 'Digər';
-  const reason = isOther ? other.trim() : picked;
-  const valid = reason.length > 0;
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(14,22,17,0.55)' }}
-      onClick={onCancel}
-    >
-      <div
-        className="bg-surface p-6 rounded-card w-[420px]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="text-h2 mb-1">Müştəri itirildi</h2>
-        <p className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
-          Səbəbi qeyd et — pipeline analitikası üçün vacibdir.
-        </p>
-        <div className="space-y-2 mb-3">
-          {LOST_REASONS.map((r) => (
-            <label key={r} className="flex items-center gap-2 text-body cursor-pointer">
-              <input
-                type="radio"
-                name="lost-reason"
-                checked={picked === r}
-                onChange={() => setPicked(r)}
-              />
-              {r}
-            </label>
-          ))}
-        </div>
-        {isOther ? (
-          <input
-            className="input w-full mb-3"
-            placeholder="Səbəbi yaz…"
-            value={other}
-            onChange={(e) => setOther(e.target.value)}
-            autoFocus
-          />
-        ) : null}
-        <div className="flex justify-end gap-2">
-          <button className="btn-outline" onClick={onCancel}>
-            Ləğv et
-          </button>
-          <button
-            className="btn-primary"
-            disabled={!valid}
-            onClick={() => valid && onConfirm(reason)}
-          >
-            Təsdiqlə
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// PRD §REQ-CRM — admin merges duplicate clients. Server RPC handles all FK
-// rewrites + soft-archives the source row (migration 0043).
-function ClientMergeModal({
-  source,
-  onClose,
-  onMerged,
-}: {
-  source: Client;
-  onClose: () => void;
-  onMerged: () => void;
-}) {
-  const { data: clients = [] } = useClients();
-  const [targetId, setTargetId] = useState<string>('');
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  // Exclude the source itself + already-archived rows from target options
-  const candidates = clients.filter((c) => c.id !== source.id && c.pipeline_stage !== 'archived');
-
-  async function confirm() {
-    if (!targetId) return;
-    setBusy(true);
-    setErr(null);
-    try {
-      const { error } = await supabase.rpc('clients_merge', {
-        p_source: source.id,
-        p_target: targetId,
-      });
-      if (error) throw error;
-      onMerged();
-    } catch (e) {
-      setErr((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const target = candidates.find((c) => c.id === targetId);
-
-  return (
-    <div
-      role="dialog"
-      aria-label="Müştəriləri birləşdir"
-      className="fixed inset-0 z-[55] flex items-center justify-center px-4"
-      style={{ background: 'rgba(14,22,17,0.55)' }}
-      onClick={onClose}
-    >
-      <div className="card w-full max-w-md" style={{ padding: 20 }} onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-h2 mb-2">Müştəriləri birləşdir</h2>
-        <p className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
-          Bütün layihələr, debitorlar, qarşılıqlı əlaqələr və sənədlər hədəf müştəriyə köçürüləcək.
-          <br />
-          <strong>{source.name}</strong> arxivlənəcək (silinmir — audit izi qalır).
-        </p>
-
-        <label className="block mb-3">
-          <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Hədəf müştəri</span>
-          <select
-            className="input w-full"
-            value={targetId}
-            onChange={(e) => setTargetId(e.target.value)}
-          >
-            <option value="">Seçin…</option>
-            {candidates.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}{c.company ? ` · ${c.company}` : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {target ? (
-          <div
-            className="rounded-card px-3 py-2 text-meta mb-3"
-            style={{ background: 'var(--brand-glow-sm)', color: 'var(--brand-text)' }}
-          >
-            <strong>{source.name}</strong> → <strong>{target.name}</strong>
-          </div>
-        ) : null}
-
-        {err ? (
-          <p className="text-meta mb-3" style={{ color: 'var(--error-deep)' }}>{err}</p>
-        ) : null}
-
-        <div className="flex justify-end gap-2">
-          <button type="button" className="btn-outline" onClick={onClose} disabled={busy}>Ləğv</button>
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={!targetId || busy}
-            onClick={confirm}
-          >
-            {busy ? 'Birləşdirilir…' : 'Birləşdir'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Danger zone — admin hard-deletes a client. Per the 0001 FKs this cascades to
-// client_stage_history and client_interactions; projects, receivables, incomes,
-// documents and retrospective surveys survive with client_id = null. Irreversible
-// and gated by typing the exact client name. Merge (soft-archive) stays the
-// preferred path for duplicates — this is the explicit destructive option.
-function ClientDeleteModal({
-  client,
-  onClose,
-  onDeleted,
-}: {
-  client: Client;
-  onClose: () => void;
-  onDeleted: () => void;
-}) {
-  const [confirmText, setConfirmText] = useState('');
-  const del = useMutation({
-    mutationFn: async () => {
-      // .select() so an RLS-blocked delete (0 rows, no error) surfaces as a real
-      // failure instead of silently closing the modal as if it succeeded.
-      const { data, error } = await supabase
-        .from('clients')
-        .delete()
-        .eq('id', client.id)
-        .select('id');
-      if (error) throw error;
-      if (!data || data.length === 0) {
-        throw new Error('Silinmədi — admin icazəsi tələb olunur.');
-      }
-    },
-    onSuccess: onDeleted,
-  });
-
-  const armed = confirmText.trim() === client.name;
-  return (
-    <div
-      role="dialog"
-      aria-label="Müştərini sil"
-      className="fixed inset-0 z-[55] flex items-center justify-center px-4"
-      style={{ background: 'rgba(14,22,17,0.55)' }}
-      onClick={onClose}
-    >
-      <div className="card w-full max-w-md" style={{ padding: 20, border: '1px solid var(--error-border)' }} onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-h2 mb-2" style={{ color: 'var(--error-deep)' }}>Müştərini sil</h2>
-        <p className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>
-          <strong>{client.name}</strong> həmişəlik silinəcək. Mərhələ tarixçəsi və
-          qarşılıqlı əlaqələr silinəcək. Layihələr, debitorlar, gəlirlər və sənədlər
-          qalır, amma müştəri əlaqəsi itir. Bu əməliyyat geri qaytarıla bilməz.
-          <br />
-          Dublikatlar üçün <strong>Birləşdir</strong> daha təhlükəsizdir (audit izi qalır).
-        </p>
-
-        <label className="block mb-3">
-          <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
-            Təsdiq üçün müştəri adını yazın: <strong style={{ color: 'var(--text)' }}>{client.name}</strong>
-          </span>
-          <input
-            className="input w-full"
-            value={confirmText}
-            onChange={(e) => setConfirmText(e.target.value)}
-            placeholder={client.name}
-            aria-label="Müştəri adı təsdiqi"
-            autoFocus
-          />
-        </label>
-
-        {del.error ? (
-          <p className="text-meta mb-3" style={{ color: 'var(--error-deep)' }}>{(del.error as Error).message}</p>
-        ) : null}
-
-        <div className="flex justify-end gap-2">
-          <button type="button" className="btn-outline" onClick={onClose} disabled={del.isPending}>Ləğv</button>
-          <button
-            type="button"
-            className="btn-primary"
-            style={{ background: 'var(--error-deep)', borderColor: 'var(--error-deep)' }}
-            disabled={!armed || del.isPending}
-            onClick={() => del.mutate()}
-          >
-            {del.isPending ? 'Silinir…' : 'Müştərini sil'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// PRD §REQ-CRM — inline edit client name (admin, in ClientPanel header)
-function ClientNameEditor({ clientId, initial }: { clientId: string; initial: string }) {
-  const qc = useQueryClient();
-  const { data: clients = [] } = useClients();
-  const [editing, setEditing] = useState(false);
-  const [val, setVal] = useState(initial);
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null); // audit #9 — surface failures
-  useEffect(() => { if (!editing) { setVal(initial); setErr(null); } }, [initial, editing]);
-  async function save() {
-    const trimmed = val.trim();
-    if (!trimmed || trimmed === initial) { setEditing(false); setVal(initial); return; }
-    // audit #10 — block renaming onto an existing (non-archived) client's name
-    const clash = clients.some(
-      (c) => c.id !== clientId && c.pipeline_stage !== 'archived' &&
-        c.name.trim().toLowerCase() === trimmed.toLowerCase(),
-    );
-    if (clash) { setErr('Bu adda müştəri artıq var'); return; }
-    setSaving(true);
-    const { error } = await supabase.from('clients').update({ name: trimmed }).eq('id', clientId);
-    setSaving(false);
-    if (error) { setErr(error.message); return; } // audit #9 — don't close as if saved
-    qc.invalidateQueries({ queryKey: ['clients'] });
-    setEditing(false);
-  }
-  if (editing) {
-    return (
-      <div className="flex-1 min-w-0 flex items-center gap-1 flex-wrap">
-        <input
-          autoFocus
-          className="input"
-          style={{ height: 32, fontSize: 20, fontWeight: 700 }}
-          value={val}
-          onChange={(e) => { setVal(e.target.value); setErr(null); }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') save();
-            if (e.key === 'Escape') { setVal(initial); setErr(null); setEditing(false); }
-          }}
-          disabled={saving}
-        />
-        <button type="button" className="chip" disabled={saving} onClick={save} style={{ fontSize: 11, color: 'var(--brand-text)' }}>{saving ? '…' : '✓'}</button>
-        <button type="button" className="chip" onClick={() => { setVal(initial); setErr(null); setEditing(false); }} style={{ fontSize: 11 }}>×</button>
-        {err ? <span className="text-meta w-full" style={{ color: 'var(--error-deep)', fontSize: 11 }}>{err}</span> : null}
-      </div>
-    );
-  }
-  return (
-    <h2
-      className="text-h2 flex-1 min-w-0 truncate cursor-pointer hover:opacity-80"
-      onClick={() => setEditing(true)}
-      title="Adı dəyişdirmək üçün klik"
-    >
-      {initial}
-    </h2>
-  );
-}
-
-// Inline expected_value edit directly on a kanban card (REQ-CRM-09 inline-edit
-// pattern, admin only). Mirrors ClientFieldEditor's AZN save (roundAzn → clients
-// update → invalidate ['clients']); value is masked to null for non-admins by
-// clients_view (§464) so this only ever renders for admins. Click → input,
-// Enter saves, Esc cancels. stopPropagation keeps editing from opening the
-// slide-in panel (REQ-CRM-05) or starting a card drag (REQ-CRM-01).
-function CardValueEditor({ clientId, value }: { clientId: string; value: number | null }) {
-  const qc = useQueryClient();
-  const [editing, setEditing] = useState(false);
-  const [val, setVal] = useState(value == null ? '' : String(value));
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  useEffect(() => { if (!editing) setVal(value == null ? '' : String(value)); }, [value, editing]);
-
-  const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
-
-  async function save() {
-    setErr(null);
-    const trimmed = val.trim();
-    const payload = trimmed === '' ? null : roundAzn(trimmed);
-    if (trimmed !== '' && payload == null) { setErr('Rəqəm daxil edin'); return; }
-    if ((payload ?? null) === (value ?? null)) { setEditing(false); return; }
-    setSaving(true);
-    const { error } = await supabase.from('clients').update({ expected_value: payload }).eq('id', clientId);
-    setSaving(false);
-    if (error) { setErr(error.message); return; }
-    qc.invalidateQueries({ queryKey: ['clients'] });
-    setEditing(false);
-  }
-
-  if (!editing) {
-    return (
-      <button
-        type="button"
-        draggable={false}
-        onMouseDown={stop}
-        onClick={(e) => { stop(e); setEditing(true); }}
-        className="chip mt-1.5 inline-block"
-        style={{ background: 'var(--surface-mist)', color: 'var(--text-muted)', fontSize: 10, padding: '0 6px' }}
-        title="Dəyəri dəyiş"
-        aria-label="Dəyəri dəyiş"
-      >
-        {value != null && value > 0 ? formatAZN(value) : '+ Dəyər'}
-      </button>
-    );
-  }
-  return (
-    <div className="mt-1.5 flex items-center gap-1 flex-wrap" onMouseDown={stop} onClick={stop} draggable={false}>
-      <input
-        autoFocus
-        type="number"
-        className="input"
-        style={{ height: 24, fontSize: 11, maxWidth: 110 }}
-        value={val}
-        onChange={(e) => { setVal(e.target.value); setErr(null); }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') save();
-          if (e.key === 'Escape') { setVal(value == null ? '' : String(value)); setErr(null); setEditing(false); }
-        }}
-        step="0.01"
-        min={0}
-      />
-      <button type="button" className="chip" disabled={saving} onClick={save} style={{ fontSize: 11, color: 'var(--brand-text)' }}>{saving ? '…' : '✓'}</button>
-      <button type="button" className="chip" onClick={() => { setVal(value == null ? '' : String(value)); setErr(null); setEditing(false); }} style={{ fontSize: 11 }}>×</button>
-      {err ? <span className="text-meta block w-full" style={{ color: 'var(--error-deep)', fontSize: 10 }}>{err}</span> : null}
-    </div>
-  );
-}
-
-// PRD §REQ-CRM — generic inline editor for a clients column (admin only)
-function ClientFieldEditor({
-  clientId,
-  field,
-  label,
-  initial,
-  type,
-  displayFormat,
-  suffix,
-}: {
-  clientId: string;
-  field: 'company' | 'email' | 'phone' | 'expected_value' | 'confidence_pct';
-  label: string;
-  initial: string | null;
-  type: 'text' | 'email' | 'number';
-  displayFormat?: 'azn';
-  suffix?: string;
-}) {
-  const qc = useQueryClient();
-  const [editing, setEditing] = useState(false);
-  const [val, setVal] = useState(initial ?? '');
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  useEffect(() => { if (!editing) setVal(initial ?? ''); }, [initial, editing]);
-
-  async function save() {
-    setErr(null);
-    const trimmed = val.trim();
-    if (trimmed === (initial ?? '')) { setEditing(false); return; }
-    if (type === 'email' && trimmed && !isValidEmail(trimmed)) {
-      setErr('Etibarsız email');
-      return;
-    }
-    if (field === 'phone' && trimmed && !isValidPhone(trimmed)) {
-      setErr('Etibarsız telefon');
-      return;
-    }
-    let payload: string | number | null = trimmed || null;
-    if (type === 'number') {
-      if (trimmed === '') payload = null;
-      else if (field === 'confidence_pct') {
-        // integer percent, clamped 0–100 (REQ-CRM-02)
-        const n = Number(trimmed);
-        if (!Number.isFinite(n)) { setErr('Rəqəm daxil edin'); return; }
-        payload = Math.min(100, Math.max(0, Math.round(n)));
-      } else {
-        const n = roundAzn(trimmed);
-        if (n == null) { setErr('Rəqəm daxil edin'); return; }
-        payload = n;
-      }
-    }
-    setSaving(true);
-    const { error } = await supabase.from('clients').update({ [field]: payload }).eq('id', clientId);
-    setSaving(false);
-    if (error) { setErr(error.message); return; }
-    qc.invalidateQueries({ queryKey: ['clients'] });
-    setEditing(false);
-  }
-
-  // Read-only display
-  const displayValue = (() => {
-    if (initial == null || initial === '') return '—';
-    if (displayFormat === 'azn') return formatAZN(Number(initial));
-    return `${initial}${suffix ?? ''}`;
-  })();
-
-  if (!editing) {
-    return (
-      <div className="flex justify-between gap-2">
-        <dt style={{ color: 'var(--text-muted)' }}>{label}</dt>
-        <dd className="flex items-center gap-1">
-          <span>{displayValue}</span>
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="chip opacity-40 hover:opacity-100"
-            style={{ fontSize: 10 }}
-            title={`${label} dəyiş`}
-            aria-label={`${label} dəyiş`}
-          >
-            ✎
-          </button>
-        </dd>
-      </div>
-    );
-  }
-  return (
-    <div className="flex justify-between gap-2 items-start">
-      <dt style={{ color: 'var(--text-muted)' }}>{label}</dt>
-      <dd className="flex items-center gap-1 flex-wrap justify-end">
-        <input
-          autoFocus
-          type={type}
-          className="input"
-          style={{ height: 26, fontSize: 12, maxWidth: 200 }}
-          value={val}
-          onChange={(e) => { setVal(e.target.value); setErr(null); }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') save();
-            if (e.key === 'Escape') { setVal(initial ?? ''); setErr(null); setEditing(false); }
-          }}
-          step={type === 'number' ? (field === 'confidence_pct' ? '1' : '0.01') : undefined}
-          min={type === 'number' ? 0 : undefined}
-          max={field === 'confidence_pct' ? 100 : undefined}
-        />
-        <button type="button" className="chip" disabled={saving} onClick={save} style={{ fontSize: 11, color: 'var(--brand-text)' }}>{saving ? '…' : '✓'}</button>
-        <button type="button" className="chip" onClick={() => { setVal(initial ?? ''); setErr(null); setEditing(false); }} style={{ fontSize: 11 }}>×</button>
-        {err ? <span className="text-meta block w-full text-right" style={{ color: 'var(--error-deep)', fontSize: 10 }}>{err}</span> : null}
-      </dd>
-    </div>
-  );
-}
-
-// PRD §REQ-CRM — admin inline edit clients.industry (migration 0050)
-function ClientIndustryEditor({ clientId, initial }: { clientId: string; initial: string | null }) {
-  const qc = useQueryClient();
-  const update = useMutation({
-    mutationFn: async (next: string | null) => {
-      const { error } = await supabase.from('clients').update({ industry: next }).eq('id', clientId);
-      if (error) throw error;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['clients'] }),
-  });
-  return (
-    <div className="flex justify-between gap-2">
-      <dt style={{ color: 'var(--text-muted)' }}>Sahə</dt>
-      <dd>
-        <select
-          className="input"
-          style={{ height: 28, fontSize: 12, padding: '0 6px' }}
-          value={initial ?? ''}
-          onChange={(e) => update.mutate(e.target.value || null)}
-          disabled={update.isPending}
-        >
-          <option value="">— seçilməyib —</option>
-          {INDUSTRY_OPTIONS.map((o) => (
-            <option key={o} value={o}>{o}</option>
-          ))}
-        </select>
-      </dd>
-    </div>
-  );
-}
-
-// Audit #8 — accessible stage change from the panel (keyboard/touch), not only
-// drag. Picking "Udulan" asks for a reason inline (REQ-CRM-01 invariant).
-function ClientStageChanger({ client }: { client: Client }) {
-  const updateStage = useUpdateClientStage();
-  const [pendingLost, setPendingLost] = useState(false);
-  const [picked, setPicked] = useState<string>(LOST_REASONS[0]);
-  const [other, setOther] = useState('');
-  const lostReason = picked === 'Digər' ? other.trim() : picked;
-  // keep the client's current stage selectable even if it's the archived sink
-  const options = BOARD_STAGES.includes(client.pipeline_stage)
-    ? BOARD_STAGES
-    : [client.pipeline_stage, ...BOARD_STAGES];
-
-  function onPick(to: ClientPipelineStage) {
-    if (to === client.pipeline_stage) return;
-    if (to === 'lost') { setPendingLost(true); return; }
-    updateStage.mutate({ id: client.id, to });
-  }
-
-  return (
-    <div className="flex justify-between gap-2 items-start">
-      <dt style={{ color: 'var(--text-muted)' }}>Mərhələ</dt>
-      <dd className="flex flex-col items-end gap-1">
-        <select
-          className="input"
-          style={{ height: 28, fontSize: 12, padding: '0 6px' }}
-          value={client.pipeline_stage}
-          onChange={(e) => onPick(e.target.value as ClientPipelineStage)}
-          disabled={updateStage.isPending}
-          aria-label="Mərhələ dəyiş"
-        >
-          {options.map((s) => (
-            <option key={s} value={s}>{CLIENT_STAGE_LABEL[s]}</option>
-          ))}
-        </select>
-        {pendingLost ? (
-          <div className="flex flex-col items-end gap-1 mt-1">
-            <select
-              className="input"
-              style={{ height: 26, fontSize: 11, padding: '0 6px' }}
-              value={picked}
-              onChange={(e) => setPicked(e.target.value)}
-              aria-label="İtirilmə səbəbi"
-            >
-              {LOST_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
-            </select>
-            {picked === 'Digər' ? (
-              <input
-                className="input"
-                style={{ height: 26, fontSize: 11 }}
-                placeholder="Səbəbi yaz…"
-                value={other}
-                onChange={(e) => setOther(e.target.value)}
-              />
-            ) : null}
-            <div className="flex gap-1">
-              <button
-                type="button"
-                className="chip"
-                style={{ fontSize: 11, color: 'var(--error-deep)' }}
-                disabled={!lostReason || updateStage.isPending}
-                onClick={() => updateStage.mutate(
-                  { id: client.id, to: 'lost', lostReason },
-                  { onSuccess: () => setPendingLost(false) },
-                )}
-              >
-                Təsdiq
-              </button>
-              <button type="button" className="chip" style={{ fontSize: 11 }} onClick={() => setPendingLost(false)}>Ləğv</button>
-            </div>
-          </div>
-        ) : null}
-      </dd>
-    </div>
   );
 }

@@ -7,8 +7,11 @@ import type {
   ClientInteraction,
   ClientPipelineStage,
   ClientStageHistory,
+  ClientSummary,
   InteractionType,
   Project,
+  ProjectStage,
+  ServiceType,
   Task,
   TaskStatus,
   ActivityLogEntry,
@@ -601,4 +604,169 @@ export function usePresenceHeartbeat(userId: string | undefined) {
       });
     };
   }, [userId]);
+}
+
+// ──────────────── CRM redesign — project pipeline (migration 0075) ───────────
+// Pipeline lives on the project. These surfaces are admin/BD-gated (the
+// /müştərilər route is admin-only), so reads hit the base `projects` table and
+// embed the owning client for the card badge.
+
+export interface ProjectWithClient extends Project {
+  clients: Pick<Client, 'id' | 'name' | 'company' | 'tier' | 'last_interaction_at'> | null;
+}
+
+/** All non-archived projects + their client, for the kanban + client base. */
+export function usePipelineProjects() {
+  return useQuery({
+    queryKey: ['pipeline-projects'],
+    queryFn: async (): Promise<ProjectWithClient[]> => {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*, clients(id,name,company,tier,last_interaction_at)')
+        .is('archived_at', null)
+        .order('updated_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as unknown as ProjectWithClient[];
+    },
+  });
+}
+
+/** Per-client aggregate rows for the card grid (client_summary view). */
+export function useClientSummary() {
+  return useQuery({
+    queryKey: ['client-summary'],
+    queryFn: async (): Promise<ClientSummary[]> => {
+      const { data, error } = await supabase
+        .from('client_summary' as 'clients')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as unknown as ClientSummary[];
+    },
+  });
+}
+
+/** Every project for one client (all stages), for the detail modal. */
+export function useClientProjects(clientId: string | undefined) {
+  return useQuery({
+    queryKey: ['client-projects', clientId],
+    enabled: !!clientId,
+    queryFn: async (): Promise<Project[]> => {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('client_id', clientId!)
+        .is('archived_at', null)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as Project[];
+    },
+  });
+}
+
+// Mutate a project and optimistically patch the pipeline cache so the board /
+// card grid update instantly; on error we roll back and React Query refetch
+// reconciles with the server. Used for drag (stage), inline value/progress edits.
+function patchPipelineCache(
+  qc: ReturnType<typeof useQueryClient>,
+  id: string,
+  patch: Partial<Project>,
+) {
+  qc.setQueryData<ProjectWithClient[]>(['pipeline-projects'], (old) =>
+    old?.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+  );
+}
+
+export function useUpdateProjectStage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; stage: ProjectStage }) => {
+      const { error } = await supabase
+        .from('projects')
+        .update({ stage: input.stage })
+        .eq('id', input.id);
+      if (error) throw error;
+    },
+    onMutate: async (input) => {
+      await qc.cancelQueries({ queryKey: ['pipeline-projects'] });
+      const prev = qc.getQueryData<ProjectWithClient[]>(['pipeline-projects']);
+      patchPipelineCache(qc, input.id, { stage: input.stage });
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['pipeline-projects'], ctx.prev);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['pipeline-projects'] });
+      qc.invalidateQueries({ queryKey: ['client-summary'] });
+    },
+  });
+}
+
+type ProjectEditable = Pick<
+  Project,
+  'value' | 'progress' | 'service_type' | 'region' | 'name' | 'expected_close_at' | 'owner_id'
+>;
+
+export function useUpdateProjectField() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; patch: Partial<ProjectEditable> }) => {
+      const { error } = await supabase
+        .from('projects')
+        .update(input.patch)
+        .eq('id', input.id);
+      if (error) throw error;
+    },
+    onMutate: async (input) => {
+      await qc.cancelQueries({ queryKey: ['pipeline-projects'] });
+      const prev = qc.getQueryData<ProjectWithClient[]>(['pipeline-projects']);
+      patchPipelineCache(qc, input.id, input.patch);
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['pipeline-projects'], ctx.prev);
+    },
+    onSettled: (_d, _e, input) => {
+      qc.invalidateQueries({ queryKey: ['pipeline-projects'] });
+      qc.invalidateQueries({ queryKey: ['client-summary'] });
+      qc.invalidateQueries({ queryKey: ['client-projects'] });
+    },
+  });
+}
+
+export function useCreateProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      client_id: string;
+      name: string;
+      stage?: ProjectStage;
+      service_type?: ServiceType | null;
+      value?: number;
+    }): Promise<Project> => {
+      const { data: sess } = await supabase.auth.getSession();
+      const uid = sess.session?.user.id ?? null;
+      const { data, error } = await supabase
+        .from('projects')
+        .insert({
+          client_id: input.client_id,
+          name: input.name,
+          stage: input.stage ?? 'lead',
+          service_type: input.service_type ?? null,
+          value: input.value ?? 0,
+          owner_id: uid,
+          created_by: uid,
+        })
+        .select('*')
+        .single();
+      if (error) throw error;
+      return data as Project;
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ['pipeline-projects'] });
+      qc.invalidateQueries({ queryKey: ['client-summary'] });
+      qc.invalidateQueries({ queryKey: ['client-projects', vars.client_id] });
+    },
+  });
 }

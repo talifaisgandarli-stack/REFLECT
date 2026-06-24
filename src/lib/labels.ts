@@ -3,7 +3,9 @@ import type {
   ClientTier,
   InteractionType,
   PresenceStatus,
+  ProjectStage,
   ProjectStatus,
+  ServiceType,
   TaskStatus,
 } from '@/types/db';
 
@@ -123,30 +125,69 @@ export const CLIENT_STAGE_ORDER: ClientPipelineStage[] = [
   'archived',
 ];
 
-// Client relationship tier (account segmentation). Order = best → unassigned.
-// Colours map to existing designstyle4 tokens — no new palette entries.
+// Client relationship tier (CRM redesign, migration 0075): A=strateji,
+// B=orta, C=kiçik. `null` = unassigned. Colours come from the CRM token scale
+// (tokens.css), so no scattered raw hex.
 export const CLIENT_TIER_LABEL: Record<ClientTier, string> = {
-  vip: 'VIP',
-  gold: 'Gold',
-  silver: 'Silver',
-  bronze: 'Bronze',
-  none: 'Təyin edilməyib',
+  A: 'A',
+  B: 'B',
+  C: 'C',
 };
 
-export const CLIENT_TIER_ORDER: ClientTier[] = ['vip', 'gold', 'silver', 'bronze', 'none'];
-
-// Rank for sorting (lower = higher tier).
-export const CLIENT_TIER_RANK: Record<ClientTier, number> = {
-  vip: 0, gold: 1, silver: 2, bronze: 3, none: 4,
+// Longer descriptive label (used in dropdowns / detail).
+export const CLIENT_TIER_DESC: Record<ClientTier, string> = {
+  A: 'A — Strateji',
+  B: 'B — Orta',
+  C: 'C — Kiçik',
 };
+
+export const CLIENT_TIER_ORDER: ClientTier[] = ['A', 'B', 'C'];
+
+// Rank for sorting (lower = higher tier); unassigned (null) sorts last.
+export const CLIENT_TIER_RANK: Record<ClientTier, number> = { A: 0, B: 1, C: 2 };
+
+export function clientTierRank(tier: ClientTier | null): number {
+  return tier ? CLIENT_TIER_RANK[tier] : 3;
+}
 
 // Token-only badge styling: { text/dot colour, background }.
 export const CLIENT_TIER_STYLE: Record<ClientTier, { color: string; bg: string }> = {
-  vip: { color: 'var(--brand-text)', bg: 'var(--brand-soft)' },
-  gold: { color: 'var(--warning, #c47d00)', bg: 'var(--warning-bg, #fff3d6)' },
-  silver: { color: 'var(--text-muted)', bg: 'var(--surface-mist)' },
-  bronze: { color: 'var(--text-soft)', bg: 'var(--surface-mist)' },
-  none: { color: 'var(--text-muted)', bg: 'transparent' },
+  A: { color: 'var(--tier-a-fg)', bg: 'var(--tier-a-bg)' },
+  B: { color: 'var(--tier-b-fg)', bg: 'var(--tier-b-bg)' },
+  C: { color: 'var(--tier-c-fg)', bg: 'var(--tier-c-bg)' },
+};
+
+// ── Pipeline (CRM redesign) — stage lives on the project ─────────────────────
+export const PROJECT_STAGE_LABEL: Record<ProjectStage, string> = {
+  lead: 'Lead',
+  teklif: 'Təklif',
+  muzakire: 'Müzakirə',
+  icrada: 'İcrada',
+  portfolio: 'Portfolio',
+  udulan: 'Udulan',
+};
+
+export const PROJECT_STAGE_STYLE: Record<ProjectStage, { color: string; bg: string }> = {
+  lead:      { color: 'var(--stage-lead-fg)',      bg: 'var(--stage-lead-bg)' },
+  teklif:    { color: 'var(--stage-teklif-fg)',    bg: 'var(--stage-teklif-bg)' },
+  muzakire:  { color: 'var(--stage-muzakire-fg)',  bg: 'var(--stage-muzakire-bg)' },
+  icrada:    { color: 'var(--stage-icrada-fg)',    bg: 'var(--stage-icrada-bg)' },
+  portfolio: { color: 'var(--stage-portfolio-fg)', bg: 'var(--stage-portfolio-bg)' },
+  udulan:    { color: 'var(--stage-udulan-fg)',    bg: 'var(--stage-udulan-bg)' },
+};
+
+export const SERVICE_TYPE_LABEL: Record<ServiceType, string> = {
+  tikinti: 'Tikinti',
+  dizayn: 'Dizayn',
+  konsultasiya: 'Konsultasiya',
+  renovasiya: 'Renovasiya',
+};
+
+export const SERVICE_TYPE_STYLE: Record<ServiceType, { color: string; bg: string }> = {
+  tikinti:      { color: 'var(--svc-tikinti-fg)',      bg: 'var(--svc-tikinti-bg)' },
+  dizayn:       { color: 'var(--svc-dizayn-fg)',       bg: 'var(--svc-dizayn-bg)' },
+  konsultasiya: { color: 'var(--svc-konsultasiya-fg)', bg: 'var(--svc-konsultasiya-bg)' },
+  renovasiya:   { color: 'var(--svc-renovasiya-fg)',   bg: 'var(--svc-renovasiya-bg)' },
 };
 
 export const INTERACTION_LABEL: Record<InteractionType, string> = {

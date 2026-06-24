@@ -101,6 +101,27 @@
   --mascot-body: #0E1611;
   --mascot-eye: #ADFB49;
 
+  /* CRM redesign (migration 0075) — pipeline stage / tier / service palette.
+     Hex from the owner-approved redesign spec §7; registered as tokens here so
+     the rest of the app keeps referencing var(--…) (designstyle4 rule: extend
+     the token system, no scattered raw hex). App-wide dark mode is not yet
+     implemented, so only the light scale is defined. */
+  --stage-lead-bg:       #EEEDFE;  --stage-lead-fg:       #534AB7;
+  --stage-teklif-bg:     #E6F1FB;  --stage-teklif-fg:     #185FA5;
+  --stage-muzakire-bg:   #FAEEDA;  --stage-muzakire-fg:   #854F0B;
+  --stage-icrada-bg:     #EAF3DE;  --stage-icrada-fg:     #3B6D11;
+  --stage-portfolio-bg:  #E1F5EE;  --stage-portfolio-fg:  #0F6E56;
+  --stage-udulan-bg:     #FAECE7;  --stage-udulan-fg:     #993C1D;
+
+  --tier-a-bg:  #FAEEDA;  --tier-a-fg:  #854F0B;
+  --tier-b-bg:  #F1EFE8;  --tier-b-fg:  #5F5E5A;
+  --tier-c-bg:  #E1F5EE;  --tier-c-fg:  #0F6E56;
+
+  --svc-tikinti-bg:      #EAF3DE;  --svc-tikinti-fg:      #3B6D11;
+  --svc-dizayn-bg:       #E6F1FB;  --svc-dizayn-fg:       #185FA5;
+  --svc-konsultasiya-bg: #EEEDFE;  --svc-konsultasiya-fg: #534AB7;
+  --svc-renovasiya-bg:   #FAECE7;  --svc-renovasiya-fg:   #993C1D;
+
   /* Focus */
   --focus-ring: 0 0 0 3px rgba(173, 251, 73, 0.33);
 
