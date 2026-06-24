@@ -15,7 +15,7 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { ACTIVE_STAGES, type ProjectStage } from '@/types/db';
+import { ACTIVE_STAGES, type Project, type ProjectStage } from '@/types/db';
 import { PROJECT_STAGE_LABEL } from '@/lib/labels';
 import { formatAZN, formatAZNCompact, contactHealth } from '@/lib/format';
 import {
@@ -33,9 +33,11 @@ import {
 export function Pipeline({
   projects,
   onOpenClient,
+  onEditProject,
 }: {
   projects: ProjectWithClient[];
   onOpenClient: (clientId: string) => void;
+  onEditProject: (project: Project) => void;
 }) {
   const updateStage = useUpdateProjectStage();
   const sensors = useSensors(
@@ -80,6 +82,7 @@ export function Pipeline({
               stage={stage}
               items={byStage[stage]}
               onOpenClient={onOpenClient}
+              onEditProject={onEditProject}
             />
           ))}
         </div>
@@ -168,10 +171,12 @@ function Column({
   stage,
   items,
   onOpenClient,
+  onEditProject,
 }: {
   stage: ProjectStage;
   items: ProjectWithClient[];
   onOpenClient: (clientId: string) => void;
+  onEditProject: (project: Project) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage });
   const sum = items.reduce((s, p) => s + (p.value || 0), 0);
@@ -213,7 +218,12 @@ function Column({
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {items.map((p) => (
-          <ProjectCard key={p.id} project={p} onOpenClient={onOpenClient} />
+          <ProjectCard
+            key={p.id}
+            project={p}
+            onOpenClient={onOpenClient}
+            onEditProject={onEditProject}
+          />
         ))}
       </div>
     </div>
@@ -223,9 +233,11 @@ function Column({
 function ProjectCard({
   project,
   onOpenClient,
+  onEditProject,
 }: {
   project: ProjectWithClient;
   onOpenClient: (clientId: string) => void;
+  onEditProject: (project: Project) => void;
 }) {
   const updateField = useUpdateProjectField();
   const updateStage = useUpdateProjectStage();
@@ -234,7 +246,12 @@ function ProjectCard({
   });
 
   const health = contactHealth(project.clients?.last_interaction_at);
-  const overdue = project.stage === 'lead' && health.level !== 'none';
+  // Stale-contact applies to every active card (keeps the board's "Overdue"
+  // count and the per-card alert in sync).
+  const overdue = health.level !== 'none';
+  // Hierarchy (owner request): company → project → orderer (client contact).
+  const company = project.clients?.company?.trim();
+  const orderer = project.clients?.name ?? '';
 
   const style: React.CSSProperties = {
     transform: CSS.Translate.toString(transform),
@@ -252,17 +269,38 @@ function ProjectCard({
   return (
     <div ref={setNodeRef} className="card" style={style} {...attributes} {...listeners}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text)' }}>
-          {project.name}
+        {/* 1 — Company (primary) */}
+        <div className="flex items-start justify-between" style={{ gap: 6 }}>
+          <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text)', minWidth: 0 }}>
+            {company || orderer || 'Şirkət yoxdur'}
+          </div>
+          {/* Edit affordance — stopPropagation so it never starts a drag */}
+          <button
+            type="button"
+            aria-label="Redaktə et"
+            className="chip"
+            style={{ height: 20, padding: '0 6px', fontSize: 11, flexShrink: 0 }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onEditProject(project);
+            }}
+          >
+            ✎
+          </button>
         </div>
+
+        {/* 2 — Project name (secondary) */}
+        <div style={{ fontSize: 13, color: 'var(--text-soft)' }}>{project.name}</div>
         {project.region ? (
           <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{project.region}</div>
         ) : null}
 
+        {/* 3 — Orderer (client contact) */}
         {project.clients ? (
           <ClientBadge
             id={project.clients.id}
-            name={project.clients.name}
+            name={orderer}
             onClick={() => onOpenClient(project.clients!.id)}
           />
         ) : null}
@@ -284,6 +322,7 @@ function ProjectCard({
               type="button"
               className="chip"
               style={{ height: 22, fontSize: 11 }}
+              onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
                 updateStage.mutate({ id: project.id, stage: 'portfolio' });
@@ -312,7 +351,7 @@ function ProjectCard({
         ) : null}
 
         {overdue ? (
-          <div style={{ fontSize: 11, color: 'var(--error)' }}>
+          <div style={{ fontSize: 11, color: health.level === 'red' ? 'var(--error)' : 'var(--warning)' }}>
             {health.days == null
               ? 'Əlaqə qeydə alınmayıb'
               : `${health.days} gündür əlaqə yoxdur!`}

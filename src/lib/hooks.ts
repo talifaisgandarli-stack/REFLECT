@@ -712,7 +712,7 @@ export function useUpdateProjectStage() {
 
 type ProjectEditable = Pick<
   Project,
-  'value' | 'progress' | 'service_type' | 'region' | 'name' | 'expected_close_at' | 'owner_id'
+  'value' | 'progress' | 'service_type' | 'region' | 'name' | 'expected_close_at' | 'owner_id' | 'stage'
 >;
 
 export function useUpdateProjectField() {
@@ -751,6 +751,7 @@ export function useCreateProject() {
       stage?: ProjectStage;
       service_type?: ServiceType | null;
       value?: number;
+      region?: string | null;
     }): Promise<Project> => {
       const { data: sess } = await supabase.auth.getSession();
       const uid = sess.session?.user.id ?? null;
@@ -762,6 +763,7 @@ export function useCreateProject() {
           stage: input.stage ?? 'lead',
           service_type: input.service_type ?? null,
           value: input.value ?? 0,
+          region: input.region ?? null,
           owner_id: uid,
           created_by: uid,
         })
@@ -774,6 +776,37 @@ export function useCreateProject() {
       qc.invalidateQueries({ queryKey: ['pipeline-projects'] });
       qc.invalidateQueries({ queryKey: ['client-summary'] });
       qc.invalidateQueries({ queryKey: ['client-projects', vars.client_id] });
+    },
+  });
+}
+
+/** Remove a project from the board/grid by archiving it (data-safe — keeps the
+ *  row + any linked finance/tasks; just sets archived_at so reads skip it). */
+export function useDeleteProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('projects')
+        .update({ archived_at: new Date().toISOString() })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: ['pipeline-projects'] });
+      const prev = qc.getQueryData<ProjectWithClient[]>(['pipeline-projects']);
+      qc.setQueryData<ProjectWithClient[]>(['pipeline-projects'], (old) =>
+        old?.filter((p) => p.id !== id),
+      );
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['pipeline-projects'], ctx.prev);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['pipeline-projects'] });
+      qc.invalidateQueries({ queryKey: ['client-summary'] });
+      qc.invalidateQueries({ queryKey: ['client-projects'] });
     },
   });
 }

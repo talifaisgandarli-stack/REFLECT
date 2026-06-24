@@ -221,9 +221,10 @@ function ClientCard({
             flexShrink: 0,
           }}
         >
-          {initials(client.name)}
+          {initials(client.company || client.name)}
         </span>
         <div style={{ minWidth: 0, flex: 1 }}>
+          {/* Hierarchy (owner request): company first, then orderer (contact). */}
           <div
             style={{
               fontSize: 14,
@@ -233,21 +234,19 @@ function ClientCard({
               whiteSpace: 'nowrap',
             }}
           >
-            {client.name}
+            {client.company || client.name}
           </div>
-          {client.company ? (
-            <div
-              style={{
-                fontSize: 12,
-                color: 'var(--text-muted)',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {client.company}
-            </div>
-          ) : null}
+          <div
+            style={{
+              fontSize: 12,
+              color: 'var(--text-muted)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {client.company ? client.name : 'Sifarişçi'}
+          </div>
         </div>
         <TierBadge tier={client.tier} />
       </div>
