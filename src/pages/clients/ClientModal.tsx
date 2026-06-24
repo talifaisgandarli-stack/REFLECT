@@ -72,12 +72,13 @@ export function ClientModal({
                 justifyContent: 'center',
               }}
             >
-              {initials(client.name)}
+              {initials(client.company || client.name)}
             </span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 16, fontWeight: 500 }}>{client.name}</div>
+              {/* Hierarchy: company → orderer (contact) → tier */}
+              <div style={{ fontSize: 16, fontWeight: 500 }}>{client.company || client.name}</div>
               <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                {client.company ?? '—'}
+                {client.company ? client.name : 'Sifarişçi'}
                 {client.tier ? ` · ${CLIENT_TIER_DESC[client.tier]}` : ''}
               </div>
             </div>

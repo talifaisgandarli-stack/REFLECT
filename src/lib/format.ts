@@ -1,15 +1,12 @@
 /** All date math runs in Asia/Baku per PRD §7 (REQ-FIN-09). */
 export const TZ = 'Asia/Baku';
 
-const azn = new Intl.NumberFormat('az-AZ', {
-  style: 'currency',
-  currency: 'AZN',
-  maximumFractionDigits: 0,
-});
+const aznNum = new Intl.NumberFormat('az-AZ', { maximumFractionDigits: 0 });
 
+/** Manat (₼) — the spec's glyph, used app-wide. e.g. 50000 → "₼50 000", null → "—". */
 export function formatAZN(n: number | null | undefined): string {
   if (n == null) return '—';
-  return azn.format(n);
+  return `₼${aznNum.format(n)}`;
 }
 
 /**

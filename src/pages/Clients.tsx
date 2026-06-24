@@ -20,10 +20,11 @@ import { CLIENT_TIER_ORDER, CLIENT_TIER_DESC } from '@/lib/labels';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { isValidEmail, isValidPhone } from '@/lib/validation';
-import type { ClientTier } from '@/types/db';
+import type { ClientTier, Project } from '@/types/db';
 import { Pipeline } from '@/pages/clients/Pipeline';
 import { ClientBase } from '@/pages/clients/ClientBase';
 import { ClientModal } from '@/pages/clients/ClientModal';
+import { ProjectModal } from '@/pages/clients/ProjectModal';
 
 type View = 'pipeline' | 'base';
 
@@ -41,6 +42,9 @@ export function ClientsPage() {
   const clients = useClientSummary();
   const [creating, setCreating] = useState(false);
   const [openClientId, setOpenClientId] = useState<string | null>(null);
+  const [projectModal, setProjectModal] = useState<
+    { mode: 'create' } | { mode: 'edit'; project: Project } | null
+  >(null);
 
   const openClient = useMemo(
     () => clients.data?.find((c) => c.id === openClientId) ?? null,
@@ -57,9 +61,23 @@ export function ClientsPage() {
         title="Müştərilər"
         actions={
           isAdmin ? (
-            <button className="btn-primary" onClick={() => setCreating(true)}>
-              + Yeni müştəri
-            </button>
+            <>
+              <button
+                className="btn-outline"
+                onClick={() => setProjectModal({ mode: 'create' })}
+                disabled={(clients.data ?? []).length === 0}
+                title={
+                  (clients.data ?? []).length === 0
+                    ? 'Əvvəlcə müştəri əlavə et'
+                    : undefined
+                }
+              >
+                + Yeni layihə
+              </button>
+              <button className="btn-primary" onClick={() => setCreating(true)}>
+                + Yeni müştəri
+              </button>
+            </>
           ) : null
         }
       />
@@ -113,6 +131,7 @@ export function ClientsPage() {
         <Pipeline
           projects={projects.data ?? []}
           onOpenClient={(id) => setOpenClientId(id)}
+          onEditProject={(p) => setProjectModal({ mode: 'edit', project: p })}
         />
       ) : (
         <ClientBase
@@ -127,6 +146,15 @@ export function ClientsPage() {
       ) : null}
 
       {creating ? <CreateClientModal onClose={() => setCreating(false)} /> : null}
+
+      {projectModal ? (
+        <ProjectModal
+          mode={projectModal.mode}
+          project={projectModal.mode === 'edit' ? projectModal.project : undefined}
+          clients={clients.data ?? []}
+          onClose={() => setProjectModal(null)}
+        />
+      ) : null}
     </>
   );
 }
