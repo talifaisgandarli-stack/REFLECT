@@ -55,21 +55,29 @@ exception when duplicate_object then null; end $$;
 
 drop view if exists public.clients_view;
 
-alter table clients add column if not exists tier_abc client_tier_abc;
-
--- map the old segment to the new one (best-effort, owner-approved):
---   vip → A (strateji), gold → B (orta), silver/bronze → C (kiçik), none → null
-update clients set tier_abc = case tier::text
-  when 'vip'    then 'A'::client_tier_abc
-  when 'gold'   then 'B'::client_tier_abc
-  when 'silver' then 'C'::client_tier_abc
-  when 'bronze' then 'C'::client_tier_abc
-  else null
-end
-where tier_abc is null;
-
-alter table clients drop column if exists tier;
-alter table clients rename column tier_abc to tier;
+-- Convert ONLY if the column is still the legacy `client_tier` enum. This makes
+-- the migration safe to re-run (a second run finds tier already = client_tier_abc
+-- and skips, so the A/B/C data is never re-mapped/lost).
+do $$ begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'clients'
+      and column_name = 'tier' and udt_name = 'client_tier'
+  ) then
+    alter table clients add column if not exists tier_abc client_tier_abc;
+    -- map the old segment to the new one (best-effort, owner-approved):
+    --   vip → A (strateji), gold → B (orta), silver/bronze → C (kiçik), none → null
+    update clients set tier_abc = case tier::text
+      when 'vip'    then 'A'::client_tier_abc
+      when 'gold'   then 'B'::client_tier_abc
+      when 'silver' then 'C'::client_tier_abc
+      when 'bronze' then 'C'::client_tier_abc
+      else null
+    end;
+    alter table clients drop column tier;
+    alter table clients rename column tier_abc to tier;
+  end if;
+end $$;
 
 -- recreate the masked read view with the A/B/C tier (keeps expected_value mask, 0073)
 create or replace view public.clients_view as
