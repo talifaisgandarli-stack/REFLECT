@@ -668,3 +668,29 @@ export function useUpdateClientField() {
     onSettled: () => qc.invalidateQueries({ queryKey: ['clients'] }),
   });
 }
+
+/** All non-archived projects grouped by client_id — for the client-base card
+ *  mini-list ("how many projects does this client have, and which?"). One query,
+ *  no N+1; only the few columns the card needs. */
+export type ClientProjectRow = Pick<Project, 'id' | 'name' | 'status' | 'client_id'>;
+export function useProjectsByClient() {
+  return useQuery({
+    queryKey: ['projects-by-client'],
+    queryFn: async (): Promise<Map<string, ClientProjectRow[]>> => {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('id,name,status,client_id')
+        .is('archived_at', null)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      const m = new Map<string, ClientProjectRow[]>();
+      for (const p of (data ?? []) as ClientProjectRow[]) {
+        if (!p.client_id) continue;
+        const list = m.get(p.client_id) ?? [];
+        list.push(p);
+        m.set(p.client_id, list);
+      }
+      return m;
+    },
+  });
+}
