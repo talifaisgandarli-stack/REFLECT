@@ -19,21 +19,6 @@ export type TaskStatus =
 
 export type ProjectStatus = 'active' | 'on_hold' | 'closed' | 'cancelled';
 
-// Pipeline stage lives on the PROJECT (CRM redesign, owner override 2026-06-24).
-export type ProjectStage =
-  | 'lead'
-  | 'teklif'
-  | 'muzakire'
-  | 'icrada'
-  | 'portfolio'
-  | 'udulan';
-
-// The 4 columns shown on the active-pipeline kanban (portfolio/udulan are
-// terminal — they live only in the client base, never as a board column).
-export const ACTIVE_STAGES: ProjectStage[] = ['lead', 'teklif', 'muzakire', 'icrada'];
-
-export type ServiceType = 'tikinti' | 'dizayn' | 'konsultasiya' | 'renovasiya';
-
 export type ClientPipelineStage =
   | 'lead'
   | 'proposal'
@@ -121,15 +106,6 @@ export interface Project {
   created_at: string;
   archived_at: string | null;
   reopened_at: string | null;
-  // CRM redesign (migration 0075) — pipeline lives on the project.
-  stage: ProjectStage;
-  service_type: ServiceType | null;
-  value: number;
-  progress: number;
-  owner_id: string | null;
-  region: string | null;
-  expected_close_at: string | null;
-  updated_at: string;
 }
 
 export interface ProjectDocument {
@@ -267,22 +243,11 @@ export interface Client {
 // CRM redesign (migration 0075) — relationship tier is now A/B/C, nullable.
 export type ClientTier = 'A' | 'B' | 'C';
 
-/** Aggregate row from the `client_summary` view (one per client). */
-export interface ClientSummary {
-  id: string;
-  name: string;
-  company: string | null;
-  email: string | null;
-  phone: string | null;
-  tier: ClientTier | null;
-  industry: string | null;
-  last_contact_at: string | null;
-  ai_icp_fit: number | null;
-  created_at: string;
+/** Per-client project counts from the `client_project_stats` view (migration 0074). */
+export interface ClientProjectStat {
+  client_id: string;
   total_projects: number;
   active_projects: number;
-  total_value: number | null;
-  has_active_work: boolean;
 }
 
 export interface ClientInteraction {
@@ -705,8 +670,8 @@ export interface Database {
        *  budget_amount). Mirrors the full Project shape, which omits amount
        *  fields; tags/description are read via cast where needed. */
       projects_user_view: { Row: Project };
-      /** CRM redesign (migration 0075) — per-client aggregate for the card grid. */
-      client_summary: { Row: ClientSummary };
+      /** Per-client project counts for the client base (migration 0074). */
+      client_project_stats: { Row: ClientProjectStat };
     };
     Functions: {
       is_admin: { Args: Record<string, never>; Returns: boolean };
