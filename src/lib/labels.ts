@@ -3,9 +3,7 @@ import type {
   ClientTier,
   InteractionType,
   PresenceStatus,
-  ProjectStage,
   ProjectStatus,
-  ServiceType,
   TaskStatus,
 } from '@/types/db';
 
@@ -157,38 +155,30 @@ export const CLIENT_TIER_STYLE: Record<ClientTier, { color: string; bg: string }
   C: { color: 'var(--tier-c-fg)', bg: 'var(--tier-c-bg)' },
 };
 
-// ── Pipeline (CRM redesign) — stage lives on the project ─────────────────────
-export const PROJECT_STAGE_LABEL: Record<ProjectStage, string> = {
-  lead: 'Lead',
-  teklif: 'Təklif',
-  muzakire: 'Müzakirə',
-  icrada: 'İcrada',
-  portfolio: 'Portfolio',
-  udulan: 'Udulan',
+// ── CRM pipeline columns (client-based, PRD Module 6) ────────────────────────
+// The board shows the 4 active spec stages; `signed` folds into İcrada,
+// portfolio/lost/archived are terminal (not columns). Colours reuse the CRM
+// stage token scale (tokens.css).
+export const PIPELINE_COLUMNS: ClientPipelineStage[] = [
+  'lead',
+  'proposal',
+  'negotiation',
+  'in_progress',
+];
+
+export const CLIENT_STAGE_STYLE: Partial<Record<ClientPipelineStage, { color: string; bg: string }>> = {
+  lead:        { color: 'var(--stage-lead-fg)',      bg: 'var(--stage-lead-bg)' },
+  proposal:    { color: 'var(--stage-teklif-fg)',    bg: 'var(--stage-teklif-bg)' },
+  negotiation: { color: 'var(--stage-muzakire-fg)',  bg: 'var(--stage-muzakire-bg)' },
+  signed:      { color: 'var(--stage-icrada-fg)',    bg: 'var(--stage-icrada-bg)' },
+  in_progress: { color: 'var(--stage-icrada-fg)',    bg: 'var(--stage-icrada-bg)' },
+  portfolio:   { color: 'var(--stage-portfolio-fg)', bg: 'var(--stage-portfolio-bg)' },
+  lost:        { color: 'var(--stage-udulan-fg)',    bg: 'var(--stage-udulan-bg)' },
 };
 
-export const PROJECT_STAGE_STYLE: Record<ProjectStage, { color: string; bg: string }> = {
-  lead:      { color: 'var(--stage-lead-fg)',      bg: 'var(--stage-lead-bg)' },
-  teklif:    { color: 'var(--stage-teklif-fg)',    bg: 'var(--stage-teklif-bg)' },
-  muzakire:  { color: 'var(--stage-muzakire-fg)',  bg: 'var(--stage-muzakire-bg)' },
-  icrada:    { color: 'var(--stage-icrada-fg)',    bg: 'var(--stage-icrada-bg)' },
-  portfolio: { color: 'var(--stage-portfolio-fg)', bg: 'var(--stage-portfolio-bg)' },
-  udulan:    { color: 'var(--stage-udulan-fg)',    bg: 'var(--stage-udulan-bg)' },
-};
-
-export const SERVICE_TYPE_LABEL: Record<ServiceType, string> = {
-  tikinti: 'Tikinti',
-  dizayn: 'Dizayn',
-  konsultasiya: 'Konsultasiya',
-  renovasiya: 'Renovasiya',
-};
-
-export const SERVICE_TYPE_STYLE: Record<ServiceType, { color: string; bg: string }> = {
-  tikinti:      { color: 'var(--svc-tikinti-fg)',      bg: 'var(--svc-tikinti-bg)' },
-  dizayn:       { color: 'var(--svc-dizayn-fg)',       bg: 'var(--svc-dizayn-bg)' },
-  konsultasiya: { color: 'var(--svc-konsultasiya-fg)', bg: 'var(--svc-konsultasiya-bg)' },
-  renovasiya:   { color: 'var(--svc-renovasiya-fg)',   bg: 'var(--svc-renovasiya-bg)' },
-};
+export function clientStageStyle(stage: ClientPipelineStage): { color: string; bg: string } {
+  return CLIENT_STAGE_STYLE[stage] ?? { color: 'var(--text-muted)', bg: 'var(--surface-mist)' };
+}
 
 export const INTERACTION_LABEL: Record<InteractionType, string> = {
   call: 'Zəng',

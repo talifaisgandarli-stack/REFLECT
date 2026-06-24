@@ -5,14 +5,8 @@
  * hex scattered in components.
  */
 import { useEffect, useRef, useState } from 'react';
-import type { ClientTier, ProjectStage, ServiceType } from '@/types/db';
-import {
-  CLIENT_TIER_STYLE,
-  PROJECT_STAGE_LABEL,
-  PROJECT_STAGE_STYLE,
-  SERVICE_TYPE_LABEL,
-  SERVICE_TYPE_STYLE,
-} from '@/lib/labels';
+import type { ClientPipelineStage, ClientTier } from '@/types/db';
+import { CLIENT_TIER_STYLE, clientStageStyle } from '@/lib/labels';
 
 const pillBase: React.CSSProperties = {
   display: 'inline-flex',
@@ -26,16 +20,7 @@ const pillBase: React.CSSProperties = {
   whiteSpace: 'nowrap',
 };
 
-export function StageBadge({ stage }: { stage: ProjectStage }) {
-  const s = PROJECT_STAGE_STYLE[stage];
-  return (
-    <span style={{ ...pillBase, color: s.color, background: s.bg }}>
-      {PROJECT_STAGE_LABEL[stage]}
-    </span>
-  );
-}
-
-export function StageDot({ stage }: { stage: ProjectStage }) {
+export function StageDot({ stage }: { stage: ClientPipelineStage }) {
   return (
     <span
       aria-hidden
@@ -43,7 +28,7 @@ export function StageDot({ stage }: { stage: ProjectStage }) {
         width: 8,
         height: 8,
         borderRadius: '50%',
-        background: PROJECT_STAGE_STYLE[stage].color,
+        background: clientStageStyle(stage).color,
         flexShrink: 0,
       }}
     />
@@ -54,16 +39,6 @@ export function TierBadge({ tier }: { tier: ClientTier | null }) {
   if (!tier) return null;
   const s = CLIENT_TIER_STYLE[tier];
   return <span style={{ ...pillBase, color: s.color, background: s.bg }}>Tier {tier}</span>;
-}
-
-export function ServiceBadge({ type }: { type: ServiceType | null }) {
-  if (!type) return null;
-  const s = SERVICE_TYPE_STYLE[type];
-  return (
-    <span style={{ ...pillBase, color: s.color, background: s.bg }}>
-      {SERVICE_TYPE_LABEL[type]}
-    </span>
-  );
 }
 
 // Deterministic per-client colour so all of one client's project cards share

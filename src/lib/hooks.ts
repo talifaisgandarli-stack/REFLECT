@@ -6,12 +6,10 @@ import type {
   Client,
   ClientInteraction,
   ClientPipelineStage,
+  ClientProjectStat,
   ClientStageHistory,
-  ClientSummary,
   InteractionType,
   Project,
-  ProjectStage,
-  ServiceType,
   Task,
   TaskStatus,
   ActivityLogEntry,
@@ -606,54 +604,30 @@ export function usePresenceHeartbeat(userId: string | undefined) {
   }, [userId]);
 }
 
-// ──────────────── CRM redesign — project pipeline (migration 0075) ───────────
-// Pipeline lives on the project. These surfaces are admin/BD-gated (the
-// /müştərilər route is admin-only), so reads hit the base `projects` table and
-// embed the owning client for the card badge.
+// ──────────────── CRM (client-based pipeline, PRD Module 6) ──────────────────
+// Pipeline lives on the CLIENT (pipeline_stage). Projects are a SEPARATE module
+// (PRD Module 3) — the Müştərilər page never creates or shows architectural
+// projects on the board. These reads are admin/BD-gated (admin-only route).
 
-export interface ProjectWithClient extends Project {
-  clients: Pick<Client, 'id' | 'name' | 'company' | 'tier' | 'last_interaction_at'> | null;
-}
-
-/** All non-archived projects + their client, for the kanban + client base. */
-export function usePipelineProjects() {
+/** Per-client architectural-project counts (client_project_stats view, 0074). */
+export function useClientProjectStats() {
   return useQuery({
-    queryKey: ['pipeline-projects'],
-    queryFn: async (): Promise<ProjectWithClient[]> => {
+    queryKey: ['client-project-stats'],
+    queryFn: async (): Promise<Map<string, { total: number; active: number }>> => {
       const { data, error } = await supabase
-        .from('projects')
-        .select('*, clients(id,name,company,tier,last_interaction_at)')
-        .is('archived_at', null)
-        .order('updated_at', { ascending: false });
+        .from('client_project_stats' as 'clients')
+        .select('*');
       if (error) throw error;
-      // PostgREST returns a to-one embed as an object, but normalise defensively
-      // (some relationship shapes come back as a 1-element array) so card render
-      // never dereferences an array as an object.
-      return (data ?? []).map((row) => {
-        const r = row as unknown as Project & { clients: unknown };
-        const c = Array.isArray(r.clients) ? r.clients[0] ?? null : r.clients ?? null;
-        return { ...r, clients: c } as ProjectWithClient;
-      });
+      const m = new Map<string, { total: number; active: number }>();
+      for (const r of (data ?? []) as unknown as ClientProjectStat[]) {
+        m.set(r.client_id, { total: r.total_projects, active: r.active_projects });
+      }
+      return m;
     },
   });
 }
 
-/** Per-client aggregate rows for the card grid (client_summary view). */
-export function useClientSummary() {
-  return useQuery({
-    queryKey: ['client-summary'],
-    queryFn: async (): Promise<ClientSummary[]> => {
-      const { data, error } = await supabase
-        .from('client_summary' as 'clients')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return (data ?? []) as unknown as ClientSummary[];
-    },
-  });
-}
-
-/** Every project for one client (all stages), for the detail modal. */
+/** A client's real architectural projects (read-only list for the detail modal). */
 export function useClientProjects(clientId: string | undefined) {
   return useQuery({
     queryKey: ['client-projects', clientId],
@@ -671,142 +645,26 @@ export function useClientProjects(clientId: string | undefined) {
   });
 }
 
-// Mutate a project and optimistically patch the pipeline cache so the board /
-// card grid update instantly; on error we roll back and React Query refetch
-// reconciles with the server. Used for drag (stage), inline value/progress edits.
-function patchPipelineCache(
-  qc: ReturnType<typeof useQueryClient>,
-  id: string,
-  patch: Partial<Project>,
-) {
-  qc.setQueryData<ProjectWithClient[]>(['pipeline-projects'], (old) =>
-    old?.map((p) => (p.id === id ? { ...p, ...patch } : p)),
-  );
-}
-
-export function useUpdateProjectStage() {
+/** Inline-edit a client field (e.g. expected_value, tier) with optimistic UI. */
+type ClientEditable = Pick<Client, 'expected_value' | 'tier' | 'company' | 'email' | 'phone'>;
+export function useUpdateClientField() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { id: string; stage: ProjectStage }) => {
-      const { error } = await supabase
-        .from('projects')
-        .update({ stage: input.stage })
-        .eq('id', input.id);
+    mutationFn: async (input: { id: string; patch: Partial<ClientEditable> }) => {
+      const { error } = await supabase.from('clients').update(input.patch).eq('id', input.id);
       if (error) throw error;
     },
     onMutate: async (input) => {
-      await qc.cancelQueries({ queryKey: ['pipeline-projects'] });
-      const prev = qc.getQueryData<ProjectWithClient[]>(['pipeline-projects']);
-      patchPipelineCache(qc, input.id, { stage: input.stage });
-      return { prev };
-    },
-    onError: (_e, _v, ctx) => {
-      if (ctx?.prev) qc.setQueryData(['pipeline-projects'], ctx.prev);
-    },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ['pipeline-projects'] });
-      qc.invalidateQueries({ queryKey: ['client-summary'] });
-    },
-  });
-}
-
-type ProjectEditable = Pick<
-  Project,
-  'value' | 'progress' | 'service_type' | 'region' | 'name' | 'expected_close_at' | 'owner_id' | 'stage'
->;
-
-export function useUpdateProjectField() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: { id: string; patch: Partial<ProjectEditable> }) => {
-      const { error } = await supabase
-        .from('projects')
-        .update(input.patch)
-        .eq('id', input.id);
-      if (error) throw error;
-    },
-    onMutate: async (input) => {
-      await qc.cancelQueries({ queryKey: ['pipeline-projects'] });
-      const prev = qc.getQueryData<ProjectWithClient[]>(['pipeline-projects']);
-      patchPipelineCache(qc, input.id, input.patch);
-      return { prev };
-    },
-    onError: (_e, _v, ctx) => {
-      if (ctx?.prev) qc.setQueryData(['pipeline-projects'], ctx.prev);
-    },
-    onSettled: (_d, _e, input) => {
-      qc.invalidateQueries({ queryKey: ['pipeline-projects'] });
-      qc.invalidateQueries({ queryKey: ['client-summary'] });
-      qc.invalidateQueries({ queryKey: ['client-projects'] });
-    },
-  });
-}
-
-export function useCreateProject() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: {
-      client_id: string;
-      name: string;
-      stage?: ProjectStage;
-      service_type?: ServiceType | null;
-      value?: number;
-      region?: string | null;
-    }): Promise<Project> => {
-      const { data: sess } = await supabase.auth.getSession();
-      const uid = sess.session?.user.id ?? null;
-      const { data, error } = await supabase
-        .from('projects')
-        .insert({
-          client_id: input.client_id,
-          name: input.name,
-          stage: input.stage ?? 'lead',
-          service_type: input.service_type ?? null,
-          value: input.value ?? 0,
-          region: input.region ?? null,
-          owner_id: uid,
-          created_by: uid,
-        })
-        .select('*')
-        .single();
-      if (error) throw error;
-      return data as Project;
-    },
-    onSuccess: (_d, vars) => {
-      qc.invalidateQueries({ queryKey: ['pipeline-projects'] });
-      qc.invalidateQueries({ queryKey: ['client-summary'] });
-      qc.invalidateQueries({ queryKey: ['client-projects', vars.client_id] });
-    },
-  });
-}
-
-/** Remove a project from the board/grid by archiving it (data-safe — keeps the
- *  row + any linked finance/tasks; just sets archived_at so reads skip it). */
-export function useDeleteProject() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('projects')
-        .update({ archived_at: new Date().toISOString() })
-        .eq('id', id);
-      if (error) throw error;
-    },
-    onMutate: async (id) => {
-      await qc.cancelQueries({ queryKey: ['pipeline-projects'] });
-      const prev = qc.getQueryData<ProjectWithClient[]>(['pipeline-projects']);
-      qc.setQueryData<ProjectWithClient[]>(['pipeline-projects'], (old) =>
-        old?.filter((p) => p.id !== id),
+      await qc.cancelQueries({ queryKey: ['clients'] });
+      const prev = qc.getQueryData<Client[]>(['clients']);
+      qc.setQueryData<Client[]>(['clients'], (old) =>
+        old?.map((c) => (c.id === input.id ? { ...c, ...input.patch } : c)),
       );
       return { prev };
     },
     onError: (_e, _v, ctx) => {
-      if (ctx?.prev) qc.setQueryData(['pipeline-projects'], ctx.prev);
+      if (ctx?.prev) qc.setQueryData(['clients'], ctx.prev);
     },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ['pipeline-projects'] });
-      qc.invalidateQueries({ queryKey: ['client-summary'] });
-      qc.invalidateQueries({ queryKey: ['client-projects'] });
-    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['clients'] }),
   });
 }
