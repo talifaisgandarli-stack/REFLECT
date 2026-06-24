@@ -95,12 +95,16 @@ export function Pipeline({
 }
 
 function pipelineValue(clients: Client[]): number {
-  // REQ-CRM-02 — Σ(expected_value × confidence_pct/100).
-  return clients.reduce((s, c) => s + (c.expected_value ?? 0) * (c.confidence_pct ?? 0) / 100, 0);
+  // Raw sum of expected deal value — matches the per-column header sums and the
+  // card figures (intuitive). (PRD REQ-CRM-02's confidence-weighted variant was
+  // dropped from this metric as it confusingly differed from the column totals.)
+  return clients.reduce((s, c) => s + (c.expected_value ?? 0), 0);
 }
 
 function SummaryBar({ clients }: { clients: Client[] }) {
-  const overdue = clients.filter((c) => contactHealth(c.last_interaction_at).level === 'red').length;
+  const overdue = clients.filter(
+    (c) => contactHealth(c.last_interaction_at ?? c.created_at).level === 'red',
+  ).length;
   const total = clients.length || 1;
   return (
     <div className="flex flex-wrap items-center gap-3 mb-3">
@@ -207,8 +211,9 @@ function ClientCard({
   const updateField = useUpdateClientField();
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: client.id });
 
-  const health = contactHealth(client.last_interaction_at);
+  const health = contactHealth(client.last_interaction_at ?? client.created_at);
   const overdue = health.level !== 'none';
+  const neverContacted = client.last_interaction_at == null;
   const company = client.company?.trim();
 
   const style: React.CSSProperties = {
@@ -281,7 +286,9 @@ function ClientCard({
 
         {overdue ? (
           <div style={{ fontSize: 11, color: health.level === 'red' ? 'var(--error)' : 'var(--warning)' }}>
-            {health.days == null ? 'Əlaqə qeydə alınmayıb' : `${health.days} gündür əlaqə yoxdur!`}
+            {neverContacted
+              ? `${health.days} gündür əlaqə qeydə alınmayıb`
+              : `${health.days} gündür əlaqə yoxdur!`}
           </div>
         ) : null}
       </div>
