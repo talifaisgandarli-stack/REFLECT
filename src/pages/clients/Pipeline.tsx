@@ -32,9 +32,13 @@ function columnOf(stage: ClientPipelineStage): ClientPipelineStage | null {
 export function Pipeline({
   clients,
   onOpenClient,
+  onAddClient,
+  onEditClient,
 }: {
   clients: Client[];
   onOpenClient: (clientId: string) => void;
+  onAddClient: (stage: ClientPipelineStage) => void;
+  onEditClient: (client: Client) => void;
 }) {
   const updateStage = useUpdateClientStage();
   const sensors = useSensors(
@@ -75,7 +79,14 @@ export function Pipeline({
           }}
         >
           {PIPELINE_COLUMNS.map((stage) => (
-            <Column key={stage} stage={stage} items={byCol[stage]} onOpenClient={onOpenClient} />
+            <Column
+              key={stage}
+              stage={stage}
+              items={byCol[stage]}
+              onOpenClient={onOpenClient}
+              onAddClient={onAddClient}
+              onEditClient={onEditClient}
+            />
           ))}
         </div>
       </DndContext>
@@ -128,10 +139,14 @@ function Column({
   stage,
   items,
   onOpenClient,
+  onAddClient,
+  onEditClient,
 }: {
   stage: ClientPipelineStage;
   items: Client[];
   onOpenClient: (clientId: string) => void;
+  onAddClient: (stage: ClientPipelineStage) => void;
+  onEditClient: (client: Client) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage });
   const sum = items.reduce((s, c) => s + (c.expected_value ?? 0), 0);
@@ -155,14 +170,38 @@ function Column({
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {items.map((c) => (
-          <ClientCard key={c.id} client={c} onOpenClient={onOpenClient} />
+          <ClientCard key={c.id} client={c} onOpenClient={onOpenClient} onEditClient={onEditClient} />
         ))}
+        <button
+          type="button"
+          onClick={() => onAddClient(stage)}
+          style={{
+            border: '1px dashed var(--line)',
+            borderRadius: 12,
+            padding: '8px 10px',
+            fontSize: 12,
+            color: 'var(--text-muted)',
+            background: 'none',
+            cursor: 'pointer',
+            textAlign: 'left',
+          }}
+        >
+          + Müştəri
+        </button>
       </div>
     </div>
   );
 }
 
-function ClientCard({ client, onOpenClient }: { client: Client; onOpenClient: (id: string) => void }) {
+function ClientCard({
+  client,
+  onOpenClient,
+  onEditClient,
+}: {
+  client: Client;
+  onOpenClient: (id: string) => void;
+  onEditClient: (client: Client) => void;
+}) {
   const { isAdmin } = useAuth();
   const updateStage = useUpdateClientStage();
   const updateField = useUpdateClientField();
@@ -185,14 +224,26 @@ function ClientCard({ client, onOpenClient }: { client: Client; onOpenClient: (i
     <div ref={setNodeRef} className="card" style={style} {...attributes} {...listeners}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {/* Hierarchy: company → orderer (contact) */}
-        <button
-          type="button"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => { e.stopPropagation(); onOpenClient(client.id); }}
-          style={{ textAlign: 'left', background: 'none', border: 0, padding: 0, cursor: 'pointer', fontSize: 14, fontWeight: 500, color: 'var(--text)' }}
-        >
-          {company || client.name}
-        </button>
+        <div className="flex items-start justify-between" style={{ gap: 6 }}>
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onOpenClient(client.id); }}
+            style={{ textAlign: 'left', background: 'none', border: 0, padding: 0, cursor: 'pointer', fontSize: 14, fontWeight: 500, color: 'var(--text)', minWidth: 0 }}
+          >
+            {company || client.name}
+          </button>
+          <button
+            type="button"
+            aria-label="Redaktə et"
+            className="chip"
+            style={{ height: 20, padding: '0 6px', fontSize: 11, flexShrink: 0 }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onEditClient(client); }}
+          >
+            ✎
+          </button>
+        </div>
         <ClientBadge id={client.id} name={client.name} onClick={() => onOpenClient(client.id)} />
 
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
