@@ -1,3 +1,10 @@
+> ⚠️ **SUPERSEDED (2026-06-24, owner-approved).** The owner reversed this
+> adaptation and adopted the original redesign spec **verbatim** (migration 0075,
+> PRD §Module 6 "CRM redesign override"). The rows below that "rejected" A/B/C
+> tiers, project-level stage, value/progress, the modal, @dnd-kit and the ₼ glyph
+> are **no longer in force** — all of those are now shipped. This file is kept as
+> a historical record of the earlier PRD-grounded reasoning only.
+
 # CRM Pipeline / Müştərilər — Spec (PRD-adapted)
 
 **Source:** `PIPELINE_KANBAN_SPEC.md` (uploaded design spec), re-grounded onto the
