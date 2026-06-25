@@ -18,11 +18,13 @@ export function ClientBase({
   stats,
   projectsByClient,
   onOpenClient,
+  onEditClient,
 }: {
   clients: Client[];
   stats: Map<string, { total: number; active: number }>;
   projectsByClient: Map<string, ClientProjectRow[]>;
   onOpenClient: (clientId: string) => void;
+  onEditClient: (client: Client) => void;
 }) {
   const [search, setSearch] = useState('');
   const [tier, setTier] = useState<'all' | 'A' | 'B' | 'C'>('all');
@@ -103,6 +105,7 @@ export function ClientBase({
                 stat={stats.get(c.id)}
                 projects={projectsByClient.get(c.id) ?? []}
                 onOpen={() => onOpenClient(c.id)}
+                onEdit={() => onEditClient(c)}
               />
             ))}
           </div>
@@ -117,11 +120,13 @@ function ClientCard({
   stat,
   projects,
   onOpen,
+  onEdit,
 }: {
   client: Client;
   stat?: { total: number; active: number };
   projects: ClientProjectRow[];
   onOpen: () => void;
+  onEdit: () => void;
 }) {
   const total = stat?.total ?? projects.length;
   const active = stat?.active ?? projects.filter((p) => p.status === 'active').length;
@@ -131,9 +136,16 @@ function ClientCard({
   const rest = projects.length - shown.length;
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
       className="card"
       style={{ padding: 12, textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 10, opacity: portfolioOnly ? 0.82 : 1, cursor: 'pointer' }}
     >
@@ -153,6 +165,15 @@ function ClientCard({
           </div>
         </div>
         <TierBadge tier={client.tier} />
+        <button
+          type="button"
+          aria-label="Redaktə et"
+          className="chip"
+          style={{ height: 20, padding: '0 6px', fontSize: 11, flexShrink: 0 }}
+          onClick={(e) => { e.stopPropagation(); onEdit(); }}
+        >
+          ✎
+        </button>
       </div>
 
       {noData ? (
@@ -193,7 +214,7 @@ function ClientCard({
           Son əlaqə: {relativeTime(client.last_interaction_at)}
         </span>
       </div>
-    </button>
+    </div>
   );
 }
 
