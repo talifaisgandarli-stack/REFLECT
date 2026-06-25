@@ -5,6 +5,7 @@
  * Admin-only surface (parent gates with isAdmin); each underlying table
  * has admin-only RLS so a non-admin call returns empty rows anyway.
  */
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { formatAZN } from '@/lib/format';
@@ -63,6 +64,16 @@ export function ProjectPnL({ projectId }: Props) {
 
   const incomeTotal = sum(incomes.data ?? []);
   const expenseTotal = sum(expenses.data ?? []);
+  // REQ-FIN-06 — operative-expense breakdown by category, descending. Outsource
+  // is tracked separately (own table), so this covers the `expenses` rows only.
+  const byCategory = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const e of expenses.data ?? []) {
+      const key = (e.category ?? '').trim() || 'Kateqoriyasız';
+      m.set(key, (m.get(key) ?? 0) + Number(e.amount ?? 0));
+    }
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+  }, [expenses.data]);
   const outsourceCommitted = sum(outsource.data ?? []);
   const outsourcePaid = sum(
     (outsource.data ?? []).filter((r) => r.paid_at) as Row[],
@@ -185,6 +196,38 @@ export function ProjectPnL({ projectId }: Props) {
           forecast üçün konservativ baxış.
         </p>
       </div>
+
+      {/* REQ-FIN-06 — operative-expense breakdown by category */}
+      {!loading && byCategory.length > 0 ? (
+        <div className="card">
+          <h3 className="text-h3 mb-3">Xərc kateqoriyaları</h3>
+          <ul className="space-y-2">
+            {byCategory.map(([cat, amount]) => {
+              const pct = expenseTotal > 0 ? Math.round((amount / expenseTotal) * 100) : 0;
+              return (
+                <li key={cat}>
+                  <div className="flex items-center justify-between text-body">
+                    <span style={{ color: 'var(--text)' }}>{cat}</span>
+                    <span style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                      {formatAZN(amount)} · {pct}%
+                    </span>
+                  </div>
+                  <div style={{ height: 6, background: 'var(--line)', borderRadius: 999, marginTop: 4 }}>
+                    <div
+                      style={{
+                        width: `${pct}%`,
+                        height: '100%',
+                        background: 'var(--brand-action)',
+                        borderRadius: 999,
+                      }}
+                    />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }

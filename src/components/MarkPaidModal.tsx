@@ -64,8 +64,10 @@ export function MarkPaidModal({ receivable, onClose }: Props) {
         .eq('receivable_id', receivable.id)
         .order('paid_at', { ascending: false });
       if (error) {
-        // Table may not exist yet — degrade gracefully
-        console.warn('[MarkPaidModal] receivable_payments unavailable:', error.message);
+        // Table may not exist yet — degrade gracefully. DEV-guarded so the
+        // diagnostic is dead-code-eliminated from the production bundle.
+        // eslint-disable-next-line no-console
+        if (import.meta.env.DEV) console.warn('[MarkPaidModal] receivable_payments unavailable:', error.message);
         return [];
       }
       return (data ?? []) as PaymentEvent[];

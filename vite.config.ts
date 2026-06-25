@@ -14,15 +14,23 @@ function gitSha(): string {
   }
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   resolve: {
     alias: { '@': path.resolve(__dirname, 'src') },
   },
   server: { port: 5173 },
+  // Strip dev-only console noise from the production bundle. Marking these as
+  // /* @__PURE__ */ lets esbuild's minifier drop the calls (their return value
+  // is always unused). console.error is intentionally kept — Sentry hooks it and
+  // it is the channel for genuine production failures.
+  esbuild:
+    mode === 'production'
+      ? { pure: ['console.warn', 'console.info', 'console.debug', 'console.log'] }
+      : {},
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __APP_COMMIT__: JSON.stringify(gitSha()),
     __APP_BUILD_TIME__: JSON.stringify(new Date().toISOString()),
   },
-});
+}));

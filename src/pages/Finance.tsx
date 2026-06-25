@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/components/Toast';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { formatAZN, formatDate, bakuMonthKey, bakuCurrentMonthRange, bakuToday } from '@/lib/format';
+import { formatAZN, formatDate, relativeTime, bakuMonthKey, bakuCurrentMonthRange, bakuToday } from '@/lib/format';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, ComposedChart, Line, Area, CartesianGrid, Cell } from 'recharts';
 import { IncomeExpenseModal, type FinanceKind } from '@/components/IncomeExpenseModal';
 import { MarkPaidModal } from '@/components/MarkPaidModal';
@@ -740,6 +740,7 @@ type RecurringRow = {
   amount: number;
   period: 'weekly' | 'monthly' | 'quarterly' | 'yearly';
   next_run_at: string;
+  last_run_at: string | null;
 };
 
 function RecurringExpensesPanel() {
@@ -750,7 +751,7 @@ function RecurringExpensesPanel() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('recurring_expenses')
-        .select('id, label, amount, period, next_run_at')
+        .select('id, label, amount, period, next_run_at, last_run_at')
         .order('next_run_at', { ascending: true });
       if (error) throw error;
       return (data ?? []) as RecurringRow[];
@@ -800,7 +801,7 @@ function RecurringExpensesPanel() {
         <table className="w-full text-body">
           <thead>
             <tr style={{ borderBottom: '1px solid var(--line)' }}>
-              {['Ad', 'Dövr', 'Növbəti', 'Məbləğ', ''].map((h) => (
+              {['Ad', 'Dövr', 'Növbəti', 'Sonuncu', 'Məbləğ', ''].map((h) => (
                 <th
                   key={h}
                   className="text-left py-3 px-3 text-meta"
@@ -816,7 +817,21 @@ function RecurringExpensesPanel() {
               <tr key={r.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
                 <td className="py-3 px-3">{r.label}</td>
                 <td className="py-3 px-3">{PERIOD_LABEL[r.period] ?? r.period}</td>
-                <td className="py-3 px-3">{formatDate(r.next_run_at)}</td>
+                <td className="py-3 px-3">
+                  {formatDate(r.next_run_at)}
+                  {new Date(r.next_run_at).getTime() < Date.now() ? (
+                    <span
+                      className="chip ml-2"
+                      title="Növbəti tarix keçib — materializasiya gözləyir (cron növbəti işində icra edəcək)"
+                      style={{ background: 'var(--warn-bg, #fef3c7)', color: 'var(--warn-text, #92400e)' }}
+                    >
+                      gecikib
+                    </span>
+                  ) : null}
+                </td>
+                <td className="py-3 px-3 text-meta" style={{ color: 'var(--text-muted)' }}>
+                  {r.last_run_at ? relativeTime(r.last_run_at) : '— heç vaxt'}
+                </td>
                 <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
                   {formatAZN(r.amount)}
                 </td>
@@ -834,7 +849,7 @@ function RecurringExpensesPanel() {
             ))}
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="py-6 text-center text-meta" style={{ color: 'var(--text-muted)' }}>
+                <td colSpan={6} className="py-6 text-center text-meta" style={{ color: 'var(--text-muted)' }}>
                   Sabit xərc qaydası yoxdur.
                 </td>
               </tr>

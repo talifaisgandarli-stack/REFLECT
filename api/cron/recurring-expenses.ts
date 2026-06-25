@@ -37,11 +37,19 @@ async function handler(req: Request) {
       .lte('next_run_at', now.toISOString());
     if (error) throw new HttpError(500, error.message);
 
+    // Backlog guard: a rule seeded with a far-past next_run_at (or a long cron
+    // outage) would otherwise back-fill an unbounded number of expense rows in a
+    // single run. Cap the catch-up per rule per run; the remainder is picked up
+    // on the next run, so nothing is lost — it just drains gradually instead of
+    // flooding. ~13 months of weekly is the widest realistic legitimate gap.
+    const MAX_CATCHUP_PER_RULE = 60;
     let materialized = 0;
+    let cappedRules = 0;
     for (const rule of rules ?? []) {
       let nextRun = new Date(rule.next_run_at);
       const period = rule.period as Period;
-      while (nextRun.getTime() <= now.getTime()) {
+      let runMaterialized = 0;
+      while (nextRun.getTime() <= now.getTime() && runMaterialized < MAX_CATCHUP_PER_RULE) {
         const occurredAt = nextRun.toISOString();
         const { data: exp, error: insErr } = await sb
           .from('expenses')
@@ -62,15 +70,21 @@ async function handler(req: Request) {
           new_value: { recurring_rule_id: rule.id, label: rule.label, amount: rule.amount },
         });
         materialized++;
+        runMaterialized++;
         nextRun = advance(nextRun, period);
       }
+      const capped = nextRun.getTime() <= now.getTime();
+      if (capped) cappedRules++;
       await sb
         .from('recurring_expenses')
-        .update({ next_run_at: nextRun.toISOString() })
+        .update({
+          next_run_at: nextRun.toISOString(),
+          ...(runMaterialized > 0 ? { last_run_at: now.toISOString() } : {}),
+        })
         .eq('id', rule.id);
     }
 
-    return jsonResponse({ ok: true, rules: rules?.length ?? 0, materialized });
+    return jsonResponse({ ok: true, rules: rules?.length ?? 0, materialized, cappedRules });
   } catch (e) {
     return errorResponse(e);
   }
