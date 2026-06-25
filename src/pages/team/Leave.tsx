@@ -300,13 +300,16 @@ function LeaveRequestForm({
           .from('profiles')
           .select('id')
           .in('role_id', adminRoleIds);
-        for (const admin of admins ?? []) {
-          await supabase.from('notifications').insert({
-            user_id: admin.id,
-            kind: 'leave_request',
-            payload: { employee_id: profile.id, kind, starts_at: startsAt },
-            dispatched_channels: {},
-          });
+        // Batch all admin notifications into a single insert — one round-trip
+        // instead of N sequential awaits (N+1 on every leave request).
+        const notifs = (admins ?? []).map((admin) => ({
+          user_id: admin.id,
+          kind: 'leave_request',
+          payload: { employee_id: profile.id, kind, starts_at: startsAt },
+          dispatched_channels: {},
+        }));
+        if (notifs.length > 0) {
+          await supabase.from('notifications').insert(notifs);
         }
       }
     },
