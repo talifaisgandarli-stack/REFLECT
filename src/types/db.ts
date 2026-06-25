@@ -115,6 +115,8 @@ export interface ProjectDocument {
   category: string | null;
   title: string;
   source: DocumentSource;
+  /** migration 0081 — 'draft' (work-in-progress) | 'final' (deliverable) */
+  status?: 'draft' | 'final';
   external_link: string | null;
   storage_path: string | null;
   share_token: string | null;
@@ -194,6 +196,9 @@ export interface Task {
   workload_calculated_at: string | null;
   cancel_reason: string | null;
   archived_at: string | null;
+  /** migration 0080 — stamped on open→done, cleared on reopen */
+  completed_at?: string | null;
+  completed_by?: string | null;
   created_by: string | null;
   created_at: string;
   /** PRD §6.x — free-form labels for cross-status grouping (Design/Bug/etc.) */

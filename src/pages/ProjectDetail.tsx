@@ -584,6 +584,7 @@ export function ProjectDetailPage() {
                 id: string; title: string; category: string | null;
                 source: string; external_link: string | null; storage_path: string | null;
                 share_token: string | null; shared_with: string[] | null; created_at: string;
+                status?: 'draft' | 'final';
               }) => (
                 <DocumentRow
                   key={d.id}
@@ -817,6 +818,7 @@ function AddDocumentButton({ projectId, onAdded }: { projectId: string; onAdded:
   const [title, setTitle] = useState('');
   const [link, setLink] = useState('');
   const [category, setCategory] = useState('');
+  const [status, setStatus] = useState<'draft' | 'final'>('final');
   const [file, setFile] = useState<File | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -862,6 +864,7 @@ function AddDocumentButton({ projectId, onAdded }: { projectId: string; onAdded:
         storage_path: storagePath,
         category: category.trim() || null,
         source,
+        status,
       });
       if (error) throw error;
     },
@@ -870,6 +873,7 @@ function AddDocumentButton({ projectId, onAdded }: { projectId: string; onAdded:
       setTitle('');
       setLink('');
       setCategory('');
+      setStatus('final');
       setFile(null);
       onAdded();
     },
@@ -911,6 +915,15 @@ function AddDocumentButton({ projectId, onAdded }: { projectId: string; onAdded:
           value={category}
           onChange={(e) => setCategory(e.target.value)}
         />
+        <select
+          className="input max-w-[140px]"
+          aria-label="Sənəd statusu"
+          value={status}
+          onChange={(e) => setStatus(e.target.value as 'draft' | 'final')}
+        >
+          <option value="final">Final</option>
+          <option value="draft">Qaralama</option>
+        </select>
       </div>
       <div className="flex gap-2 items-end flex-wrap">
         <input
@@ -968,6 +981,7 @@ function DocumentRow({
     share_token: string | null;
     shared_with: string[] | null;
     created_at: string;
+    status?: 'draft' | 'final';
   };
   onChanged: () => void;
 }) {
@@ -975,6 +989,14 @@ function DocumentRow({
   const [shareOpen, setShareOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const { isAdmin } = useAuth();
+
+  // REQ-CRM-06 — flip a draft to final (or back) in place. Admin-only write,
+  // mirroring pd_admin_write.
+  const toggleStatus = async () => {
+    const next = doc.status === 'draft' ? 'final' : 'draft';
+    const { error } = await supabase.from('project_documents').update({ status: next }).eq('id', doc.id);
+    if (!error) onChanged();
+  };
 
   // Delete is admin-only (mirrors pd_admin_write + the 0065 storage policy).
   // Remove the stored object first (best-effort) so a deleted row never leaves
@@ -1076,7 +1098,18 @@ function DocumentRow({
             })()}
           </span>
           <div className="min-w-0">
-            <div className="text-body font-medium truncate">{doc.title}</div>
+            <div className="text-body font-medium truncate flex items-center gap-1.5">
+              {doc.title}
+              {doc.status === 'draft' ? (
+                <span
+                  className="chip shrink-0"
+                  title="Qaralama — hələ son deyil"
+                  style={{ background: 'var(--warn-bg, #fef3c7)', color: 'var(--warn-text, #92400e)' }}
+                >
+                  Qaralama
+                </span>
+              ) : null}
+            </div>
             <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
               {doc.category ?? '—'} · {doc.source}
               {doc.share_token ? ' · publik link' : ''}
@@ -1114,6 +1147,17 @@ function DocumentRow({
           >
             🔗 Paylaş
           </button>
+          {isAdmin ? (
+            <button
+              type="button"
+              className="chip"
+              style={{ color: 'var(--text-muted)' }}
+              onClick={toggleStatus}
+              title={doc.status === 'draft' ? 'Final kimi işarələ' : 'Qaralama kimi işarələ'}
+            >
+              {doc.status === 'draft' ? '✓ Finalla' : '✎ Qaralama'}
+            </button>
+          ) : null}
           {isAdmin ? (
             <button
               type="button"

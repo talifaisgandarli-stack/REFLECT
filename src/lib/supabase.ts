@@ -6,7 +6,6 @@ const anon = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
 if ((!url || !anon) && import.meta.env.DEV) {
   // Soft-warn only; pages render with empty data so dev shell still works.
   // Guarded by DEV so Vite dead-code-eliminates it from the production bundle.
-  // eslint-disable-next-line no-console
   console.warn('[supabase] VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY missing — see .env.example');
 }
 
