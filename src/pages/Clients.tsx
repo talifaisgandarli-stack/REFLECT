@@ -118,6 +118,7 @@ export function ClientsPage() {
           stats={stats}
           projectsByClient={projectsByClient}
           onOpenClient={(id) => setOpenClientId(id)}
+          onEditClient={(c) => setForm({ mode: 'edit', client: c })}
         />
       ) : (
         <ClientAnalytics clients={clients.data ?? []} projectsByClient={projectsByClient} />
