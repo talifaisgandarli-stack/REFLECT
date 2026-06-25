@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/components/Toast';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { formatAZN, formatDate, bakuMonthKey, bakuCurrentMonthRange } from '@/lib/format';
+import { formatAZN, formatDate, bakuMonthKey, bakuCurrentMonthRange, bakuToday } from '@/lib/format';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, ComposedChart, Line, Area, CartesianGrid, Cell } from 'recharts';
 import { IncomeExpenseModal, type FinanceKind } from '@/components/IncomeExpenseModal';
 import { MarkPaidModal } from '@/components/MarkPaidModal';
@@ -260,11 +260,14 @@ export function FinancePage() {
           </thead>
           <tbody>
             {(receivables.data ?? []).map((r) => {
-              // Overdue: due_at in the past AND not yet fully paid
+              // Overdue: due_at in the past AND not yet fully paid.
+              // Compare as Baku calendar dates (due_at is a DATE) — parsing it
+              // as a Date would anchor to UTC midnight and be off by ±1 day in
+              // the Baku evening (UTC+4).
               const isOverdue =
                 r.status !== 'paid' &&
                 r.due_at != null &&
-                new Date(r.due_at).getTime() < Date.now();
+                r.due_at < bakuToday();
               return (
                 <tr
                   key={r.id}
@@ -497,7 +500,9 @@ function ReceivableAgingChart({
     status: string;
   }>;
 }) {
-  const today = Date.now();
+  // Anchor both "today" and each due date to UTC midnight of the Baku calendar
+  // date so the aging buckets are timezone-safe (no ±1 day skew, REQ-FIN-09).
+  const today = Date.parse(`${bakuToday()}T00:00:00Z`);
   const buckets = [
     { key: 'current', label: 'Gələcək', max: 0, color: 'var(--success-deep, #16794a)' },
     { key: '0-30', label: '0–30 gün', max: 30, color: 'var(--brand-action, #adfb49)' },
@@ -513,7 +518,7 @@ function ReceivableAgingChart({
     const remaining = Number(r.amount) - Number(r.paid_amount);
     if (remaining <= 0) continue;
     if (!r.due_at) continue;
-    const daysOverdue = (today - new Date(r.due_at).getTime()) / 86_400_000;
+    const daysOverdue = (today - Date.parse(`${r.due_at}T00:00:00Z`)) / 86_400_000;
     let idx: number;
     if (daysOverdue < 0) idx = 0; // not yet due
     else if (daysOverdue <= 30) idx = 1;
