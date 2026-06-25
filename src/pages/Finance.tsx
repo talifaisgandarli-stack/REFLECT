@@ -80,19 +80,25 @@ export function FinancePage() {
     onError: (e) => toast.error((e as Error).message),
   });
 
+  // Order newest-first before capping: an unordered .limit() returns an
+  // arbitrary subset, which silently corrupts the current-month totals and the
+  // monthly chart once the table passes the cap. Newest-first keeps the current
+  // and recent months always complete; only very old history falls off the cap.
   const incomes = useQuery({
     queryKey: ['fin', 'incomes'],
-    queryFn: async () => (await supabase.from('incomes').select('*').limit(200)).data ?? [],
+    queryFn: async () =>
+      (await supabase.from('incomes').select('*').order('occurred_at', { ascending: false, nullsFirst: false }).limit(2000)).data ?? [],
   });
   const expenses = useQuery({
     queryKey: ['fin', 'expenses'],
-    queryFn: async () => (await supabase.from('expenses').select('*').limit(200)).data ?? [],
+    queryFn: async () =>
+      (await supabase.from('expenses').select('*').order('occurred_at', { ascending: false, nullsFirst: false }).limit(2000)).data ?? [],
   });
   // REQ-FIN-06 — paid outsource costs feed the P&L (bucketed by paid_at month).
   const outsourcePaid = useQuery({
     queryKey: ['fin', 'outsource_paid'],
     queryFn: async () =>
-      (await supabase.from('outsource_items').select('amount, paid_at').eq('status', 'paid').limit(500)).data ?? [],
+      (await supabase.from('outsource_items').select('amount, paid_at').eq('status', 'paid').order('paid_at', { ascending: false, nullsFirst: false }).limit(2000)).data ?? [],
   });
   const receivables = useQuery({
     queryKey: ['fin', 'receivables'],
@@ -101,7 +107,8 @@ export function FinancePage() {
         await supabase
           .from('receivables')
           .select('*, clients(name, company)')
-          .limit(200)
+          .order('created_at', { ascending: false })
+          .limit(1000)
       ).data ?? []) as Array<Receivable & { clients?: { name: string; company: string | null } | null }>,
   });
   const forecasts = useQuery({
