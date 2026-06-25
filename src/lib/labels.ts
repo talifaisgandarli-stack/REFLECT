@@ -188,6 +188,17 @@ export function clientStageStyle(stage: ClientPipelineStage): { color: string; b
   return CLIENT_STAGE_STYLE[stage] ?? { color: 'var(--text-muted)', bg: 'var(--surface-mist)' };
 }
 
+// The deal value means different things by stage (owner note 2026-06-25): a
+// forecast early, a signed amount mid-deal, a final amount once delivered.
+// Same `expected_value` column — only the label adapts so the prompt isn't
+// "illogical" on already-agreed clients.
+export function clientValueLabel(stage: ClientPipelineStage): string {
+  if (stage === 'portfolio') return 'Yekun dəyər';
+  if (stage === 'in_progress' || stage === 'signed') return 'Müqavilə dəyəri';
+  if (stage === 'lost') return 'İtirilmiş dəyər';
+  return 'Gözlənilən dəyər';
+}
+
 export const INTERACTION_LABEL: Record<InteractionType, string> = {
   call: 'Zəng',
   email: 'Email',

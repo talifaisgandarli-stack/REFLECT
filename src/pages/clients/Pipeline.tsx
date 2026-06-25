@@ -17,7 +17,7 @@ import {
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import type { Client, ClientPipelineStage } from '@/types/db';
-import { CLIENT_STAGE_LABEL, PIPELINE_COLUMNS } from '@/lib/labels';
+import { CLIENT_STAGE_LABEL, PIPELINE_COLUMNS, clientValueLabel } from '@/lib/labels';
 import { formatAZN, formatAZNCompact, contactHealth } from '@/lib/format';
 import { useUpdateClientStage, useUpdateClientField } from '@/lib/hooks';
 import { useAuth } from '@/lib/store';
@@ -264,7 +264,7 @@ function ClientCard({
           {isAdmin ? (
             <InlineNumber
               value={client.expected_value}
-              ariaLabel="Gözlənilən dəyər"
+              ariaLabel={clientValueLabel(client.pipeline_stage)}
               format={(n) => formatAZN(n)}
               onSave={(v) => updateField.mutate({ id: client.id, patch: { expected_value: v } })}
             />
