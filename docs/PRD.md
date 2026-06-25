@@ -469,6 +469,15 @@ workload = estimated_duration × (1 + risk_buffer_pct/100)
 > sort (value↓ / last-contact / A→Z), optional group-by-tier; empty/portfolio states.
 > **REQ-CRM-13** Client modal: header + metrics, tabs Layihələr (read-only links into
 > the Layihələr module) / Əlaqə / Tarixçə. No project creation here.
+> **REQ-CRM-14** CRM↔Finance (spec `docs/crm-finance-spec.md`, 2026-06-25): the client
+> modal gains an admin-only **Maliyyə** tab — lists the client's `receivables`
+> (contract/paid/remaining/status per project), records payments via the existing
+> `MarkPaidModal` (`receivable_payments` + trigger), and creates a contract via
+> "+ Müqavilə" (`receivables`, default amount = `expected_value`, per-project).
+> "Müqavilə dəyəri / ödənilib / qalıq" on the cards + modal come from `receivables`
+> (single source of truth), NOT from `incomes`. `clients.expected_value` is the
+> pre-deal forecast only. Payments may optionally also be mirrored into `incomes`
+> (opt-in checkbox). No schema change — reuses PRD Module 7 finance primitives.
 >
 > REQ-CRM-01..09 below remain authoritative for the pipeline_stage model, interaction
 > logging, ICP, proposals and hard-delete — all unchanged.

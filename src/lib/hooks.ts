@@ -10,6 +10,7 @@ import type {
   ClientStageHistory,
   InteractionType,
   Project,
+  Receivable,
   Task,
   TaskStatus,
   ActivityLogEntry,
@@ -695,23 +696,49 @@ export function useProjectsByClient() {
   });
 }
 
-/** Total received income per client (sum of `incomes.amount` by client_id).
- *  Admin-only (incomes RLS is admin); used to show paid/remaining on İcrada /
- *  Portfolio client cards. One query, grouped client-side. */
-export function useIncomeByClient() {
+/** All receivables (contracts) grouped by client_id — the single source of
+ *  truth for "müqavilə / ödənilib / qalıq" on the CRM surfaces. Admin-only
+ *  (receivables RLS is admin; the Müştərilər route is admin). Keyed under
+ *  ['fin','receivables',…] so MarkPaidModal's invalidate(['fin','receivables'])
+ *  refreshes it after a payment. */
+export function useReceivablesByClient() {
   const { isAdmin } = useAuth();
   return useQuery({
-    queryKey: ['income-by-client'],
+    queryKey: ['fin', 'receivables', 'by-client'],
     enabled: isAdmin,
-    queryFn: async (): Promise<Map<string, number>> => {
-      const { data, error } = await supabase.from('incomes').select('client_id,amount');
+    queryFn: async (): Promise<Map<string, Receivable[]>> => {
+      const { data, error } = await supabase.from('receivables').select('*');
       if (error) throw error;
-      const m = new Map<string, number>();
-      for (const r of (data ?? []) as { client_id: string | null; amount: number }[]) {
+      const m = new Map<string, Receivable[]>();
+      for (const r of (data ?? []) as Receivable[]) {
         if (!r.client_id) continue;
-        m.set(r.client_id, (m.get(r.client_id) ?? 0) + (r.amount ?? 0));
+        const list = m.get(r.client_id) ?? [];
+        list.push(r);
+        m.set(r.client_id, list);
       }
       return m;
     },
+  });
+}
+
+/** Create a contract (receivable) for a client/project (the "+ Müqavilə" flow). */
+export function useCreateReceivable() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      client_id: string;
+      project_id: string | null;
+      amount: number;
+      due_at: string | null;
+    }) => {
+      const { error } = await supabase.from('receivables').insert({
+        client_id: input.client_id,
+        project_id: input.project_id,
+        amount: input.amount,
+        due_at: input.due_at,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['fin', 'receivables'] }),
   });
 }

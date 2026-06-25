@@ -19,6 +19,9 @@ type Receivable = {
   amount: number;
   paid_amount: number;
   status: 'open' | 'partial' | 'paid' | 'overdue';
+  // present on real DB rows; used for the optional income-mirror (CRM↔Finance)
+  client_id?: string | null;
+  project_id?: string | null;
 };
 
 type Props = { receivable: Receivable; onClose: () => void };
@@ -45,6 +48,7 @@ export function MarkPaidModal({ receivable, onClose }: Props) {
   const [delta, setDelta] = useState<string>(remaining.toString());
   const [method, setMethod] = useState<(typeof PAYMENT_METHODS)[number]>('bank_transfer');
   const [note, setNote] = useState('');
+  const [logIncome, setLogIncome] = useState(false);
 
   const parsed = Number(delta.replace(',', '.'));
   const valid = Number.isFinite(parsed) && parsed > 0 && parsed <= remaining;
@@ -83,9 +87,25 @@ export function MarkPaidModal({ receivable, onClose }: Props) {
         recorded_by: recorderId,
       });
       if (error) throw error;
+
+      // Opt-in: also mirror into the cashflow ledger (incomes), tied to the
+      // same client/project so Cash Cockpit + P&L reflect the receipt.
+      if (logIncome) {
+        const incomeMethod =
+          method === 'bank_transfer' ? 'Bank köçürməsi' : method === 'cash' ? 'Nağd' : 'Kart';
+        const { error: incErr } = await supabase.from('incomes').insert({
+          amount: parsed,
+          client_id: receivable.client_id ?? null,
+          project_id: receivable.project_id ?? null,
+          payment_method: incomeMethod,
+          note: note.trim() || 'Qaimə ödənişi',
+          created_by: recorderId,
+        });
+        if (incErr) throw incErr;
+      }
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['fin', 'receivables'] });
+      qc.invalidateQueries({ queryKey: ['fin'] });
       qc.invalidateQueries({ queryKey: ['receivable_payments', receivable.id] });
       onClose();
     },
@@ -198,6 +218,16 @@ export function MarkPaidModal({ receivable, onClose }: Props) {
             onChange={(e) => setNote(e.target.value)}
             placeholder="Məs: Faktura #123 — qismən ödəniş"
           />
+        </label>
+
+        {/* Opt-in: also record this payment as cashflow income (CRM↔Finance
+            spec 2026-06-25 — receivables and incomes stay separate ledgers; tick
+            to mirror the payment into incomes so Cash Cockpit reflects it). */}
+        <label className="flex items-center gap-2 mt-3" style={{ cursor: 'pointer' }}>
+          <input type="checkbox" checked={logIncome} onChange={(e) => setLogIncome(e.target.checked)} />
+          <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
+            Kassaya da əlavə et (gəlir/cashflow)
+          </span>
         </label>
 
         {!valid && delta ? (

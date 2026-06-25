@@ -5,7 +5,7 @@
  * projects are a separate module, only surfaced here as a read-only count.
  */
 import { useMemo, useState } from 'react';
-import type { Client } from '@/types/db';
+import type { Client, Receivable } from '@/types/db';
 import { CLIENT_STAGE_LABEL, CLIENT_TIER_ORDER, clientTierRank, clientValueLabel, PROJECT_STATUS_DOT } from '@/lib/labels';
 import { formatAZN, relativeTime } from '@/lib/format';
 import type { ClientProjectRow } from '@/lib/hooks';
@@ -17,14 +17,14 @@ export function ClientBase({
   clients,
   stats,
   projectsByClient,
-  incomeByClient,
+  receivablesByClient,
   onOpenClient,
   onEditClient,
 }: {
   clients: Client[];
   stats: Map<string, { total: number; active: number }>;
   projectsByClient: Map<string, ClientProjectRow[]>;
-  incomeByClient: Map<string, number>;
+  receivablesByClient: Map<string, Receivable[]>;
   onOpenClient: (clientId: string) => void;
   onEditClient: (client: Client) => void;
 }) {
@@ -106,7 +106,7 @@ export function ClientBase({
                 client={c}
                 stat={stats.get(c.id)}
                 projects={projectsByClient.get(c.id) ?? []}
-                received={incomeByClient.get(c.id) ?? 0}
+                receivables={receivablesByClient.get(c.id) ?? []}
                 onOpen={() => onOpenClient(c.id)}
                 onEdit={() => onEditClient(c)}
               />
@@ -118,35 +118,38 @@ export function ClientBase({
   );
 }
 
-// Stages where the deal is agreed, so payment progress is meaningful.
-const PAID_STAGES = new Set(['signed', 'in_progress', 'portfolio']);
-
 function ClientCard({
   client,
   stat,
   projects,
-  received,
+  receivables,
   onOpen,
   onEdit,
 }: {
   client: Client;
   stat?: { total: number; active: number };
   projects: ClientProjectRow[];
-  received: number;
+  receivables: Receivable[];
   onOpen: () => void;
   onEdit: () => void;
 }) {
   const total = stat?.total ?? projects.length;
   const active = stat?.active ?? projects.filter((p) => p.status === 'active').length;
   const portfolioOnly = client.pipeline_stage === 'portfolio';
-  const noData = !client.expected_value && total === 0;
   const shown = projects.slice(0, 2);
   const rest = projects.length - shown.length;
 
-  const contract = client.expected_value ?? 0;
-  const showPayment = PAID_STAGES.has(client.pipeline_stage) && contract > 0;
+  // Contract & payment come from receivables (single source of truth). When a
+  // client has no contract yet, fall back to the pipeline forecast (expected_value).
+  const contract = receivables.reduce((s, r) => s + Number(r.amount), 0);
+  const received = receivables.reduce((s, r) => s + Number(r.paid_amount), 0);
+  const hasContract = contract > 0;
+  const showPayment = hasContract;
   const paidPct = contract > 0 ? Math.min(100, Math.round((received / contract) * 100)) : 0;
   const remaining = Math.max(0, contract - received);
+  const valueLabel = hasContract ? 'Müqavilə dəyəri' : clientValueLabel(client.pipeline_stage);
+  const valueAmount = hasContract ? contract : client.expected_value;
+  const noData = !hasContract && !client.expected_value && total === 0;
 
   return (
     <div
@@ -196,7 +199,7 @@ function ClientCard({
       ) : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-            <Mini label={clientValueLabel(client.pipeline_stage)} value={formatAZN(client.expected_value)} />
+            <Mini label={valueLabel} value={formatAZN(valueAmount)} />
             <Mini label="Layihə (aktiv/cəmi)" value={`${active}/${total}`} />
           </div>
           {/* Payment progress — only once the deal is agreed (İcrada/Portfolio) */}
