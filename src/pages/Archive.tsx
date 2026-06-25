@@ -128,29 +128,30 @@ export function ArchivePage() {
           ref={searchRef}
           className="input max-w-[220px]"
           placeholder="Axtar… (/)"
+          aria-label="Arxivdə axtar"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <select className="input max-w-[180px]" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+        <select className="input max-w-[180px]" aria-label="Layihəyə görə süz" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
           <option value="">Bütün layihələr</option>
           {(projects.data ?? []).map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
-        <select className="input max-w-[180px]" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
+        <select className="input max-w-[180px]" aria-label="İcraçıya görə süz" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
           <option value="">Bütün icraçılar</option>
           {(profiles.data ?? []).map((p) => (
             <option key={p.id} value={p.id}>{p.full_name ?? p.id}</option>
           ))}
         </select>
-        <select className="input max-w-[160px]" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+        <select className="input max-w-[160px]" aria-label="Statusa görə süz" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="">Bütün statuslar</option>
           {(['done', 'cancelled'] as const).map((s) => (
             <option key={s} value={s}>{TASK_STATUS_LABEL[s]}</option>
           ))}
         </select>
-        <input type="date" className="input max-w-[160px]" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-        <input type="date" className="input max-w-[160px]" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+        <input type="date" className="input max-w-[160px]" aria-label="Başlanğıc tarixi" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+        <input type="date" className="input max-w-[160px]" aria-label="Son tarix" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
         {(projectId || assigneeId || statusFilter || dateFrom || dateTo || search) ? (
           <button className="btn-outline" onClick={() => { setProjectId(''); setAssigneeId(''); setStatusFilter(''); setDateFrom(''); setDateTo(''); setSearch(''); }}>
             Sıfırla
