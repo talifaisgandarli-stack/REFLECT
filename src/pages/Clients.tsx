@@ -13,7 +13,7 @@ import { useSearchParams } from 'react-router-dom';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import { SkeletonList } from '@/components/Skeleton';
-import { useClients, useClientProjectStats, useProjectsByClient } from '@/lib/hooks';
+import { useClients, useClientProjectStats, useProjectsByClient, useIncomeByClient } from '@/lib/hooks';
 import { formatAZN } from '@/lib/format';
 import { useAuth } from '@/lib/store';
 import type { Client, ClientPipelineStage } from '@/types/db';
@@ -43,11 +43,13 @@ export function ClientsPage() {
   const clients = useClients();
   const statsQuery = useClientProjectStats();
   const projectsQuery = useProjectsByClient();
+  const incomeQuery = useIncomeByClient();
   const [form, setForm] = useState<FormState>(null);
   const [openClientId, setOpenClientId] = useState<string | null>(null);
 
   const stats = statsQuery.data ?? new Map<string, { total: number; active: number }>();
   const projectsByClient = projectsQuery.data ?? new Map();
+  const incomeByClient = incomeQuery.data ?? new Map<string, number>();
   const openClient = useMemo(
     () => clients.data?.find((c) => c.id === openClientId) ?? null,
     [clients.data, openClientId],
@@ -117,6 +119,7 @@ export function ClientsPage() {
           clients={clients.data ?? []}
           stats={stats}
           projectsByClient={projectsByClient}
+          incomeByClient={incomeByClient}
           onOpenClient={(id) => setOpenClientId(id)}
           onEditClient={(c) => setForm({ mode: 'edit', client: c })}
         />

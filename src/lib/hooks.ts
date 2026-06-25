@@ -694,3 +694,24 @@ export function useProjectsByClient() {
     },
   });
 }
+
+/** Total received income per client (sum of `incomes.amount` by client_id).
+ *  Admin-only (incomes RLS is admin); used to show paid/remaining on İcrada /
+ *  Portfolio client cards. One query, grouped client-side. */
+export function useIncomeByClient() {
+  const { isAdmin } = useAuth();
+  return useQuery({
+    queryKey: ['income-by-client'],
+    enabled: isAdmin,
+    queryFn: async (): Promise<Map<string, number>> => {
+      const { data, error } = await supabase.from('incomes').select('client_id,amount');
+      if (error) throw error;
+      const m = new Map<string, number>();
+      for (const r of (data ?? []) as { client_id: string | null; amount: number }[]) {
+        if (!r.client_id) continue;
+        m.set(r.client_id, (m.get(r.client_id) ?? 0) + (r.amount ?? 0));
+      }
+      return m;
+    },
+  });
+}

@@ -17,12 +17,14 @@ export function ClientBase({
   clients,
   stats,
   projectsByClient,
+  incomeByClient,
   onOpenClient,
   onEditClient,
 }: {
   clients: Client[];
   stats: Map<string, { total: number; active: number }>;
   projectsByClient: Map<string, ClientProjectRow[]>;
+  incomeByClient: Map<string, number>;
   onOpenClient: (clientId: string) => void;
   onEditClient: (client: Client) => void;
 }) {
@@ -104,6 +106,7 @@ export function ClientBase({
                 client={c}
                 stat={stats.get(c.id)}
                 projects={projectsByClient.get(c.id) ?? []}
+                received={incomeByClient.get(c.id) ?? 0}
                 onOpen={() => onOpenClient(c.id)}
                 onEdit={() => onEditClient(c)}
               />
@@ -115,16 +118,21 @@ export function ClientBase({
   );
 }
 
+// Stages where the deal is agreed, so payment progress is meaningful.
+const PAID_STAGES = new Set(['signed', 'in_progress', 'portfolio']);
+
 function ClientCard({
   client,
   stat,
   projects,
+  received,
   onOpen,
   onEdit,
 }: {
   client: Client;
   stat?: { total: number; active: number };
   projects: ClientProjectRow[];
+  received: number;
   onOpen: () => void;
   onEdit: () => void;
 }) {
@@ -134,6 +142,11 @@ function ClientCard({
   const noData = !client.expected_value && total === 0;
   const shown = projects.slice(0, 2);
   const rest = projects.length - shown.length;
+
+  const contract = client.expected_value ?? 0;
+  const showPayment = PAID_STAGES.has(client.pipeline_stage) && contract > 0;
+  const paidPct = contract > 0 ? Math.min(100, Math.round((received / contract) * 100)) : 0;
+  const remaining = Math.max(0, contract - received);
 
   return (
     <div
@@ -186,6 +199,23 @@ function ClientCard({
             <Mini label={clientValueLabel(client.pipeline_stage)} value={formatAZN(client.expected_value)} />
             <Mini label="Layihə (aktiv/cəmi)" value={`${active}/${total}`} />
           </div>
+          {/* Payment progress — only once the deal is agreed (İcrada/Portfolio) */}
+          {showPayment ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                <span style={{ color: 'var(--text-muted)' }}>Ödənilib</span>
+                <span style={{ fontWeight: 500 }}>
+                  {formatAZN(received)} / {formatAZN(contract)}
+                </span>
+              </div>
+              <div style={{ height: 5, borderRadius: 3, background: 'var(--surface-mist)', overflow: 'hidden' }} aria-hidden>
+                <span style={{ display: 'block', height: '100%', width: `${paidPct}%`, background: 'var(--success)' }} />
+              </div>
+              <span style={{ fontSize: 11, color: remaining > 0 ? 'var(--warning)' : 'var(--success-deep)' }}>
+                {remaining > 0 ? `Qalıq: ${formatAZN(remaining)}` : 'Tam ödənilib ✓'}
+              </span>
+            </div>
+          ) : null}
           {/* Mini project list — names + status dot, first 2 then "+N" overflow */}
           {projects.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
