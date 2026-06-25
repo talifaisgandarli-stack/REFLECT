@@ -352,7 +352,8 @@ export function DashboardPage() {
         .from('tasks')
         .select('project_id, status')
         .in('project_id', activeProjectIds)
-        .is('archived_at', null);
+        .is('archived_at', null)
+        .limit(5000);
       const map: Record<string, { done: number; countable: number }> = {};
       for (const t of (data ?? []) as Array<{ project_id: string | null; status: string }>) {
         if (!t.project_id) continue;
