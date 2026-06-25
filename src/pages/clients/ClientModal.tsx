@@ -14,16 +14,25 @@ import {
   PROJECT_STATUS_LABEL,
   clientValueLabel,
 } from '@/lib/labels';
-import { formatAZN, relativeTime } from '@/lib/format';
+import { formatAZN, formatDate, relativeTime } from '@/lib/format';
 import {
   useClientInteractions,
   useClientProjects,
   useClientStageHistory,
   useLogInteraction,
+  useReceivablesByClient,
 } from '@/lib/hooks';
+import { useAuth } from '@/lib/store';
+import { MarkPaidModal } from '@/components/MarkPaidModal';
+import { CreateReceivableModal } from './CreateReceivableModal';
 import { clientColor, initials } from './crmShared';
+import type { Project, Receivable } from '@/types/db';
 
-type Tab = 'projects' | 'interactions' | 'history';
+type Tab = 'projects' | 'finance' | 'interactions' | 'history';
+
+const RECEIVABLE_STATUS_LABEL: Record<string, string> = {
+  open: 'Açıq', partial: 'Qismən', paid: 'Ödənilib', overdue: 'Gecikmiş',
+};
 
 export function ClientModal({
   client,
@@ -35,6 +44,10 @@ export function ClientModal({
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<Tab>('projects');
+  const { isAdmin } = useAuth();
+  const clientReceivables = useReceivablesByClient().data?.get(client.id) ?? [];
+  const contractTotal = clientReceivables.reduce((s, r) => s + Number(r.amount), 0);
+  const hasContract = contractTotal > 0;
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -74,13 +87,23 @@ export function ClientModal({
 
           <div style={{ display: 'flex', gap: 16, marginTop: 12 }}>
             <Metric label="Mərhələ" value={CLIENT_STAGE_LABEL[client.pipeline_stage]} />
-            <Metric label={clientValueLabel(client.pipeline_stage)} value={formatAZN(client.expected_value)} />
+            <Metric
+              label={hasContract ? 'Müqavilə dəyəri' : clientValueLabel(client.pipeline_stage)}
+              value={formatAZN(hasContract ? contractTotal : client.expected_value)}
+            />
             <Metric label="Layihə (aktiv/cəmi)" value={`${stat?.active ?? 0}/${stat?.total ?? 0}`} />
           </div>
         </div>
 
         <div style={{ display: 'flex', gap: 4, padding: '8px 16px 0' }} role="tablist">
-          {([['projects', 'Layihələr'], ['interactions', 'Əlaqə'], ['history', 'Tarixçə']] as const).map(([k, label]) => (
+          {(
+            [
+              ['projects', 'Layihələr'],
+              ...(isAdmin ? [['finance', 'Maliyyə'] as const] : []),
+              ['interactions', 'Əlaqə'],
+              ['history', 'Tarixçə'],
+            ] as const
+          ).map(([k, label]) => (
             <button
               key={k}
               type="button"
@@ -98,6 +121,8 @@ export function ClientModal({
         <div style={{ padding: 16, overflowY: 'auto' }}>
           {tab === 'projects' ? (
             <ProjectsTab clientId={client.id} onNavigate={onClose} />
+          ) : tab === 'finance' ? (
+            <FinanceTab client={client} />
           ) : tab === 'interactions' ? (
             <InteractionsTab clientId={client.id} />
           ) : (
@@ -212,6 +237,89 @@ function HistoryTab({ clientId }: { clientId: string }) {
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{relativeTime(h.changed_at)}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+function FinanceTab({ client }: { client: import('@/types/db').Client }) {
+  const receivablesQuery = useReceivablesByClient();
+  const projectsQuery = useClientProjects(client.id);
+  const [paying, setPaying] = useState<Receivable | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  const receivables = receivablesQuery.data?.get(client.id) ?? [];
+  const projectName = (id: string | null) =>
+    id ? (projectsQuery.data ?? []).find((p) => p.id === id)?.name ?? 'Layihə' : 'Ümumi';
+
+  const contract = receivables.reduce((s, r) => s + Number(r.amount), 0);
+  const paid = receivables.reduce((s, r) => s + Number(r.paid_amount), 0);
+  const remaining = Math.max(0, contract - paid);
+  const pct = contract > 0 ? Math.min(100, Math.round((paid / contract) * 100)) : 0;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Summary */}
+      {contract > 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+            <span>Müqavilə: <b>{formatAZN(contract)}</b></span>
+            <span>Ödənilib: <b>{formatAZN(paid)}</b></span>
+          </div>
+          <div style={{ height: 6, borderRadius: 3, background: 'var(--surface-mist)', overflow: 'hidden' }} aria-hidden>
+            <span style={{ display: 'block', height: '100%', width: `${pct}%`, background: 'var(--success)' }} />
+          </div>
+          <span style={{ fontSize: 12, color: remaining > 0 ? 'var(--warning)' : 'var(--success-deep)' }}>
+            {remaining > 0 ? `Qalıq: ${formatAZN(remaining)}` : 'Tam ödənilib ✓'}
+          </span>
+        </div>
+      ) : null}
+
+      {/* Receivable list */}
+      {receivablesQuery.isLoading ? (
+        <Muted>Yüklənir…</Muted>
+      ) : receivables.length === 0 ? (
+        <Muted>Hələ müqavilə yoxdur. Sövdələşmə bağlananda "+ Müqavilə" ilə qeyd et.</Muted>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {receivables.map((r) => {
+            const rem = Math.max(0, Number(r.amount) - Number(r.paid_amount));
+            const overdue = r.status !== 'paid' && r.due_at != null && new Date(r.due_at).getTime() < Date.now();
+            return (
+              <div key={r.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--line-soft)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ flex: 1, fontSize: 13 }}>{projectName(r.project_id)}</span>
+                  <span style={{ fontSize: 11, color: overdue ? 'var(--error)' : 'var(--text-muted)' }}>
+                    {overdue ? 'Gecikmiş' : RECEIVABLE_STATUS_LABEL[r.status] ?? r.status}
+                  </span>
+                  {rem > 0 ? (
+                    <button type="button" className="chip" style={{ height: 24 }} onClick={() => setPaying(r)}>
+                      + Ödəniş
+                    </button>
+                  ) : null}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                  {formatAZN(Number(r.paid_amount))} / {formatAZN(Number(r.amount))}
+                  {rem > 0 ? ` · qalıq ${formatAZN(rem)}` : ''}
+                  {r.due_at ? ` · son ${formatDate(r.due_at)}` : ''}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <button type="button" className="btn-outline" style={{ alignSelf: 'flex-start' }} onClick={() => setCreating(true)}>
+        + Müqavilə
+      </button>
+
+      {paying ? <MarkPaidModal receivable={paying} onClose={() => setPaying(null)} /> : null}
+      {creating ? (
+        <CreateReceivableModal
+          client={client}
+          projects={(projectsQuery.data ?? []) as Project[]}
+          onClose={() => setCreating(false)}
+        />
+      ) : null}
     </div>
   );
 }
