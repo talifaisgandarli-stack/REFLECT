@@ -12,6 +12,7 @@ import {
   CLIENT_TIER_DESC,
   INTERACTION_LABEL,
   PROJECT_STATUS_LABEL,
+  clientValueLabel,
 } from '@/lib/labels';
 import { formatAZN, relativeTime } from '@/lib/format';
 import {
@@ -73,7 +74,7 @@ export function ClientModal({
 
           <div style={{ display: 'flex', gap: 16, marginTop: 12 }}>
             <Metric label="Mərhələ" value={CLIENT_STAGE_LABEL[client.pipeline_stage]} />
-            <Metric label="Gözlənilən dəyər" value={formatAZN(client.expected_value)} />
+            <Metric label={clientValueLabel(client.pipeline_stage)} value={formatAZN(client.expected_value)} />
             <Metric label="Layihə (aktiv/cəmi)" value={`${stat?.active ?? 0}/${stat?.total ?? 0}`} />
           </div>
         </div>

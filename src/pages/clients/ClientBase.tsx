@@ -6,7 +6,7 @@
  */
 import { useMemo, useState } from 'react';
 import type { Client } from '@/types/db';
-import { CLIENT_STAGE_LABEL, CLIENT_TIER_ORDER, clientTierRank, PROJECT_STATUS_DOT } from '@/lib/labels';
+import { CLIENT_STAGE_LABEL, CLIENT_TIER_ORDER, clientTierRank, clientValueLabel, PROJECT_STATUS_DOT } from '@/lib/labels';
 import { formatAZN, relativeTime } from '@/lib/format';
 import type { ClientProjectRow } from '@/lib/hooks';
 import { StageDot, TierBadge, clientColor, initials } from './crmShared';
@@ -183,7 +183,7 @@ function ClientCard({
       ) : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-            <Mini label="Gözlənilən dəyər" value={formatAZN(client.expected_value)} />
+            <Mini label={clientValueLabel(client.pipeline_stage)} value={formatAZN(client.expected_value)} />
             <Mini label="Layihə (aktiv/cəmi)" value={`${active}/${total}`} />
           </div>
           {/* Mini project list — names + status dot, first 2 then "+N" overflow */}

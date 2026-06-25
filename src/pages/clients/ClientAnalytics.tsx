@@ -52,7 +52,7 @@ export function ClientAnalytics({
         <Kpi label="Aktiv müştəri" value={String(totals.activeClients)} accent />
         <Kpi label="Cəmi layihə" value={String(totals.totalProjects)} />
         <Kpi label="Aktiv layihə" value={String(totals.activeProjects)} accent />
-        <Kpi label="Gözlənilən dəyər" value={formatAZN(totals.expected)} />
+        <Kpi label="Cəmi dəyər" value={formatAZN(totals.expected)} />
       </div>
 
       {/* Per-client ranking */}

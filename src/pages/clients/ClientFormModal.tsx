@@ -13,6 +13,7 @@ import {
   CLIENT_STAGE_LABEL,
   CLIENT_TIER_DESC,
   CLIENT_TIER_ORDER,
+  clientValueLabel,
 } from '@/lib/labels';
 import type { Client, ClientPipelineStage, ClientTier } from '@/types/db';
 
@@ -147,7 +148,7 @@ export function ClientFormModal({
               </select>
             </F>
             {isAdmin ? (
-              <F label="Gözlənilən dəyər (₼)" style={{ width: 150 }}>
+              <F label={`${clientValueLabel(stage)} (₼)`} style={{ width: 150 }}>
                 <input className="input" type="number" value={expected} onChange={(e) => setExpected(e.target.value)} />
               </F>
             ) : null}
