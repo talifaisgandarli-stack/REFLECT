@@ -125,6 +125,20 @@ export function bakuEndOfWeek(now: Date = new Date()): string {
 }
 
 /**
+ * Whole days from today until a `date` column value (YYYY-MM-DD), measured on
+ * the Baku calendar. Both endpoints are anchored to UTC midnight of their Baku
+ * calendar date, so the result is an exact integer with no ±1 day wall-clock
+ * skew (the trap of `(new Date(dateStr) - Date.now()) / DAY`, which mixes a
+ * UTC-midnight date against the wall clock). Negative = overdue, 0 = due today,
+ * positive = days remaining. Any time component on the input is ignored.
+ */
+export function bakuDaysUntil(dateStr: string, now: Date = new Date()): number {
+  const target = Date.parse(`${dateStr.slice(0, 10)}T00:00:00Z`);
+  const today = Date.parse(`${bakuToday(now)}T00:00:00Z`);
+  return Math.round((target - today) / 86_400_000);
+}
+
+/**
  * Contact-staleness health (CRM redesign §10): days since last contact →
  * 7–13 days = amber, 14+ days = red, otherwise none. `null` last-contact on a
  * lead is treated as stale (red) so it surfaces.
@@ -142,7 +156,9 @@ export function contactHealth(
 /** Task health color per REQ-DASH-04. */
 export function taskHealth(deadlineISO: string | null | undefined): 'red' | 'amber' | 'green' | 'none' {
   if (!deadlineISO) return 'none';
-  const days = (new Date(deadlineISO).getTime() - Date.now()) / 86_400_000;
+  // deadline is a `date` column — count calendar days on the Baku timezone so
+  // the colour doesn't flip ±1 day depending on the time of day (REQ-FIN-09).
+  const days = bakuDaysUntil(deadlineISO);
   if (days < 3) return 'red';
   if (days < 14) return 'amber';
   return 'green';

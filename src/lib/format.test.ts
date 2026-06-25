@@ -8,6 +8,7 @@ import {
   bakuCurrentMonthRange,
   bakuToday,
   bakuEndOfWeek,
+  bakuDaysUntil,
 } from './format';
 
 describe('formatAZN', () => {
@@ -63,6 +64,27 @@ describe('bakuEndOfWeek', () => {
   it('is never before today', () => {
     const today = bakuToday(new Date('2026-06-18T09:00:00Z'));
     expect(bakuEndOfWeek(new Date('2026-06-18T09:00:00Z')) >= today).toBe(true);
+  });
+});
+
+describe('bakuDaysUntil', () => {
+  it('is 0 for today and counts whole calendar days', () => {
+    const now = new Date('2026-06-20T12:00:00Z'); // Baku 16:00, 20th
+    expect(bakuDaysUntil('2026-06-20', now)).toBe(0);
+    expect(bakuDaysUntil('2026-06-23', now)).toBe(3);
+    expect(bakuDaysUntil('2026-06-19', now)).toBe(-1);
+  });
+
+  it('does not skew ±1 day in the late Baku evening', () => {
+    // 22:00 UTC = 02:00 on the 21st in Baku. A deadline of the 21st is "today".
+    const now = new Date('2026-06-20T22:00:00Z');
+    expect(bakuDaysUntil('2026-06-21', now)).toBe(0);
+    expect(bakuDaysUntil('2026-06-22', now)).toBe(1);
+  });
+
+  it('ignores any time component on the input', () => {
+    const now = new Date('2026-06-20T12:00:00Z');
+    expect(bakuDaysUntil('2026-06-22T18:30:00Z', now)).toBe(2);
   });
 });
 

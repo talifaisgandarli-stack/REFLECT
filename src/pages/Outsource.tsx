@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
 import { useAuth } from '@/lib/store';
-import { formatAZN } from '@/lib/format';
+import { formatAZN, bakuDaysUntil, bakuToday } from '@/lib/format';
 import { useSlashFocus } from '@/lib/useSlashFocus';
 import { downloadCsv } from '@/lib/csv';
 
@@ -320,9 +320,7 @@ export function OutsourcePage() {
                   .filter((row) => {
                     if (!dueWeekOnly) return true;
                     if (!row.deadline) return false;
-                    const days = Math.round(
-                      (new Date(row.deadline).getTime() - Date.now()) / 86_400_000,
-                    );
+                    const days = bakuDaysUntil(row.deadline);
                     return days >= 0 && days <= 7;
                   })
                   .filter((row) => !search.trim() || (row.work_title ?? '').toLowerCase().includes(search.trim().toLowerCase()))
@@ -349,9 +347,7 @@ export function OutsourcePage() {
                 .filter((row) => {
                   if (!dueWeekOnly) return true;
                   if (!row.deadline) return false;
-                  const days = Math.round(
-                    (new Date(row.deadline).getTime() - Date.now()) / 86_400_000,
-                  );
+                  const days = bakuDaysUntil(row.deadline);
                   return days >= 0 && days <= 7;
                 })
                 .filter((row) => !search.trim() || (row.work_title ?? '').toLowerCase().includes(search.trim().toLowerCase()))
@@ -388,21 +384,16 @@ export function OutsourcePage() {
                     className="py-3 px-3"
                     style={(() => {
                       if (!row.deadline || row.status === 'paid') return undefined;
-                      const today = new Date().toISOString().slice(0, 10);
-                      if (row.deadline < today) {
+                      if (row.deadline < bakuToday()) {
                         return { color: 'var(--error-deep, #b3261e)', fontWeight: 600 };
                       }
-                      const days = Math.round(
-                        (new Date(row.deadline).getTime() - Date.now()) / 86_400_000,
-                      );
+                      const days = bakuDaysUntil(row.deadline);
                       if (days >= 0 && days <= 3) return { color: 'var(--warning, #c47d00)' };
                       return undefined;
                     })()}
                     title={(() => {
                       if (!row.deadline) return undefined;
-                      const days = Math.round(
-                        (new Date(row.deadline).getTime() - Date.now()) / 86_400_000,
-                      );
+                      const days = bakuDaysUntil(row.deadline);
                       if (days < 0) return `${Math.abs(days)} gün gecikib`;
                       if (days === 0) return 'Bu gün';
                       return `${days} gün qaldı`;
