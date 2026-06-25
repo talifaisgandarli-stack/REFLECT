@@ -5,10 +5,11 @@
  * Schema: okrs(id, scope, employee_id, period, objective, owner_id)
  *         key_results(id, okr_id, title, metric_type, current_value, target_value, unit, updated_at)
  */
-import { useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageHead } from '@/components/PageHead';
 import { EmptyState } from '@/components/EmptyState';
+import { Avatar } from '@/components/Avatar';
 import { useAuth } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { useSlashFocus } from '@/lib/useSlashFocus';
@@ -69,6 +70,19 @@ export function OkrPage() {
         .order('created_at', { ascending: false });
       if (error) throw error;
       return (data ?? []) as Okr[];
+    },
+  });
+
+  // Owner avatars for personal OKRs — lets an admin see whose objective each
+  // card is at a glance. Cached; only meaningful in the personal scope.
+  const owners = useQuery({
+    queryKey: ['profiles', 'okr-owners'],
+    staleTime: 5 * 60_000,
+    queryFn: async (): Promise<Record<string, { name: string | null; url: string | null }>> => {
+      const { data } = await supabase.from('profiles').select('id, full_name, avatar_url');
+      return Object.fromEntries(
+        (data ?? []).map((p) => [p.id, { name: p.full_name, url: p.avatar_url }]),
+      );
     },
   });
 
@@ -211,6 +225,13 @@ export function OkrPage() {
                 >
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
+                      {scope === 'personal' && o.employee_id ? (
+                        <Avatar
+                          name={owners.data?.[o.employee_id]?.name ?? '—'}
+                          url={owners.data?.[o.employee_id]?.url}
+                          size={22}
+                        />
+                      ) : null}
                       <span className="chip text-meta" style={{ padding: '2px 6px', fontSize: 11 }}>{o.period}</span>
                       <span className="text-meta" style={{ color: health.color, fontSize: 11, fontWeight: 600 }}>
                         {health.label}

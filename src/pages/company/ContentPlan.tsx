@@ -33,7 +33,7 @@ const STATUSES: { key: ContentStatus; label: string }[] = [
 const CHANNELS = ['Instagram', 'LinkedIn', 'Website', 'Newsletter', 'YouTube', 'Digər'];
 
 export function ContentPlanPage() {
-  const { isAdmin, profile } = useAuth();
+  const { isAdmin } = useAuth();
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
 
@@ -58,7 +58,20 @@ export function ContentPlanPage() {
         .eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['content_plans'] }),
+    // Optimistic: move the card the instant the button is clicked, roll back if
+    // the write fails. Avoids the round-trip flicker on the kanban.
+    onMutate: async ({ id, status }) => {
+      await qc.cancelQueries({ queryKey: ['content_plans'] });
+      const prev = qc.getQueryData<ContentPlan[]>(['content_plans']);
+      qc.setQueryData<ContentPlan[]>(['content_plans'], (old) =>
+        (old ?? []).map((p) => (p.id === id ? { ...p, status } : p)),
+      );
+      return { prev };
+    },
+    onError: (_e, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['content_plans'], ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['content_plans'] }),
   });
 
   const grouped = STATUSES.reduce(
