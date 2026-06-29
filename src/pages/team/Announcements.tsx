@@ -303,11 +303,11 @@ function CreateAnnouncementModal({ onClose, onSaved }: { onClose: () => void; on
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className="fixed inset-0 z-50 flex items-center justify-center px-4"
       style={{ background: 'rgba(14,22,17,0.55)' }}
       onClick={onClose}
     >
-      <div className="bg-surface p-6 rounded-card w-[480px]" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-surface p-6 rounded-card w-full max-w-[480px]" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-h2 mb-4">Yeni elan</h2>
 
         <label className="block mb-3">

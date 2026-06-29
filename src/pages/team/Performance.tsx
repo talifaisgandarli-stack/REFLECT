@@ -404,12 +404,12 @@ function EditReviewModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className="fixed inset-0 z-50 flex items-center justify-center px-4"
       style={{ background: 'rgba(14,22,17,0.55)' }}
       onClick={onClose}
     >
       <div
-        className="bg-surface p-6 rounded-card w-[480px] max-h-[80vh] overflow-y-auto"
+        className="bg-surface p-6 rounded-card w-full max-w-[480px] max-h-[80vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-h2 mb-1">Qiymətləndirməni redaktə et</h2>
@@ -518,12 +518,12 @@ function AddReviewModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className="fixed inset-0 z-50 flex items-center justify-center px-4"
       style={{ background: 'rgba(14,22,17,0.55)' }}
       onClick={onClose}
     >
       <div
-        className="bg-surface p-6 rounded-card w-[480px] max-h-[80vh] overflow-y-auto"
+        className="bg-surface p-6 rounded-card w-full max-w-[480px] max-h-[80vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-h2 mb-4">Performans qiymətləndirməsi · {year}</h2>

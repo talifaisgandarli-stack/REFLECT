@@ -20,6 +20,10 @@ export default defineConfig({
     alias: { '@': path.resolve(__dirname, 'src') },
   },
   server: { port: 5173 },
+  // Note: dev-only console.warn/info/debug calls are stripped from production via
+  // `import.meta.env.DEV` guards at the call sites (Vite statically eliminates
+  // the dead branch). A build-time `esbuild.pure` was tried but rolldown-vite's
+  // oxc minifier ignores it, so the guards are the source of truth.
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __APP_COMMIT__: JSON.stringify(gitSha()),

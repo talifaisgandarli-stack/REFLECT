@@ -228,7 +228,7 @@ export function LoginPage() {
   const inviteMode = !!inviteToken;
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center px-4">
+    <div className="min-h-screen relative overflow-hidden flex items-center justify-center px-4">
       <div
         aria-hidden
         className="absolute -bottom-40 -right-40 w-[600px] h-[600px] rounded-full"

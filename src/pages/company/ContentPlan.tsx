@@ -33,7 +33,7 @@ const STATUSES: { key: ContentStatus; label: string }[] = [
 const CHANNELS = ['Instagram', 'LinkedIn', 'Website', 'Newsletter', 'YouTube', 'Digər'];
 
 export function ContentPlanPage() {
-  const { isAdmin, profile } = useAuth();
+  const { isAdmin } = useAuth();
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
 
@@ -58,7 +58,20 @@ export function ContentPlanPage() {
         .eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['content_plans'] }),
+    // Optimistic: move the card the instant the button is clicked, roll back if
+    // the write fails. Avoids the round-trip flicker on the kanban.
+    onMutate: async ({ id, status }) => {
+      await qc.cancelQueries({ queryKey: ['content_plans'] });
+      const prev = qc.getQueryData<ContentPlan[]>(['content_plans']);
+      qc.setQueryData<ContentPlan[]>(['content_plans'], (old) =>
+        (old ?? []).map((p) => (p.id === id ? { ...p, status } : p)),
+      );
+      return { prev };
+    },
+    onError: (_e, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['content_plans'], ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['content_plans'] }),
   });
 
   const grouped = STATUSES.reduce(
@@ -196,12 +209,12 @@ function CreateContentModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className="fixed inset-0 z-50 flex items-center justify-center px-4"
       style={{ background: 'rgba(14,22,17,0.55)' }}
       onClick={onClose}
     >
       <div
-        className="bg-surface p-6 rounded-card w-[440px]"
+        className="bg-surface p-6 rounded-card w-full max-w-[440px]"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-h2 mb-4">Məzmun postu</h2>

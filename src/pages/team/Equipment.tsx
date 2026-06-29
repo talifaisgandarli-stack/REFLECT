@@ -455,11 +455,11 @@ export function EquipmentPage() {
       {/* Assign / history panel */}
       {selected ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
+          className="fixed inset-0 z-50 flex items-center justify-center px-4"
           style={{ background: 'rgba(14,22,17,0.55)' }}
           onClick={() => setSelected(null)}
         >
-          <div className="bg-surface p-6 rounded-card w-[440px] max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-surface p-6 rounded-card w-full max-w-[440px] max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-h2 mb-1">{selected.name}</h2>
             <p className="text-meta mb-4" style={{ color: 'var(--text-muted)' }}>{selected.kind} · {selected.serial ?? '—'}</p>
 
@@ -546,8 +546,8 @@ function CreateEquipmentModal({ onClose, onSaved }: { onClose: () => void; onSav
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(14,22,17,0.55)' }} onClick={onClose}>
-      <div className="bg-surface p-6 rounded-card w-[420px]" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'rgba(14,22,17,0.55)' }} onClick={onClose}>
+      <div className="bg-surface p-6 rounded-card w-full max-w-[420px]" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-h2 mb-4">Yeni avadanlıq</h2>
 
         <label className="block mb-3">

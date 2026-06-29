@@ -300,13 +300,16 @@ function LeaveRequestForm({
           .from('profiles')
           .select('id')
           .in('role_id', adminRoleIds);
-        for (const admin of admins ?? []) {
-          await supabase.from('notifications').insert({
-            user_id: admin.id,
-            kind: 'leave_request',
-            payload: { employee_id: profile.id, kind, starts_at: startsAt },
-            dispatched_channels: {},
-          });
+        // Batch all admin notifications into a single insert — one round-trip
+        // instead of N sequential awaits (N+1 on every leave request).
+        const notifs = (admins ?? []).map((admin) => ({
+          user_id: admin.id,
+          kind: 'leave_request',
+          payload: { employee_id: profile.id, kind, starts_at: startsAt },
+          dispatched_channels: {},
+        }));
+        if (notifs.length > 0) {
+          await supabase.from('notifications').insert(notifs);
         }
       }
     },
@@ -315,12 +318,12 @@ function LeaveRequestForm({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className="fixed inset-0 z-50 flex items-center justify-center px-4"
       style={{ background: 'rgba(14,22,17,0.55)' }}
       onClick={onClose}
     >
       <div
-        className="bg-surface p-6 rounded-card w-[440px]"
+        className="bg-surface p-6 rounded-card w-full max-w-[440px]"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-h2 mb-4">Məzuniyyət müraciəti</h2>

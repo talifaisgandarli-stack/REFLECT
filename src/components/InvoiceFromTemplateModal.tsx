@@ -133,12 +133,12 @@ export function InvoiceFromTemplateModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className="fixed inset-0 z-50 flex items-center justify-center px-4"
       style={{ background: 'rgba(14,22,17,0.6)' }}
       onClick={onClose}
     >
       <div
-        className="bg-surface p-6 rounded-card w-[520px] max-h-[90vh] overflow-y-auto"
+        className="bg-surface p-6 rounded-card w-full max-w-[520px] max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {step === 'pick' && (

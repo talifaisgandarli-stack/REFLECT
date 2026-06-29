@@ -27,11 +27,15 @@ export function useProjects() {
   return useQuery({
     queryKey: ['projects', isAdmin ? 'admin' : 'user'],
     queryFn: async (): Promise<Project[]> => {
+      // Bounded safety cap: newest-first, so the firm-wide list can't grow into
+      // an unbounded scan. 1000 active projects is far beyond current scale; a
+      // true paginated surface is only needed at 50+ users (audit §scale).
       const { data, error } = await supabase
         .from(isAdmin ? 'projects' : 'projects_user_view')
         .select('*')
         .is('archived_at', null)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(1000);
       if (error) throw error;
       return (data ?? []) as Project[];
     },
@@ -69,7 +73,10 @@ export function useTasks(
       let q = supabase.from('tasks').select('*').is('archived_at', null);
       if (filter?.projectId) q = q.eq('project_id', filter.projectId);
       if (filter?.assigneeId) q = q.contains('assignee_ids', [filter.assigneeId]);
-      const { data, error } = await q.order('created_at', { ascending: false });
+      // Bounded safety cap: newest-first so the unfiltered (firm-wide) query
+      // can't become an unbounded scan. 2000 non-archived tasks is generous for
+      // current scale; per-project/assignee filters stay well under it.
+      const { data, error } = await q.order('created_at', { ascending: false }).limit(2000);
       if (error) throw error;
       return data ?? [];
     },

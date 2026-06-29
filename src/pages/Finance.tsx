@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/components/Toast';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { formatAZN, formatDate, bakuMonthKey, bakuCurrentMonthRange, bakuToday } from '@/lib/format';
+import { formatAZN, formatDate, relativeTime, bakuMonthKey, bakuCurrentMonthRange, bakuToday } from '@/lib/format';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, ComposedChart, Line, Area, CartesianGrid, Cell } from 'recharts';
 import { IncomeExpenseModal, type FinanceKind } from '@/components/IncomeExpenseModal';
 import { MarkPaidModal } from '@/components/MarkPaidModal';
@@ -80,19 +80,25 @@ export function FinancePage() {
     onError: (e) => toast.error((e as Error).message),
   });
 
+  // Order newest-first before capping: an unordered .limit() returns an
+  // arbitrary subset, which silently corrupts the current-month totals and the
+  // monthly chart once the table passes the cap. Newest-first keeps the current
+  // and recent months always complete; only very old history falls off the cap.
   const incomes = useQuery({
     queryKey: ['fin', 'incomes'],
-    queryFn: async () => (await supabase.from('incomes').select('*').limit(200)).data ?? [],
+    queryFn: async () =>
+      (await supabase.from('incomes').select('*').order('occurred_at', { ascending: false, nullsFirst: false }).limit(2000)).data ?? [],
   });
   const expenses = useQuery({
     queryKey: ['fin', 'expenses'],
-    queryFn: async () => (await supabase.from('expenses').select('*').limit(200)).data ?? [],
+    queryFn: async () =>
+      (await supabase.from('expenses').select('*').order('occurred_at', { ascending: false, nullsFirst: false }).limit(2000)).data ?? [],
   });
   // REQ-FIN-06 — paid outsource costs feed the P&L (bucketed by paid_at month).
   const outsourcePaid = useQuery({
     queryKey: ['fin', 'outsource_paid'],
     queryFn: async () =>
-      (await supabase.from('outsource_items').select('amount, paid_at').eq('status', 'paid').limit(500)).data ?? [],
+      (await supabase.from('outsource_items').select('amount, paid_at').eq('status', 'paid').order('paid_at', { ascending: false, nullsFirst: false }).limit(2000)).data ?? [],
   });
   const receivables = useQuery({
     queryKey: ['fin', 'receivables'],
@@ -101,7 +107,8 @@ export function FinancePage() {
         await supabase
           .from('receivables')
           .select('*, clients(name, company)')
-          .limit(200)
+          .order('created_at', { ascending: false })
+          .limit(1000)
       ).data ?? []) as Array<Receivable & { clients?: { name: string; company: string | null } | null }>,
   });
   const forecasts = useQuery({
@@ -235,6 +242,7 @@ export function FinancePage() {
             </button>
           </div>
         ) : null}
+        <div className="overflow-x-auto">
         <table className="w-full text-body">
           <thead>
             <tr style={{ borderBottom: '1px solid var(--line)' }}>
@@ -348,6 +356,7 @@ export function FinancePage() {
             ) : null}
           </tbody>
         </table>
+        </div>
         </>
       ) : null}
 
@@ -733,6 +742,7 @@ type RecurringRow = {
   amount: number;
   period: 'weekly' | 'monthly' | 'quarterly' | 'yearly';
   next_run_at: string;
+  last_run_at: string | null;
 };
 
 function RecurringExpensesPanel() {
@@ -743,7 +753,7 @@ function RecurringExpensesPanel() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('recurring_expenses')
-        .select('id, label, amount, period, next_run_at')
+        .select('id, label, amount, period, next_run_at, last_run_at')
         .order('next_run_at', { ascending: true });
       if (error) throw error;
       return (data ?? []) as RecurringRow[];
@@ -793,7 +803,7 @@ function RecurringExpensesPanel() {
         <table className="w-full text-body">
           <thead>
             <tr style={{ borderBottom: '1px solid var(--line)' }}>
-              {['Ad', 'Dövr', 'Növbəti', 'Məbləğ', ''].map((h) => (
+              {['Ad', 'Dövr', 'Növbəti', 'Sonuncu', 'Məbləğ', ''].map((h) => (
                 <th
                   key={h}
                   className="text-left py-3 px-3 text-meta"
@@ -809,7 +819,21 @@ function RecurringExpensesPanel() {
               <tr key={r.id} style={{ borderBottom: '1px solid var(--line-soft)' }}>
                 <td className="py-3 px-3">{r.label}</td>
                 <td className="py-3 px-3">{PERIOD_LABEL[r.period] ?? r.period}</td>
-                <td className="py-3 px-3">{formatDate(r.next_run_at)}</td>
+                <td className="py-3 px-3">
+                  {formatDate(r.next_run_at)}
+                  {new Date(r.next_run_at).getTime() < Date.now() ? (
+                    <span
+                      className="chip ml-2"
+                      title="Növbəti tarix keçib — materializasiya gözləyir (cron növbəti işində icra edəcək)"
+                      style={{ background: 'var(--warn-bg, #fef3c7)', color: 'var(--warn-text, #92400e)' }}
+                    >
+                      gecikib
+                    </span>
+                  ) : null}
+                </td>
+                <td className="py-3 px-3 text-meta" style={{ color: 'var(--text-muted)' }}>
+                  {r.last_run_at ? relativeTime(r.last_run_at) : '— heç vaxt'}
+                </td>
                 <td className="py-3 px-3" style={{ fontVariantNumeric: 'tabular-nums' }}>
                   {formatAZN(r.amount)}
                 </td>
@@ -827,7 +851,7 @@ function RecurringExpensesPanel() {
             ))}
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="py-6 text-center text-meta" style={{ color: 'var(--text-muted)' }}>
+                <td colSpan={6} className="py-6 text-center text-meta" style={{ color: 'var(--text-muted)' }}>
                   Sabit xərc qaydası yoxdur.
                 </td>
               </tr>

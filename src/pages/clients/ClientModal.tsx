@@ -14,7 +14,7 @@ import {
   PROJECT_STATUS_LABEL,
   clientValueLabel,
 } from '@/lib/labels';
-import { formatAZN, formatDate, relativeTime } from '@/lib/format';
+import { formatAZN, formatDate, relativeTime, bakuToday } from '@/lib/format';
 import {
   useClientInteractions,
   useClientProjects,
@@ -283,7 +283,10 @@ function FinanceTab({ client }: { client: import('@/types/db').Client }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {receivables.map((r) => {
             const rem = Math.max(0, Number(r.amount) - Number(r.paid_amount));
-            const overdue = r.status !== 'paid' && r.due_at != null && new Date(r.due_at).getTime() < Date.now();
+            // Overdue: compare as Baku calendar dates (due_at is a DATE) — the
+            // same timezone-safe rule Finance.tsx uses, so the badge never skews
+            // ±1 day in the Baku evening (UTC+4).
+            const overdue = r.status !== 'paid' && r.due_at != null && r.due_at < bakuToday();
             return (
               <div key={r.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--line-soft)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

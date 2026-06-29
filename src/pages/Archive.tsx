@@ -59,21 +59,39 @@ export function ArchivePage() {
     enabled: !!profile,
   });
 
+  // REQ-ARC-02 — multi-select restore. One batched UPDATE per entity type
+  // instead of N round-trips; single id reuses the same path with a 1-element set.
+  const [selTasks, setSelTasks] = useState<Set<string>>(new Set());
+  const [selProjects, setSelProjects] = useState<Set<string>>(new Set());
+
   const restoreTask = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from('tasks').update({ archived_at: null }).eq('id', id);
+    mutationFn: async (ids: string[]) => {
+      const { error } = await supabase.from('tasks').update({ archived_at: null }).in('id', ids);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['archive', 'tasks'] }),
+    onSuccess: () => {
+      setSelTasks(new Set());
+      qc.invalidateQueries({ queryKey: ['archive', 'tasks'] });
+    },
   });
 
   const restoreProject = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from('projects').update({ status: 'active', archived_at: null }).eq('id', id);
+    mutationFn: async (ids: string[]) => {
+      const { error } = await supabase.from('projects').update({ status: 'active', archived_at: null }).in('id', ids);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['archive', 'projects'] }),
+    onSuccess: () => {
+      setSelProjects(new Set());
+      qc.invalidateQueries({ queryKey: ['archive', 'projects'] });
+    },
   });
+
+  function toggle(set: Set<string>, id: string): Set<string> {
+    const next = new Set(set);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  }
 
   const q = search.trim().toLowerCase();
   const filteredTasks = useMemo(() => {
@@ -110,29 +128,30 @@ export function ArchivePage() {
           ref={searchRef}
           className="input max-w-[220px]"
           placeholder="Axtar… (/)"
+          aria-label="Arxivdə axtar"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <select className="input max-w-[180px]" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+        <select className="input max-w-[180px]" aria-label="Layihəyə görə süz" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
           <option value="">Bütün layihələr</option>
           {(projects.data ?? []).map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
-        <select className="input max-w-[180px]" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
+        <select className="input max-w-[180px]" aria-label="İcraçıya görə süz" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
           <option value="">Bütün icraçılar</option>
           {(profiles.data ?? []).map((p) => (
             <option key={p.id} value={p.id}>{p.full_name ?? p.id}</option>
           ))}
         </select>
-        <select className="input max-w-[160px]" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+        <select className="input max-w-[160px]" aria-label="Statusa görə süz" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           <option value="">Bütün statuslar</option>
           {(['done', 'cancelled'] as const).map((s) => (
             <option key={s} value={s}>{TASK_STATUS_LABEL[s]}</option>
           ))}
         </select>
-        <input type="date" className="input max-w-[160px]" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-        <input type="date" className="input max-w-[160px]" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+        <input type="date" className="input max-w-[160px]" aria-label="Başlanğıc tarixi" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+        <input type="date" className="input max-w-[160px]" aria-label="Son tarix" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
         {(projectId || assigneeId || statusFilter || dateFrom || dateTo || search) ? (
           <button className="btn-outline" onClick={() => { setProjectId(''); setAssigneeId(''); setStatusFilter(''); setDateFrom(''); setDateTo(''); setSearch(''); }}>
             Sıfırla
@@ -145,14 +164,52 @@ export function ArchivePage() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <section className="card">
-            <h3 className="text-h3 mb-3">Tapşırıqlar ({filteredTasks.length})</h3>
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <h3 className="text-h3">Tapşırıqlar ({filteredTasks.length})</h3>
+              {isAdmin && filteredTasks.length > 0 ? (
+                <div className="flex items-center gap-2">
+                  <label className="text-meta flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+                    <input
+                      type="checkbox"
+                      checked={filteredTasks.length > 0 && filteredTasks.every((t) => selTasks.has(t.id))}
+                      onChange={(e) =>
+                        setSelTasks(e.target.checked ? new Set(filteredTasks.map((t) => t.id)) : new Set())
+                      }
+                    />
+                    Hamısı
+                  </label>
+                  {selTasks.size > 0 ? (
+                    <button
+                      type="button"
+                      className="chip chip-brand"
+                      style={{ whiteSpace: 'nowrap' }}
+                      disabled={restoreTask.isPending}
+                      onClick={() => restoreTask.mutate([...selTasks])}
+                    >
+                      {restoreTask.isPending ? 'Bərpa olunur…' : `Bərpa et (${selTasks.size})`}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
             <ul className="divide-y divide-line-soft">
               {filteredTasks.map((t) => (
                 <li key={t.id} className="py-2 flex items-center justify-between gap-2">
-                  <div>
-                    <div className="text-body">{t.title}</div>
-                    <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                      {TASK_STATUS_LABEL[t.status]} · {t.archived_at?.slice(0, 10) ?? '—'}
+                  <div className="flex items-start gap-2 min-w-0">
+                    {isAdmin ? (
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        aria-label={`${t.title} seç`}
+                        checked={selTasks.has(t.id)}
+                        onChange={() => setSelTasks((s) => toggle(s, t.id))}
+                      />
+                    ) : null}
+                    <div className="min-w-0">
+                      <div className="text-body">{t.title}</div>
+                      <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                        {TASK_STATUS_LABEL[t.status]} · {t.archived_at?.slice(0, 10) ?? '—'}
+                      </div>
                     </div>
                   </div>
                   {isAdmin ? (
@@ -161,7 +218,7 @@ export function ArchivePage() {
                       className="chip"
                       style={{ whiteSpace: 'nowrap' }}
                       disabled={restoreTask.isPending}
-                      onClick={() => restoreTask.mutate(t.id)}
+                      onClick={() => restoreTask.mutate([t.id])}
                     >
                       Bərpa et
                     </button>
@@ -175,14 +232,52 @@ export function ArchivePage() {
           </section>
 
           <section className="card">
-            <h3 className="text-h3 mb-3">Layihələr ({filteredProjects.length})</h3>
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <h3 className="text-h3">Layihələr ({filteredProjects.length})</h3>
+              {isAdmin && filteredProjects.length > 0 ? (
+                <div className="flex items-center gap-2">
+                  <label className="text-meta flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+                    <input
+                      type="checkbox"
+                      checked={filteredProjects.length > 0 && filteredProjects.every((p) => selProjects.has(p.id))}
+                      onChange={(e) =>
+                        setSelProjects(e.target.checked ? new Set(filteredProjects.map((p) => p.id)) : new Set())
+                      }
+                    />
+                    Hamısı
+                  </label>
+                  {selProjects.size > 0 ? (
+                    <button
+                      type="button"
+                      className="chip chip-brand"
+                      style={{ whiteSpace: 'nowrap' }}
+                      disabled={restoreProject.isPending}
+                      onClick={() => restoreProject.mutate([...selProjects])}
+                    >
+                      {restoreProject.isPending ? 'Bərpa olunur…' : `Bərpa et (${selProjects.size})`}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
             <ul className="divide-y divide-line-soft">
               {filteredProjects.map((p) => (
                 <li key={p.id} className="py-2 flex items-center justify-between gap-2">
-                  <div>
-                    <div className="text-body">{p.name}</div>
-                    <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
-                      {p.archived_at?.slice(0, 10) ?? '—'}
+                  <div className="flex items-start gap-2 min-w-0">
+                    {isAdmin ? (
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        aria-label={`${p.name} seç`}
+                        checked={selProjects.has(p.id)}
+                        onChange={() => setSelProjects((s) => toggle(s, p.id))}
+                      />
+                    ) : null}
+                    <div className="min-w-0">
+                      <div className="text-body">{p.name}</div>
+                      <div className="text-meta" style={{ color: 'var(--text-muted)' }}>
+                        {p.archived_at?.slice(0, 10) ?? '—'}
+                      </div>
                     </div>
                   </div>
                   {isAdmin ? (
@@ -191,7 +286,7 @@ export function ArchivePage() {
                       className="chip"
                       style={{ whiteSpace: 'nowrap' }}
                       disabled={restoreProject.isPending}
-                      onClick={() => restoreProject.mutate(p.id)}
+                      onClick={() => restoreProject.mutate([p.id])}
                     >
                       Bərpa et
                     </button>

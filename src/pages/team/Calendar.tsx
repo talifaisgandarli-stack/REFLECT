@@ -117,12 +117,16 @@ export function CalendarPage() {
   const { data: allEvents = [] } = useQuery({
     queryKey: ['calendar', rangeStart, rangeEnd],
     queryFn: async (): Promise<CalEvent[]> => {
+      // Already server-bounded to the visible range (gte/lte starts_at), so
+      // this is not a 60-day client-side load. The .limit() is a defensive cap
+      // in case a single window ever holds an unexpectedly dense event set.
       const { data } = await supabase
         .from('calendar_events')
         .select('*')
         .gte('starts_at', rangeStart)
         .lte('starts_at', rangeEnd)
-        .order('starts_at', { ascending: true });
+        .order('starts_at', { ascending: true })
+        .limit(2000);
       return (data ?? []) as CalEvent[];
     },
   });

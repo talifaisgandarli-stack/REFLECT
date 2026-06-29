@@ -17,9 +17,12 @@ const RANGE_LABEL: Record<Range, string> = {
   all: 'Hamısı',
 };
 
-/** Best-effort completion timestamp: archived_at after REQ-TASK-08, else created_at. */
+/**
+ * Completion timestamp, most-accurate first: completed_at (stamped by the
+ * migration 0080 trigger on open→done) → archived_at → created_at.
+ */
 function completedAt(t: Task): string {
-  return t.archived_at ?? t.created_at;
+  return t.completed_at ?? t.archived_at ?? t.created_at;
 }
 
 function bucketKey(t: Task): 'today' | 'yesterday' | 'week' | 'earlier' {
@@ -34,6 +37,17 @@ export function DoneListPage() {
   const { profile } = useAuth();
   const [range, setRange] = useState<Range>('week');
   const [mineOnly, setMineOnly] = useState(false);
+
+  // Name lookup for completed-by attribution (migration 0080 completed_by).
+  const profiles = useQuery({
+    queryKey: ['profiles', 'names'],
+    staleTime: 5 * 60_000,
+    queryFn: async (): Promise<Record<string, string>> => {
+      const { data } = await supabase.from('profiles').select('id, full_name');
+      return Object.fromEntries((data ?? []).map((p) => [p.id, p.full_name ?? '—']));
+    },
+  });
+  const nameOf = (id: string | null | undefined) => (id ? profiles.data?.[id] : undefined);
 
   const done = useQuery({
     queryKey: ['done-list', range, mineOnly ? profile?.id : null],
@@ -106,10 +120,10 @@ export function DoneListPage() {
       ) : (
         <div className="space-y-6">
           {todayCount > 0 ? <TodayHero count={todayCount} /> : null}
-          <BucketSection label="Bu gün" tasks={buckets.today} hideIfEmpty />
-          <BucketSection label="Dünən" tasks={buckets.yesterday} hideIfEmpty />
-          <BucketSection label="Bu həftə" tasks={buckets.week} hideIfEmpty />
-          <BucketSection label="Daha əvvəl" tasks={buckets.earlier} hideIfEmpty />
+          <BucketSection label="Bu gün" tasks={buckets.today} nameOf={nameOf} hideIfEmpty />
+          <BucketSection label="Dünən" tasks={buckets.yesterday} nameOf={nameOf} hideIfEmpty />
+          <BucketSection label="Bu həftə" tasks={buckets.week} nameOf={nameOf} hideIfEmpty />
+          <BucketSection label="Daha əvvəl" tasks={buckets.earlier} nameOf={nameOf} hideIfEmpty />
         </div>
       )}
     </>
@@ -140,10 +154,12 @@ function TodayHero({ count }: { count: number }) {
 function BucketSection({
   label,
   tasks,
+  nameOf,
   hideIfEmpty,
 }: {
   label: string;
   tasks: Task[];
+  nameOf: (id: string | null | undefined) => string | undefined;
   hideIfEmpty?: boolean;
 }) {
   if (hideIfEmpty && tasks.length === 0) return null;
@@ -161,14 +177,14 @@ function BucketSection({
       </h3>
       <ul className="card divide-y" style={{ borderColor: 'var(--line)' }}>
         {tasks.map((t) => (
-          <DoneRow key={t.id} task={t} />
+          <DoneRow key={t.id} task={t} completedByName={nameOf(t.completed_by)} />
         ))}
       </ul>
     </section>
   );
 }
 
-function DoneRow({ task }: { task: Task }) {
+function DoneRow({ task, completedByName }: { task: Task; completedByName?: string }) {
   const ts = completedAt(task);
   return (
     <li
@@ -188,8 +204,9 @@ function DoneRow({ task }: { task: Task }) {
         </div>
         <div className="mt-1 flex items-center gap-2 text-meta" style={{ color: 'var(--text-muted)' }}>
           <StatusChip status={task.status} />
+          {completedByName ? <span>· {completedByName} tamamladı</span> : null}
           {task.assignee_ids.length > 0 ? (
-            <span>{task.assignee_ids.length} icraçı</span>
+            <span>· {task.assignee_ids.length} icraçı</span>
           ) : null}
           {task.deadline ? <span>· deadline {formatDate(task.deadline)}</span> : null}
         </div>
