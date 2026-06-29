@@ -242,6 +242,7 @@ export function FinancePage() {
             </button>
           </div>
         ) : null}
+        <div className="overflow-x-auto">
         <table className="w-full text-body">
           <thead>
             <tr style={{ borderBottom: '1px solid var(--line)' }}>
@@ -355,6 +356,7 @@ export function FinancePage() {
             ) : null}
           </tbody>
         </table>
+        </div>
         </>
       ) : null}
 

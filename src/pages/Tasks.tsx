@@ -1862,9 +1862,11 @@ export function TasksPage() {
         />
       ) : (
         // Design spec §8.3 — Cədvəl columns: Tapşırıq · Layihə · İcraçı · Phase · Vaxt · Status
+        <div className="overflow-x-auto">
         <table
           className="w-full text-body"
           aria-label={`Tapşırıq cədvəli, ${filtered.length} sıra`}
+          style={{ minWidth: 640 }}
         >
           <thead>
             <tr style={{ borderBottom: '1px solid var(--line)' }}>
@@ -1999,6 +2001,7 @@ export function TasksPage() {
             })}
           </tbody>
         </table>
+        </div>
       )}
 
       {blocker ? (
