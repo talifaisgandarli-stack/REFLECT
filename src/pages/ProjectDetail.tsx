@@ -84,9 +84,11 @@ export function ProjectDetailPage() {
     }
   }, [project?.id, project?.name]);
 
+  // Documents + Finance are admin-only; members see the project but not its
+  // documents or P&L.
   const tabs: Tab[] = isAdmin
     ? ['Overview', 'Tasks', 'Documents', 'Finance', 'Closeout', 'History']
-    : ['Overview', 'Tasks', 'Documents', 'Closeout', 'History'];
+    : ['Overview', 'Tasks', 'Closeout', 'History'];
   const [tab, setTab] = useState<Tab>('Overview');
   const [addingTask, setAddingTask] = useState(false);
   const [taskStatusFilter, setTaskStatusFilter] = useState<TaskStatus | 'all'>('all');
@@ -99,7 +101,7 @@ export function ProjectDetailPage() {
   // Documents (project_documents table — REQ-PROJ-03)
   const { data: documents = [] } = useQuery({
     queryKey: ['project-documents', id],
-    enabled: !!id && tab === 'Documents',
+    enabled: !!id && tab === 'Documents' && isAdmin,
     queryFn: async () => {
       const { data } = await supabase
         .from('project_documents')
@@ -316,12 +318,14 @@ export function ProjectDetailPage() {
           <>
             {/* PRD §UX — copy current URL so admins can paste into Slack/Telegram */}
             <CopyUrlButton />
-            <button
-              className="btn-primary"
-              onClick={() => setTab('Documents')}
-            >
-              + Sənəd əlavə et
-            </button>
+            {isAdmin ? (
+              <button
+                className="btn-primary"
+                onClick={() => setTab('Documents')}
+              >
+                + Sənəd əlavə et
+              </button>
+            ) : null}
           </>
         }
       />
@@ -562,8 +566,8 @@ export function ProjectDetailPage() {
         />
       ) : null}
 
-      {/* DOCUMENTS — REQ-PROJ-03, project_documents table */}
-      {tab === 'Documents' ? (
+      {/* DOCUMENTS — REQ-PROJ-03, admin-only (members don't see project docs) */}
+      {tab === 'Documents' && isAdmin ? (
         <div className="card">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-h3">Sənədlər</h3>
