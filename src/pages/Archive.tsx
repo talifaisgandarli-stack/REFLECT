@@ -50,8 +50,9 @@ export function ArchivePage() {
   const tasks = useQuery({
     queryKey: ['archive', 'tasks'],
     queryFn: async (): Promise<Task[]> => {
-      let q = supabase.from('tasks').select('*').not('archived_at', 'is', null).order('archived_at', { ascending: false }).limit(500);
-      if (!isAdmin && profile?.id) q = q.contains('assignee_ids', [profile.id]);
+      // Members see the whole archive now (Trello-style collaboration); RLS still
+      // hides admin_only tasks. No per-assignee scoping.
+      const q = supabase.from('tasks').select('*').not('archived_at', 'is', null).order('archived_at', { ascending: false }).limit(500);
       const { data, error } = await q;
       if (error) throw error;
       return data ?? [];

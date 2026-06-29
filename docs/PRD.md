@@ -86,22 +86,31 @@ Reflect Architects OS is the **first business-management platform built exclusiv
 | Outsource Specialist | External | Own tasks only |
 | Client | External | Public document/survey access via share token |
 
-### 2.2 Role Hierarchy (numeric levels)
+### 2.2 Role Hierarchy (consolidated — migration 0085)
+Three effective roles. The earlier 5-label model (Manager/BD Lead/Viewer) was
+never enforced and was folded into **Member**; CRM is admin-only.
 ```
-Level 1  Creator   (is_creator = true; Talifa) — unrestricted
-Level 2  Admin     — full read/write except creator-only settings
-Level 3  Team Lead — manage own projects + team tasks
-Level 4  Member    — own tasks + assigned projects
-Level 5  External  — own outsource tasks only (no project tree)
+Creator  (is_creator = true; Talifa) — unrestricted, incl. creator-only settings
+Admin    (roles.is_admin = true)     — full read/write: finance, CRM, settings,
+                                        team management, project documents, P&L
+Member   (roles.is_admin = false)    — full team collaboration, no finance
 ```
+
+**Member access (Trello-style collaboration):**
+- Sees **all** projects (no financials), **all** tasks, **all** archive — and can
+  create / edit / assign / delete any non-`admin_only` task.
+- Komanda (roster, own salary, own performance, leave, calendar, announcements,
+  equipment), Şirkət (own OKR, career), MIRAI, Telegram, profile.
+- **Cannot** see: CRM (Müştərilər), Maliyyə Mərkəzi, Parametrlər, Məzmun
+  Planlaması, project Documents, project P&L, outsource amounts.
 
 Helper functions in Postgres:
 - `is_creator()` → `profiles.is_creator = true`
-- `is_admin()` → `roles.level <= 2 OR is_creator()`
-- `is_team_lead()` → `roles.level <= 3 OR is_creator()`
-- `current_role_level()` → integer
+- `is_admin()` → `is_creator() OR roles.is_admin` (Creator + Admin only)
 
-**Rule:** sidebar visibility never substitutes for RLS. Every component that renders financial values must call a role check inline (`useRoleLevel() <= 2`) AND the underlying query must be RLS-protected.
+**Rule:** sidebar visibility never substitutes for RLS. Every component that
+renders financial values must gate on `isAdmin` inline AND the underlying query
+must be RLS-protected. `admin_only` tasks remain hidden from Members by RLS.
 
 ---
 
