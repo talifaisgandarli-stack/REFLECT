@@ -132,6 +132,23 @@ export function useRealtimeSync(userId: string | undefined) {
       }),
     );
 
+    // Roster sync — a profile change (most importantly is_active when an admin
+    // deactivates a user, but also name/role/avatar) must propagate to every
+    // member's roster live, not just the admin who made it. RLS scopes delivery
+    // to authenticated users (everyone can read profiles), matching the roster
+    // audience. Invalidate both the roster query and the profile-name lookups
+    // (Done attribution, OKR owners, document share pickers, etc).
+    cleanups.push(
+      subscribeTable({
+        table: 'profiles',
+        channelName: `profiles:${userId}`,
+        onChange: () => {
+          debouncedInvalidate(['profiles-with-roles']);
+          debouncedInvalidate(['profiles']);
+        },
+      }),
+    );
+
     // REQ-PRESENCE-01 — presence updates over a realtime channel, no polling.
     // up_select RLS scopes delivery to authenticated users (the whole team),
     // matching the presence audience. Every heartbeat write fans out here so
