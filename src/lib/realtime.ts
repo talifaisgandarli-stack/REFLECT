@@ -145,6 +145,9 @@ export function useRealtimeSync(userId: string | undefined) {
         onChange: () => {
           debouncedInvalidate(['profiles-with-roles']);
           debouncedInvalidate(['profiles']);
+          // is_active change must also drop the user from the dashboard presence
+          // panel live, not just the roster.
+          debouncedInvalidate(['presence']);
         },
       }),
     );

@@ -437,8 +437,15 @@ export function useTeamPresence() {
       ]);
       if (presenceRes.error) throw presenceRes.error;
 
+      // Only active members belong on the panel. A deactivated user keeps their
+      // old user_presence row, so seeding byId from presence alone resurfaced
+      // them — gate every presence row through the active-profile set.
+      const activeIds = new Set((profilesRes.data ?? []).map((p) => (p as { id: string }).id));
       const byId = new Map<string, UserPresence>();
-      for (const r of (presenceRes.data ?? []) as UserPresence[]) byId.set(r.user_id, r);
+      for (const r of (presenceRes.data ?? []) as UserPresence[]) {
+        if (!activeIds.has(r.user_id)) continue;
+        byId.set(r.user_id, r);
+      }
       // REQ-DASH-06 — the panel must show ALL team members. Synthesize an
       // offline entry for active members who have never sent a heartbeat (no
       // user_presence row); empty last_heartbeat_at → UI shows "Oflayn" with
