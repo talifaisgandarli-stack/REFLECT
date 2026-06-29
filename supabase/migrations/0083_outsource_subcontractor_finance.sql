@@ -19,8 +19,10 @@ update public.outsource_items
 
 -- Member view gains the non-financial additions (discipline + company) so the
 -- "Podratçı" column renders for non-admins; money columns stay admin-only.
+-- New columns are APPENDED (not inserted mid-list): `create or replace view`
+-- can only add columns at the end, never rename/reorder existing ones.
 create or replace view public.outsource_user_view as
-  select id, project_id, work_title, contact_person, contact_company,
-         discipline, deadline, status, responsible_user_id
+  select id, project_id, work_title, contact_person, deadline, status, responsible_user_id,
+         contact_company, discipline
   from public.outsource_items;
 grant select on public.outsource_user_view to authenticated;
