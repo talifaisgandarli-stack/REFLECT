@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type CSSProperties } from 'react';
+import { Fragment, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { PageHead } from '@/components/PageHead';
@@ -291,8 +291,8 @@ export function OutsourcePage() {
             <thead>
               <tr style={{ borderBottom: '1px solid var(--line)' }}>
                 {(isAdmin
-                  ? ['Podratçı', 'Layihə', 'İş statusu', 'Deadline', 'Ödəniş', 'Mərhələlər', 'Müqavilə', 'Ödənilib', 'Qalıq', '']
-                  : ['Podratçı', 'Layihə', 'İş statusu', 'Deadline']
+                  ? ['Podratçı / İş', 'Layihə', 'İş statusu', 'Deadline', 'Ödəniş', 'Mərhələlər', 'Müqavilə', 'Ödənilib', 'Qalıq', '']
+                  : ['Podratçı / İş', 'Layihə', 'İş statusu', 'Deadline']
                 ).map((h) => (
                   <th key={h} className="text-left py-3 px-3 text-meta" style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
@@ -307,7 +307,39 @@ export function OutsourcePage() {
                   </td>
                 </tr>
               ) : null}
-              {filtered.map((row) => {
+              {(() => {
+                // Group every work under its subcontractor (contact_company) so a
+                // podratçı's jobs sit together with a per-podratçı subtotal row.
+                const groups = new Map<string, OutsourceRow[]>();
+                for (const r of filtered) {
+                  const key = (r.contact_company ?? '').trim() || '—';
+                  const arr = groups.get(key) ?? [];
+                  arr.push(r);
+                  groups.set(key, arr);
+                }
+                const gTotal = (items: OutsourceRow[]) => items.reduce((s, r) => s + Number(r.amount ?? 0), 0);
+                return [...groups.entries()].sort((a, b) => gTotal(b[1]) - gTotal(a[1])).map(([company, items]) => {
+                  const gContract = gTotal(items);
+                  const gPaid = items.reduce((s, r) => s + paidOf(r.id), 0);
+                  const gRemaining = Math.max(0, gContract - gPaid);
+                  const disciplines = [...new Set(items.map((i) => i.discipline).filter(Boolean))];
+                  return (
+                    <Fragment key={company}>
+                      <tr style={{ background: 'var(--surface-mist)', borderTop: '1px solid var(--line)' }}>
+                        <td colSpan={isAdmin ? 6 : 4} className="py-2 px-3">
+                          <span className="font-semibold" style={{ color: 'var(--text)' }}>{company === '—' ? '— podratçı qeyd edilməyib —' : company}</span>
+                          <span className="text-meta" style={{ color: 'var(--text-muted)' }}>{' · '}{items.length} iş{disciplines.length ? ' · ' + disciplines.join(', ') : ''}</span>
+                        </td>
+                        {isAdmin ? (
+                          <>
+                            <td className="py-2 px-3 font-semibold" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAZN(gContract)}</td>
+                            <td className="py-2 px-3 font-semibold" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--success-deep, #1d7a44)' }}>{formatAZN(gPaid)}</td>
+                            <td className="py-2 px-3 font-semibold" style={{ fontVariantNumeric: 'tabular-nums', color: gRemaining > 0 ? 'var(--error-deep, #b3261e)' : 'var(--text-muted)' }}>{formatAZN(gRemaining)}</td>
+                            <td className="py-2 px-3" />
+                          </>
+                        ) : null}
+                      </tr>
+                      {items.map((row) => {
                 const amount = row.amount ?? null;
                 const ps = paymentsOf(row.id);
                 const paid = sumPaid(ps);
@@ -323,8 +355,8 @@ export function OutsourcePage() {
                 const paidMethods = [...new Set(ps.filter((p) => p.is_paid && p.method).map((p) => p.method as string))];
                 return (
                   <tr key={row.id} className="hover:bg-surface-mist transition-colors" style={{ borderBottom: '1px solid var(--line-soft)' }}>
-                    <td className="py-3 px-3">
-                      <div className="font-medium" style={{ color: 'var(--text)' }}>{row.contact_company || row.work_title || '—'}</div>
+                    <td className="py-3 px-3" style={{ paddingLeft: 24 }}>
+                      <div style={{ color: 'var(--text)' }}>{row.work_title}</div>
                       {row.discipline ? <div className="text-meta" style={{ color: 'var(--text-muted)' }}>{row.discipline}</div> : null}
                     </td>
                     <td className="py-3 px-3 truncate max-w-[200px]">
@@ -378,7 +410,11 @@ export function OutsourcePage() {
                     ) : null}
                   </tr>
                 );
-              })}
+                      })}
+                    </Fragment>
+                  );
+                });
+              })()}
             </tbody>
             {isAdmin && filtered.length > 0 ? (
               <tfoot>
