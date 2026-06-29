@@ -15,6 +15,12 @@
     background-image: radial-gradient(circle, var(--canvas-dots) 1px, transparent 1px);
     background-size: 20px 20px;
     min-height: 100vh;
+    /* Guard against off-canvas decorative blobs (e.g. blurred glow circles)
+       creating a phantom horizontal scrollbar. `clip` (not `hidden`) caps the
+       x-axis without making body a scroll container, so position:sticky in the
+       sidebar still works. Real wide content scrolls inside its own
+       overflow-x-auto wrapper, so nothing reachable gets clipped. */
+    overflow-x: clip;
   }
   @media (max-width: 640px) {
     body { background-size: 14px 14px; }

@@ -14,23 +14,19 @@ function gitSha(): string {
   }
 }
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: { '@': path.resolve(__dirname, 'src') },
   },
   server: { port: 5173 },
-  // Strip dev-only console noise from the production bundle. Marking these as
-  // /* @__PURE__ */ lets esbuild's minifier drop the calls (their return value
-  // is always unused). console.error is intentionally kept — Sentry hooks it and
-  // it is the channel for genuine production failures.
-  esbuild:
-    mode === 'production'
-      ? { pure: ['console.warn', 'console.info', 'console.debug', 'console.log'] }
-      : {},
+  // Note: dev-only console.warn/info/debug calls are stripped from production via
+  // `import.meta.env.DEV` guards at the call sites (Vite statically eliminates
+  // the dead branch). A build-time `esbuild.pure` was tried but rolldown-vite's
+  // oxc minifier ignores it, so the guards are the source of truth.
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __APP_COMMIT__: JSON.stringify(gitSha()),
     __APP_BUILD_TIME__: JSON.stringify(new Date().toISOString()),
   },
-}));
+});
