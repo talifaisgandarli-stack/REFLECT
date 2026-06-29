@@ -22,6 +22,7 @@ const WORK_STATUS: Record<Status, { label: string; bg: string; color: string }> 
 
 type PaymentKind = 'advance' | 'interim' | 'final';
 const KIND_LABEL: Record<PaymentKind, string> = { advance: 'Avans', interim: 'Ara', final: 'Final' };
+const METHOD_LABEL: Record<string, string> = { cash: 'Nağd', bank_transfer: 'Bank köçürmə', card: 'Kart' };
 const METHOD_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'cash', label: 'Nağd' },
   { value: 'bank_transfer', label: 'Bank köçürmə' },
@@ -319,6 +320,7 @@ export function OutsourcePage() {
                 const interim = ps.filter((p) => p.kind === 'interim');
                 const fin = ps.filter((p) => p.kind === 'final');
                 const allPaid = (arr: OutsourcePayment[]) => arr.length > 0 && arr.every((p) => p.is_paid);
+                const paidMethods = [...new Set(ps.filter((p) => p.is_paid && p.method).map((p) => p.method as string))];
                 return (
                   <tr key={row.id} className="hover:bg-surface-mist transition-colors" style={{ borderBottom: '1px solid var(--line-soft)' }}>
                     <td className="py-3 px-3">
@@ -339,7 +341,12 @@ export function OutsourcePage() {
                     </td>
                     {isAdmin ? (
                       <>
-                        <td className="py-3 px-3"><span className="text-meta" style={{ color: payState.color, fontWeight: 500 }}>{payState.label}</span></td>
+                        <td className="py-3 px-3">
+                          <span className="text-meta" style={{ color: payState.color, fontWeight: 500 }}>{payState.label}</span>
+                          {paidMethods.length > 0 ? (
+                            <div className="text-meta" style={{ color: 'var(--text-muted)' }}>{paidMethods.map((m) => METHOD_LABEL[m] ?? m).join(', ')}</div>
+                          ) : null}
+                        </td>
                         <td className="py-3 px-3">
                           {ps.length === 0 ? (
                             <span className="text-meta" style={{ color: 'var(--text-muted)' }}>—</span>
@@ -466,6 +473,8 @@ function OutsourceModal({ item, initialPayments, onClose }: { item: OutsourceRow
       for (const [i, p] of payments.entries()) {
         const n = Number(p.amount);
         if (!p.amount.trim() || !Number.isFinite(n) || n <= 0) throw new Error(`${i + 1}-ci ödənişin məbləği 0-dan böyük olmalıdır`);
+        // A payment marked paid must record HOW it was paid.
+        if (p.is_paid && !p.method) throw new Error(`${i + 1}-ci ödəniş "Ödənilib" işarələnib — ödəniş üsulunu (nağd/köçürmə) seçin`);
       }
       const itemPayload = {
         work_title: workTitle.trim(),
@@ -591,7 +600,14 @@ function OutsourceModal({ item, initialPayments, onClose }: { item: OutsourceRow
                       {(['advance', 'interim', 'final'] as const).map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
                     </select>
                     <input type="number" min="0.01" step="0.01" className="input" style={{ width: 120, height: 34 }} placeholder="Məbləğ" aria-label="Məbləğ" value={p.amount} onChange={(e) => updatePayment(i, { amount: e.target.value })} />
-                    <select className="input" style={{ width: 140, height: 34 }} aria-label="Ödəniş üsulu" value={p.method} onChange={(e) => updatePayment(i, { method: e.target.value })}>
+                    <select
+                      className="input"
+                      style={{ width: 140, height: 34, ...(p.is_paid && !p.method ? { borderColor: 'var(--error-deep)' } : {}) }}
+                      aria-label="Ödəniş üsulu"
+                      title={p.is_paid && !p.method ? 'Ödənilib seçilib — üsul tələb olunur' : undefined}
+                      value={p.method}
+                      onChange={(e) => updatePayment(i, { method: e.target.value })}
+                    >
                       <option value="">Üsul —</option>
                       {METHOD_OPTIONS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                     </select>
