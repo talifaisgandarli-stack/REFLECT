@@ -20,6 +20,17 @@ const WORK_STATUS: Record<Status, { label: string; bg: string; color: string }> 
   paid: { label: 'Tamamlandı', bg: 'var(--success-bg, #e6f4ea)', color: 'var(--success-deep, #1d7a44)' },
 };
 
+// Work-status filter groups. `delivered` and `paid` both read as "Tamamlandı"
+// (payment is tracked separately), so they collapse into one filter chip —
+// otherwise the bar showed two identical "Tamamlandı" chips.
+type WorkFilter = 'all' | 'order' | 'in_progress' | 'done';
+const WORK_FILTERS: Array<{ key: WorkFilter; label: string; match: (s: Status) => boolean }> = [
+  { key: 'all', label: 'Hamısı', match: () => true },
+  { key: 'order', label: 'Başlanmayıb', match: (s) => s === 'order' },
+  { key: 'in_progress', label: 'İcrada', match: (s) => s === 'in_progress' },
+  { key: 'done', label: 'Tamamlandı', match: (s) => s === 'delivered' || s === 'paid' },
+];
+
 type PaymentKind = 'advance' | 'interim' | 'final';
 const KIND_LABEL: Record<PaymentKind, string> = { advance: 'Avans', interim: 'Ara', final: 'Final' };
 const METHOD_LABEL: Record<string, string> = { cash: 'Nağd', bank_transfer: 'Bank köçürmə', card: 'Kart' };
@@ -74,7 +85,7 @@ export function OutsourcePage() {
   const [yearFilter, setYearFilter] = useState<'all' | number>('all');
   const [monthFilter, setMonthFilter] = useState<'all' | number>('all');
   const [projectFilter, setProjectFilter] = useState<'all' | string>('all');
-  const [statusFilter, setStatusFilter] = useState<Status | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<WorkFilter>('all');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   useSlashFocus(searchRef);
@@ -143,8 +154,9 @@ export function OutsourcePage() {
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
+    const statusMatch = WORK_FILTERS.find((f) => f.key === statusFilter)?.match ?? (() => true);
     return rows.filter((r) => {
-      if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+      if (!statusMatch(r.status)) return false;
       if (projectFilter !== 'all' && r.project_id !== projectFilter) return false;
       if (yearFilter !== 'all' && yearOf(rowDate(r)) !== yearFilter) return false;
       if (monthFilter !== 'all' && monthOf(rowDate(r)) !== monthFilter) return false;
@@ -267,12 +279,12 @@ export function OutsourcePage() {
 
       {rows.length > 0 ? (
         <div className="flex gap-2 mb-3 flex-wrap">
-          {(['all', 'order', 'in_progress', 'delivered', 'paid'] as const).map((s) => {
-            const count = s === 'all' ? rows.length : rows.filter((r) => r.status === s).length;
-            const active = statusFilter === s;
+          {WORK_FILTERS.map((f) => {
+            const count = rows.filter((r) => f.match(r.status)).length;
+            const active = statusFilter === f.key;
             return (
-              <button key={s} type="button" className="chip" style={{ background: active ? 'var(--brand-action)' : 'var(--surface-mist)', color: active ? 'var(--ink)' : 'var(--text-muted)', fontSize: 12, fontWeight: active ? 600 : 400, opacity: count === 0 && s !== 'all' ? 0.4 : 1 }} onClick={() => setStatusFilter(s)}>
-                {s === 'all' ? 'Hamısı' : (WORK_STATUS[s as Status]?.label ?? s)} · {count}
+              <button key={f.key} type="button" className="chip" style={{ background: active ? 'var(--brand-action)' : 'var(--surface-mist)', color: active ? 'var(--ink)' : 'var(--text-muted)', fontSize: 12, fontWeight: active ? 600 : 400, opacity: count === 0 && f.key !== 'all' ? 0.4 : 1 }} onClick={() => setStatusFilter(f.key)}>
+                {f.label} · {count}
               </button>
             );
           })}
