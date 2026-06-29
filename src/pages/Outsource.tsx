@@ -89,16 +89,6 @@ export function OutsourcePage() {
   });
   const projectName = (id: string | null | undefined) => (id && projects.data?.get(id)) || '—';
 
-  const profilesMap = useQuery({
-    queryKey: ['outsource-profiles-map'],
-    staleTime: 5 * 60_000,
-    queryFn: async () => {
-      const { data } = await supabase.from('profiles').select('id, full_name');
-      return new Map((data ?? []).map((p) => [p.id, p.full_name as string | null]));
-    },
-  });
-  const responsibleName = (id: string | null | undefined) => (id && profilesMap.data?.get(id)) || null;
-
   // The date a row is bucketed under for the year/month filters: deadline first
   // (the work's timeframe), else creation date.
   const rowDate = (r: OutsourceRow) => r.deadline ?? (r.created_at ? r.created_at.slice(0, 10) : null);
@@ -183,14 +173,16 @@ export function OutsourcePage() {
         }
       />
 
-      {/* Spend-by-responsible breakdown (admin) — kept; now paid uses paid_amount */}
+      {/* Spend-by-subcontractor breakdown (admin) — grouped by podratçı, since
+          the question is "how much do we owe / spend per subcontractor", not per
+          internal owner. Paid uses paid_amount. */}
       {isAdmin && rows.length > 0 ? (
         <div className="card mb-4">
-          <h3 className="text-h3 mb-2">Məsul şəxslər üzrə xərc</h3>
+          <h3 className="text-h3 mb-2">Podratçılar üzrə xərc</h3>
           {(() => {
             const buckets = new Map<string, { count: number; total: number; paid: number }>();
             for (const r of rows) {
-              const key = r.responsible_user_id ?? 'unassigned';
+              const key = (r.contact_company ?? '').trim() || '—';
               const cur = buckets.get(key) ?? { count: 0, total: 0, paid: 0 };
               cur.count += 1;
               cur.total += Number(r.amount ?? 0);
@@ -201,10 +193,10 @@ export function OutsourcePage() {
             const max = Math.max(1, ...list.map(([, v]) => v.total));
             return (
               <ul className="space-y-1.5">
-                {list.slice(0, 8).map(([id, v]) => (
-                  <li key={id} className="flex items-center gap-3 text-meta">
-                    <span className="w-32 shrink-0 truncate" style={{ color: 'var(--text-muted)' }}>
-                      {id === 'unassigned' ? '— təyin edilməyib —' : (responsibleName(id) ?? id.slice(0, 8))}
+                {list.slice(0, 8).map(([name, v]) => (
+                  <li key={name} className="flex items-center gap-3 text-meta">
+                    <span className="w-36 shrink-0 truncate" style={{ color: 'var(--text-muted)' }} title={name === '—' ? undefined : name}>
+                      {name === '—' ? '— podratçı qeyd edilməyib —' : name}
                     </span>
                     <div className="flex-1 h-4 rounded-full" style={{ background: 'var(--line-soft)' }}>
                       <div style={{ width: `${(v.total / max) * 100}%`, height: '100%', background: 'var(--brand-action)', borderRadius: 999 }} />
@@ -450,21 +442,12 @@ function OutsourceModal({ item, onClose }: { item: OutsourceRow | null; onClose:
   const [deadline, setDeadline] = useState(item?.deadline ?? '');
   const [status, setStatus] = useState<Status>(item?.status ?? 'order');
   const [projectId, setProjectId] = useState<string>(item?.project_id ?? '');
-  const [responsibleUserId, setResponsibleUserId] = useState<string>(item?.responsible_user_id ?? '');
   const [paymentMethod, setPaymentMethod] = useState<string>(item?.payment_method ?? '');
 
   const projects = useQuery({
     queryKey: ['projects', 'active-list'],
     queryFn: async () => {
       const { data, error } = await supabase.from('projects').select('id, name').is('archived_at', null).order('name');
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
-  const profiles = useQuery({
-    queryKey: ['profiles', 'list'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('profiles').select('id, full_name').order('full_name');
       if (error) throw error;
       return data ?? [];
     },
@@ -493,7 +476,6 @@ function OutsourceModal({ item, onClose }: { item: OutsourceRow | null; onClose:
         deadline: deadline || null,
         status,
         project_id: projectId || null,
-        responsible_user_id: responsibleUserId || null,
         payment_method: isAdmin ? paymentMethod || null : null,
       };
       const { error } = isEdit
@@ -573,17 +555,10 @@ function OutsourceModal({ item, onClose }: { item: OutsourceRow | null; onClose:
               </select>
             </label>
             <label className="block">
-              <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Əlaqə şəxsi</span>
-              <input className="input w-full" value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} />
+              <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Əlaqə şəxsi (podratçı tərəfdən)</span>
+              <input className="input w-full" value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} placeholder="məs. Fərid bəy" />
             </label>
           </div>
-          <label className="block">
-            <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Məsul şəxs</span>
-            <select className="input w-full" value={responsibleUserId} onChange={(e) => setResponsibleUserId(e.target.value)}>
-              <option value="">— seç —</option>
-              {(profiles.data ?? []).map((p: { id: string; full_name: string | null }) => <option key={p.id} value={p.id}>{p.full_name ?? p.id}</option>)}
-            </select>
-          </label>
           {isAdmin ? (
             <label className="block">
               <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>Ödəniş üsulu</span>
