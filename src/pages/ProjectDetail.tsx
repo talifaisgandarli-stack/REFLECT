@@ -16,6 +16,7 @@ import { useAuth } from '@/lib/store';
 import { PROJECT_PHASES, PROJECT_STATUS_LABEL, phaseLabel } from '@/lib/labels';
 import { ProjectPnL } from '@/components/ProjectPnL';
 import { IncomeExpenseModal, type FinanceKind } from '@/components/IncomeExpenseModal';
+import { ProjectCreateModal } from '@/components/ProjectCreateModal';
 import { toast } from '@/components/Toast';
 import { TaskCreateModal } from '@/components/TaskCreateModal';
 import { SkeletonList } from '@/components/Skeleton';
@@ -91,6 +92,7 @@ export function ProjectDetailPage() {
     ? ['Overview', 'Tasks', 'Documents', 'Finance', 'Closeout', 'History']
     : ['Overview', 'Tasks', 'Closeout', 'History'];
   const [tab, setTab] = useState<Tab>('Overview');
+  const [editOpen, setEditOpen] = useState(false);
   const [addingTask, setAddingTask] = useState(false);
   const [taskStatusFilter, setTaskStatusFilter] = useState<TaskStatus | 'all'>('all');
 
@@ -320,6 +322,11 @@ export function ProjectDetailPage() {
             {/* PRD §UX — copy current URL so admins can paste into Slack/Telegram */}
             <CopyUrlButton />
             {isAdmin ? (
+              <button type="button" className="btn-outline" onClick={() => setEditOpen(true)}>
+                ✎ Düzəlt
+              </button>
+            ) : null}
+            {isAdmin ? (
               <button
                 className="btn-primary"
                 onClick={() => setTab('Documents')}
@@ -330,6 +337,10 @@ export function ProjectDetailPage() {
           </>
         }
       />
+
+      {editOpen && isAdmin ? (
+        <ProjectCreateModal existingProject={project} onClose={() => setEditOpen(false)} />
+      ) : null}
 
       {expertiseBanner}
 
