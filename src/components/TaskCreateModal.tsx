@@ -73,10 +73,11 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
   const projects = useProjects();
   const qc = useQueryClient();
 
-  // REQ-TASK-02 — admins can multi-assign. Non-admins only get "assign self".
+  // REQ-TASK-02 — Trello-style collaboration (PRD §2.2): every member may assign
+  // any teammate, not just themselves. Fetch the team list for everyone.
   const teamMembers = useQuery({
     queryKey: ['profiles', 'team-list'],
-    enabled: isAdmin,
+    enabled: !!profile,
     queryFn: async () => {
       const { data } = await supabase
         .from('profiles')
@@ -125,16 +126,16 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
   const showSubtasks = !parentTaskId;
   const subtaskErr = subtaskError(subtasks);
 
-  // People a subtask can be assigned to: admins pick from the whole team;
-  // everyone else can only assign themselves.
+  // People a (sub)task can be assigned to — the whole active team, for every
+  // member (Trello-style). Falls back to self while the team list loads.
   const assignable = useMemo(
     () =>
-      isAdmin
-        ? (teamMembers.data ?? [])
+      teamMembers.data && teamMembers.data.length > 0
+        ? teamMembers.data
         : profile
           ? [{ id: profile.id, full_name: profile.full_name, email: profile.email }]
           : [],
-    [isAdmin, teamMembers.data, profile],
+    [teamMembers.data, profile],
   );
 
   const workloadPreview = useMemo(() => {
@@ -454,8 +455,8 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
             </label>
           ) : null}
 
-          {isAdmin ? (
-            <Field label="Əlavə icraçılar (admin)">
+          {(teamMembers.data ?? []).length > 0 ? (
+            <Field label="Əlavə icraçılar">
               <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 rounded-btn" style={{ background: 'var(--surface-mist)' }}>
                 {(teamMembers.data ?? []).filter((m) => m.id !== profile?.id).map((m) => {
                   const checked = extraAssignees.includes(m.id);
