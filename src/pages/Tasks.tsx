@@ -238,12 +238,13 @@ export function TasksPage() {
   const [ganttStart, setGanttStart] = useState<string>(() => daysFromTodayInBaku(-7));
   // Design spec §8.3: "Empty Tamamlandı stub: '+ N daha' — clicks expand archived".
   const [expandedArchive, setExpandedArchive] = useState(false);
-  // Board view nests subtasks inside their parent card (Trello-style checklist)
-  // instead of showing them as standalone cards. Parents are expanded by default;
-  // this set tracks the ones the user has collapsed.
-  const [collapsedSubtasks, setCollapsedSubtasks] = useState<Set<string>>(new Set());
+  // Board view nests subtasks inside their parent card (Trello-style checklist).
+  // Parents are COLLAPSED by default — a card with many subtasks would otherwise
+  // grow tall and swamp the board; the "X/Y" progress chip stays visible and the
+  // user expands a card on demand. This set tracks the ones expanded.
+  const [expandedSubtasks, setExpandedSubtasks] = useState<Set<string>>(new Set());
   const toggleSubtaskExpand = useCallback((id: string) => {
-    setCollapsedSubtasks((prev) => {
+    setExpandedSubtasks((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -1590,7 +1591,7 @@ export function TasksPage() {
                         const kids = childrenByParent.get(t.id);
                         if (!kids || kids.length === 0) return null;
                         const doneCount = kids.filter((k) => k.status === 'done' || k.status === 'cancelled').length;
-                        const expanded = !collapsedSubtasks.has(t.id);
+                        const expanded = expandedSubtasks.has(t.id);
                         const pct = Math.round((doneCount / kids.length) * 100);
                         const subtle = 'var(--text-muted)';
                         return (
