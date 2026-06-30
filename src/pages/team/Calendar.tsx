@@ -45,8 +45,12 @@ function isSameDay(a: Date, b: Date) {
     a.getDate() === b.getDate();
 }
 function fmtTime(iso: string) {
+  // calendar_events store the entered wall-clock time naively (the modal writes
+  // `YYYY-MM-DDTHH:mm:00` with no offset, so Postgres keeps it as that exact UTC
+  // instant). Render in UTC to echo back exactly what was typed — converting to
+  // Asia/Baku here double-applied the +4 offset (11:00 entered → 15:00 shown).
   return new Date(iso).toLocaleTimeString('az-AZ', {
-    timeZone: 'Asia/Baku',
+    timeZone: 'UTC',
     hour: '2-digit',
     minute: '2-digit',
   });
@@ -708,6 +712,15 @@ function EventModal({
   const { profile, isAdmin } = useAuth();
   const canEdit = isAdmin || event.organizer_id === profile?.id;
   const canDelete = canEdit;
+  // Linked project name for the tag chip (only when the meeting has a project).
+  const linkedProject = useQuery({
+    queryKey: ['calendar-event-project', event.project_id],
+    enabled: !!event.project_id,
+    queryFn: async () => {
+      const { data } = await supabase.from('projects').select('id, name').eq('id', event.project_id!).maybeSingle();
+      return data as { id: string; name: string } | null;
+    },
+  });
   // PRD §8.2 EXDATE — push this occurrence into exception_dates so it disappears
   // from future series expansions (currently the UI shows only the seed date,
   // so this is forward-compatible with expanded recurring rendering).
@@ -772,12 +785,22 @@ function EventModal({
         ) : (
           <h2 className="text-h2 mb-2">{event.title}</h2>
         )}
+        {/* Optional project tag — which project this meeting belongs to */}
+        {event.project_id && linkedProject.data ? (
+          <a
+            href={`/layihelər/${event.project_id}`}
+            className="chip inline-flex items-center gap-1 mb-2"
+            style={{ background: projectColor(event.project_id).bg, color: projectColor(event.project_id).fg }}
+          >
+            📁 {linkedProject.data.name}
+          </a>
+        ) : null}
         {/* Date display + inline time edit (admin/organizer) */}
         {canEdit ? (
           <EventTimeInline event={event} />
         ) : (
           <p className="text-meta" style={{ color: 'var(--text-muted)' }}>
-            {new Date(event.starts_at).toLocaleDateString('az-AZ', { timeZone: 'Asia/Baku', weekday: 'long', day: 'numeric', month: 'long' })}
+            {new Date(event.starts_at).toLocaleDateString('az-AZ', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' })}
             {' '}{fmtTime(event.starts_at)} – {fmtTime(event.ends_at)}
             {/* PRD §UX — total duration so user sees length without math */}
             {(() => {
@@ -862,7 +885,7 @@ function EventModal({
           style={{ fontSize: 11, color: 'var(--text-muted)' }}
           onClick={() => {
             const lines: string[] = [event.title];
-            lines.push(new Date(event.starts_at).toLocaleString('az-AZ', { timeZone: 'Asia/Baku' }));
+            lines.push(new Date(event.starts_at).toLocaleString('az-AZ', { timeZone: 'UTC' }));
             if (event.location) lines.push(`📍 ${event.location}`);
             if (event.meet_url) lines.push(`📹 ${event.meet_url}`);
             void navigator.clipboard.writeText(lines.join('\n')).catch(() => {});
@@ -971,6 +994,16 @@ function CreateEventModal({ defaultDate, userId, onClose, onCreated, existingEve
   const [externalEmails, setExternalEmails] = useState((existingEvent?.external_emails ?? []).join(', '));
   const [allDay, setAllDay] = useState(existingEvent?.all_day ?? false);
   const [recur, setRecur] = useState<RecurFreq>(parseRRule(existingEvent?.recurrence_rule ?? null));
+  // Optional project link — colour-codes the event and labels which project the
+  // meeting belongs to. Blank = no project (allowed).
+  const [projectId, setProjectId] = useState<string>(existingEvent?.project_id ?? '');
+  const projectOptions = useQuery({
+    queryKey: ['projects', 'calendar-pick'],
+    queryFn: async () => {
+      const { data } = await supabase.from('projects').select('id, name').is('archived_at', null).order('name');
+      return (data ?? []) as Array<{ id: string; name: string }>;
+    },
+  });
 
   // PRD §8.2 — proactive conflict detection: warn (but don't block) if the
   // proposed time overlaps with the organizer's own events.
@@ -1018,6 +1051,7 @@ function CreateEventModal({ defaultDate, userId, onClose, onCreated, existingEve
         meet_url: meetUrl.trim() || null,
         recurrence_rule: buildRRule(recur),
         external_emails: extEmails.length ? extEmails : null,
+        project_id: projectId || null,
       };
 
       if (isEdit && existingEvent) {
@@ -1085,6 +1119,15 @@ function CreateEventModal({ defaultDate, userId, onClose, onCreated, existingEve
         <div className="space-y-3">
           <Field label="Başlıq" required>
             <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} required autoFocus />
+          </Field>
+
+          <Field label="Layihə (könüllü)">
+            <select className="input" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              <option value="">— layihəsiz —</option>
+              {(projectOptions.data ?? []).map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
           </Field>
 
           <label className="flex items-center gap-2 text-body cursor-pointer">
@@ -1446,7 +1489,7 @@ function EventTimeInline({ event }: { event: CalEvent }) {
       onClick={() => setEditing(true)}
       title="Vaxtı dəyişdirmək üçün klik"
     >
-      {new Date(event.starts_at).toLocaleDateString('az-AZ', { timeZone: 'Asia/Baku', weekday: 'long', day: 'numeric', month: 'long' })}
+      {new Date(event.starts_at).toLocaleDateString('az-AZ', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' })}
       {' '}{fmtTime(event.starts_at)} – {fmtTime(event.ends_at)}
     </button>
   );
