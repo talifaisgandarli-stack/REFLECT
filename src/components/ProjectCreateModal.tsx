@@ -23,12 +23,15 @@ const PHASES = [
   'İcra nəzarəti',
 ] as const;
 
-type Props = { onClose: () => void; onCreated?: (p: Project) => void };
+type Props = { onClose: () => void; onCreated?: (p: Project) => void; existingProject?: Project };
 
-export function ProjectCreateModal({ onClose, onCreated }: Props) {
+export function ProjectCreateModal({ onClose, onCreated, existingProject }: Props) {
   const { profile } = useAuth();
   const qc = useQueryClient();
   const clients = useClients();
+  const isEdit = !!existingProject;
+  // Runtime row carries columns the Project type omits (tags); read via cast.
+  const ex = existingProject as (Project & { tags?: string[]; contract_code?: string | null }) | undefined;
 
   // PRD §UX — suggest existing tags for autocomplete (migration 0053)
   const existingTags = useQuery({
@@ -44,19 +47,19 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
     staleTime: 60_000,
   });
 
-  const [name, setName] = useState('');
-  const [clientId, setClientId] = useState('');
+  const [name, setName] = useState(ex?.name ?? '');
+  const [clientId, setClientId] = useState(ex?.client_id ?? '');
   const [newClientName, setNewClientName] = useState('');
   const [createNewClient, setCreateNewClient] = useState(false);
-  const [phases, setPhases] = useState<string[]>([]);
-  const [startDate, setStartDate] = useState('');
-  const [deadline, setDeadline] = useState('');
-  const [requiresExpertise, setRequiresExpertise] = useState(false);
-  const [expertiseDeadline, setExpertiseDeadline] = useState('');
-  const [paymentBuffer, setPaymentBuffer] = useState(10);
+  const [phases, setPhases] = useState<string[]>(ex?.phases ?? []);
+  const [startDate, setStartDate] = useState(ex?.start_date ?? '');
+  const [deadline, setDeadline] = useState(ex?.deadline ?? '');
+  const [requiresExpertise, setRequiresExpertise] = useState(ex?.requires_expertise ?? false);
+  const [expertiseDeadline, setExpertiseDeadline] = useState(ex?.expertise_deadline ?? '');
+  const [paymentBuffer, setPaymentBuffer] = useState(ex?.payment_buffer_days ?? 10);
   // PRD §6.x — project tags (migration 0053)
-  const [tagsInput, setTagsInput] = useState('');
-  const [contractCode, setContractCode] = useState('');
+  const [tagsInput, setTagsInput] = useState((ex?.tags ?? []).join(', '));
+  const [contractCode, setContractCode] = useState(ex?.contract_code ?? '');
 
   function togglePhase(phase: string) {
     setPhases((prev) =>
@@ -99,7 +102,7 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
         throw new Error('Ekspertiza tarixi başlama tarixindən əvvəl ola bilməz.');
       }
 
-      const payload = {
+      const base = {
         name: trimmedName,
         client_id: resolvedClientId,
         phases,
@@ -109,19 +112,33 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
         expertise_deadline: requiresExpertise ? expertiseDeadline || null : null,
         payment_buffer_days: paymentBuffer,
         contract_code: contractCode.trim() || null,
-        status: 'active',
         // PRD §6.x — parse comma-separated tags
         tags: tagsInput.split(',').map((t) => t.trim()).filter(Boolean),
-        created_by: profile?.id ?? null,
       };
 
-      const { data, error } = await supabase.from('projects').insert(payload).select('*').single();
+      if (isEdit) {
+        // Edit mode: patch the existing row; status/created_by stay as-is.
+        const { data, error } = await supabase
+          .from('projects')
+          .update(base)
+          .eq('id', existingProject!.id)
+          .select('*')
+          .single();
+        if (error) throw error;
+        return data as Project;
+      }
+      const { data, error } = await supabase
+        .from('projects')
+        .insert({ ...base, status: 'active', created_by: profile?.id ?? null })
+        .select('*')
+        .single();
       if (error) throw error;
       return data as Project;
     },
     onSuccess: (project) => {
       qc.invalidateQueries({ queryKey: ['projects'] });
-      toast.success(`"${project.name}" yaradıldı`);
+      qc.invalidateQueries({ queryKey: ['project', project.id] });
+      toast.success(isEdit ? `"${project.name}" yeniləndi` : `"${project.name}" yaradıldı`);
       onCreated?.(project);
       onClose();
     },
@@ -139,7 +156,7 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Yeni layihə"
+      aria-label={isEdit ? 'Layihəni redaktə et' : 'Yeni layihə'}
       className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8 overflow-y-auto"
       style={{ background: 'rgba(14,22,17,0.4)' }}
       onClick={onClose}
@@ -154,7 +171,7 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
           create.mutate();
         }}
       >
-        <h2 className="text-h2 mb-4">Yeni layihə</h2>
+        <h2 className="text-h2 mb-4">{isEdit ? 'Layihəni redaktə et' : 'Yeni layihə'}</h2>
 
         <div className="space-y-4">
           {/* Name */}
@@ -375,7 +392,7 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
             className="btn-primary"
             disabled={create.isPending || !name.trim() || phases.length === 0 || !deadline}
           >
-            {create.isPending ? 'Yaradılır…' : 'Yarat'}
+            {create.isPending ? (isEdit ? 'Saxlanılır…' : 'Yaradılır…') : (isEdit ? 'Yadda saxla' : 'Yarat')}
           </button>
         </div>
       </form>
