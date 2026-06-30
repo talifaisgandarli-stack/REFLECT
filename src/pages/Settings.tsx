@@ -177,7 +177,7 @@ function FirmStatsRow() {
         supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('is_active', true),
         supabase.from('projects').select('id', { count: 'exact', head: true }).eq('status', 'active').is('archived_at', null),
         supabase.from('clients').select('id', { count: 'exact', head: true }),
-        supabase.from('tasks').select('id', { count: 'exact', head: true }).is('archived_at', null).not('status', 'in', '("done","cancelled")'),
+        supabase.from('tasks').select('id', { count: 'exact', head: true }).is('archived_at', null).neq('status', 'done').neq('status', 'cancelled'),
       ]);
       return {
         users: users.count ?? 0,
