@@ -15,6 +15,7 @@ import { Avatar } from '@/components/Avatar';
 import { useAuth } from '@/lib/store';
 import { PROJECT_PHASES, PROJECT_STATUS_LABEL, phaseLabel } from '@/lib/labels';
 import { ProjectPnL } from '@/components/ProjectPnL';
+import { IncomeExpenseModal, type FinanceKind } from '@/components/IncomeExpenseModal';
 import { toast } from '@/components/Toast';
 import { TaskCreateModal } from '@/components/TaskCreateModal';
 import { SkeletonList } from '@/components/Skeleton';
@@ -486,6 +487,12 @@ export function ProjectDetailPage() {
               ) : (
                 <Row k="Ödəniş gecikməsi" v={`${project.payment_buffer_days ?? 10} gün`} />
               )}
+              {/* migration 0086 — optional contract code (admin edits, members read) */}
+              {isAdmin ? (
+                <ProjectContractCodeEditor projectId={id!} initial={(project as { contract_code?: string | null }).contract_code ?? null} />
+              ) : (project as { contract_code?: string | null }).contract_code ? (
+                <Row k="Müqavilə kodu" v={(project as { contract_code?: string | null }).contract_code!} />
+              ) : null}
               {/* PRD §REQ-FIN-06 — admin can edit project budget inline */}
               {isAdmin ? (
                 <ProjectBudgetEditor projectId={id!} initialBudget={(project as { budget_amount?: number | null }).budget_amount ?? null} />
@@ -602,7 +609,7 @@ export function ProjectDetailPage() {
       ) : null}
 
       {/* FINANCE (admin only) */}
-      {tab === 'Finance' && id ? <ProjectPnL projectId={id} /> : null}
+      {tab === 'Finance' && id ? <ProjectFinancePane projectId={id} /> : null}
 
       {/* CLOSEOUT — REQ-PROJ-04 + REQ-PROJ-05 */}
       {tab === 'Closeout' ? (
@@ -2257,6 +2264,61 @@ function ProjectNameEditor({ projectId, initial }: { projectId: string; initial:
             </button>
           </>
         )}
+      </dd>
+    </div>
+  );
+}
+
+// REQ-FIN-06 — the project Maliyyə tab: read-only P&L plus admin shortcuts to
+// record income/expense straight against THIS project (modal pre-selects it).
+function ProjectFinancePane({ projectId }: { projectId: string }) {
+  const { isAdmin } = useAuth();
+  const [modal, setModal] = useState<FinanceKind | null>(null);
+  return (
+    <div className="space-y-4">
+      {isAdmin ? (
+        <div className="flex gap-2">
+          <button type="button" className="btn-primary" onClick={() => setModal('income')}>+ Gəlir</button>
+          <button type="button" className="btn-outline" onClick={() => setModal('expense')}>+ Xərc</button>
+        </div>
+      ) : null}
+      <ProjectPnL projectId={projectId} />
+      {modal ? (
+        <IncomeExpenseModal kind={modal} defaultProjectId={projectId} onClose={() => setModal(null)} />
+      ) : null}
+    </div>
+  );
+}
+
+// migration 0086 — inline admin editor for the optional contract code.
+function ProjectContractCodeEditor({ projectId, initial }: { projectId: string; initial: string | null }) {
+  const qc = useQueryClient();
+  const [val, setVal] = useState(initial ?? '');
+  const [saving, setSaving] = useState(false);
+  const dirty = (initial ?? '') !== val.trim();
+  async function save() {
+    setSaving(true);
+    const ok = await saveProjectPatch(projectId, { contract_code: val.trim() || null });
+    setSaving(false);
+    if (!ok) return;
+    qc.invalidateQueries({ queryKey: ['project', projectId] });
+  }
+  return (
+    <div className="flex justify-between items-center gap-2">
+      <dt style={{ color: 'var(--text-muted)' }}>Müqavilə kodu</dt>
+      <dd className="flex items-center gap-1">
+        <input
+          className="input"
+          style={{ width: 140, height: 28, fontSize: 13 }}
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+          placeholder="məs. MK-2026-014"
+        />
+        {dirty ? (
+          <button type="button" className="chip" style={{ color: 'var(--brand-text)', fontSize: 11 }} disabled={saving} onClick={save}>
+            {saving ? '…' : '✓'}
+          </button>
+        ) : null}
       </dd>
     </div>
   );

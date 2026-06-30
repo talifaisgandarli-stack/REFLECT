@@ -106,6 +106,8 @@ export interface Project {
   created_at: string;
   archived_at: string | null;
   reopened_at: string | null;
+  /** migration 0086 — optional signed-contract reference code */
+  contract_code?: string | null;
 }
 
 export interface ProjectDocument {

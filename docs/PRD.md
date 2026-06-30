@@ -139,7 +139,7 @@ Telegram:   Bot API (one Reflect bot, per-user chat_id linking)
 - `invitations` (id, email, role_id, invited_by, token, expires_at, accepted_at)
 
 **Work**
-- `projects` (id, name, client_id, phases[] text[], requires_expertise, expertise_deadline, payment_buffer_days, deadline, start_date, status, created_by, created_at, archived_at) — architectural projects only (Module 3). NB: migration 0075 briefly added CRM pipeline columns here; **reverted in 0076** (the CRM pipeline is client-based, not project-based).
+- `projects` (id, name, client_id, phases[] text[], requires_expertise, expertise_deadline, payment_buffer_days, deadline, start_date, status, created_by, created_at, archived_at, budget_amount [0048], tags [0053], description, contract_code [0086]) — architectural projects only (Module 3). `contract_code` is an optional free-text signed-contract reference. NB: migration 0075 briefly added CRM pipeline columns here; **reverted in 0076** (the CRM pipeline is client-based, not project-based). Project finance is entered from the project Maliyyə tab ("+ Gəlir/+ Xərc" pre-select the project) or Maliyyə Mərkəzi; the tab itself is a read-only P&L.
 - `tasks` (id, project_id, title, description, status, parent_task_id, task_level, assignee_ids uuid[], start_date, deadline, estimated_duration, duration_unit, risk_buffer_pct, is_expertise_subtask, workload, workload_calculated_at, cancel_reason, archived_at, created_by)
 - `task_status_history` (id, task_id, from_status, to_status, changed_by, changed_at)
 - `task_comments` (id, task_id, user_id, body, mentions uuid[], created_at)
