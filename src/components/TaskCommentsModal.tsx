@@ -593,17 +593,17 @@ function TaskTitleInlineEditor({ taskId, initial }: { taskId: string; initial: s
 // subtasks via an inline field at the bottom of the list (not a top button).
 function SubtaskSection({ parentTaskId }: { parentTaskId: string }) {
   const qc = useQueryClient();
-  const { profile, isAdmin } = useAuth();
+  const { profile } = useAuth();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDeadline, setNewDeadline] = useState('');
   const [newAssignees, setNewAssignees] = useState<string[]>(profile?.id ? [profile.id] : []);
 
-  // Team members for the assignee picker (admins assign anyone, others self).
+  // Assignee picker — any member can assign any teammate (Trello-style).
   const teamMembers = useQuery({
     queryKey: ['profiles', 'assignee-pick'],
-    enabled: adding && isAdmin,
+    enabled: adding,
     queryFn: async () => {
       const { data } = await supabase
         .from('profiles')
@@ -613,8 +613,8 @@ function SubtaskSection({ parentTaskId }: { parentTaskId: string }) {
       return (data ?? []) as Array<{ id: string; full_name: string | null }>;
     },
   });
-  const assignable = isAdmin
-    ? (teamMembers.data ?? [])
+  const assignable = teamMembers.data && teamMembers.data.length > 0
+    ? teamMembers.data
     : profile
       ? [{ id: profile.id, full_name: profile.full_name }]
       : [];
@@ -1035,10 +1035,9 @@ function TaskStatusPriorityLabels({ taskId }: { taskId: string }) {
   );
 }
 
-// PRD §REQ-TASK-02 — assignee chip row. Admin can add/remove via inline
-// select; non-admin sees read-only chips.
+// PRD §REQ-TASK-02 — assignee chip row. Any member can add/remove assignees
+// inline (Trello-style collaboration, PRD §2.2).
 function TaskAssigneesChip({ taskId }: { taskId: string }) {
-  const { isAdmin } = useAuth();
   const qc = useQueryClient();
   const task = useQuery({
     queryKey: ['task_assignees_ids', taskId],
@@ -1054,7 +1053,7 @@ function TaskAssigneesChip({ taskId }: { taskId: string }) {
   const ids = task.data ?? [];
   const allProfiles = useQuery({
     queryKey: ['profiles', 'assignee-pick'],
-    enabled: ids.length > 0 || isAdmin,
+    enabled: true,
     queryFn: async () => {
       const { data } = await supabase
         .from('profiles')
@@ -1077,7 +1076,7 @@ function TaskAssigneesChip({ taskId }: { taskId: string }) {
   const profileMap = new Map((allProfiles.data ?? []).map((p) => [p.id, p.full_name ?? p.id.slice(0, 8)]));
   const candidates = (allProfiles.data ?? []).filter((p) => !ids.includes(p.id));
 
-  if (ids.length === 0 && !isAdmin) return null;
+  if (ids.length === 0 && candidates.length === 0) return null;
 
   return (
     <div className="text-meta mb-2 flex items-center gap-1.5 flex-wrap" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
@@ -1089,21 +1088,19 @@ function TaskAssigneesChip({ taskId }: { taskId: string }) {
           style={{ background: 'var(--surface-mist)', fontSize: 11 }}
         >
           {profileMap.get(id) ?? id.slice(0, 8)}
-          {isAdmin ? (
-            <button
-              type="button"
-              onClick={() => updateIds.mutate(ids.filter((x) => x !== id))}
-              disabled={updateIds.isPending}
-              style={{ color: 'var(--text-muted)', opacity: 0.6, fontSize: 11 }}
-              title="Çıxar"
-              aria-label={`${profileMap.get(id) ?? id} çıxarılsın`}
-            >
-              ×
-            </button>
-          ) : null}
+          <button
+            type="button"
+            onClick={() => updateIds.mutate(ids.filter((x) => x !== id))}
+            disabled={updateIds.isPending}
+            style={{ color: 'var(--text-muted)', opacity: 0.6, fontSize: 11 }}
+            title="Çıxar"
+            aria-label={`${profileMap.get(id) ?? id} çıxarılsın`}
+          >
+            ×
+          </button>
         </span>
       ))}
-      {isAdmin && candidates.length > 0 ? (
+      {candidates.length > 0 ? (
         <select
           className="input"
           style={{ height: 22, fontSize: 11, padding: '0 4px', minWidth: 90 }}
