@@ -23,9 +23,9 @@ const EXPENSE_CATEGORIES = [
   'Digər',
 ] as const;
 
-type Props = { kind: FinanceKind; onClose: () => void };
+type Props = { kind: FinanceKind; onClose: () => void; defaultProjectId?: string };
 
-export function IncomeExpenseModal({ kind, onClose }: Props) {
+export function IncomeExpenseModal({ kind, onClose, defaultProjectId }: Props) {
   const { profile } = useAuth();
   const qc = useQueryClient();
 
@@ -50,7 +50,7 @@ export function IncomeExpenseModal({ kind, onClose }: Props) {
   const [method, setMethod] = useState<string>(PAYMENT_METHODS[0]);
   const [category, setCategory] = useState<string>(EXPENSE_CATEGORIES[0]);
   const [vendor, setVendor] = useState('');
-  const [projectId, setProjectId] = useState('');
+  const [projectId, setProjectId] = useState(defaultProjectId ?? '');
   const [clientId, setClientId] = useState('');
   const [invoice, setInvoice] = useState('');
   const [note, setNote] = useState('');
@@ -95,6 +95,8 @@ export function IncomeExpenseModal({ kind, onClose }: Props) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['fin'] });
+      // Refresh the per-project P&L (project Maliyyə tab) too.
+      qc.invalidateQueries({ queryKey: ['pnl'] });
       onClose();
     },
   });

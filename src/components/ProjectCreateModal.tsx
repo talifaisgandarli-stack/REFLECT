@@ -56,6 +56,7 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
   const [paymentBuffer, setPaymentBuffer] = useState(10);
   // PRD §6.x — project tags (migration 0053)
   const [tagsInput, setTagsInput] = useState('');
+  const [contractCode, setContractCode] = useState('');
 
   function togglePhase(phase: string) {
     setPhases((prev) =>
@@ -107,6 +108,7 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
         requires_expertise: requiresExpertise,
         expertise_deadline: requiresExpertise ? expertiseDeadline || null : null,
         payment_buffer_days: paymentBuffer,
+        contract_code: contractCode.trim() || null,
         status: 'active',
         // PRD §6.x — parse comma-separated tags
         tags: tagsInput.split(',').map((t) => t.trim()).filter(Boolean),
@@ -323,6 +325,20 @@ export function ProjectCreateModal({ onClose, onCreated }: Props) {
             />
           </label>
         </div>
+
+        {/* migration 0086 — optional signed-contract reference code */}
+        <label className="block mt-3">
+          <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
+            Müqavilə kodu (könüllü)
+          </span>
+          <input
+            type="text"
+            className="input"
+            placeholder="məs. MK-2026-014"
+            value={contractCode}
+            onChange={(e) => setContractCode(e.target.value)}
+          />
+        </label>
 
         {/* PRD §6.x — tags (comma-separated, migration 0053) + autocomplete */}
         <label className="block mt-3">
