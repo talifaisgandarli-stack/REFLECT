@@ -92,7 +92,11 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
         .select('id', { count: 'exact', head: true })
         .contains('assignee_ids', [profile!.id])
         .is('archived_at', null)
-        .not('status', 'in', '("done","cancelled")');
+        // "open" = not done and not cancelled. Two neq filters (AND'd by
+        // PostgREST) instead of a not.in list — bulletproof across PostgREST
+        // versions and avoids any in-list parsing edge cases.
+        .neq('status', 'done')
+        .neq('status', 'cancelled');
       return count ?? 0;
     },
   });

@@ -788,7 +788,8 @@ function PersonalStatsCard({ userId }: { userId: string }) {
           .select('id', { count: 'exact', head: true })
           .contains('assignee_ids', [userId])
           .is('archived_at', null)
-          .not('status', 'in', '("done","cancelled")'),
+          .neq('status', 'done')
+          .neq('status', 'cancelled'),
         supabase
           .from('tasks')
           .select('id', { count: 'exact', head: true })
