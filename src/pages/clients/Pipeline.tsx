@@ -17,7 +17,7 @@ import {
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import type { Client, ClientPipelineStage } from '@/types/db';
-import { CLIENT_STAGE_LABEL, PIPELINE_COLUMNS, clientValueLabel } from '@/lib/labels';
+import { CLIENT_STAGE_LABEL, PIPELINE_COLUMNS, clientStageStyle, clientValueLabel } from '@/lib/labels';
 import { formatAZN, formatAZNCompact, contactHealth } from '@/lib/format';
 import { useUpdateClientStage, useUpdateClientField } from '@/lib/hooks';
 import { useAuth } from '@/lib/store';
@@ -46,7 +46,7 @@ export function Pipeline({
   );
 
   const byCol = useMemo(() => {
-    const m: Record<string, Client[]> = { lead: [], proposal: [], negotiation: [], in_progress: [] };
+    const m: Record<string, Client[]> = Object.fromEntries(PIPELINE_COLUMNS.map((s) => [s, [] as Client[]]));
     for (const c of clients) {
       const col = columnOf(c.pipeline_stage);
       if (col) m[col].push(c);
@@ -63,11 +63,15 @@ export function Pipeline({
     updateStage.mutate({ id, to });
   }
 
-  const onBoard = clients.filter((c) => columnOf(c.pipeline_stage) !== null);
+  // Summary metrics describe the ACTIVE pipeline — lost/cancelled deals stay on
+  // the board (their own column) but must not inflate pipeline value or counts.
+  const activeOnBoard = clients.filter(
+    (c) => columnOf(c.pipeline_stage) !== null && c.pipeline_stage !== 'lost',
+  );
 
   return (
     <div>
-      <SummaryBar clients={onBoard} />
+      <SummaryBar clients={activeOnBoard} />
       <DndContext sensors={sensors} onDragEnd={onDragEnd}>
         <div
           style={{
@@ -121,7 +125,7 @@ function SummaryBar({ clients }: { clients: Client[] }) {
             <span
               key={stage}
               title={`${CLIENT_STAGE_LABEL[stage]}: ${count}`}
-              style={{ width: `${(count / total) * 100}%`, background: `var(--stage-${stage === 'proposal' ? 'teklif' : stage === 'negotiation' ? 'muzakire' : stage === 'in_progress' ? 'icrada' : 'lead'}-fg)` }}
+              style={{ width: `${(count / total) * 100}%`, background: clientStageStyle(stage).color }}
             />
           ) : null;
         })}
@@ -154,7 +158,6 @@ function Column({
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage });
   const sum = items.reduce((s, c) => s + (c.expected_value ?? 0), 0);
-  const fg = stage === 'proposal' ? 'teklif' : stage === 'negotiation' ? 'muzakire' : stage === 'in_progress' ? 'icrada' : 'lead';
 
   return (
     <div
@@ -163,7 +166,7 @@ function Column({
     >
       <div className="flex items-center justify-between" style={{ padding: '4px 8px 8px' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 13, fontWeight: 500, color: `var(--stage-${fg}-fg)` }}>
+          <span style={{ fontSize: 13, fontWeight: 500, color: clientStageStyle(stage).color }}>
             {CLIENT_STAGE_LABEL[stage]}
           </span>
           <span style={{ fontSize: 11, color: 'var(--text-muted)', background: 'var(--surface-mist)', borderRadius: 10, padding: '0 6px' }}>
@@ -280,6 +283,16 @@ function ClientCard({
               onClick={(e) => { e.stopPropagation(); updateStage.mutate({ id: client.id, to: 'portfolio' }); }}
             >
               ✓ Tamamlandı
+            </button>
+          ) : client.pipeline_stage === 'lost' ? (
+            <button
+              type="button"
+              className="chip"
+              style={{ height: 22, fontSize: 11 }}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); updateStage.mutate({ id: client.id, to: 'negotiation' }); }}
+            >
+              ↩ Bərpa et
             </button>
           ) : null}
         </div>

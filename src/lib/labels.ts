@@ -71,7 +71,7 @@ export const CLIENT_STAGE_LABEL: Record<ClientPipelineStage, string> = {
   signed: 'İmzalanıb',
   in_progress: 'İcrada',
   portfolio: 'Portfolio',
-  lost: 'Udulan',
+  lost: 'Ləğv edilib',
   archived: 'Arxiv',
 };
 
@@ -164,14 +164,16 @@ export const CLIENT_TIER_STYLE: Record<ClientTier, { color: string; bg: string }
 };
 
 // ── CRM pipeline columns (client-based, PRD Module 6) ────────────────────────
-// The board shows the 4 active spec stages; `signed` folds into İcrada,
-// portfolio/lost/archived are terminal (not columns). Colours reuse the CRM
-// stage token scale (tokens.css).
+// The board shows the active spec stages plus a terminal `lost` (Ləğv edilib)
+// column so lost/cancelled deals stay visible and draggable; `signed` folds
+// into İcrada, portfolio/archived are terminal (off-board). Colours reuse the
+// CRM stage token scale (tokens.css).
 export const PIPELINE_COLUMNS: ClientPipelineStage[] = [
   'lead',
   'proposal',
   'negotiation',
   'in_progress',
+  'lost',
 ];
 
 export const CLIENT_STAGE_STYLE: Partial<Record<ClientPipelineStage, { color: string; bg: string }>> = {
