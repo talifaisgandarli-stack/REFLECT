@@ -9,11 +9,15 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
-import { relativeTime } from '@/lib/format';
+import { relativeTime, bakuToday, bakuDaysUntil } from '@/lib/format';
 import { trackRecentEntry } from '@/lib/useRecentlyViewed';
 import { formatDuration } from '@/lib/useTimeTracking';
 import { renderCommentMarkdown } from '@/lib/sanitize';
 import { dispatchOpenTask } from '@/lib/events';
+import { StatusChip } from '@/components/StatusChip';
+import { AvatarGroup } from '@/components/AvatarGroup';
+import { TASK_STATUS_LABEL, TASK_STATUS_ORDER } from '@/lib/labels';
+import type { TaskStatus } from '@/types/db';
 
 const WORK_HOURS_PER_DAY = 8;
 // Working days (Mon–Fri, inclusive of both endpoints) between two ISO dates.
@@ -632,10 +636,19 @@ function SubtaskSection({ parentTaskId }: { parentTaskId: string }) {
     queryFn: async () => {
       const { data } = await supabase
         .from('tasks')
-        .select('id, title, status, deadline')
+        .select('id, title, status, deadline, assignee_ids, priority')
         .eq('parent_task_id', parentTaskId)
         .order('created_at', { ascending: true });
-      return (data ?? []) as Array<{ id: string; title: string; status: string; deadline: string | null }>;
+      return (data ?? []) as Array<{ id: string; title: string; status: string; deadline: string | null; assignee_ids: string[]; priority?: string | null }>;
+    },
+  });
+  // Names/avatars for the assignee stack on each subtask row.
+  const peopleMap = useQuery({
+    queryKey: ['profiles', 'names-avatars'],
+    staleTime: 5 * 60_000,
+    queryFn: async (): Promise<Record<string, { name: string | null; avatar_url: string | null }>> => {
+      const { data } = await supabase.from('profiles').select('id, full_name, avatar_url');
+      return Object.fromEntries((data ?? []).map((p) => [p.id, { name: p.full_name, avatar_url: p.avatar_url }]));
     },
   });
   const invalidate = () => {
@@ -645,6 +658,13 @@ function SubtaskSection({ parentTaskId }: { parentTaskId: string }) {
   const toggle = useMutation({
     mutationFn: async (input: { id: string; next: 'done' | 'active' }) => {
       const { error } = await supabase.from('tasks').update({ status: input.next }).eq('id', input.id);
+      if (error) throw error;
+    },
+    onSuccess: invalidate,
+  });
+  const setStatus = useMutation({
+    mutationFn: async (input: { id: string; status: TaskStatus }) => {
+      const { error } = await supabase.from('tasks').update({ status: input.status }).eq('id', input.id);
       if (error) throw error;
     },
     onSuccess: invalidate,
@@ -689,50 +709,57 @@ function SubtaskSection({ parentTaskId }: { parentTaskId: string }) {
       <div className="text-meta mb-1.5" style={{ color: 'var(--text-muted)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
         Yarımtapşırıqlar{rows.length ? ` (${rows.length})` : ''}
       </div>
-      <ul className="space-y-0.5">
+      <ul className="space-y-1.5">
         {rows.map((s) => {
           const done = s.status === 'done' || s.status === 'cancelled';
           const expanded = expandedId === s.id;
+          // Subtasks are full tasks — render each as a compact task row (status
+          // chip + assignees + deadline + priority), not a checklist item.
+          const people = (s.assignee_ids ?? []).map((id) => ({
+            id,
+            name: peopleMap.data?.[id]?.name,
+            avatar_url: peopleMap.data?.[id]?.avatar_url,
+          }));
+          const overdue = !!s.deadline && !done && s.deadline < bakuToday();
+          const dueSoon = !!s.deadline && !done && !overdue && bakuDaysUntil(s.deadline) <= 3;
+          const toggleExpand = () => setExpandedId(expanded ? null : s.id);
           return (
-            <li key={s.id}>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={done}
-                  onChange={() => toggle.mutate({ id: s.id, next: done ? 'active' : 'done' })}
-                  disabled={toggle.isPending}
-                  aria-label={done ? `Bərpa et: ${s.title}` : `Tamamla: ${s.title}`}
-                  style={{ accentColor: 'var(--brand-action)' }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setExpandedId(expanded ? null : s.id)}
-                  className="text-left flex-1"
-                  style={{
-                    color: done ? 'var(--text-muted)' : 'var(--text)',
-                    textDecoration: done ? 'line-through' : 'none',
-                    background: 'transparent', border: 'none', padding: 0,
-                  }}
-                  title="Detalları aç/bağla"
-                >
+            <li key={s.id} className="rounded-btn" style={{ background: 'var(--surface)', border: '1px solid var(--line)', padding: '6px 8px', opacity: done ? 0.6 : 1 }}>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button type="button" onClick={toggleExpand} title="Detalları aç/bağla" style={{ background: 'transparent', border: 'none', padding: 0 }} className="shrink-0">
+                  <StatusChip status={s.status as TaskStatus} />
+                </button>
+                <button type="button" onClick={toggleExpand} className="text-left flex-1 min-w-0 truncate" title={s.title}
+                  style={{ color: done ? 'var(--text-muted)' : 'var(--text)', textDecoration: done ? 'line-through' : 'none', background: 'transparent', border: 'none', padding: 0 }}>
                   {s.title}
                 </button>
-                {s.deadline ? (
-                  <span style={{ color: 'var(--text-muted)', fontSize: 10, fontVariantNumeric: 'tabular-nums' }}>{s.deadline.slice(5)}</span>
+                {s.priority === 'high' ? (
+                  <span className="chip" style={{ fontSize: 10, background: 'var(--error-bg, #fde8e6)', color: 'var(--error-deep)' }}>Yüksək</span>
                 ) : null}
-                <span aria-hidden style={{ color: 'var(--text-muted)', fontSize: 10 }}>{expanded ? '▾' : '▸'}</span>
+                {people.length ? <AvatarGroup people={people} size={20} max={3} /> : null}
+                {s.deadline ? (
+                  <span style={{ fontSize: 10, fontVariantNumeric: 'tabular-nums', color: overdue ? 'var(--error-deep)' : dueSoon ? 'var(--warning, #c47d00)' : 'var(--text-muted)', fontWeight: overdue ? 600 : 400 }} title={s.deadline}>
+                    {s.deadline.slice(5)}
+                  </span>
+                ) : null}
+                {done ? (
+                  <button type="button" className="chip" style={{ fontSize: 10 }} disabled={toggle.isPending} onClick={() => toggle.mutate({ id: s.id, next: 'active' })}>↩ Bərpa</button>
+                ) : (
+                  <button type="button" className="chip" style={{ fontSize: 10, color: 'var(--success-deep, #1d7a44)' }} disabled={toggle.isPending} onClick={() => toggle.mutate({ id: s.id, next: 'done' })}>✓ Tamamla</button>
+                )}
+                <button type="button" aria-label="Detallar" onClick={toggleExpand} style={{ color: 'var(--text-muted)', fontSize: 10, background: 'transparent', border: 'none' }}>{expanded ? '▾' : '▸'}</button>
               </div>
               {expanded ? (
-                <div className="mt-1.5 mb-2 pl-6">
+                <div className="mt-2 pl-1 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 10 }}>Status</span>
+                    <select className="input" style={{ height: 26, fontSize: 11, width: 140 }} value={s.status} onChange={(e) => setStatus.mutate({ id: s.id, status: e.target.value as TaskStatus })} disabled={setStatus.isPending}>
+                      {TASK_STATUS_ORDER.map((st) => <option key={st} value={st}>{TASK_STATUS_LABEL[st]}</option>)}
+                    </select>
+                  </div>
                   <TaskDateFields taskId={s.id} />
                   <TaskAssigneesChip taskId={s.id} />
-                  <button
-                    type="button"
-                    className="text-meta"
-                    style={{ color: 'var(--error-deep)', fontSize: 11 }}
-                    onClick={() => del.mutate(s.id)}
-                    disabled={del.isPending}
-                  >
+                  <button type="button" className="text-meta" style={{ color: 'var(--error-deep)', fontSize: 11 }} onClick={() => del.mutate(s.id)} disabled={del.isPending}>
                     {del.isPending ? 'Silinir…' : 'Yarımtapşırığı sil'}
                   </button>
                   {del.error ? (
