@@ -47,12 +47,18 @@ export function ClientFormModal({
   const [tier, setTier] = useState<'' | ClientTier>(client?.tier ?? '');
   const [expected, setExpected] = useState(client?.expected_value ? String(client.expected_value) : '');
   const [stage, setStage] = useState<ClientPipelineStage>(client?.pipeline_stage ?? defaultStage ?? 'lead');
+  const [lostReason, setLostReason] = useState('');
   const [confirmDel, setConfirmDel] = useState(false);
+
+  // A move INTO lost needs a reason (REQ-CRM-01, enforced by set_client_stage).
+  // Editing an already-lost client's other fields doesn't re-trigger the move.
+  const transitioningToLost = stage === 'lost' && (mode === 'create' || client?.pipeline_stage !== 'lost');
 
   function validate() {
     if (!name.trim()) throw new Error('Ad tələb olunur');
     if (email.trim() && !isValidEmail(email.trim())) throw new Error('Etibarsız email');
     if (phone.trim() && !isValidPhone(phone.trim())) throw new Error('Etibarsız telefon');
+    if (transitioningToLost && !lostReason.trim()) throw new Error('İtirmə səbəbini qeyd edin');
   }
 
   const fields = () => ({
@@ -69,12 +75,26 @@ export function ClientFormModal({
     mutationFn: async () => {
       validate();
       if (mode === 'create') {
-        const { error } = await supabase.from('clients').insert({
-          ...fields(),
-          pipeline_stage: stage,
-          confidence_pct: CLIENT_STAGE_CONFIDENCE[stage],
-        });
+        const { data: created, error } = await supabase
+          .from('clients')
+          .insert({
+            ...fields(),
+            pipeline_stage: stage,
+            confidence_pct: CLIENT_STAGE_CONFIDENCE[stage],
+          })
+          .select('id')
+          .single();
         if (error) throw error;
+        // Direct insert doesn't run set_client_stage, so stamp the lost reason
+        // onto the stage-history row the activity trigger just created.
+        if (created && stage === 'lost' && lostReason.trim()) {
+          const { error: e2 } = await supabase
+            .from('client_stage_history')
+            .update({ lost_reason: lostReason.trim() })
+            .eq('client_id', created.id)
+            .eq('to_stage', 'lost');
+          if (e2) throw e2;
+        }
       } else if (client) {
         const { error } = await supabase.from('clients').update(fields()).eq('id', client.id);
         if (error) throw error;
@@ -82,7 +102,7 @@ export function ClientFormModal({
           const { error: e2 } = await supabase.rpc('set_client_stage', {
             p_client_id: client.id,
             p_to_stage: stage,
-            p_lost_reason: null,
+            p_lost_reason: stage === 'lost' ? lostReason.trim() : null,
           });
           if (e2) throw e2;
         }
@@ -159,6 +179,17 @@ export function ClientFormModal({
               </F>
             ) : null}
           </div>
+          {stage === 'lost' ? (
+            <F label="İtirmə səbəbi *">
+              <input
+                className="input"
+                value={lostReason}
+                onChange={(e) => setLostReason(e.target.value)}
+                placeholder="Məs. qiymət, vaxt, rəqib seçildi…"
+                autoFocus
+              />
+            </F>
+          ) : null}
         </div>
 
         {(save.isError || del.isError) ? (

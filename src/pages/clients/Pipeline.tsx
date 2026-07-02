@@ -5,7 +5,7 @@
  * SEPARATE module and never appear here. `signed` folds into the İcrada column;
  * portfolio/lost/archived are terminal (off-board).
  */
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   DndContext,
   PointerSensor,
@@ -41,6 +41,9 @@ export function Pipeline({
   onEditClient: (client: Client) => void;
 }) {
   const updateStage = useUpdateClientStage();
+  // Moving a card to "Ləğv edilib" requires a reason (REQ-CRM-01), so a drop
+  // there opens a small prompt instead of mutating immediately.
+  const [lostFor, setLostFor] = useState<Client | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
@@ -60,6 +63,10 @@ export function Pipeline({
     if (!to) return;
     const c = clients.find((x) => x.id === id);
     if (!c || c.pipeline_stage === to) return;
+    if (to === 'lost') {
+      setLostFor(c);
+      return;
+    }
     updateStage.mutate({ id, to });
   }
 
@@ -94,6 +101,62 @@ export function Pipeline({
           ))}
         </div>
       </DndContext>
+      {lostFor ? (
+        <LostReasonModal
+          client={lostFor}
+          pending={updateStage.isPending}
+          onCancel={() => setLostFor(null)}
+          onConfirm={(reason) =>
+            updateStage.mutate(
+              { id: lostFor.id, to: 'lost', lostReason: reason },
+              { onSuccess: () => setLostFor(null) },
+            )
+          }
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function LostReasonModal({
+  client,
+  pending,
+  onCancel,
+  onConfirm,
+}: {
+  client: Client;
+  pending: boolean;
+  onCancel: () => void;
+  onConfirm: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState('');
+  const label = client.company?.trim() || client.name;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: 'rgba(14,22,17,0.4)' }} onClick={onCancel}>
+      <form
+        className="card w-full max-w-sm"
+        style={{ padding: 24 }}
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={(e) => { e.preventDefault(); if (reason.trim()) onConfirm(reason.trim()); }}
+      >
+        <h2 className="text-h2 mb-1">Ləğv edilib</h2>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+          <strong>{label}</strong> nə üçün itirildi?
+        </p>
+        <input
+          className="input"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Məs. qiymət, vaxt, rəqib seçildi…"
+          autoFocus
+        />
+        <div className="flex gap-2 mt-4 justify-end">
+          <button type="button" className="btn-outline" onClick={onCancel}>Ləğv et</button>
+          <button type="submit" className="btn-primary" disabled={!reason.trim() || pending}>
+            {pending ? 'Saxlanır…' : 'Təsdiqlə'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
