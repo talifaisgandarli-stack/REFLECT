@@ -11,14 +11,20 @@ import { isValidEmail, isValidPhone } from '@/lib/validation';
 import {
   CLIENT_STAGE_CONFIDENCE,
   CLIENT_STAGE_LABEL,
+  CLIENT_STAGE_ORDER,
   CLIENT_TIER_DESC,
   CLIENT_TIER_ORDER,
   clientValueLabel,
 } from '@/lib/labels';
 import type { Client, ClientPipelineStage, ClientTier } from '@/types/db';
 
-// Stages selectable in the form (lost/archived/signed handled via drag / flows).
-const FORM_STAGES: ClientPipelineStage[] = ['lead', 'proposal', 'negotiation', 'in_progress', 'portfolio'];
+// Stages a user can assign in the form. Derived from the canonical stage order
+// so it can never drift from the board: `signed` folds into İcrada (display
+// only) and `archived` is the soft-delete state, so neither is offered here —
+// everything else selectable, including `lost` (Ləğv edilib).
+const FORM_STAGES: ClientPipelineStage[] = CLIENT_STAGE_ORDER.filter(
+  (s) => s !== 'signed' && s !== 'archived',
+);
 
 export function ClientFormModal({
   mode,
