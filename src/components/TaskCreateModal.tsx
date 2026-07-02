@@ -31,6 +31,19 @@ import {
 } from '@/components/SubtaskBuilder';
 import type { Task, TaskStatus } from '@/types/db';
 
+// Template defaults that pre-fill the form (Şablondan yarat). Routing templates
+// through this modal — instead of an instant insert — means they go through the
+// same mandatory-deadline gate as any other task.
+export type TaskTemplateDefaults = {
+  title: string;
+  description: string | null;
+  estimated_duration: number | null;
+  duration_unit: string | null;
+  risk_buffer_pct: number;
+  labels: string[] | null;
+  is_expertise_subtask: boolean;
+};
+
 type Props = {
   onClose: () => void;
   defaultProjectId?: string;
@@ -38,6 +51,8 @@ type Props = {
   // PRD §REQ-TASK-01 — explicit subtask creation (parent context)
   parentTaskId?: string;
   parentTaskLevel?: number;
+  // PRD §6.x — pre-fill from a task template (Şablondan yarat)
+  template?: TaskTemplateDefaults;
 };
 
 // Status options for the new-task dropdown — all non-cancelled statuses.
@@ -68,7 +83,7 @@ function workingDaysBetween(start: string, end: string): number | null {
   return count;
 }
 
-export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, parentTaskId, parentTaskLevel }: Props) {
+export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, parentTaskId, parentTaskLevel, template }: Props) {
   const { profile, isAdmin } = useAuth();
   const projects = useProjects();
   const qc = useQueryClient();
@@ -88,15 +103,23 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
     },
   });
 
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
+  const [title, setTitle] = useState(template?.title ?? '');
+  const [description, setDescription] = useState(template?.description ?? '');
   const [projectId, setProjectId] = useState<string>(defaultProjectId ?? '');
   const [status, setStatus] = useState<TaskStatus>(defaultStatus ?? 'queued');
   const [startDate, setStartDate] = useState('');
   const [deadline, setDeadline] = useState('');
-  const [estimated, setEstimated] = useState<string>('');
-  const [unit, setUnit] = useState<DurationUnit>('hours');
-  const [riskBuffer, setRiskBuffer] = useState<number>(0);
+  const [estimated, setEstimated] = useState<string>(
+    template?.estimated_duration != null ? String(template.estimated_duration) : '',
+  );
+  const [unit, setUnit] = useState<DurationUnit>(
+    (template?.duration_unit as DurationUnit) ?? 'hours',
+  );
+  const [riskBuffer, setRiskBuffer] = useState<number>(template?.risk_buffer_pct ?? 0);
+  // Carried from the template so the created task keeps its labels / expertise
+  // flag; not editable here (template-derived), just preserved on insert.
+  const templateLabels = template?.labels ?? [];
+  const templateIsExpertise = template?.is_expertise_subtask ?? false;
   const [assignSelf, setAssignSelf] = useState(true);
   // migration 0068 — admin-only task (visible to admins only). Admins set it.
   const [adminOnly, setAdminOnly] = useState(false);
@@ -178,17 +201,20 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
     mutationFn: async () => {
       const trimmed = title.trim();
       if (!trimmed) throw new Error('Başlıq tələb olunur');
+      // Every task must carry a deadline (owner rule) — no silent open-ended work.
+      if (!deadline) throw new Error('Bitmə tarixi tələb olunur');
       const payload: Partial<Task> = {
         title: trimmed,
         description: description.trim() || null,
         status,
         project_id: projectId || null,
         start_date: startDate || null,
-        deadline: deadline || null,
+        deadline,
         estimated_duration: estimated ? Number(estimated) : null,
         duration_unit: unit,
         risk_buffer_pct: Math.max(0, Math.min(100, Math.round(riskBuffer))),
-        is_expertise_subtask: false,
+        is_expertise_subtask: templateIsExpertise,
+        ...(templateLabels.length > 0 ? { labels: templateLabels } : {}),
         admin_only: isAdmin ? adminOnly : false,
         // PRD §REQ-TASK-01 — propagate parent context when creating a subtask
         ...(parentTaskId
@@ -335,13 +361,14 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
                 onChange={(e) => { const v = e.target.value; setStartDate(v); applyAutoDuration(v, deadline); }}
               />
             </Field>
-            <Field label="Bitmə tarixi">
+            <Field label="Bitmə tarixi" required>
               <input
                 type="date"
                 className="input"
                 value={deadline}
                 onChange={(e) => { const v = e.target.value; setDeadline(v); applyAutoDuration(startDate, v); }}
                 min={startDate || undefined}
+                required
               />
             </Field>
           </div>
@@ -506,7 +533,7 @@ export function TaskCreateModal({ onClose, defaultProjectId, defaultStatus, pare
           <button type="button" className="btn-outline" onClick={onClose} disabled={create.isPending}>
             Geri
           </button>
-          <button type="submit" className="btn-primary" disabled={create.isPending || !title.trim() || !!subtaskErr}>
+          <button type="submit" className="btn-primary" disabled={create.isPending || !title.trim() || !deadline || !!subtaskErr}>
             {create.isPending ? 'Yaradılır…' : 'Yarat'}
           </button>
         </div>

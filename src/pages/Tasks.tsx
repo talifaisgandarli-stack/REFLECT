@@ -14,7 +14,7 @@ import type { Task, TaskStatus } from '@/types/db';
 import { useAuth } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { SubtaskBlockingModal } from '@/components/SubtaskBlockingModal';
-import { TaskCreateModal } from '@/components/TaskCreateModal';
+import { TaskCreateModal, type TaskTemplateDefaults } from '@/components/TaskCreateModal';
 import { CancelTaskModal } from '@/components/CancelTaskModal';
 import { TaskCommentsModal } from '@/components/TaskCommentsModal';
 import { TaskCalendarView } from '@/components/TaskCalendarView';
@@ -621,35 +621,23 @@ export function TasksPage() {
     },
   });
 
-  const createFromTemplate = useMutation({
-    mutationFn: async (templateId: string) => {
-      const tpl = templates.data?.find((t) => t.id === templateId);
-      if (!tpl) throw new Error('Şablon tapılmadı');
-      const { error } = await supabase.from('tasks').insert({
-        title: tpl.title,
-        description: tpl.description,
-        status: 'queued',
-        estimated_duration: tpl.estimated_duration,
-        duration_unit: tpl.duration_unit,
-        risk_buffer_pct: tpl.risk_buffer_pct,
-        labels: tpl.labels ?? [],
-        is_expertise_subtask: tpl.is_expertise_subtask,
-        assignee_ids: profile?.id ? [profile.id] : [],
-        // Same created_by note as cloneTask above — schema has no DEFAULT.
-        created_by: profile?.id ?? null,
-      });
-      if (error) throw error;
-      return tpl.name;
-    },
-    // Toast confirms the create so a stray click on the dropdown doesn't
-    // silently spawn a task. The new task lands in queued + (kopya-less)
-    // — user can archive from the toast-adjacent UI if they didn't mean it.
-    onSuccess: (templateName) => {
-      qc.invalidateQueries({ queryKey: ['tasks'] });
-      toast.success(`"${templateName}" şablonundan tapşırıq yaradıldı`);
-    },
-    onError: (e) => toast.error((e as Error).message),
-  });
+  // Şablondan yarat now opens the create modal pre-filled instead of an instant
+  // insert, so a template-spawned task passes the same mandatory-deadline gate
+  // (owner rule: no task without a deadline).
+  const [templateDraft, setTemplateDraft] = useState<TaskTemplateDefaults | null>(null);
+  function openTemplate(templateId: string) {
+    const tpl = templates.data?.find((t) => t.id === templateId);
+    if (!tpl) return;
+    setTemplateDraft({
+      title: tpl.title,
+      description: tpl.description,
+      estimated_duration: tpl.estimated_duration,
+      duration_unit: tpl.duration_unit,
+      risk_buffer_pct: tpl.risk_buffer_pct,
+      labels: tpl.labels ?? [],
+      is_expertise_subtask: tpl.is_expertise_subtask,
+    });
+  }
 
   // PRD §6.x — label filter (chip row above the kanban). URL-persisted.
   const [labelFilter, setLabelFilter] = useState<string | null>(searchParams.get('label'));
@@ -1047,11 +1035,10 @@ export function TasksPage() {
                 className="input max-w-[200px]"
                 value=""
                 onChange={(e) => {
-                  if (e.target.value) createFromTemplate.mutate(e.target.value);
+                  if (e.target.value) openTemplate(e.target.value);
                   // Controlled value="" already pins the select back to the
                   // placeholder after this render — no DOM mutation needed.
                 }}
-                disabled={createFromTemplate.isPending}
                 aria-label="Şablondan tapşırıq yarat"
               >
                 <option value="">Şablondan yarat…</option>
@@ -2018,6 +2005,9 @@ export function TasksPage() {
       ) : null}
 
       {creating ? <TaskCreateModal onClose={() => setCreating(false)} /> : null}
+      {templateDraft ? (
+        <TaskCreateModal template={templateDraft} onClose={() => setTemplateDraft(null)} />
+      ) : null}
       {quickAddCol ? (
         <TaskCreateModal
           defaultStatus={quickAddCol}
