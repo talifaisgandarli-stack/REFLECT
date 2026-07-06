@@ -33,6 +33,10 @@ create table if not exists project_overhead_allocations (
   project_id uuid not null references projects(id) on delete cascade,
   period_month date not null,               -- first day of the month
   percent numeric(5,2) not null default 0 check (percent >= 0 and percent <= 100),
+  -- Snapshot of the AZN overhead assigned at save time (pool * percent/100), so
+  -- a project's historical net profit stays stable even when salaries later
+  -- change, and the project page reads amounts without recomputing month pools.
+  overhead_amount numeric(14,2) not null default 0,
   locked boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),

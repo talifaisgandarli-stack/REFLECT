@@ -84,6 +84,19 @@ export function ProjectPnL({ projectId }: Props) {
       }>;
     },
   });
+  // Saved overhead snapshots (Rentabellik calculator) — cumulative net profit.
+  const overhead = useQuery({
+    queryKey: ['pnl', 'overhead', projectId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('project_overhead_allocations')
+        .select('overhead_amount, period_month')
+        .eq('project_id', projectId);
+      if (error) throw error;
+      return (data ?? []) as Array<{ overhead_amount: number; period_month: string }>;
+    },
+  });
+
   // Payment milestones for this project's items (source of truth for money).
   const outsourcePayments = useQuery({
     queryKey: ['pnl', 'outsource-payments', projectId],
@@ -159,6 +172,13 @@ export function ProjectPnL({ projectId }: Props) {
   const direct = expenseTotal + outsourcePaid;
   const net = incomeTotal - direct;
   const netCommitted = incomeTotal - expenseTotal - outsourceCommitted;
+
+  // Net profit (ƏDV-siz): revenue net of VAT − direct costs − allocated overhead.
+  const vatForNet = project.data?.vat_rate ?? 18;
+  const incomeNet = incomeTotal / (1 + vatForNet / 100);
+  const overheadTotal = (overhead.data ?? []).reduce((s, r) => s + Number(r.overhead_amount ?? 0), 0);
+  const overheadMonths = overhead.data?.length ?? 0;
+  const netProfit = incomeNet - direct - overheadTotal;
 
   const loading =
     incomes.isLoading || expenses.isLoading || outsourceItems.isLoading || outsourcePayments.isLoading;
@@ -307,8 +327,31 @@ export function ProjectPnL({ projectId }: Props) {
         )}
         <p className="text-meta mt-3" style={{ color: 'var(--text-muted)' }}>
           "Öhdəlik" sırası ödənilməmiş podratçı ödənişlərini də daxil edir — forecast üçün konservativ baxış.
-          Ofis/maaş overhead-i və net profit "Maliyyə Mərkəzi → Rentabellik" bölməsində hesablanır.
         </p>
+      </div>
+
+      {/* Net profit incl. allocated overhead (0087, Rentabellik snapshots) */}
+      <div className="card">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <span className="text-meta uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+              Net profit (overhead ilə)
+            </span>
+            <div className="text-h2 mt-1" style={{ color: netProfit >= 0 ? '#15803D' : 'var(--error-deep)', fontVariantNumeric: 'tabular-nums' }}>
+              {formatAZN(netProfit)}
+            </div>
+          </div>
+          <div className="text-meta text-right" style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+            <div>Gəlir (ƏDV-siz): {formatAZN(incomeNet)}</div>
+            <div>Birbaşa xərc: −{formatAZN(direct).replace(/^−|^-/, '')}</div>
+            <div>Overhead ({overheadMonths} ay): −{formatAZN(overheadTotal).replace(/^−|^-/, '')}</div>
+          </div>
+        </div>
+        {overheadMonths === 0 ? (
+          <p className="text-meta mt-2" style={{ color: 'var(--text-muted)' }}>
+            Overhead hələ bölünməyib — "Maliyyə Mərkəzi → Rentabellik" bölməsində ayları böl ki, maaş/ofis payı bura düşsün.
+          </p>
+        ) : null}
       </div>
 
       {/* Subcontractors on this project (0087) */}

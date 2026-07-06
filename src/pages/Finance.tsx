@@ -9,8 +9,9 @@ import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, ComposedChar
 import { IncomeExpenseModal, type FinanceKind } from '@/components/IncomeExpenseModal';
 import { MarkPaidModal } from '@/components/MarkPaidModal';
 import { InvoiceFromTemplateModal } from '@/components/InvoiceFromTemplateModal';
+import { ProfitabilityCalculator } from '@/components/ProfitabilityCalculator';
 
-const TABS = ['Cash Cockpit', 'P&L', 'Outsource', 'Xərclər', 'Sabit', 'Debitor', 'Forecast'] as const;
+const TABS = ['Cash Cockpit', 'P&L', 'Rentabellik', 'Outsource', 'Xərclər', 'Sabit', 'Debitor', 'Forecast'] as const;
 
 const PERIOD_LABEL: Record<string, string> = {
   weekly: 'Həftəlik',
@@ -415,6 +416,7 @@ export function FinancePage() {
           }))}
         />
       ) : null}
+      {tab === 'Rentabellik' ? <ProfitabilityCalculator /> : null}
       {tab === 'Outsource' ? <OutsourceSummary /> : null}
 
       {modal ? <IncomeExpenseModal kind={modal} onClose={() => setModal(null)} /> : null}

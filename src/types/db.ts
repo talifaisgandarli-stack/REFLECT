@@ -122,6 +122,8 @@ export interface ProjectOverheadAllocation {
   project_id: string;
   period_month: string; // first day of the month, YYYY-MM-01
   percent: number;
+  /** AZN overhead snapshot at save time (pool * percent/100) */
+  overhead_amount: number;
   locked: boolean;
   created_at: string;
   updated_at: string;
