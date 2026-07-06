@@ -142,6 +142,17 @@ export function FinancePage() {
     (s, r) => s + (Number(r.amount) - Number(r.paid_amount)),
     0,
   );
+  // Current-month income split by payment method — makes cash (nağd) vs bank
+  // visible firm-wide, mirroring the per-project P&L breakdown.
+  const inByMethod = (() => {
+    const m = new Map<string, number>();
+    for (const r of (incomes.data ?? []) as Array<{ occurred_at: string | null; amount: number; payment_method: string | null }>) {
+      if (!inMonth(r.occurred_at)) continue;
+      const key = (r.payment_method ?? '').trim() || 'Digər';
+      m.set(key, (m.get(key) ?? 0) + Number(r.amount ?? 0));
+    }
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+  })();
 
   return (
     <>
@@ -210,17 +221,61 @@ export function FinancePage() {
       </nav>
 
       {tab === 'Cash Cockpit' ? (
-        <div className="card" style={{ height: 320 }}>
-          <h3 className="text-h3 mb-3">Aylıq cash flow</h3>
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={byMonth(incomes.data ?? [], expenses.data ?? [])}>
-              <XAxis dataKey="m" stroke="#7A857F" />
-              <YAxis stroke="#7A857F" />
-              <Tooltip />
-              <Bar dataKey="in" fill="#ADFB49" />
-              <Bar dataKey="out" fill="#1A5140" />
-            </BarChart>
-          </ResponsiveContainer>
+        <div className="space-y-5">
+          <div className="card" style={{ height: 320 }}>
+            <h3 className="text-h3 mb-3">Aylıq cash flow</h3>
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={byMonth(incomes.data ?? [], expenses.data ?? [])}>
+                <XAxis dataKey="m" stroke="#7A857F" />
+                <YAxis stroke="#7A857F" />
+                <Tooltip />
+                <Bar dataKey="in" fill="#ADFB49" />
+                <Bar dataKey="out" fill="#1A5140" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Nağd vs köçürmə — current-month income by payment method */}
+          <div className="card">
+            <div className="flex items-baseline justify-between mb-3">
+              <h3 className="text-h3">Ödəniş üsulu (cari ay)</h3>
+              <span className="text-meta" style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                Cəmi {formatAZN(totalIn)}
+              </span>
+            </div>
+            {inByMethod.length === 0 ? (
+              <p className="text-meta" style={{ color: 'var(--text-muted)' }}>Bu ay ödəniş qeydə alınmayıb.</p>
+            ) : (
+              <ul className="space-y-2">
+                {inByMethod.map(([method, amt]) => {
+                  const isCash = method === 'Nağd';
+                  const pct = totalIn > 0 ? Math.round((amt / totalIn) * 100) : 0;
+                  return (
+                    <li key={method}>
+                      <div className="flex items-center justify-between text-body">
+                        <span style={{ color: 'var(--text)', fontWeight: isCash ? 600 : 400 }}>
+                          {isCash ? '💵 ' : ''}{method}
+                        </span>
+                        <span style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                          {formatAZN(amt)} · {pct}%
+                        </span>
+                      </div>
+                      <div style={{ height: 6, background: 'var(--line)', borderRadius: 999, marginTop: 4 }}>
+                        <div
+                          style={{
+                            width: `${pct}%`,
+                            height: '100%',
+                            background: isCash ? 'var(--brand-text)' : 'var(--brand-action)',
+                            borderRadius: 999,
+                          }}
+                        />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
         </div>
       ) : null}
 
