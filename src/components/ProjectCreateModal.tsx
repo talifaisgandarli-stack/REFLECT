@@ -10,7 +10,8 @@ import { supabase } from '@/lib/supabase';
 import { toast } from './Toast';
 import { useAuth } from '@/lib/store';
 import { useClients } from '@/lib/hooks';
-import { phaseLabel } from '@/lib/labels';
+import { phaseLabel, grossFromNet } from '@/lib/labels';
+import { formatAZN } from '@/lib/format';
 import type { Project } from '@/types/db';
 
 // PRD §5 Module 3 — canonical phase list
@@ -60,6 +61,14 @@ export function ProjectCreateModal({ onClose, onCreated, existingProject }: Prop
   // PRD §6.x — project tags (migration 0053)
   const [tagsInput, setTagsInput] = useState((ex?.tags ?? []).join(', '));
   const [contractCode, setContractCode] = useState(ex?.contract_code ?? '');
+  // migration 0087 — contract value (ƏDV-siz) + VAT rate; gross computed live.
+  const [contractNet, setContractNet] = useState(
+    ex?.contract_value_net != null ? String(ex.contract_value_net) : '',
+  );
+  const [vatRate, setVatRate] = useState(ex?.vat_rate != null ? String(ex.vat_rate) : '18');
+  const contractNetNum = contractNet.trim() ? Number(contractNet.replace(',', '.')) : null;
+  const vatRateNum = vatRate.trim() ? Number(vatRate.replace(',', '.')) : 18;
+  const contractGross = grossFromNet(contractNetNum, vatRateNum);
 
   function togglePhase(phase: string) {
     setPhases((prev) =>
@@ -101,6 +110,12 @@ export function ProjectCreateModal({ onClose, onCreated, existingProject }: Prop
       if (requiresExpertise && expertiseDeadline && startDate && expertiseDeadline < startDate) {
         throw new Error('Ekspertiza tarixi başlama tarixindən əvvəl ola bilməz.');
       }
+      if (contractNet.trim() && (!Number.isFinite(contractNetNum!) || contractNetNum! < 0)) {
+        throw new Error('Müqavilə dəyəri düzgün deyil.');
+      }
+      if (!Number.isFinite(vatRateNum) || vatRateNum < 0 || vatRateNum > 100) {
+        throw new Error('ƏDV faizi 0–100 aralığında olmalıdır.');
+      }
 
       const base = {
         name: trimmedName,
@@ -112,6 +127,8 @@ export function ProjectCreateModal({ onClose, onCreated, existingProject }: Prop
         expertise_deadline: requiresExpertise ? expertiseDeadline || null : null,
         payment_buffer_days: paymentBuffer,
         contract_code: contractCode.trim() || null,
+        contract_value_net: contractNetNum,
+        vat_rate: vatRateNum,
         // PRD §6.x — parse comma-separated tags
         tags: tagsInput.split(',').map((t) => t.trim()).filter(Boolean),
       };
@@ -341,6 +358,51 @@ export function ProjectCreateModal({ onClose, onCreated, existingProject }: Prop
               style={{ fontVariantNumeric: 'tabular-nums' }}
             />
           </label>
+        </div>
+
+        {/* migration 0087 — contract value split ƏDV-siz + ƏDV faizi, gross live */}
+        <div className="mt-3 rounded-btn p-3" style={{ background: 'var(--surface-mist)' }}>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
+                Müqavilə dəyəri — ƏDV-siz (₼)
+              </span>
+              <input
+                type="text"
+                inputMode="decimal"
+                className="input"
+                placeholder="0.00"
+                value={contractNet}
+                onChange={(e) => setContractNet(e.target.value)}
+                style={{ fontVariantNumeric: 'tabular-nums' }}
+              />
+            </label>
+            <label className="block">
+              <span className="text-meta block mb-1" style={{ color: 'var(--text-muted)' }}>
+                ƏDV %
+              </span>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step="0.5"
+                className="input"
+                value={vatRate}
+                onChange={(e) => setVatRate(e.target.value)}
+                style={{ fontVariantNumeric: 'tabular-nums' }}
+              />
+            </label>
+          </div>
+          {contractGross != null ? (
+            <p className="text-meta mt-2" style={{ color: 'var(--brand-text)', fontVariantNumeric: 'tabular-nums' }}>
+              ƏDV-li (brutto): <strong>{formatAZN(contractGross)}</strong>
+              {contractNetNum != null ? ` · ƏDV: ${formatAZN(contractGross - contractNetNum)}` : ''}
+            </p>
+          ) : (
+            <p className="text-meta mt-2" style={{ color: 'var(--text-muted)' }}>
+              Mənfəət hesablaması ƏDV-siz məbləğ üzərindən gedir.
+            </p>
+          )}
         </div>
 
         {/* migration 0086 — optional signed-contract reference code */}

@@ -7,6 +7,25 @@ import type {
   TaskStatus,
 } from '@/types/db';
 
+// ── Finance: project payment milestones (migration 0087) ─────────────────────
+// A project payment is an installment of the contract value tied to a delivery
+// stage. Kept as an ordered list so dropdowns + summaries stay consistent.
+export type PaymentKind = 'advance' | 'interim' | 'final';
+export const PAYMENT_KIND_ORDER: PaymentKind[] = ['advance', 'interim', 'final'];
+export const PAYMENT_KIND_LABEL: Record<PaymentKind, string> = {
+  advance: 'Avans',
+  interim: 'Ara ödəniş',
+  final: 'Yekun ödəniş',
+};
+
+// Gross (ƏDV-li) from net contract value + VAT rate %. Central so every surface
+// computes it the same way. null-safe: missing net → null.
+export function grossFromNet(net: number | null | undefined, vatRate: number | null | undefined): number | null {
+  if (net == null) return null;
+  const rate = vatRate ?? 18;
+  return Math.round(net * (1 + rate / 100) * 100) / 100;
+}
+
 export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
   idea: 'İdeyalar',
   queued: 'Başlanmayıb',

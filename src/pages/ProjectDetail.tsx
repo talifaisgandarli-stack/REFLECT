@@ -2289,13 +2289,13 @@ function ProjectFinancePane({ projectId }: { projectId: string }) {
     <div className="space-y-4">
       {isAdmin ? (
         <div className="flex gap-2">
-          <button type="button" className="btn-primary" onClick={() => setModal('income')}>+ Gəlir</button>
+          <button type="button" className="btn-primary" onClick={() => setModal('income')}>+ Ödəniş</button>
           <button type="button" className="btn-outline" onClick={() => setModal('expense')}>+ Xərc</button>
         </div>
       ) : null}
       <ProjectPnL projectId={projectId} />
       {modal ? (
-        <IncomeExpenseModal kind={modal} defaultProjectId={projectId} onClose={() => setModal(null)} />
+        <IncomeExpenseModal kind={modal} defaultProjectId={projectId} incomeNoun="Ödəniş" onClose={() => setModal(null)} />
       ) : null}
     </div>
   );

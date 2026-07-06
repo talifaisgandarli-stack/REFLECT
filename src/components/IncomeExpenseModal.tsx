@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/store';
 import { useFocusTrap } from '@/lib/a11y';
+import { PAYMENT_KIND_ORDER, PAYMENT_KIND_LABEL, type PaymentKind } from '@/lib/labels';
 
 export type FinanceKind = 'income' | 'expense';
 
@@ -23,9 +24,16 @@ const EXPENSE_CATEGORIES = [
   'Digər',
 ] as const;
 
-type Props = { kind: FinanceKind; onClose: () => void; defaultProjectId?: string };
+type Props = {
+  kind: FinanceKind;
+  onClose: () => void;
+  defaultProjectId?: string;
+  // Relabel the income form (e.g. "Ödəniş" on the project surface, where money
+  // comes in as installments of a contract rather than generic "Gəlir").
+  incomeNoun?: string;
+};
 
-export function IncomeExpenseModal({ kind, onClose, defaultProjectId }: Props) {
+export function IncomeExpenseModal({ kind, onClose, defaultProjectId, incomeNoun = 'Gəlir' }: Props) {
   const { profile } = useAuth();
   const qc = useQueryClient();
 
@@ -54,11 +62,12 @@ export function IncomeExpenseModal({ kind, onClose, defaultProjectId }: Props) {
   const [clientId, setClientId] = useState('');
   const [invoice, setInvoice] = useState('');
   const [note, setNote] = useState('');
+  const [paymentKind, setPaymentKind] = useState<'' | PaymentKind>('');
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   const isIncome = kind === 'income';
-  const title = isIncome ? '+ Gəlir' : '+ Xərc';
-  const submitLabel = isIncome ? 'Gəliri qeyd et' : 'Xərci qeyd et';
+  const title = isIncome ? `+ ${incomeNoun}` : '+ Xərc';
+  const submitLabel = isIncome ? `${incomeNoun}i qeyd et` : 'Xərci qeyd et';
 
   const save = useMutation({
     mutationFn: async () => {
@@ -77,6 +86,7 @@ export function IncomeExpenseModal({ kind, onClose, defaultProjectId }: Props) {
           note: note || null,
           project_id: projectId || null,
           client_id: clientId || null,
+          payment_kind: paymentKind || null,
           created_by: profile?.id ?? null,
         });
         if (error) throw error;
@@ -211,14 +221,28 @@ export function IncomeExpenseModal({ kind, onClose, defaultProjectId }: Props) {
                   ))}
                 </select>
               </Field>
-              <Field label="Faktura nömrəsi">
-                <input
-                  className="input"
-                  value={invoice}
-                  onChange={(e) => setInvoice(e.target.value)}
-                  placeholder="INV-2026-001"
-                />
-              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Ödəniş mərhələsi">
+                  <select
+                    className="input"
+                    value={paymentKind}
+                    onChange={(e) => setPaymentKind(e.target.value as '' | PaymentKind)}
+                  >
+                    <option value="">— ümumi —</option>
+                    {PAYMENT_KIND_ORDER.map((k) => (
+                      <option key={k} value={k}>{PAYMENT_KIND_LABEL[k]}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Faktura nömrəsi">
+                  <input
+                    className="input"
+                    value={invoice}
+                    onChange={(e) => setInvoice(e.target.value)}
+                    placeholder="INV-2026-001"
+                  />
+                </Field>
+              </div>
             </>
           ) : (
             <Field label="Vendor">
