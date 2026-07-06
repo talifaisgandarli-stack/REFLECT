@@ -108,6 +108,23 @@ export interface Project {
   reopened_at: string | null;
   /** migration 0086 — optional signed-contract reference code */
   contract_code?: string | null;
+  /** migration 0087 — contract value excl. VAT (ƏDV-siz); profit maths use this */
+  contract_value_net?: number | null;
+  /** migration 0087 — VAT rate % (default 18); gross = net * (1 + vat_rate/100) */
+  vat_rate?: number | null;
+  /** migration 0048 — admin-only budget cap */
+  budget_amount?: number | null;
+}
+
+/** migration 0087 — per-project / per-month overhead (maaş+ofis) allocation. */
+export interface ProjectOverheadAllocation {
+  id: string;
+  project_id: string;
+  period_month: string; // first day of the month, YYYY-MM-01
+  percent: number;
+  locked: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ProjectDocument {
@@ -288,6 +305,8 @@ export interface Income {
   invoice_number: string | null;
   note: string | null;
   created_by: string | null;
+  /** migration 0087 — payment milestone: advance=Avans, interim=Ara, final=Yekun */
+  payment_kind?: 'advance' | 'interim' | 'final' | null;
 }
 
 export interface Expense {
