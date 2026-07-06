@@ -48,10 +48,10 @@ export function ProjectPnL({ projectId }: Props) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('incomes')
-        .select('amount, occurred_at, payment_kind')
+        .select('amount, occurred_at, payment_kind, payment_method')
         .eq('project_id', projectId);
       if (error) throw error;
-      return (data ?? []) as Array<Row & { payment_kind: PaymentKind | null }>;
+      return (data ?? []) as Array<Row & { payment_kind: PaymentKind | null; payment_method: string | null }>;
     },
   });
   const expenses = useQuery({
@@ -169,6 +169,17 @@ export function ProjectPnL({ projectId }: Props) {
     return m;
   }, [incomes.data]);
 
+  // Received split by payment method — makes cash (nağd) vs bank visible, since
+  // some projects are settled in cash. Descending, cash first when tied.
+  const byMethod = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const i of incomes.data ?? []) {
+      const key = (i.payment_method ?? '').trim() || 'Digər';
+      m.set(key, (m.get(key) ?? 0) + Number(i.amount ?? 0));
+    }
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+  }, [incomes.data]);
+
   const direct = expenseTotal + outsourcePaid;
   const net = incomeTotal - direct;
   const netCommitted = incomeTotal - expenseTotal - outsourceCommitted;
@@ -248,6 +259,30 @@ export function ProjectPnL({ projectId }: Props) {
         <Stat label="Birbaşa xərc" value={formatAZN(direct)} />
         <Stat label="Xalis (cash)" value={formatAZN(net)} tone={net >= 0 ? 'positive' : 'negative'} />
       </div>
+
+      {/* Received split by payment method — cash (nağd) made visible */}
+      {byMethod.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-meta" style={{ color: 'var(--text-muted)' }}>Ödəniş üsulu:</span>
+          {byMethod.map(([method, amt]) => {
+            const isCash = method === 'Nağd';
+            return (
+              <span
+                key={method}
+                className="chip text-meta"
+                style={{
+                  background: isCash ? 'var(--brand-mist)' : 'var(--surface-mist)',
+                  color: isCash ? 'var(--brand-text)' : 'var(--text)',
+                  fontWeight: isCash ? 600 : 400,
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {isCash ? '💵 ' : ''}{method}: {formatAZN(amt)}
+              </span>
+            );
+          })}
+        </div>
+      ) : null}
 
       {/* PRD §REQ-FIN-06 — budget vs actual progress bar */}
       {budget != null ? (
