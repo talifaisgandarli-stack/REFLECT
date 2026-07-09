@@ -36,6 +36,8 @@ type IncomeRow = Row & {
   invoice_number: string | null;
   note: string | null;
   client_id: string | null;
+  vat_included: boolean | null;
+  vat_rate: number | null;
 };
 type ExpenseRow = Row & {
   id: string;
@@ -88,7 +90,7 @@ export function ProjectPnL({ projectId }: Props) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('incomes')
-        .select('id, amount, occurred_at, payment_kind, payment_method, invoice_number, note, client_id')
+        .select('id, amount, occurred_at, payment_kind, payment_method, invoice_number, note, client_id, vat_included, vat_rate')
         .eq('project_id', projectId)
         .order('occurred_at', { ascending: false });
       if (error) throw error;
@@ -237,7 +239,11 @@ export function ProjectPnL({ projectId }: Props) {
         kind: 'income',
         date: i.occurred_at,
         amount: Number(i.amount ?? 0),
-        detail: [i.payment_method, i.payment_kind ? PAYMENT_KIND_LABEL[i.payment_kind] : null]
+        detail: [
+          i.payment_method,
+          i.payment_kind ? PAYMENT_KIND_LABEL[i.payment_kind] : null,
+          i.vat_included ? `ƏDV ${i.vat_rate ?? 18}%` : null,
+        ]
           .filter(Boolean)
           .join(' · '),
         note: i.note,
@@ -262,8 +268,15 @@ export function ProjectPnL({ projectId }: Props) {
   const netCommitted = incomeTotal - expenseTotal - outsourceCommitted;
 
   // Net profit (ƏDV-siz): revenue net of VAT − direct costs − allocated overhead.
-  const vatForNet = project.data?.vat_rate ?? 18;
-  const incomeNet = incomeTotal / (1 + vatForNet / 100);
+  // Per-payment (0088): only ƏDV-li payments get divided; cash payments without
+  // VAT count in full. Rows missing a rate fall back to the project's rate.
+  const projectVat = project.data?.vat_rate ?? 18;
+  const incomeNet = (incomes.data ?? []).reduce((s, i) => {
+    const amt = Number(i.amount ?? 0);
+    if (!i.vat_included) return s + amt;
+    const rate = i.vat_rate ?? projectVat;
+    return s + amt / (1 + rate / 100);
+  }, 0);
   const overheadTotal = (overhead.data ?? []).reduce((s, r) => s + Number(r.overhead_amount ?? 0), 0);
   const overheadMonths = overhead.data?.length ?? 0;
   const netProfit = incomeNet - direct - overheadTotal;

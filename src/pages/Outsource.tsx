@@ -70,6 +70,26 @@ type OutsourcePayment = {
 
 const sumPaid = (ps: OutsourcePayment[]) => ps.filter((p) => p.is_paid).reduce((s, p) => s + Number(p.amount), 0);
 
+// What's still owed on an item, split by the PLANNED payment method of its
+// unpaid milestones. Any remaining amount not covered by milestone rows (or
+// with no method chosen) lands in `none` — so the owner sees exactly how much
+// cash (nağd) they must have on hand to settle everything.
+type DueBuckets = { cash: number; bank_transfer: number; card: number; none: number };
+function unpaidBuckets(ps: OutsourcePayment[], amount: number | null): DueBuckets {
+  const b: DueBuckets = { cash: 0, bank_transfer: 0, card: 0, none: 0 };
+  let covered = 0;
+  for (const p of ps) {
+    if (p.is_paid) continue;
+    const amt = Number(p.amount ?? 0);
+    if (p.method === 'cash' || p.method === 'bank_transfer' || p.method === 'card') b[p.method] += amt;
+    else b.none += amt;
+    covered += amt;
+  }
+  const remaining = Math.max(0, Number(amount ?? 0) - sumPaid(ps));
+  if (remaining > covered) b.none += remaining - covered;
+  return b;
+}
+
 const yearOf = (d: string | null | undefined) => (d ? Number(d.slice(0, 4)) : null);
 const monthOf = (d: string | null | undefined) => (d ? Number(d.slice(5, 7)) : null);
 const MONTHS = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'İyun', 'İyul', 'Avqust', 'Sentyabr', 'Oktyabr', 'Noyabr', 'Dekabr'];
@@ -193,8 +213,14 @@ export function OutsourcePage() {
 
   const totals = useMemo(() => {
     let contract = 0, paid = 0;
-    for (const r of filtered) { contract += Number(r.amount ?? 0); paid += paidOf(r.id); }
-    return { contract, paid, remaining: Math.max(0, contract - paid) };
+    const due: DueBuckets = { cash: 0, bank_transfer: 0, card: 0, none: 0 };
+    for (const r of filtered) {
+      contract += Number(r.amount ?? 0);
+      paid += paidOf(r.id);
+      const b = unpaidBuckets(paymentsOf(r.id), r.amount);
+      due.cash += b.cash; due.bank_transfer += b.bank_transfer; due.card += b.card; due.none += b.none;
+    }
+    return { contract, paid, remaining: Math.max(0, contract - paid), due };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtered, paymentsByItem]);
 
@@ -206,7 +232,7 @@ export function OutsourcePage() {
       <PageHead
         meta={
           isAdmin
-            ? `Müqavilə ${formatAZN(totals.contract)} · ${formatAZN(totals.paid)} ödənilib · ${formatAZN(totals.remaining)} qalıq`
+            ? `Müqavilə ${formatAZN(totals.contract)} · ${formatAZN(totals.paid)} ödənilib · ${formatAZN(totals.remaining)} qalıq${totals.due.cash > 0 ? ` · 💵 Nağd lazımdır: ${formatAZN(totals.due.cash)}` : ''}`
             : 'İstifadəçi görünüşü (məbləğlər gizlidir)'
         }
         title="Podrat İşləri"
@@ -391,9 +417,15 @@ export function OutsourcePage() {
                 const paid = sumPaid(ps);
                 const remaining = amount != null ? Math.max(0, amount - paid) : null;
                 const ws = WORK_STATUS[row.status];
-                const payState = !amount || paid <= 0 ? { label: 'Başlanmayıb', color: 'var(--text-muted)' }
+                const payState = !amount || paid <= 0 ? { label: 'Ödənilməyib', color: 'var(--error-deep, #b3261e)' }
                   : paid >= amount ? { label: 'Ödənildi', color: 'var(--success-deep, #1d7a44)' }
                   : { label: 'Qismən', color: 'var(--warning, #c47d00)' };
+                const due = unpaidBuckets(ps, amount);
+                const dueParts = [
+                  due.cash > 0 ? `💵 Nağd ${formatAZN(due.cash)}` : null,
+                  due.bank_transfer > 0 ? `Köçürmə ${formatAZN(due.bank_transfer)}` : null,
+                  due.card > 0 ? `Kart ${formatAZN(due.card)}` : null,
+                ].filter(Boolean) as string[];
                 const advance = ps.filter((p) => p.kind === 'advance');
                 const interim = ps.filter((p) => p.kind === 'interim');
                 const fin = ps.filter((p) => p.kind === 'final');
@@ -423,6 +455,16 @@ export function OutsourcePage() {
                           <span className="text-meta" style={{ color: payState.color, fontWeight: 500 }}>{payState.label}</span>
                           {paidMethods.length > 0 ? (
                             <div className="text-meta" style={{ color: 'var(--text-muted)' }}>{paidMethods.map((m) => METHOD_LABEL[m] ?? m).join(', ')}</div>
+                          ) : null}
+                          {/* Planned method of what's still owed — so the owner
+                              knows if this debt needs cash or a transfer. */}
+                          {dueParts.length > 0 ? (
+                            <div className="text-meta" style={{ color: 'var(--text)', whiteSpace: 'nowrap' }}>{dueParts.join(' · ')}</div>
+                          ) : null}
+                          {due.none > 0 ? (
+                            <div className="text-meta" style={{ color: 'var(--text-muted)' }} title="Qalığın bu hissəsi üçün ödəniş üsulu seçilməyib — ✎ ilə aç və mərhələlərə üsul təyin et">
+                              {formatAZN(due.none)} üsul seçilməyib
+                            </div>
                           ) : null}
                         </td>
                         <td className="py-3 px-3">
@@ -468,7 +510,19 @@ export function OutsourcePage() {
                   <td colSpan={6} className="py-3 px-3 text-meta" style={{ color: 'var(--text-muted)' }}>Cəmi (görünən · {filtered.length})</td>
                   <td className="py-3 px-3 font-medium" style={{ fontVariantNumeric: 'tabular-nums' }}>{formatAZN(totals.contract)}</td>
                   <td className="py-3 px-3 font-medium" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--success-deep, #1d7a44)' }}>{formatAZN(totals.paid)}</td>
-                  <td className="py-3 px-3 font-medium" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--error-deep, #b3261e)' }}>{formatAZN(totals.remaining)}</td>
+                  <td className="py-3 px-3 font-medium" style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--error-deep, #b3261e)' }}>
+                    {formatAZN(totals.remaining)}
+                    {totals.remaining > 0 ? (
+                      <div className="text-meta" style={{ fontWeight: 400, whiteSpace: 'nowrap' }}>
+                        {[
+                          totals.due.cash > 0 ? `💵 Nağd ${formatAZN(totals.due.cash)}` : null,
+                          totals.due.bank_transfer > 0 ? `Köçürmə ${formatAZN(totals.due.bank_transfer)}` : null,
+                          totals.due.card > 0 ? `Kart ${formatAZN(totals.due.card)}` : null,
+                          totals.due.none > 0 ? `Üsulsuz ${formatAZN(totals.due.none)}` : null,
+                        ].filter(Boolean).join(' · ')}
+                      </div>
+                    ) : null}
+                  </td>
                   <td className="py-3 px-3" />
                 </tr>
               </tfoot>

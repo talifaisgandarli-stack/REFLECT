@@ -38,6 +38,8 @@ export type FinanceEditRow = {
   note?: string | null;
   project_id: string | null;
   client_id?: string | null;
+  vat_included?: boolean;
+  vat_rate?: number | null;
 };
 
 type Props = {
@@ -82,9 +84,21 @@ export function IncomeExpenseModal({ kind, onClose, defaultProjectId, incomeNoun
   const [invoice, setInvoice] = useState(editRow?.invoice_number ?? '');
   const [note, setNote] = useState(editRow?.note ?? '');
   const [paymentKind, setPaymentKind] = useState<'' | PaymentKind>(editRow?.payment_kind ?? '');
+  // migration 0088 — optional per-payment ƏDV. Selecting "Bank köçürməsi"
+  // auto-ticks it (transfers are official → VAT applies), but it stays a
+  // free choice: the admin can untick, or tick it on a cash payment.
+  const [vatIncluded, setVatIncluded] = useState(editRow?.vat_included ?? false);
+  const [vatRate, setVatRate] = useState(editRow?.vat_rate != null ? String(editRow.vat_rate) : '18');
   const [date, setDate] = useState(() =>
     editRow?.occurred_at ? editRow.occurred_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
   );
+
+  const amountNum = Number(amount.replace(',', '.'));
+  const vatRateNum = Number(vatRate.replace(',', '.'));
+  const vatBreakdown =
+    vatIncluded && Number.isFinite(amountNum) && amountNum > 0 && Number.isFinite(vatRateNum) && vatRateNum > 0
+      ? { net: amountNum / (1 + vatRateNum / 100), vat: amountNum - amountNum / (1 + vatRateNum / 100) }
+      : null;
 
   const isIncome = kind === 'income';
   const title = isEdit ? (isIncome ? `${incomeNoun}i düzəlt` : 'Xərci düzəlt') : isIncome ? `+ ${incomeNoun}` : '+ Xərc';
@@ -99,6 +113,9 @@ export function IncomeExpenseModal({ kind, onClose, defaultProjectId, incomeNoun
       const occurred_at = new Date(`${date}T12:00:00+04:00`).toISOString();
 
       if (isIncome) {
+        if (vatIncluded && (!Number.isFinite(vatRateNum) || vatRateNum <= 0 || vatRateNum > 100)) {
+          throw new Error('ƏDV faizi 0–100 aralığında olmalıdır');
+        }
         const payload = {
           amount: n,
           payment_method: method,
@@ -108,6 +125,8 @@ export function IncomeExpenseModal({ kind, onClose, defaultProjectId, incomeNoun
           project_id: projectId || null,
           client_id: clientId || null,
           payment_kind: paymentKind || null,
+          vat_included: vatIncluded,
+          vat_rate: vatIncluded ? vatRateNum : null,
         };
         const { error } = isEdit
           ? await supabase.from('incomes').update(payload).eq('id', editRow!.id)
@@ -190,7 +209,15 @@ export function IncomeExpenseModal({ kind, onClose, defaultProjectId, incomeNoun
             </Field>
             {isIncome ? (
               <Field label="Ödəniş üsulu">
-                <select className="input" value={method} onChange={(e) => setMethod(e.target.value)}>
+                <select
+                  className="input"
+                  value={method}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setMethod(v);
+                    if (v === 'Bank köçürməsi') setVatIncluded(true);
+                  }}
+                >
                   {PAYMENT_METHODS.map((p) => (
                     <option key={p} value={p}>
                       {p}
@@ -267,6 +294,44 @@ export function IncomeExpenseModal({ kind, onClose, defaultProjectId, incomeNoun
                     placeholder="INV-2026-001"
                   />
                 </Field>
+              </div>
+
+              {/* migration 0088 — optional ƏDV on this payment */}
+              <div className="rounded-btn p-3" style={{ background: 'var(--surface-mist)' }}>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 text-body cursor-pointer" style={{ flex: 1 }}>
+                    <input
+                      type="checkbox"
+                      checked={vatIncluded}
+                      onChange={(e) => setVatIncluded(e.target.checked)}
+                    />
+                    Məbləğ ƏDV-lidir
+                  </label>
+                  {vatIncluded ? (
+                    <label className="flex items-center gap-1.5 text-meta" style={{ color: 'var(--text-muted)' }}>
+                      ƏDV %
+                      <input
+                        type="number"
+                        min={0.5}
+                        max={100}
+                        step="0.5"
+                        className="input"
+                        style={{ width: 76, height: 32, fontVariantNumeric: 'tabular-nums' }}
+                        value={vatRate}
+                        onChange={(e) => setVatRate(e.target.value)}
+                      />
+                    </label>
+                  ) : null}
+                </div>
+                {vatBreakdown ? (
+                  <p className="text-meta mt-2" style={{ color: 'var(--brand-text)', fontVariantNumeric: 'tabular-nums' }}>
+                    ƏDV-siz: <strong>{vatBreakdown.net.toFixed(2)} ₼</strong> · ƏDV: {vatBreakdown.vat.toFixed(2)} ₼
+                  </p>
+                ) : (
+                  <p className="text-meta mt-2" style={{ color: 'var(--text-muted)' }}>
+                    Köçürmə ödənişlərində adətən işarələnir; nağdda boş saxla. Net profit ƏDV-siz məbləğlə hesablanır.
+                  </p>
+                )}
               </div>
             </>
           ) : (
