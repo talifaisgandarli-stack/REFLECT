@@ -152,12 +152,13 @@ export function OutsourcePage() {
     },
   });
 
-  const filtered = useMemo(() => {
+  // Rows passing every filter EXCEPT status — status chips count within this
+  // subset so their numbers stay truthful when a project/year/search narrows
+  // the list (faceted-filter convention).
+  const preStatusFiltered = useMemo(() => {
     const term = search.trim().toLowerCase();
-    const statusMatch = WORK_FILTERS.find((f) => f.key === statusFilter)?.match ?? (() => true);
     return rows.filter((r) => {
-      if (!statusMatch(r.status)) return false;
-      if (projectFilter !== 'all' && r.project_id !== projectFilter) return false;
+      if (projectFilter === 'none' ? r.project_id != null : projectFilter !== 'all' && r.project_id !== projectFilter) return false;
       if (yearFilter !== 'all' && yearOf(rowDate(r)) !== yearFilter) return false;
       if (monthFilter !== 'all' && monthOf(rowDate(r)) !== monthFilter) return false;
       if (term) {
@@ -166,7 +167,29 @@ export function OutsourcePage() {
       }
       return true;
     });
-  }, [rows, search, statusFilter, projectFilter, yearFilter, monthFilter]);
+  }, [rows, search, projectFilter, yearFilter, monthFilter]);
+
+  const filtered = useMemo(() => {
+    const statusMatch = WORK_FILTERS.find((f) => f.key === statusFilter)?.match ?? (() => true);
+    return preStatusFiltered.filter((r) => statusMatch(r.status));
+  }, [preStatusFiltered, statusFilter]);
+
+  // Project options come from the podrat rows themselves — only projects that
+  // actually HAVE jobs (with counts), so picking one can never land on an
+  // empty table. Rows without a project get their own "layihəsiz" option.
+  const projectOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    let noProject = 0;
+    for (const r of rows) {
+      if (r.project_id) counts.set(r.project_id, (counts.get(r.project_id) ?? 0) + 1);
+      else noProject += 1;
+    }
+    const opts = [...counts.entries()]
+      .map(([id, count]) => ({ id, name: projectName(id), count }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'az'));
+    return { opts, noProject };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, projects.data]);
 
   const totals = useMemo(() => {
     let contract = 0, paid = 0;
@@ -224,10 +247,15 @@ export function OutsourcePage() {
 
       {isAdmin && rows.length > 0 ? (
         <div className="card mb-4">
-          <h3 className="text-h3 mb-2">Podratçılar üzrə xərc</h3>
+          <h3 className="text-h3 mb-2">
+            Podratçılar üzrə xərc
+            {anyFilter ? <span className="text-meta ml-2" style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(filtrə görə)</span> : null}
+          </h3>
           {(() => {
+            // Respects the active filters — the panel and the table below must
+            // always tell the same story, otherwise filters feel broken.
             const buckets = new Map<string, { count: number; total: number; paid: number }>();
-            for (const r of rows) {
+            for (const r of filtered) {
               const key = (r.contact_company ?? '').trim() || '—';
               const cur = buckets.get(key) ?? { count: 0, total: 0, paid: 0 };
               cur.count += 1;
@@ -236,6 +264,9 @@ export function OutsourcePage() {
               buckets.set(key, cur);
             }
             const list = [...buckets.entries()].sort((a, b) => b[1].total - a[1].total);
+            if (list.length === 0) {
+              return <p className="text-meta" style={{ color: 'var(--text-muted)' }}>Filtrə uyğun podrat işi yoxdur.</p>;
+            }
             const max = Math.max(1, ...list.map(([, v]) => v.total));
             return (
               <ul className="space-y-1.5">
@@ -270,7 +301,8 @@ export function OutsourcePage() {
           </select>
           <select className="input" style={{ maxWidth: 220, height: 36 }} aria-label="Layihə" value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
             <option value="all">Bütün layihələr</option>
-            {[...(projects.data ?? new Map()).entries()].map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+            {projectOptions.opts.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.count}</option>)}
+            {projectOptions.noProject > 0 ? <option value="none">— layihəsiz — · {projectOptions.noProject}</option> : null}
           </select>
           <input ref={searchRef} className="input" style={{ maxWidth: 240, height: 36 }} placeholder="Podratçı axtar… (/)" aria-label="Podratçı axtar" value={search} onChange={(e) => setSearch(e.target.value)} />
           {anyFilter ? <button type="button" className="btn-ghost" style={{ height: 36 }} onClick={resetFilters}>Sıfırla</button> : null}
@@ -280,7 +312,9 @@ export function OutsourcePage() {
       {rows.length > 0 ? (
         <div className="flex gap-2 mb-3 flex-wrap">
           {WORK_FILTERS.map((f) => {
-            const count = rows.filter((r) => f.match(r.status)).length;
+            // Counted within the other active filters (project/year/search) so
+            // the chip numbers always match what selecting the chip will show.
+            const count = preStatusFiltered.filter((r) => f.match(r.status)).length;
             const active = statusFilter === f.key;
             return (
               <button key={f.key} type="button" className="chip" style={{ background: active ? 'var(--brand-action)' : 'var(--surface-mist)', color: active ? 'var(--ink)' : 'var(--text-muted)', fontSize: 12, fontWeight: active ? 600 : 400, opacity: count === 0 && f.key !== 'all' ? 0.4 : 1 }} onClick={() => setStatusFilter(f.key)}>
