@@ -24,6 +24,22 @@ const EXPENSE_CATEGORIES = [
   'Digər',
 ] as const;
 
+// Existing row for edit mode — a saved income or expense opened for changes.
+// Field names mirror the DB columns; unused ones per kind stay undefined.
+export type FinanceEditRow = {
+  id: string;
+  amount: number;
+  occurred_at: string;
+  payment_method?: string | null;
+  payment_kind?: 'advance' | 'interim' | 'final' | null;
+  category?: string | null;
+  vendor?: string | null;
+  invoice_number?: string | null;
+  note?: string | null;
+  project_id: string | null;
+  client_id?: string | null;
+};
+
 type Props = {
   kind: FinanceKind;
   onClose: () => void;
@@ -31,9 +47,11 @@ type Props = {
   // Relabel the income form (e.g. "Ödəniş" on the project surface, where money
   // comes in as installments of a contract rather than generic "Gəlir").
   incomeNoun?: string;
+  // Edit mode: prefill from this row and UPDATE it instead of inserting.
+  editRow?: FinanceEditRow;
 };
 
-export function IncomeExpenseModal({ kind, onClose, defaultProjectId, incomeNoun = 'Gəlir' }: Props) {
+export function IncomeExpenseModal({ kind, onClose, defaultProjectId, incomeNoun = 'Gəlir', editRow }: Props) {
   const { profile } = useAuth();
   const qc = useQueryClient();
 
@@ -54,20 +72,23 @@ export function IncomeExpenseModal({ kind, onClose, defaultProjectId, incomeNoun
     enabled: kind === 'income',
   });
 
-  const [amount, setAmount] = useState('');
-  const [method, setMethod] = useState<string>(PAYMENT_METHODS[0]);
-  const [category, setCategory] = useState<string>(EXPENSE_CATEGORIES[0]);
-  const [vendor, setVendor] = useState('');
-  const [projectId, setProjectId] = useState(defaultProjectId ?? '');
-  const [clientId, setClientId] = useState('');
-  const [invoice, setInvoice] = useState('');
-  const [note, setNote] = useState('');
-  const [paymentKind, setPaymentKind] = useState<'' | PaymentKind>('');
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const isEdit = !!editRow;
+  const [amount, setAmount] = useState(editRow ? String(editRow.amount) : '');
+  const [method, setMethod] = useState<string>(editRow?.payment_method ?? PAYMENT_METHODS[0]);
+  const [category, setCategory] = useState<string>(editRow?.category ?? EXPENSE_CATEGORIES[0]);
+  const [vendor, setVendor] = useState(editRow?.vendor ?? '');
+  const [projectId, setProjectId] = useState(editRow?.project_id ?? defaultProjectId ?? '');
+  const [clientId, setClientId] = useState(editRow?.client_id ?? '');
+  const [invoice, setInvoice] = useState(editRow?.invoice_number ?? '');
+  const [note, setNote] = useState(editRow?.note ?? '');
+  const [paymentKind, setPaymentKind] = useState<'' | PaymentKind>(editRow?.payment_kind ?? '');
+  const [date, setDate] = useState(() =>
+    editRow?.occurred_at ? editRow.occurred_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
+  );
 
   const isIncome = kind === 'income';
-  const title = isIncome ? `+ ${incomeNoun}` : '+ Xərc';
-  const submitLabel = isIncome ? `${incomeNoun}i qeyd et` : 'Xərci qeyd et';
+  const title = isEdit ? (isIncome ? `${incomeNoun}i düzəlt` : 'Xərci düzəlt') : isIncome ? `+ ${incomeNoun}` : '+ Xərc';
+  const submitLabel = isEdit ? 'Yadda saxla' : isIncome ? `${incomeNoun}i qeyd et` : 'Xərci qeyd et';
 
   const save = useMutation({
     mutationFn: async () => {
@@ -78,7 +99,7 @@ export function IncomeExpenseModal({ kind, onClose, defaultProjectId, incomeNoun
       const occurred_at = new Date(`${date}T12:00:00+04:00`).toISOString();
 
       if (isIncome) {
-        const { error } = await supabase.from('incomes').insert({
+        const payload = {
           amount: n,
           payment_method: method,
           occurred_at,
@@ -87,19 +108,23 @@ export function IncomeExpenseModal({ kind, onClose, defaultProjectId, incomeNoun
           project_id: projectId || null,
           client_id: clientId || null,
           payment_kind: paymentKind || null,
-          created_by: profile?.id ?? null,
-        });
+        };
+        const { error } = isEdit
+          ? await supabase.from('incomes').update(payload).eq('id', editRow!.id)
+          : await supabase.from('incomes').insert({ ...payload, created_by: profile?.id ?? null });
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('expenses').insert({
+        const payload = {
           amount: n,
           category,
           vendor: vendor || null,
           occurred_at,
           note: note || null,
           project_id: projectId || null,
-          created_by: profile?.id ?? null,
-        });
+        };
+        const { error } = isEdit
+          ? await supabase.from('expenses').update(payload).eq('id', editRow!.id)
+          : await supabase.from('expenses').insert({ ...payload, created_by: profile?.id ?? null });
         if (error) throw error;
       }
     },

@@ -15,17 +15,57 @@
  * falling back to outsource_items.amount for legacy items with no payment rows —
  * so the P&L matches what's actually recorded in the Podrat İşləri module.
  */
-import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { formatAZN } from '@/lib/format';
+import { useAuth } from '@/lib/store';
+import { formatAZN, formatDate } from '@/lib/format';
 import { grossFromNet, PAYMENT_KIND_LABEL, type PaymentKind } from '@/lib/labels';
+import { IncomeExpenseModal, type FinanceKind, type FinanceEditRow } from '@/components/IncomeExpenseModal';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 type Props = { projectId: string };
 
 type Row = { amount: number; occurred_at?: string | null; paid_at?: string | null };
 
+type IncomeRow = Row & {
+  id: string;
+  occurred_at: string;
+  payment_kind: PaymentKind | null;
+  payment_method: string | null;
+  invoice_number: string | null;
+  note: string | null;
+  client_id: string | null;
+};
+type ExpenseRow = Row & {
+  id: string;
+  occurred_at: string;
+  category: string | null;
+  vendor: string | null;
+  note: string | null;
+};
+
 export function ProjectPnL({ projectId }: Props) {
+  const { isAdmin } = useAuth();
+  const qc = useQueryClient();
+  // Edit / delete of individual saved entries (owner request 2026-07-16).
+  const [editTx, setEditTx] = useState<{ kind: FinanceKind; row: FinanceEditRow } | null>(null);
+  const [deleteTx, setDeleteTx] = useState<{ kind: FinanceKind; id: string; amount: number } | null>(null);
+  const deleteMutation = useMutation({
+    mutationFn: async (t: { kind: FinanceKind; id: string }) => {
+      const { error } = await supabase
+        .from(t.kind === 'income' ? 'incomes' : 'expenses')
+        .delete()
+        .eq('id', t.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pnl'] });
+      qc.invalidateQueries({ queryKey: ['fin'] });
+      setDeleteTx(null);
+    },
+  });
+
   // Contract value (0087) + budget (0048) live on the project row.
   const project = useQuery({
     queryKey: ['pnl', 'project', projectId],
@@ -48,10 +88,11 @@ export function ProjectPnL({ projectId }: Props) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('incomes')
-        .select('amount, occurred_at, payment_kind, payment_method')
-        .eq('project_id', projectId);
+        .select('id, amount, occurred_at, payment_kind, payment_method, invoice_number, note, client_id')
+        .eq('project_id', projectId)
+        .order('occurred_at', { ascending: false });
       if (error) throw error;
-      return (data ?? []) as Array<Row & { payment_kind: PaymentKind | null; payment_method: string | null }>;
+      return (data ?? []) as IncomeRow[];
     },
   });
   const expenses = useQuery({
@@ -59,10 +100,11 @@ export function ProjectPnL({ projectId }: Props) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('expenses')
-        .select('amount, occurred_at, category')
-        .eq('project_id', projectId);
+        .select('id, amount, occurred_at, category, vendor, note')
+        .eq('project_id', projectId)
+        .order('occurred_at', { ascending: false });
       if (error) throw error;
-      return (data ?? []) as Array<Row & { category: string | null }>;
+      return (data ?? []) as ExpenseRow[];
     },
   });
   // Subcontractor jobs on this project (for the list + committed fallback).
@@ -179,6 +221,41 @@ export function ProjectPnL({ projectId }: Props) {
     }
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
   }, [incomes.data]);
+
+  // All saved entries newest-first — the editable drill-down of the P&L sums.
+  const transactions = useMemo(() => {
+    const t: Array<{
+      kind: FinanceKind;
+      date: string;
+      amount: number;
+      detail: string;
+      note: string | null;
+      row: IncomeRow | ExpenseRow;
+    }> = [];
+    for (const i of incomes.data ?? []) {
+      t.push({
+        kind: 'income',
+        date: i.occurred_at,
+        amount: Number(i.amount ?? 0),
+        detail: [i.payment_method, i.payment_kind ? PAYMENT_KIND_LABEL[i.payment_kind] : null]
+          .filter(Boolean)
+          .join(' · '),
+        note: i.note,
+        row: i,
+      });
+    }
+    for (const e of expenses.data ?? []) {
+      t.push({
+        kind: 'expense',
+        date: e.occurred_at,
+        amount: Number(e.amount ?? 0),
+        detail: [e.category, e.vendor].filter(Boolean).join(' · '),
+        note: e.note,
+        row: e,
+      });
+    }
+    return t.sort((a, b) => b.date.localeCompare(a.date));
+  }, [incomes.data, expenses.data]);
 
   const direct = expenseTotal + outsourcePaid;
   const net = incomeTotal - direct;
@@ -364,6 +441,114 @@ export function ProjectPnL({ projectId }: Props) {
           "Öhdəlik" sırası ödənilməmiş podratçı ödənişlərini də daxil edir — forecast üçün konservativ baxış.
         </p>
       </div>
+
+      {/* Individual saved entries — editable drill-down of the sums above */}
+      {!loading && transactions.length > 0 ? (
+        <div className="card" style={{ overflowX: 'auto' }}>
+          <h3 className="text-h3 mb-3">Əməliyyatlar</h3>
+          <table className="w-full text-body" style={{ minWidth: isAdmin ? 640 : 520 }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--line)' }}>
+                {['Tarix', 'Növ', 'Detal', 'Məbləğ', ...(isAdmin ? [''] : [])].map((h, i) => (
+                  <th
+                    key={`${h}-${i}`}
+                    className="text-meta py-2 px-3"
+                    style={{
+                      color: 'var(--text-muted)',
+                      letterSpacing: '0.05em',
+                      textTransform: 'uppercase',
+                      textAlign: h === 'Məbləğ' ? 'right' : 'left',
+                    }}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {transactions.map((t) => (
+                <tr key={`${t.kind}-${t.row.id}`} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                  <td className="py-2 px-3 text-meta" style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                    {formatDate(t.date)}
+                  </td>
+                  <td className="py-2 px-3">
+                    <span
+                      className="chip text-meta"
+                      style={{
+                        background: t.kind === 'income' ? 'var(--brand-mist)' : 'var(--surface-mist)',
+                        color: t.kind === 'income' ? 'var(--brand-text)' : 'var(--text)',
+                      }}
+                    >
+                      {t.kind === 'income' ? 'Ödəniş' : 'Xərc'}
+                    </span>
+                  </td>
+                  <td className="py-2 px-3" style={{ color: 'var(--text)' }}>
+                    {t.detail || '—'}
+                    {t.note ? (
+                      <span className="text-meta" style={{ color: 'var(--text-muted)' }}> · {t.note.length > 60 ? `${t.note.slice(0, 60)}…` : t.note}</span>
+                    ) : null}
+                  </td>
+                  <td
+                    className="py-2 px-3 text-right"
+                    style={{
+                      fontVariantNumeric: 'tabular-nums',
+                      color: t.kind === 'income' ? '#15803D' : 'var(--error-deep)',
+                      fontWeight: 500,
+                    }}
+                  >
+                    {t.kind === 'income' ? '+' : '−'}{formatAZN(t.amount).replace(/^−|^-/, '')}
+                  </td>
+                  {isAdmin ? (
+                    <td className="py-2 px-3 text-right" style={{ whiteSpace: 'nowrap' }}>
+                      <button
+                        type="button"
+                        className="chip"
+                        aria-label="Düzəlt"
+                        style={{ height: 24, padding: '0 8px', fontSize: 12 }}
+                        onClick={() =>
+                          setEditTx({
+                            kind: t.kind,
+                            row: { ...t.row, project_id: projectId } as FinanceEditRow,
+                          })
+                        }
+                      >
+                        ✎
+                      </button>
+                      <button
+                        type="button"
+                        className="chip"
+                        aria-label="Sil"
+                        style={{ height: 24, padding: '0 8px', fontSize: 12, marginLeft: 6, color: 'var(--error-deep)' }}
+                        onClick={() => setDeleteTx({ kind: t.kind, id: t.row.id, amount: t.amount })}
+                      >
+                        🗑
+                      </button>
+                    </td>
+                  ) : null}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+
+      {editTx ? (
+        <IncomeExpenseModal
+          kind={editTx.kind}
+          editRow={editTx.row}
+          incomeNoun="Ödəniş"
+          onClose={() => setEditTx(null)}
+        />
+      ) : null}
+      <ConfirmDialog
+        open={!!deleteTx}
+        title={deleteTx?.kind === 'income' ? 'Ödənişi sil?' : 'Xərci sil?'}
+        body={deleteTx ? `${formatAZN(deleteTx.amount)} məbləğində qeyd silinəcək. Bu əməliyyat geri qaytarıla bilməz.` : undefined}
+        confirmLabel="Sil"
+        busy={deleteMutation.isPending}
+        onConfirm={() => { if (deleteTx) deleteMutation.mutate(deleteTx); }}
+        onCancel={() => setDeleteTx(null)}
+      />
 
       {/* Net profit incl. allocated overhead (0087, Rentabellik snapshots) */}
       <div className="card">
