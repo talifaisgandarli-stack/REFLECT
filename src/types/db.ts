@@ -309,6 +309,10 @@ export interface Income {
   created_by: string | null;
   /** migration 0087 — payment milestone: advance=Avans, interim=Ara, final=Yekun */
   payment_kind?: 'advance' | 'interim' | 'final' | null;
+  /** migration 0088 — amount is ƏDV-li; net maths divide by (1 + vat_rate/100) */
+  vat_included?: boolean;
+  /** migration 0088 — VAT rate applied to THIS payment when vat_included */
+  vat_rate?: number | null;
 }
 
 export interface Expense {

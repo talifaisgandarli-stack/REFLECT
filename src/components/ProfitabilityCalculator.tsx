@@ -98,10 +98,15 @@ export function ProfitabilityCalculator() {
     queryFn: async () => {
       const { data } = await supabase
         .from('incomes')
-        .select('project_id, amount')
+        .select('project_id, amount, vat_included, vat_rate')
         .gte('occurred_at', start)
         .lt('occurred_at', nextStart);
-      return (data ?? []) as Array<{ project_id: string | null; amount: number }>;
+      return (data ?? []) as Array<{
+        project_id: string | null;
+        amount: number;
+        vat_included: boolean | null;
+        vat_rate: number | null;
+      }>;
     },
   });
   const monthDirectExpenses = useQuery({
@@ -172,7 +177,20 @@ export function ProfitabilityCalculator() {
     });
   }, [projects.data, start, nextStart]);
 
-  const incomeByProject = useMemo(() => groupSum(monthIncomes.data ?? [], 'project_id'), [monthIncomes.data]);
+  // Net (ƏDV-siz) income per project — per-payment VAT (0088): ƏDV-li rows are
+  // divided by their own rate (fallback: the project's rate), cash rows count
+  // in full.
+  const incomeNetByProject = useMemo(() => {
+    const rateByProject = new Map((projects.data ?? []).map((p) => [p.id, p.vat_rate ?? 18]));
+    const m = new Map<string, number>();
+    for (const r of monthIncomes.data ?? []) {
+      if (!r.project_id) continue;
+      const amt = Number(r.amount ?? 0);
+      const net = r.vat_included ? amt / (1 + (r.vat_rate ?? rateByProject.get(r.project_id) ?? 18) / 100) : amt;
+      m.set(r.project_id, (m.get(r.project_id) ?? 0) + net);
+    }
+    return m;
+  }, [monthIncomes.data, projects.data]);
   const expenseByProject = useMemo(() => groupSum(monthDirectExpenses.data ?? [], 'project_id'), [monthDirectExpenses.data]);
   const outsourceByProject = useMemo(() => {
     const m = new Map<string, number>();
@@ -216,12 +234,10 @@ export function ProfitabilityCalculator() {
   const rows = activeProjects.map((p) => {
     const pct = Number(percents[p.id] ?? 0) || 0;
     const overhead = Math.round(pool * (pct / 100) * 100) / 100;
-    const incomeGross = incomeByProject.get(p.id) ?? 0;
-    const vat = p.vat_rate ?? 18;
-    const incomeNet = Math.round((incomeGross / (1 + vat / 100)) * 100) / 100;
+    const incomeNet = Math.round((incomeNetByProject.get(p.id) ?? 0) * 100) / 100;
     const direct = (expenseByProject.get(p.id) ?? 0) + (outsourceByProject.get(p.id) ?? 0);
     const net = Math.round((incomeNet - direct - overhead) * 100) / 100;
-    return { p, pct, overhead, incomeGross, incomeNet, direct, net };
+    return { p, pct, overhead, incomeNet, direct, net };
   });
 
   const allocatedPct = rows.reduce((s, r) => s + r.pct, 0);
