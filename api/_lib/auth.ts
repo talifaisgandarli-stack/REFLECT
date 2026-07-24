@@ -19,6 +19,13 @@ function originAllowed(req: Request): boolean {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return true;
   const origin = req.headers.get('origin');
   if (!origin) return true; // server-to-server call (cron, webhook) — allow
+  // Same-origin requests — the app calling its own /api on the same host — are
+  // always safe (the browser sets Origin; a cross-site page can't forge it to
+  // match our host). This covers ANY custom domain (reflectmirai.online, etc.)
+  // without an env change, while a rogue origin still fails the allowlist below.
+  try {
+    if (new URL(origin).host === req.headers.get('host')) return true;
+  } catch { /* malformed Origin — fall through to the explicit allowlist */ }
   return ALLOWED_ORIGINS.some(
     (allowed) => origin === allowed || origin.endsWith('.vercel.app'),
   );
