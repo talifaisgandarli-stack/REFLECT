@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 import pkg from './package.json';
@@ -15,7 +16,42 @@ function gitSha(): string {
 }
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    // PWA — installable "Add to Home Screen" app (chameleon-eye icon). The
+    // service worker precaches the built app shell for instant/offline load;
+    // /api and Supabase calls always hit the network (navigateFallback denies
+    // /api, and only build assets are precached), so live data is never stale.
+    VitePWA({
+      registerType: 'autoUpdate',
+      injectRegister: 'auto',
+      includeAssets: ['apple-touch-icon.png', 'favicon-32.png', 'icon.svg', 'mascot.svg'],
+      manifest: {
+        name: 'REFLECT — Architects OS',
+        short_name: 'Reflect',
+        description: 'Memarlıq studiyası üçün əməliyyat platforması — layihələr, tapşırıqlar, CRM, maliyyə.',
+        lang: 'az',
+        dir: 'ltr',
+        theme_color: '#0E1611',
+        background_color: '#0E1611',
+        display: 'standalone',
+        orientation: 'portrait',
+        start_url: '/',
+        scope: '/',
+        icons: [
+          { src: '/pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/pwa-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ],
+      },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api/],
+        cleanupOutdatedCaches: true,
+      },
+    }),
+  ],
   resolve: {
     alias: { '@': path.resolve(__dirname, 'src') },
   },

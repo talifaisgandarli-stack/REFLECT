@@ -1,0 +1,81 @@
+/**
+ * Generate the PWA icon set from the REFLECT chameleon-eye mark (Variant A).
+ * Run: node scripts/gen-icons.mjs   (needs @resvg/resvg-js available)
+ *
+ * Writes into public/: icon.svg (rounded), icon-maskable.svg (full-bleed),
+ * pwa-192.png, pwa-512.png, pwa-maskable-512.png, apple-touch-icon.png (180),
+ * favicon-32.png.
+ */
+import { Resvg } from '@resvg/resvg-js';
+import { writeFileSync, mkdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+const pub = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public');
+mkdirSync(pub, { recursive: true });
+
+// The chameleon-eye mark on a 1024 canvas. `bg` decides rounded tile vs full
+// bleed (maskable). No SVG filters — shadow is baked as a plain dark disc so it
+// rasterises identically everywhere.
+function icon({ maskable = false } = {}) {
+  const tile = maskable
+    ? `<rect width="1024" height="1024" fill="#17191A"/>`
+    : `<rect width="1024" height="1024" rx="232" fill="#17191A"/>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <radialGradient id="irid" cx="0.42" cy="0.44" r="0.62">
+      <stop offset="0" stop-color="#123528"/><stop offset="0.12" stop-color="#1E6E55"/>
+      <stop offset="0.32" stop-color="#2FB39B"/><stop offset="0.52" stop-color="#7FE0A8"/>
+      <stop offset="0.70" stop-color="#ADFB49"/><stop offset="0.86" stop-color="#E9F58C"/>
+      <stop offset="1" stop-color="#3E8F76"/>
+    </radialGradient>
+    <radialGradient id="sphere" cx="0.38" cy="0.33" r="0.74">
+      <stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset="0.72" stop-color="#000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0.5"/>
+    </radialGradient>
+    <radialGradient id="sheen" cx="0.3" cy="0.2" r="0.5">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.55"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="domeClip"><circle cx="512" cy="520" r="340"/></clipPath>
+  </defs>
+  ${tile}
+  <circle cx="512" cy="544" r="340" fill="#000" opacity="0.34"/>
+  <circle cx="512" cy="520" r="340" fill="url(#irid)"/>
+  <g clip-path="url(#domeClip)" fill="none">
+    <circle cx="460" cy="480" r="96"  stroke="#0B0F0C" stroke-opacity="0.16" stroke-width="10"/>
+    <circle cx="460" cy="480" r="134" stroke="#0B0F0C" stroke-opacity="0.15" stroke-width="10"/>
+    <circle cx="460" cy="480" r="176" stroke="#0B0F0C" stroke-opacity="0.14" stroke-width="11"/>
+    <circle cx="460" cy="480" r="222" stroke="#0B0F0C" stroke-opacity="0.13" stroke-width="12"/>
+    <circle cx="460" cy="480" r="272" stroke="#0B0F0C" stroke-opacity="0.12" stroke-width="13"/>
+    <circle cx="460" cy="480" r="326" stroke="#0B0F0C" stroke-opacity="0.11" stroke-width="14"/>
+    <circle cx="460" cy="480" r="115" stroke="#FFFFFF" stroke-opacity="0.10" stroke-width="3"/>
+    <circle cx="460" cy="480" r="199" stroke="#FFFFFF" stroke-opacity="0.09" stroke-width="3"/>
+    <circle cx="460" cy="480" r="299" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="3"/>
+  </g>
+  <g clip-path="url(#domeClip)">
+    <circle cx="512" cy="520" r="340" fill="url(#sphere)"/>
+    <circle cx="512" cy="520" r="340" fill="url(#sheen)"/>
+  </g>
+  <circle cx="460" cy="480" r="84" fill="#C7A24E"/>
+  <circle cx="460" cy="480" r="72" fill="#0A0D0A"/>
+  <circle cx="436" cy="456" r="19" fill="#EAF7D0" fill-opacity="0.95"/>
+  <circle cx="482" cy="498" r="7" fill="#EAF7D0" fill-opacity="0.7"/>
+  <path d="M 800 250 Q 800 300 850 300 Q 800 300 800 350 Q 800 300 750 300 Q 800 300 800 250 Z" fill="#FAFAF7"/>
+</svg>`;
+}
+
+function png(svg, size) {
+  return new Resvg(svg, { fitTo: { mode: 'width', value: size } }).render().asPng();
+}
+
+const rounded = icon();
+const masked = icon({ maskable: true });
+
+writeFileSync(path.join(pub, 'icon.svg'), rounded);
+writeFileSync(path.join(pub, 'icon-maskable.svg'), masked);
+writeFileSync(path.join(pub, 'pwa-192.png'), png(rounded, 192));
+writeFileSync(path.join(pub, 'pwa-512.png'), png(rounded, 512));
+writeFileSync(path.join(pub, 'pwa-maskable-512.png'), png(masked, 512));
+writeFileSync(path.join(pub, 'apple-touch-icon.png'), png(rounded, 180));
+writeFileSync(path.join(pub, 'favicon-32.png'), png(rounded, 32));
+console.log('icons written to public/');
