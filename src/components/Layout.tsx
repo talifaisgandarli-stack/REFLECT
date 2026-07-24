@@ -98,13 +98,12 @@ export function Layout() {
           content's intrinsic width, so a wide table (its own overflow-x-auto
           notwithstanding) pushes <main> past the viewport and body's
           overflow-x:clip then clips the right-hand columns. */}
-      {/* paddingTop clears the device status bar / notch in installed-PWA
-          (standalone) mode where viewport-fit=cover lets content sit under it;
-          env() resolves to 0 in a normal browser, so desktop is unchanged. */}
+      {/* .pwa-top adds status-bar clearance only in installed-PWA (standalone)
+          mode — see index.css @media (display-mode: standalone). A normal
+          browser keeps the plain py-6, so desktop/web is unchanged. */}
       <main
         id="main-content"
-        className="flex-1 min-w-0 px-4 sm:px-6 lg:px-10 py-6 max-w-[1600px] mx-auto w-full"
-        style={{ paddingTop: 'calc(1.5rem + env(safe-area-inset-top, 0px))' }}
+        className="pwa-top flex-1 min-w-0 px-4 sm:px-6 lg:px-10 py-6 max-w-[1600px] mx-auto w-full"
       >
         {session ? (
           <div className="flex items-center justify-between mb-2 gap-3">
