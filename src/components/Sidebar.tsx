@@ -260,7 +260,7 @@ export function Sidebar() {
           <div className="absolute inset-0" style={{ background: 'rgba(14,22,17,0.5)' }} />
           <aside
             className="absolute top-0 left-0 bottom-0 w-72 flex flex-col"
-            style={{ background: 'var(--ink)' }}
+            style={{ background: 'var(--ink)', paddingTop: 'env(safe-area-inset-top, 0px)' }}
             onClick={(e) => e.stopPropagation()}
           >
             <SidebarBody onNavigate={toggleSidebar} />
