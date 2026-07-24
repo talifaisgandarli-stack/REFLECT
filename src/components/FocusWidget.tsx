@@ -281,8 +281,15 @@ export function FocusWidget({ className = '' }: { className?: string }) {
         position: 'fixed', inset: 0, zIndex: 60, padding: '5vh 6vw',
         background: 'var(--surface-deep, var(--ink))', overflow: 'auto',
         display: 'flex', flexDirection: 'column', justifyContent: 'center',
+        alignItems: 'center', textAlign: 'center',
       }
     : {};
+
+  // Fullscreen focus mode uses a large centred ring; the compact widget keeps 96px.
+  const ringSize = fullscreen ? 300 : 96;
+  const ringR = ringSize / 2 - 6;
+  const ringCirc = 2 * Math.PI * ringR;
+  const ringStroke = fullscreen ? 6 : 4;
 
   return (
     <section
@@ -290,7 +297,7 @@ export function FocusWidget({ className = '' }: { className?: string }) {
       style={wrapperStyle}
     >
       {/* REQ-FOCUS-06 — expand / collapse toggle + today session count */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between" style={fullscreen ? { width: '100%' } : undefined}>
         {(todayCount.data ?? 0) > 0 ? (
           <span
             className="text-meta"
@@ -342,41 +349,41 @@ export function FocusWidget({ className = '' }: { className?: string }) {
         </div>
       ) : null}
 
-      <div className="flex items-center gap-5">
+      <div className={fullscreen ? 'flex flex-col items-center gap-6' : 'flex items-center gap-5'}>
         {/* Ring timer */}
-        <div style={{ position: 'relative', width: 96, height: 96, flexShrink: 0 }}>
-          <svg width={96} height={96} viewBox="0 0 96 96">
-            <circle cx="48" cy="48" r="42" fill="none" stroke="var(--line)" strokeWidth="4" />
+        <div style={{ position: 'relative', width: ringSize, height: ringSize, flexShrink: 0 }}>
+          <svg width={ringSize} height={ringSize} viewBox={`0 0 ${ringSize} ${ringSize}`}>
+            <circle cx={ringSize / 2} cy={ringSize / 2} r={ringR} fill="none" stroke="var(--line)" strokeWidth={ringStroke} />
             <circle
-              cx="48"
-              cy="48"
-              r="42"
+              cx={ringSize / 2}
+              cy={ringSize / 2}
+              r={ringR}
               fill="none"
               stroke="var(--brand-action)"
-              strokeWidth="4"
+              strokeWidth={ringStroke}
               strokeLinecap="round"
-              strokeDasharray={2 * Math.PI * 42}
-              strokeDashoffset={2 * Math.PI * 42 * (1 - pct)}
-              transform="rotate(-90 48 48)"
+              strokeDasharray={ringCirc}
+              strokeDashoffset={ringCirc * (1 - pct)}
+              transform={`rotate(-90 ${ringSize / 2} ${ringSize / 2})`}
             />
           </svg>
           <div
-            className="absolute inset-0 flex items-center justify-center text-h3"
-            style={{ fontVariantNumeric: 'tabular-nums' }}
+            className={`absolute inset-0 flex items-center justify-center ${fullscreen ? '' : 'text-h3'}`}
+            style={{ fontVariantNumeric: 'tabular-nums', fontSize: fullscreen ? 56 : undefined, fontWeight: fullscreen ? 600 : undefined }}
           >
             {phase === 'idle' ? `${PRESETS[preset].work}:00` : `${mm}:${ss}`}
           </div>
         </div>
 
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <Mascot size={Math.min(64, 32 + stage * 8)} />
+        <div className={fullscreen ? 'flex flex-col items-center' : 'flex-1'}>
+          <div className={`flex items-center gap-2 ${fullscreen ? 'justify-center' : ''}`}>
+            <Mascot size={fullscreen ? Math.min(120, 64 + stage * 14) : Math.min(64, 32 + stage * 8)} />
             <span className="text-meta" style={{ color: 'var(--text-muted)' }}>
               Səviyyə {stage}/4
             </span>
           </div>
           {/* Preset chips */}
-          <div className="flex flex-wrap gap-2 mt-3">
+          <div className={`flex flex-wrap gap-2 mt-3 ${fullscreen ? 'justify-center' : ''}`}>
             {PRESETS.map((p, i) => (
               <button
                 key={i}
@@ -390,7 +397,7 @@ export function FocusWidget({ className = '' }: { className?: string }) {
             ))}
           </div>
           {/* Start/Stop */}
-          <div className="mt-3">
+          <div className={`mt-3 ${fullscreen ? 'flex justify-center' : ''}`}>
             {phase === 'idle' ? (
               <button className="btn-primary" onClick={() => start()}>
                 Başla
@@ -405,7 +412,10 @@ export function FocusWidget({ className = '' }: { className?: string }) {
       </div>
 
       {/* Ambient sound picker (PRD:796) */}
-      <div className="flex items-center gap-2 flex-wrap" style={{ paddingTop: 8, borderTop: '1px solid var(--line-soft)' }}>
+      <div
+        className="flex items-center gap-2 flex-wrap"
+        style={{ paddingTop: 8, borderTop: '1px solid var(--line-soft)', ...(fullscreen ? { width: '100%', justifyContent: 'center' } : {}) }}
+      >
         <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 12 }}>Fon səsi:</span>
         {(['off', 'white', 'pink', 'brown'] as Sound[]).map((s) => (
           <button
