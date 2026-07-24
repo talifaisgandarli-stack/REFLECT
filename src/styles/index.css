@@ -376,3 +376,19 @@
   a { text-decoration: underline; color: #000 !important; }
   button { display: none !important; }
 }
+
+/* ── Installed-PWA (standalone) mobile fixes ─────────────────────────────────
+   When launched from the home screen the web content can sit under the device
+   status bar, hiding the top app bar (menu, notifications) and making it hard
+   to tap. Reserve guaranteed clearance — at least 40px, more on notched
+   devices via safe-area. A normal browser tab isn't standalone, so web and
+   desktop are untouched. */
+@media (display-mode: standalone) {
+  .pwa-top {
+    padding-top: max(2.5rem, calc(env(safe-area-inset-top, 0px) + 0.75rem)) !important;
+  }
+  /* Home-indicator clearance at the very bottom of scrollable pages. */
+  #main-content {
+    padding-bottom: max(1.5rem, calc(env(safe-area-inset-bottom, 0px) + 1rem));
+  }
+}
