@@ -8,10 +8,13 @@
  *
  * Expired endpoints (404/410) are pruned so dead devices don't accumulate.
  */
-import webpush from 'web-push';
+import type webpushType from 'web-push';
 import { admin } from '../_lib/auth';
 
 // No `export const config` → defaults to the Node.js runtime, where web-push works.
+// web-push is imported *dynamically* inside the handler (not top-level) so that a
+// module-load failure (e.g. if this ever runs on a runtime without Node crypto)
+// surfaces as a readable 500 instead of an uncatchable FUNCTION_INVOCATION_FAILED.
 
 const KIND_LABEL: Record<string, string> = {
   mention: 'Sənə müraciət',
@@ -79,6 +82,15 @@ async function run(req: Request): Promise<Response> {
   const priv = process.env.VAPID_PRIVATE_KEY;
   const subject = process.env.VAPID_SUBJECT || 'mailto:admin@reflectmirai.online';
   if (!pub || !priv) return json({ error: 'VAPID keys not configured' }, 500);
+
+  // Load web-push lazily so a bundling/runtime incompatibility is catchable.
+  let webpush: typeof webpushType;
+  try {
+    webpush = ((await import('web-push')) as unknown as { default: typeof webpushType }).default;
+  } catch (e) {
+    return json({ error: `web-push load failed: ${(e as Error)?.message ?? String(e)}` }, 500);
+  }
+
   // setVapidDetails validates key/subject format and THROWS on malformed input
   // (a common copy-paste footgun). Catch it so we return a readable 500 instead
   // of an opaque FUNCTION_INVOCATION_FAILED crash.
