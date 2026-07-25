@@ -1,20 +1,21 @@
 /**
  * POST /api/push/notify — deliver a Web Push for one notification row.
  *
- * Called by a Supabase Database Webhook on INSERT into `notifications` (so push
- * is instant, not batched). Auth is a shared secret in the `x-push-secret`
- * header, matched against env PUSH_HOOK_SECRET. Node runtime (NOT edge): the
- * `web-push` library needs Node crypto for VAPID signing + payload encryption.
+ * Called by a pg_net trigger on INSERT into `notifications` (so push is instant,
+ * not batched). Auth is a shared secret in the `x-push-secret` header, matched
+ * against env PUSH_HOOK_SECRET.
+ *
+ * Edge runtime: the `web-push` npm library needs the Node.js runtime, which does
+ * NOT work in this Vercel project (Node functions crash at bootstrap with
+ * FUNCTION_INVOCATION_FAILED — every deployed function here is Edge). So push
+ * signing + encryption is done with the Web Crypto API via ../_lib/webpush.
  *
  * Expired endpoints (404/410) are pruned so dead devices don't accumulate.
  */
-import type webpushType from 'web-push';
 import { admin } from '../_lib/auth';
+import { sendWebPush } from '../_lib/webpush';
 
-// No `export const config` → defaults to the Node.js runtime, where web-push works.
-// web-push is imported *dynamically* inside the handler (not top-level) so that a
-// module-load failure (e.g. if this ever runs on a runtime without Node crypto)
-// surfaces as a readable 500 instead of an uncatchable FUNCTION_INVOCATION_FAILED.
+export const config = { runtime: 'edge' };
 
 const KIND_LABEL: Record<string, string> = {
   mention: 'Sənə müraciət',
@@ -82,23 +83,7 @@ async function run(req: Request): Promise<Response> {
   const priv = process.env.VAPID_PRIVATE_KEY;
   const subject = process.env.VAPID_SUBJECT || 'mailto:admin@reflectmirai.online';
   if (!pub || !priv) return json({ error: 'VAPID keys not configured' }, 500);
-
-  // Load web-push lazily so a bundling/runtime incompatibility is catchable.
-  let webpush: typeof webpushType;
-  try {
-    webpush = ((await import('web-push')) as unknown as { default: typeof webpushType }).default;
-  } catch (e) {
-    return json({ error: `web-push load failed: ${(e as Error)?.message ?? String(e)}` }, 500);
-  }
-
-  // setVapidDetails validates key/subject format and THROWS on malformed input
-  // (a common copy-paste footgun). Catch it so we return a readable 500 instead
-  // of an opaque FUNCTION_INVOCATION_FAILED crash.
-  try {
-    webpush.setVapidDetails(subject, pub, priv);
-  } catch (e) {
-    return json({ error: `VAPID setup failed: ${(e as Error)?.message ?? String(e)}` }, 500);
-  }
+  const vapid = { subject, publicKey: pub, privateKey: priv };
 
   let body: { record?: { user_id?: string; kind?: string; payload?: Record<string, unknown> } };
   try {
@@ -107,16 +92,15 @@ async function run(req: Request): Promise<Response> {
     return new Response('Bad JSON', { status: 400 });
   }
   const record = body.record;
-  if (!record?.user_id) return new Response(JSON.stringify({ ok: true, skipped: 'no record' }), { status: 200 });
+  if (!record?.user_id) return json({ ok: true, skipped: 'no record' });
 
   const db = admin();
-  const { data: subs } = await db
+  const { data: subs, error: dbErr } = await db
     .from('push_subscriptions')
     .select('id, endpoint, p256dh, auth')
     .eq('user_id', record.user_id);
-  if (!subs || subs.length === 0) {
-    return new Response(JSON.stringify({ ok: true, sent: 0 }), { status: 200 });
-  }
+  if (dbErr) return json({ error: `subscriptions read failed: ${dbErr.message}` }, 500);
+  if (!subs || subs.length === 0) return json({ ok: true, sent: 0 });
 
   const msg = JSON.stringify(messageFor(record));
   let sent = 0;
@@ -125,20 +109,19 @@ async function run(req: Request): Promise<Response> {
   await Promise.all(
     subs.map(async (s: { id: string; endpoint: string; p256dh: string; auth: string }) => {
       try {
-        await webpush.sendNotification(
-          { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-          msg,
-        );
-        sent += 1;
-      } catch (e: unknown) {
-        const status = (e as { statusCode?: number })?.statusCode;
-        if (status === 404 || status === 410) {
+        const r = await sendWebPush({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, msg, vapid);
+        if (r.ok) {
+          sent += 1;
+        } else if (r.statusCode === 404 || r.statusCode === 410) {
           dead.push(s.id); // expired endpoint — prune it
         } else {
           // 401/403 (bad VAPID), 413 (payload too large), etc. Surface so the
-          // caller/log shows why delivery failed instead of a silent sent:0.
-          errors.push(`${status ?? 'ERR'}: ${(e as Error)?.message ?? String(e)}`);
+          // response/log shows why delivery failed instead of a silent sent:0.
+          errors.push(`${r.statusCode}: ${r.body.slice(0, 200)}`);
         }
+      } catch (e) {
+        // Encryption/signing error for this one subscription — record and move on.
+        errors.push(`send threw: ${(e as Error)?.message ?? String(e)}`);
       }
     }),
   );
