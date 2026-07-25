@@ -13,6 +13,7 @@ import {
   useDeleteReadNotifications,
   useMarkNotificationRead,
   useNotifications,
+  useUnreadNotificationCount,
   useSnoozeNotification,
 } from '@/lib/hooks';
 import { relativeTime } from '@/lib/format';
@@ -26,6 +27,16 @@ const KIND_LABEL: Record<NotificationKind | 'fallback', string> = {
   task_cancelled: 'Tapşırıq ləğv edildi',
   deadline_reminder: 'Deadline yaxınlaşır',
   finance_alert: 'Maliyyə xəbərdarlığı',
+  announcement: 'Elan',
+  mirai_feed: 'MIRAI tövsiyəsi',
+  salary_changed: 'Əmək haqqı yeniləndi',
+  leave_requested: 'Məzuniyyət sorğusu',
+  leave_approved: 'Məzuniyyət təsdiqləndi',
+  leave_denied: 'Məzuniyyət rədd edildi',
+  okr_nudge: 'OKR xatırlatması',
+  content_due_soon: 'Kontent müddəti yaxınlaşır',
+  meeting_reminder: 'Görüş xatırlatması',
+  performance_review: 'Performans qiymətləndirməsi',
   fallback: 'Bildiriş',
 };
 
@@ -99,6 +110,7 @@ function groupNotifications(rows: NotificationRow[]): GroupedItem[] {
 export function NotificationBell() {
   const notif = useNotifications();
   const data = notif.data ?? [];
+  const exactUnread = useUnreadNotificationCount();
   const markRead = useMarkNotificationRead();
   const snooze = useSnoozeNotification();
   const clearSnoozes = useClearSnoozes();
@@ -114,6 +126,9 @@ export function NotificationBell() {
 
   const unread = data.filter((n) => !n.read_at);
   const unreadCount = unread.length;
+  // Badge uses the exact server count (accurate past the 20-row page); falls
+  // back to the page count until the count query resolves.
+  const badgeCount = exactUnread.data ?? unreadCount;
   let visible = unreadOnly ? unread : data;
   if (kindFilter) visible = visible.filter((n) => n.kind === kindFilter);
   // Only show kind chips for kinds that actually have items, so UI doesn't
@@ -160,13 +175,13 @@ export function NotificationBell() {
       <button
         type="button"
         className="btn-ghost relative"
-        aria-label={`Bildirişlər${unreadCount ? ` (${unreadCount} oxunmamış)` : ''}`}
+        aria-label={`Bildirişlər${badgeCount ? ` (${badgeCount} oxunmamış)` : ''}`}
         aria-expanded={open}
-        title={`Bildirişlər (B)${unreadCount ? ` · ${unreadCount} yeni` : ''}`}
+        title={`Bildirişlər (B)${badgeCount ? ` · ${badgeCount} yeni` : ''}`}
         onClick={() => setOpen((v) => !v)}
       >
         <BellIcon />
-        {unreadCount > 0 ? (
+        {badgeCount > 0 ? (
           <span
             aria-hidden
             className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1 rounded-full text-tiny font-medium flex items-center justify-center"
@@ -176,7 +191,7 @@ export function NotificationBell() {
               fontVariantNumeric: 'tabular-nums',
             }}
           >
-            {unreadCount > 99 ? '99+' : unreadCount}
+            {badgeCount > 99 ? '99+' : badgeCount}
           </span>
         ) : null}
       </button>

@@ -318,7 +318,17 @@ export type NotificationKind =
   | 'task_done'
   | 'task_cancelled'
   | 'deadline_reminder'
-  | 'finance_alert';
+  | 'finance_alert'
+  | 'announcement'
+  | 'mirai_feed'
+  | 'salary_changed'
+  | 'leave_requested'
+  | 'leave_approved'
+  | 'leave_denied'
+  | 'okr_nudge'
+  | 'content_due_soon'
+  | 'meeting_reminder'
+  | 'performance_review';
 
 export interface NotificationRow {
   id: string;
@@ -333,7 +343,14 @@ export interface NotificationRow {
 export function useNotifications(limit = 20) {
   return useQuery({
     queryKey: ['notifications', limit],
-    // realtime subscription in src/lib/realtime.ts invalidates this key
+    // realtime subscription in src/lib/realtime.ts invalidates this key.
+    // Polling + focus/reconnect refetch are a safety net: the realtime WS is
+    // torn down when a mobile/PWA tab backgrounds, and the global config has
+    // refetchOnWindowFocus:false — without these the bell would silently freeze
+    // until the manual refresh. Cheap (≤20 rows) so a 60s poll is fine.
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
     queryFn: async (): Promise<NotificationRow[]> => {
       const nowIso = new Date().toISOString();
       // PRD §6.4 — exclude rows whose snooze hasn't elapsed yet (column added
@@ -347,6 +364,29 @@ export function useNotifications(limit = 20) {
         .limit(limit);
       if (error) throw error;
       return (data ?? []) as NotificationRow[];
+    },
+  });
+}
+
+// Exact unread count for the bell badge. The list query only fetches a 20-row
+// page, so counting unread from it caps the badge at 20 and under-reports —
+// this dedicated head/count query is accurate at any volume. Shares the
+// ['notifications'] key prefix so the realtime subscription invalidates it too.
+export function useUnreadNotificationCount() {
+  return useQuery({
+    queryKey: ['notifications', 'unread-count'],
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+    queryFn: async (): Promise<number> => {
+      const nowIso = new Date().toISOString();
+      const { count, error } = await supabase
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .is('read_at', null)
+        .or(`snoozed_until.is.null,snoozed_until.lte.${nowIso}`);
+      if (error) throw error;
+      return count ?? 0;
     },
   });
 }
