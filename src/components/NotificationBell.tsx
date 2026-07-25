@@ -6,6 +6,8 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { pushConfigured, currentPushState, enablePush, disablePush } from '@/lib/push';
+import { toast } from '@/components/Toast';
 import {
   type NotificationKind,
   type NotificationRow,
@@ -277,6 +279,7 @@ export function NotificationBell() {
               </button>
             </div>
           </header>
+          <PushToggle />
           {/* PRD §6.4 — kind filter row (only kinds that have items) */}
           {availableKinds.length > 1 ? (
             <div
@@ -548,5 +551,60 @@ function BellIcon() {
       <path d="M6 8a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z" />
       <path d="M10 21h4" />
     </svg>
+  );
+}
+
+// PRD §6.4 (Phase 2) — Web Push opt-in. Shows a one-tap enable row when the
+// device supports push and hasn't subscribed yet; a subtle "on" state with an
+// off switch once enabled. Hidden entirely where push isn't configured
+// (missing VAPID key) or the browser can't do push.
+function PushToggle() {
+  const [state, setState] = useState<'unsupported' | 'denied' | 'subscribed' | 'default' | 'loading'>('loading');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!pushConfigured()) { setState('unsupported'); return; }
+    currentPushState().then(setState).catch(() => setState('unsupported'));
+  }, []);
+
+  if (state === 'unsupported' || state === 'loading') return null;
+
+  async function enable() {
+    setBusy(true);
+    try {
+      const r = await enablePush();
+      if (r === 'ok') { setState('subscribed'); toast.success('Push bildirişləri aktivləşdi'); }
+      else if (r === 'denied') { setState('denied'); toast.error('Bildirişlərə icazə verilmədi'); }
+    } catch { toast.error('Xəta baş verdi'); }
+    finally { setBusy(false); }
+  }
+  async function disable() {
+    setBusy(true);
+    try { await disablePush(); setState('default'); toast.success('Push söndürüldü'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div
+      className="flex items-center justify-between px-4 py-2.5"
+      style={{ borderBottom: '1px solid var(--line-soft)', background: 'var(--surface-mist)' }}
+    >
+      <span className="text-meta" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+        {state === 'subscribed'
+          ? '🔔 Push bildirişləri aktivdir'
+          : state === 'denied'
+            ? 'Bildirişlər brauzerdə bloklanıb'
+            : '🔔 Telefonuna bildiriş al (app bağlı olsa da)'}
+      </span>
+      {state === 'subscribed' ? (
+        <button type="button" className="text-meta hover:underline" style={{ color: 'var(--text-muted)', fontSize: 11 }} onClick={disable} disabled={busy}>
+          Söndür
+        </button>
+      ) : state === 'denied' ? null : (
+        <button type="button" className="chip" style={{ background: 'var(--brand-action)', color: 'var(--ink)', fontWeight: 600, fontSize: 11, height: 24 }} onClick={enable} disabled={busy}>
+          {busy ? '…' : 'Aktivləşdir'}
+        </button>
+      )}
+    </div>
   );
 }

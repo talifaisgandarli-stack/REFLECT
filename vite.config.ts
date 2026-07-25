@@ -49,6 +49,9 @@ export default defineConfig({
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api/],
         cleanupOutdatedCaches: true,
+        // Pull in the Web Push handlers (public/push-sw.js) without giving up
+        // generateSW's automatic precaching — keeps the SW change low-risk.
+        importScripts: ['push-sw.js'],
       },
     }),
   ],
