@@ -60,7 +60,14 @@ function messageFor(record: { kind?: string; payload?: Record<string, unknown> }
   };
 }
 
-export default async function handler(req: Request): Promise<Response> {
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+async function run(req: Request): Promise<Response> {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
 
   const secret = process.env.PUSH_HOOK_SECRET;
@@ -71,8 +78,15 @@ export default async function handler(req: Request): Promise<Response> {
   const pub = process.env.VAPID_PUBLIC_KEY;
   const priv = process.env.VAPID_PRIVATE_KEY;
   const subject = process.env.VAPID_SUBJECT || 'mailto:admin@reflectmirai.online';
-  if (!pub || !priv) return new Response('VAPID keys not configured', { status: 500 });
-  webpush.setVapidDetails(subject, pub, priv);
+  if (!pub || !priv) return json({ error: 'VAPID keys not configured' }, 500);
+  // setVapidDetails validates key/subject format and THROWS on malformed input
+  // (a common copy-paste footgun). Catch it so we return a readable 500 instead
+  // of an opaque FUNCTION_INVOCATION_FAILED crash.
+  try {
+    webpush.setVapidDetails(subject, pub, priv);
+  } catch (e) {
+    return json({ error: `VAPID setup failed: ${(e as Error)?.message ?? String(e)}` }, 500);
+  }
 
   let body: { record?: { user_id?: string; kind?: string; payload?: Record<string, unknown> } };
   try {
@@ -95,6 +109,7 @@ export default async function handler(req: Request): Promise<Response> {
   const msg = JSON.stringify(messageFor(record));
   let sent = 0;
   const dead: string[] = [];
+  const errors: string[] = [];
   await Promise.all(
     subs.map(async (s: { id: string; endpoint: string; p256dh: string; auth: string }) => {
       try {
@@ -105,14 +120,28 @@ export default async function handler(req: Request): Promise<Response> {
         sent += 1;
       } catch (e: unknown) {
         const status = (e as { statusCode?: number })?.statusCode;
-        if (status === 404 || status === 410) dead.push(s.id); // expired endpoint
+        if (status === 404 || status === 410) {
+          dead.push(s.id); // expired endpoint — prune it
+        } else {
+          // 401/403 (bad VAPID), 413 (payload too large), etc. Surface so the
+          // caller/log shows why delivery failed instead of a silent sent:0.
+          errors.push(`${status ?? 'ERR'}: ${(e as Error)?.message ?? String(e)}`);
+        }
       }
     }),
   );
   if (dead.length) await db.from('push_subscriptions').delete().in('id', dead);
 
-  return new Response(JSON.stringify({ ok: true, sent, pruned: dead.length }), {
-    status: 200,
-    headers: { 'content-type': 'application/json' },
-  });
+  return json({ ok: true, sent, pruned: dead.length, errors: errors.length ? errors : undefined });
+}
+
+export default async function handler(req: Request): Promise<Response> {
+  try {
+    return await run(req);
+  } catch (e) {
+    // Last line of defence: any uncaught throw (admin() env missing, unexpected
+    // runtime error) becomes a readable 500 instead of FUNCTION_INVOCATION_FAILED.
+    console.error('[push/notify]', e);
+    return json({ error: `notify failed: ${(e as Error)?.message ?? String(e)}` }, 500);
+  }
 }
