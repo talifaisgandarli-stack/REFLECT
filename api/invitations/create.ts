@@ -48,31 +48,45 @@ async function handler(req: Request) {
       throw new HttpError(400, `Bu key DB-də yoxdur: "${role_key}". Seed migrasiyası işləyibmi?`);
     }
 
+    // If the email already belongs to an active member, there's nothing to
+    // invite — tell the admin plainly instead of creating a dead invite row.
+    const { data: existingProfile, error: profErr } = await sb
+      .from('profiles')
+      .select('id, is_active')
+      .ilike('email', email)
+      .maybeSingle();
+    if (profErr) {
+      throw new HttpError(500, `İstifadəçi yoxlanışı uğursuz: ${profErr.message}`);
+    }
+    if (existingProfile?.is_active) {
+      throw new HttpError(409, 'Bu e-poçt artıq komanda üzvüdür.');
+    }
+
     const token = crypto.randomUUID();
     const expires = new Date(Date.now() + 48 * 3600_000).toISOString();
 
-    // SELECT-then-INSERT/UPDATE instead of upsert(onConflict). The upsert
-    // path depended on a UNIQUE constraint on `invitations.email` which
-    // the original schema (0001) never created, and PostgreSQL's
-    // ON CONFLICT (col) inference doesn't pick up partial unique indexes
-    // either. Splitting the two cases removes the entire schema-coupling
-    // class of failures — works regardless of which migrations have run.
-    // PRD §270 ("Re-invite same email (existing pending) → reuse and
-    // bump expiry") is satisfied by the UPDATE branch.
-    const { data: existing, error: lookupErr } = await sb
+    // SELECT-then-INSERT/UPDATE instead of upsert(onConflict). Production
+    // carries a UNIQUE(email) constraint ("invitations_email_key") that the
+    // migrations never created (schema drift), so a plain INSERT for an email
+    // that already has ANY invitation row — even an already-accepted one —
+    // fails with a raw duplicate-key error. So we reuse the existing row for
+    // this email regardless of accepted_at, resetting it back to pending with
+    // a fresh token/role/expiry. PRD §270 (re-invite reuses + bumps expiry).
+    const { data: existingRows, error: lookupErr } = await sb
       .from('invitations')
       .select('id')
       .eq('email', email)
-      .is('accepted_at', null)
-      .maybeSingle();
+      .order('created_at', { ascending: false })
+      .limit(1);
     if (lookupErr) {
       throw new HttpError(500, `Dəvət axtarışı uğursuz: ${lookupErr.message}`);
     }
+    const existing = existingRows?.[0];
 
     if (existing) {
       const { error: updateErr } = await sb
         .from('invitations')
-        .update({ role_id: role.id, invited_by: user.id, token, expires_at: expires })
+        .update({ role_id: role.id, invited_by: user.id, token, expires_at: expires, accepted_at: null })
         .eq('id', existing.id);
       if (updateErr) {
         throw new HttpError(500, `Dəvət yenilənmədi: ${updateErr.message}`);
